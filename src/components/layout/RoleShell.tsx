@@ -16,13 +16,14 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
   const isSuperAdmin = role === "super_admin";
 
-  // Landing page — no shell, no sidebar
-  if (pathname === "/") return <>{children}</>;
-
   useEffect(() => {
+    if (pathname === "/") return;
     if (isSuperAdmin && !isAdminRoute) router.replace("/admin");
     if (!isSuperAdmin && isAdminRoute) router.replace("/dashboard");
-  }, [isSuperAdmin, isAdminRoute, router]);
+  }, [pathname, isSuperAdmin, isAdminRoute, router]);
+
+  // Landing page — no shell, no sidebar
+  if (pathname === "/") return <>{children}</>;
 
   if (isSuperAdmin) {
     return <SuperAdminShell>{children}</SuperAdminShell>;
