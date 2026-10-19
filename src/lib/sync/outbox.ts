@@ -1,17 +1,21 @@
 import { dbExecute, dbSelect } from "../db";
 import { newId, nowIso } from "../id";
+import { isTauri } from "../platform";
 
 export type SyncOp = "insert" | "update" | "delete";
 
-/** Every local write is mirrored into `sync_outbox`. The sync engine drains
- * this table (oldest first) whenever the app is online, and marks each row
- * `synced_at` once it has been replayed against Turso. */
+/** Every local write on the desktop is mirrored into `sync_outbox` so the
+ * sync engine can replay it against Turso when online.
+ * On the web (Vercel), writes go directly to Turso — no outbox needed. */
 export async function recordOutbox(
   table: string,
   rowId: string,
   op: SyncOp,
   payload: Record<string, unknown> | null
 ): Promise<void> {
+  // Web: writing directly to Turso already — outbox is desktop-only
+  if (!isTauri()) return;
+
   await dbExecute(
     `INSERT INTO sync_outbox (id, table_name, row_id, op, payload, created_at, synced_at)
      VALUES (?, ?, ?, ?, ?, ?, NULL)`,
