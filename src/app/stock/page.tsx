@@ -1,0 +1,227 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Field, Input } from "@/components/ui/Field";
+import { DataTable, type Column } from "@/components/ui/DataTable";
+import { isTauri, useIsTauri } from "@/lib/platform";
+import { dbSelect } from "@/lib/db";
+import { searchProductsByNameOrBarcode } from "@/lib/repo/products";
+import { receiveStock } from "@/lib/repo/stock";
+import { useAuthStore } from "@/store/authStore";
+import type { Product } from "@/lib/types";
+
+interface StockRow {
+  id: string;
+  barcode: string | null;
+  product_name: string;
+  company_name: string | null;
+  location: string | null;
+  category_name: string | null;
+  uom_name: string | null;
+  avail_qty: number;
+}
+
+export default function StockPage() {
+  const [rows, setRows] = useState<StockRow[]>([]);
+  const [search, setSearch] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const [productQuery, setProductQuery] = useState("");
+  const [productResults, setProductResults] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [batchNo, setBatchNo] = useState("");
+  const [quantity, setQuantity] = useState("0");
+  const [purchasePrice, setPurchasePrice] = useState("0");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [location, setLocation] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function reload() {
+    if (!isTauri()) return;
+    setRows(
+      await dbSelect<StockRow>(
+        `
+        SELECT pb.id, p.barcode, p.name AS product_name, p.company_name, pb.location,
+               c.name AS category_name, u.name AS uom_name, pb.qty AS avail_qty
+        FROM product_batches pb
+        JOIN products p ON p.id = pb.product_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN uoms u ON u.id = p.base_unit_id
+        WHERE pb.deleted_at IS NULL AND pb.tenant_id = ? AND pb.qty > 0
+        ORDER BY pb.updated_at DESC
+      `,
+        [useAuthStore.getState().currentTenant?.id ?? null]
+      )
+    );
+  }
+
+  useEffect(() => {
+    void reload();
+  }, []);
+
+  useEffect(() => {
+    if (!productQuery.trim()) {
+      setProductResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      void searchProductsByNameOrBarcode(productQuery).then(setProductResults);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [productQuery]);
+
+  const filtered = rows.filter((r) => {
+    const term = search.toLowerCase();
+    return !term || r.product_name.toLowerCase().includes(term) || (r.barcode ?? "").toLowerCase().includes(term);
+  });
+
+  const columns: Column<StockRow>[] = [
+    { header: "Barcode", render: (r) => r.barcode ?? "—" },
+    { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
+    { header: "Company", render: (r) => r.company_name ?? "—" },
+    { header: "Location", render: (r) => r.location ?? "—" },
+    { header: "Category Name", render: (r) => r.category_name ?? "—" },
+    { header: "UOM", render: (r) => r.uom_name ?? "—" },
+    { header: "Avail Qty", render: (r) => r.avail_qty },
+  ];
+
+  function resetForm() {
+    setProductQuery("");
+    setProductResults([]);
+    setSelectedProduct(null);
+    setBatchNo("");
+    setQuantity("0");
+    setPurchasePrice("0");
+    setExpiryDate("");
+    setLocation("");
+  }
+
+  const tauriReady = useIsTauri();
+
+  return (
+    <div>
+      <PageHeader
+        title="Stock Details"
+        actions={
+          <>
+            <Button
+              variant="primary"
+              onClick={() => {
+                resetForm();
+                setModalOpen(true);
+              }}
+            >
+              Add
+            </Button>
+            <Button onClick={() => void reload()}>Refresh</Button>
+          </>
+        }
+      />
+
+      <div className="mb-3 flex items-center gap-2 rounded-xl border border-neutral-200/70 bg-white px-4 py-2.5 shadow-sm">
+        <Input
+          placeholder="Search by product or barcode..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-md"
+        />
+      </div>
+
+      {!tauriReady ? (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Run inside the desktop app to manage stock.
+        </p>
+      ) : (
+        <DataTable columns={columns} rows={filtered} />
+      )}
+
+      {modalOpen && (
+        <Modal title="-:Add Stock:-" onClose={() => setModalOpen(false)} width="max-w-lg">
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!selectedProduct) return;
+              setSaving(true);
+              try {
+                await receiveStock({
+                  productId: selectedProduct.id,
+                  batchNo: batchNo || null,
+                  qty: Number(quantity) || 0,
+                  purchasePrice: Number(purchasePrice) || 0,
+                  expiryDate: expiryDate || null,
+                  location: location || null,
+                });
+                setModalOpen(false);
+                void reload();
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            <Field label="Barcode/Product Name" required>
+              <Input
+                value={selectedProduct ? selectedProduct.name : productQuery}
+                onChange={(e) => {
+                  setSelectedProduct(null);
+                  setProductQuery(e.target.value);
+                }}
+                placeholder="Type to search..."
+                required
+                autoFocus
+              />
+              {!selectedProduct && productResults.length > 0 && (
+                <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-neutral-200 bg-white shadow-sm">
+                  {productResults.map((p) => (
+                    <button
+                      type="button"
+                      key={p.id}
+                      onClick={() => {
+                        setSelectedProduct(p);
+                        setProductResults([]);
+                        setProductQuery(p.name);
+                      }}
+                      className="block w-full px-3 py-1.5 text-left text-sm hover:bg-amber-50"
+                    >
+                      {p.name} {p.barcode ? `(${p.barcode})` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Batch No">
+                <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />
+              </Field>
+              <Field label="Transfer From / Location">
+                <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Pur Price / Item">
+                <Input type="number" min="0" step="any" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
+              </Field>
+              <Field label="Quantity" required>
+                <Input type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+              </Field>
+            </div>
+            <Field label="Expiry Date">
+              <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+            </Field>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+              <Button type="button" onClick={() => setModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saving || !selectedProduct}>
+                {saving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}

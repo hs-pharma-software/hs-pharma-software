@@ -1,0 +1,471 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Modal } from "@/components/ui/Modal";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { Button } from "@/components/ui/Button";
+import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
+import { UnitToggle } from "@/components/ui/UnitToggle";
+import { categoriesRepo, subCategoriesRepo } from "@/lib/repo/categories";
+import { uomsRepo } from "@/lib/repo/uoms";
+import { productsRepo, productBatchesRepo, priceListRepo, getCurrentRates } from "@/lib/repo/products";
+import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
+import type { Category, SubCategory, Uom, Product } from "@/lib/types";
+
+type QuickAddTarget = "category" | "subCategory" | "baseUnit" | "secondaryUnit" | null;
+
+export function ProductFormModal({
+  product,
+  onClose,
+  onSaved,
+}: {
+  product: Product | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = Boolean(product);
+
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  const [uoms, setUoms] = useState<Uom[]>([]);
+  const [quickAdd, setQuickAdd] = useState<QuickAddTarget>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [barcode, setBarcode] = useState(product?.barcode ?? "");
+  const [name, setName] = useState(product?.name ?? "");
+  const [companyName, setCompanyName] = useState(product?.company_name ?? "");
+  const [description, setDescription] = useState(product?.description ?? "");
+  const [categoryId, setCategoryId] = useState(product?.category_id ?? "");
+  const [subCategoryId, setSubCategoryId] = useState(product?.sub_category_id ?? "");
+  const [baseUnitId, setBaseUnitId] = useState(product?.base_unit_id ?? "");
+  const [secondaryUnitId, setSecondaryUnitId] = useState(product?.secondary_unit_id ?? "");
+  const [packing, setPacking] = useState(String(product?.packing ?? 1));
+  const [gstRate, setGstRate] = useState(String(product?.gst_rate_pct ?? 0));
+  const [maxStockQty, setMaxStockQty] = useState(String(product?.max_stock_qty ?? ""));
+  const [expiryLimitDays, setExpiryLimitDays] = useState(String(product?.stock_expiry_limit_days ?? ""));
+  const [location, setLocation] = useState(product?.location ?? "");
+
+  // Opening stock (create only)
+  const [batchNo, setBatchNo] = useState("");
+  const [quantity, setQuantity] = useState("0");
+  const [purchasePrice, setPurchasePrice] = useState("0");
+  const [salePrice, setSalePrice] = useState("0");
+  const [wholesalePrice, setWholesalePrice] = useState("0");
+  const [mrp, setMrp] = useState("0");
+  const [expiryDate, setExpiryDate] = useState("");
+  /** Which unit Quantity/prices above are currently expressed in — e.g. for
+   * a Pack of 10 Tab, entering "1" Pack here at Rs.100 is the same physical
+   * stock as "10" Tab at Rs.10 each; toggling converts qty and price so the
+   * total value stays put, and everything is normalized back to base units
+   * (packs) on save since that's what product_batches always tracks in. */
+  const [openingStockUnit, setOpeningStockUnit] = useState<"base" | "secondary">("base");
+
+  // Current rates (edit only) — the product's most recent batch cost and
+  // retail price, shown so they can actually be changed after creation
+  // instead of only ever being set once at Add time.
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const [currentBatchNo, setCurrentBatchNo] = useState<string | null>(null);
+  const [currentWholesale, setCurrentWholesale] = useState(0);
+  const [currentMrp, setCurrentMrp] = useState(0);
+  const [purchaseRate, setPurchaseRate] = useState("0");
+  const [initialPurchaseRate, setInitialPurchaseRate] = useState("0");
+  const [retailRate, setRetailRate] = useState("0");
+  const [initialRetailRate, setInitialRetailRate] = useState("0");
+  const [ratesLoaded, setRatesLoaded] = useState(!isEdit);
+  const [currentRatesUnit, setCurrentRatesUnit] = useState<"base" | "secondary">("base");
+
+  async function reloadLookups() {
+    const [cats, uomList] = await Promise.all([categoriesRepo.list(), uomsRepo.list()]);
+    setCategories(cats);
+    setUoms(uomList);
+  }
+
+  useEffect(() => {
+    void reloadLookups();
+  }, []);
+
+  useEffect(() => {
+    if (!isEdit || !product) return;
+    void getCurrentRates(product.id).then((rates) => {
+      setCurrentBatchId(rates.batchId);
+      setCurrentBatchNo(rates.batchNo);
+      setCurrentWholesale(rates.wholesalePrice);
+      setCurrentMrp(rates.mrp);
+      setPurchaseRate(String(rates.purchasePrice));
+      setInitialPurchaseRate(String(rates.purchasePrice));
+      setRetailRate(String(rates.salePrice));
+      setInitialRetailRate(String(rates.salePrice));
+      setRatesLoaded(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!categoryId) {
+      setSubCategories([]);
+      return;
+    }
+    void subCategoriesRepo
+      .list({ where: "category_id = ?", params: [categoryId] })
+      .then(setSubCategories);
+  }, [categoryId]);
+
+  // Auto-fill Secondary Unit from the chosen sub category's default (e.g.
+  // "Tablets" -> Tab) — only when nothing's picked yet, so it never
+  // clobbers a deliberate choice.
+  useEffect(() => {
+    if (!subCategoryId || secondaryUnitId) return;
+    const sc = subCategories.find((s) => s.id === subCategoryId);
+    if (sc?.default_secondary_unit_id) setSecondaryUnitId(sc.default_secondary_unit_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subCategoryId, subCategories]);
+
+  const packingNum = Number(packing) || 1;
+  const productHasSecondaryUnit = hasSecondaryUnit({ base_unit_id: baseUnitId || null, secondary_unit_id: secondaryUnitId || null });
+  const baseUnitName = uoms.find((u) => u.id === baseUnitId)?.name ?? "Base";
+  const secondaryUnitName = uoms.find((u) => u.id === secondaryUnitId)?.name ?? "Secondary";
+
+  function toggleOpeningStockUnit(toSecondary: boolean) {
+    setQuantity((v) => String(convertQtyOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setPurchasePrice((v) => String(convertPriceOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setSalePrice((v) => String(convertPriceOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setWholesalePrice((v) => String(convertPriceOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setMrp((v) => String(convertPriceOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setOpeningStockUnit(toSecondary ? "secondary" : "base");
+  }
+
+  function toggleCurrentRatesUnit(toSecondary: boolean) {
+    setPurchaseRate((v) => String(convertPriceOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setRetailRate((v) => String(convertPriceOnUnitToggle(Number(v) || 0, toSecondary, packingNum)));
+    setCurrentRatesUnit(toSecondary ? "secondary" : "base");
+  }
+
+  // Current Rates are always loaded/compared in base-unit terms regardless
+  // of which unit is currently displayed, so the "changed" highlight and
+  // the save logic stay correct across a unit toggle.
+  const finalPurchaseRate =
+    currentRatesUnit === "secondary" ? (Number(purchaseRate) || 0) * packingNum : Number(purchaseRate) || 0;
+  const finalRetailRate =
+    currentRatesUnit === "secondary" ? (Number(retailRate) || 0) * packingNum : Number(retailRate) || 0;
+  const purchaseRateChanged = Math.abs(finalPurchaseRate - (Number(initialPurchaseRate) || 0)) > 0.0001;
+  const retailRateChanged = Math.abs(finalRetailRate - (Number(initialRetailRate) || 0)) > 0.0001;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !baseUnitId) return;
+    setSaving(true);
+    try {
+      const payload = {
+        barcode: barcode || null,
+        name: name.trim(),
+        company_name: companyName || null,
+        description: description || null,
+        category_id: categoryId || null,
+        sub_category_id: subCategoryId || null,
+        base_unit_id: baseUnitId || null,
+        secondary_unit_id: secondaryUnitId || null,
+        packing: Number(packing) || 1,
+        gst_rate_pct: Number(gstRate) || 0,
+        max_stock_qty: maxStockQty ? Number(maxStockQty) : null,
+        stock_expiry_limit_days: expiryLimitDays ? Number(expiryLimitDays) : null,
+        location: location || null,
+      };
+
+      if (isEdit && product) {
+        await productsRepo.update(product.id, payload);
+        if (currentBatchId && purchaseRateChanged) {
+          await productBatchesRepo.update(currentBatchId, { purchase_price: finalPurchaseRate });
+        }
+        if (retailRateChanged) {
+          await priceListRepo.create({
+            product_id: product.id,
+            batch_no: currentBatchNo,
+            sale_price: finalRetailRate,
+            wholesale_price: currentWholesale,
+            mrp: currentMrp,
+            comment: "Updated via Product Detail",
+          });
+        }
+      } else {
+        const isSecondary = openingStockUnit === "secondary";
+        const finalQty = toBaseUnitQty(Number(quantity) || 0, isSecondary, packingNum);
+        const finalPurchasePrice = isSecondary ? (Number(purchasePrice) || 0) * packingNum : Number(purchasePrice) || 0;
+        const finalSalePrice = isSecondary ? (Number(salePrice) || 0) * packingNum : Number(salePrice) || 0;
+        const finalWholesalePrice = isSecondary ? (Number(wholesalePrice) || 0) * packingNum : Number(wholesalePrice) || 0;
+        const finalMrp = isSecondary ? (Number(mrp) || 0) * packingNum : Number(mrp) || 0;
+
+        const created = await productsRepo.create(payload);
+        if (finalQty > 0) {
+          await productBatchesRepo.create({
+            product_id: created.id,
+            batch_no: batchNo || null,
+            expiry_date: expiryDate || null,
+            qty: finalQty,
+            location: location || null,
+            purchase_price: finalPurchasePrice,
+          });
+        }
+        if (finalSalePrice > 0 || finalMrp > 0) {
+          await priceListRepo.create({
+            product_id: created.id,
+            batch_no: batchNo || null,
+            sale_price: finalSalePrice,
+            wholesale_price: finalWholesalePrice,
+            mrp: finalMrp,
+            comment: null,
+          });
+        }
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={isEdit ? "-:Edit Product:-" : "-:Add Product:-"} onClose={onClose} width="max-w-4xl">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label="Barcode">
+            <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+          </Field>
+          <Field label="Product Name" required>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+          </Field>
+          <Field label="Company Name">
+            <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Description">
+          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex items-end gap-1.5">
+            <div className="flex-1">
+              <Field label="Base Unit" required>
+                <Select value={baseUnitId} onChange={(e) => setBaseUnitId(e.target.value)} required>
+                  <option value="">Select...</option>
+                  {uoms.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Button type="button" onClick={() => setQuickAdd("baseUnit")}>
+              +
+            </Button>
+          </div>
+
+          <Field label="Packing" required>
+            <Input type="number" min="0" step="any" value={packing} onChange={(e) => setPacking(e.target.value)} required />
+          </Field>
+
+          <div className="flex items-end gap-1.5">
+            <div className="flex-1">
+              <Field label="Secondary Unit">
+                <Select value={secondaryUnitId} onChange={(e) => setSecondaryUnitId(e.target.value)}>
+                  <option value="">Select...</option>
+                  {uoms.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Button type="button" onClick={() => setQuickAdd("secondaryUnit")}>
+              +
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex items-end gap-1.5">
+            <div className="flex-1">
+              <Field label="Category">
+                <Select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubCategoryId(""); }}>
+                  <option value="">Select...</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Button type="button" onClick={() => setQuickAdd("category")}>
+              +
+            </Button>
+          </div>
+
+          <div className="flex items-end gap-1.5">
+            <div className="flex-1">
+              <Field label="Sub Category">
+                <Select value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
+                  <option value="">Select...</option>
+                  {subCategories.map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      {sc.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Button type="button" onClick={() => setQuickAdd("subCategory")} disabled={!categoryId}>
+              +
+            </Button>
+          </div>
+
+          <Field label="GST Rate %">
+            <Input type="number" min="0" step="any" value={gstRate} onChange={(e) => setGstRate(e.target.value)} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label="Max Stock Quantity (Base Unit)">
+            <Input type="number" min="0" step="any" value={maxStockQty} onChange={(e) => setMaxStockQty(e.target.value)} />
+          </Field>
+          <Field label="Stock Expiry Limit (No. Of Days)">
+            <Input type="number" min="0" step="1" value={expiryLimitDays} onChange={(e) => setExpiryLimitDays(e.target.value)} />
+          </Field>
+          <Field label="Location">
+            <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+          </Field>
+        </div>
+
+        {isEdit && (
+          <>
+            <div className="flex items-center justify-between rounded-md bg-neutral-100 px-3 py-1.5">
+              <span className="text-sm font-medium text-neutral-700">Current Rates</span>
+              {productHasSecondaryUnit && (
+                <UnitToggle
+                  baseLabel={baseUnitName}
+                  secondaryLabel={secondaryUnitName}
+                  value={currentRatesUnit}
+                  onChange={(u) => toggleCurrentRatesUnit(u === "secondary")}
+                />
+              )}
+            </div>
+            {!ratesLoaded ? (
+              <p className="text-sm text-neutral-400">Loading current rates...</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field
+                  label={`Purchase Rate / ${currentRatesUnit === "secondary" ? secondaryUnitName : baseUnitName}${currentBatchNo ? ` (batch ${currentBatchNo})` : ""}`}
+                >
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={purchaseRate}
+                    disabled={!currentBatchId}
+                    title={!currentBatchId ? "No stock received yet — add via Purchase first" : undefined}
+                    onChange={(e) => setPurchaseRate(e.target.value)}
+                    className={purchaseRateChanged ? "!border-amber-400 !bg-amber-50" : ""}
+                  />
+                </Field>
+                <Field label={`Retail Rate / ${currentRatesUnit === "secondary" ? secondaryUnitName : baseUnitName}`}>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={retailRate}
+                    onChange={(e) => setRetailRate(e.target.value)}
+                    className={retailRateChanged ? "!border-amber-400 !bg-amber-50" : ""}
+                  />
+                </Field>
+              </div>
+            )}
+          </>
+        )}
+
+        {!isEdit && (
+          <>
+            <div className="flex items-center justify-between rounded-md bg-neutral-100 px-3 py-1.5">
+              <span className="text-sm font-medium text-neutral-700">Opening Stock &amp; Pricing Detail</span>
+              {productHasSecondaryUnit && (
+                <UnitToggle
+                  baseLabel={baseUnitName}
+                  secondaryLabel={secondaryUnitName}
+                  value={openingStockUnit}
+                  onChange={(u) => toggleOpeningStockUnit(u === "secondary")}
+                />
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Batch No">
+                <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />
+              </Field>
+              <Field label={`Quantity (${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName})`}>
+                <Input type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              </Field>
+              <Field label="Expiry Date">
+                <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+              </Field>
+              <Field label={`Pur Price / ${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName}`}>
+                <Input type="number" min="0" step="any" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
+              </Field>
+              <Field label={`Sale Price / ${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName}`}>
+                <Input type="number" min="0" step="any" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
+              </Field>
+              <Field label={`Wholesale / ${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName}`}>
+                <Input type="number" min="0" step="any" value={wholesalePrice} onChange={(e) => setWholesalePrice(e.target.value)} />
+              </Field>
+              <Field label="MRP">
+                <Input type="number" min="0" step="any" value={mrp} onChange={(e) => setMrp(e.target.value)} />
+              </Field>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+          <Button type="button" onClick={onClose}>
+            Reset
+          </Button>
+          <Button type="submit" variant="primary" disabled={saving}>
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </form>
+
+      {quickAdd && (
+        <QuickAddDialog
+          title={
+            quickAdd === "category"
+              ? "-:Add Categories:-"
+              : quickAdd === "subCategory"
+                ? "-:Add SubCategories:-"
+                : "-:Add Unit:-"
+          }
+          onClose={() => setQuickAdd(null)}
+          onSubmit={async ({ name: n, description: d }) => {
+            if (quickAdd === "category") {
+              const created = await categoriesRepo.create({ name: n, description: d || null, flat_discount_pct: 0, image_url: null });
+              await reloadLookups();
+              setCategoryId(created.id);
+            } else if (quickAdd === "subCategory") {
+              const created = await subCategoriesRepo.create({
+                category_id: categoryId,
+                name: n,
+                description: d || null,
+                image_url: null,
+              });
+              setSubCategories((prev) => [...prev, created]);
+              setSubCategoryId(created.id);
+            } else {
+              const created = await uomsRepo.create({ name: n, description: d || null });
+              await reloadLookups();
+              if (quickAdd === "baseUnit") setBaseUnitId(created.id);
+              if (quickAdd === "secondaryUnit") setSecondaryUnitId(created.id);
+            }
+            setQuickAdd(null);
+          }}
+        />
+      )}
+    </Modal>
+  );
+}
