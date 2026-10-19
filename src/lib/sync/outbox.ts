@@ -1,6 +1,6 @@
 import { dbExecute, dbSelect } from "../db";
 import { newId, nowIso } from "../id";
-import { isTauri } from "../platform";
+import { isTauriShell as isTauri } from "../platform";
 
 export type SyncOp = "insert" | "update" | "delete";
 

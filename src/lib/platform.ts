@@ -1,32 +1,36 @@
 import { useEffect, useState } from "react";
 
-/** True when running inside the Tauri desktop shell. */
-export function isTauri(): boolean {
+/** True ONLY when running inside the Tauri desktop shell.
+ * Used internally by db.ts (pick SQLite vs Turso) and outbox.ts.
+ * Don't use this in pages — use isTauri() / useIsTauri() instead. */
+export function isTauriShell(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 /** True when the database is available — either:
  *  - Running inside the Tauri desktop shell (local SQLite), OR
- *  - Running in a browser/Vercel with Turso credentials configured.
+ *  - Running in a browser / Vercel with Turso credentials configured.
  *
- * All pages use this to decide whether to show data or a "not available" msg.
- * Since db.ts now routes to Turso on web, both environments are fully capable. */
-export function isDbReady(): boolean {
+ * All 40+ pages use this (as `isTauri()`) to guard their data-load calls.
+ * Renamed so that existing code needs zero changes. */
+export function isTauri(): boolean {
   if (typeof window === "undefined") return false;
-  if (isTauri()) return true;
-  // On web: DB is ready when Turso is configured
+  if (isTauriShell()) return true;
   return Boolean(
     process.env.NEXT_PUBLIC_TURSO_DATABASE_URL &&
     process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN
   );
 }
 
-/** Reactive, hydration-safe hook for use in JSX.
- * Starts false (SSR/first render) then flips to the real value after mount. */
+/** Reactive, hydration-safe hook. Starts false (SSR), flips to real value
+ * after mount. Used in JSX to conditionally render data tables vs placeholders. */
 export function useIsTauri(): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    setReady(isDbReady());
+    setReady(isTauri());
   }, []);
   return ready;
 }
+
+/** @deprecated use isTauri() — kept for any import that used isDbReady() */
+export const isDbReady = isTauri;

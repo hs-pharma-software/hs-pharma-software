@@ -1,4 +1,4 @@
-import { isTauri } from "./platform";
+import { isTauriShell as isTauri } from "./platform";
 import { createClient, type Client } from "@libsql/client/web";
 
 // ── Turso client (browser / Vercel web version) ──────────────────────
