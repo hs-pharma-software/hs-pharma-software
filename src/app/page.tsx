@@ -189,8 +189,7 @@ export default function LandingPage() {
 
               {/* primary download */}
               <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
-                target="_blank" rel="noopener noreferrer"
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/download/v1.0.0/eSales-Pharmacy_1.0.0_x64-setup.exe"
                 className="dl-btn"
                 style={{
                   display:"inline-flex",alignItems:"center",gap:10,
@@ -321,8 +320,7 @@ export default function LandingPage() {
               </p>
 
               <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
-                target="_blank" rel="noopener noreferrer"
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/download/v1.0.0/eSales-Pharmacy_1.0.0_x64-setup.exe"
                 className="dl-btn"
                 style={{
                   display:"inline-flex",alignItems:"center",gap:12,
