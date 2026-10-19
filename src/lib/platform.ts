@@ -1,28 +1,32 @@
 import { useEffect, useState } from "react";
 
-/** True when running inside the Tauri desktop shell (where the SQL/fs/dialog
- * plugins are actually available). False when the Next.js dev server is
- * previewed directly in an ordinary browser tab.
- *
- * Safe to call inside effects/event handlers/async functions (e.g. a
- * `reload()` guard) — anywhere that only ever runs client-side, after mount.
- * Do NOT call this directly in JSX render output; use `useIsTauri()` there
- * instead (see below) or you'll get a hydration mismatch. */
+/** True when running inside the Tauri desktop shell. */
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** Reactive, hydration-safe version of `isTauri()` for use in JSX render
- * output. The static export is always built outside Tauri, so the
- * server-rendered HTML (and the very first client render, before React has
- * hydrated) must say "false" to match — this hook starts at `false` on every
- * render pass and flips to the real value in an effect once mounted, which
- * is the standard fix for reading browser/host-only globals without a
- * server/client mismatch. */
+/** True when the database is available — either:
+ *  - Running inside the Tauri desktop shell (local SQLite), OR
+ *  - Running in a browser/Vercel with Turso credentials configured.
+ *
+ * All pages use this to decide whether to show data or a "not available" msg.
+ * Since db.ts now routes to Turso on web, both environments are fully capable. */
+export function isDbReady(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isTauri()) return true;
+  // On web: DB is ready when Turso is configured
+  return Boolean(
+    process.env.NEXT_PUBLIC_TURSO_DATABASE_URL &&
+    process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN
+  );
+}
+
+/** Reactive, hydration-safe hook for use in JSX.
+ * Starts false (SSR/first render) then flips to the real value after mount. */
 export function useIsTauri(): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    setReady(isTauri());
+    setReady(isDbReady());
   }, []);
   return ready;
 }
