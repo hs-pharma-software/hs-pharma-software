@@ -77,6 +77,10 @@ export default function SubscriptionPlansPage() {
             setModalOpen(false);
             void reload();
           }}
+          onDeleted={() => {
+            setModalOpen(false);
+            void reload();
+          }}
         />
       )}
     </div>

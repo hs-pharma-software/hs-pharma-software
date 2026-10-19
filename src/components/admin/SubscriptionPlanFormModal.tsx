@@ -12,10 +12,12 @@ export function SubscriptionPlanFormModal({
   plan,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   plan: SubscriptionPlan | null;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted?: () => void;
 }) {
   const isEdit = Boolean(plan);
   const [name, setName] = useState(plan?.name ?? "");
@@ -28,6 +30,8 @@ export function SubscriptionPlanFormModal({
   );
   const [modules, setModules] = useState<Set<string>>(new Set(plan ? parseAllowedModules(plan) : NAV.map((n) => n.moduleKey)));
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   function toggleModule(key: string) {
     setModules((prev) => {
@@ -121,13 +125,45 @@ export function SubscriptionPlanFormModal({
             ))}
           </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
-          <Button type="button" onClick={onClose}>
-            Reset
-          </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
-            {saving ? "Saving..." : "Save"}
-          </Button>
+        <div className="flex items-center justify-between border-t border-neutral-200 pt-3">
+          {/* Delete — only shown when editing an existing plan */}
+          {isEdit && plan && (
+            confirmDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-rose-600">Sure?</span>
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={deleting}
+                  onClick={async () => {
+                    setDeleting(true);
+                    try {
+                      await subscriptionPlansRepo.remove(plan.id, "Deleted by admin");
+                      onDeleted?.();
+                      onClose();
+                    } finally {
+                      setDeleting(false);
+                    }
+                  }}
+                >
+                  {deleting ? "Deleting..." : "Yes, Delete"}
+                </Button>
+                <Button type="button" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+              </div>
+            ) : (
+              <Button type="button" variant="danger" onClick={() => setConfirmDelete(true)}>
+                Delete
+              </Button>
+            )
+          )}
+          {!isEdit && <span />}
+
+          <div className="flex gap-2">
+            <Button type="button" onClick={onClose}>Reset</Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
         </div>
       </form>
     </Modal>
