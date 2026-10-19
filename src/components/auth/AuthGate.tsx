@@ -17,16 +17,16 @@ import { LoginScreen } from "./LoginScreen";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const currentUser = useAuthStore((s) => s.currentUser);
-
-  // Landing page is public — no auth needed
-  if (pathname === "/") return <>{children}</>;
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // If already logged in, skip the DB check
-    if (currentUser) return;
+    // Landing page and already-logged-in: skip DB check
+    if (pathname === "/" || currentUser) return;
     void anyUserExists().then((exists) => setNeedsSetup(!exists));
-  }, [currentUser]);
+  }, [pathname, currentUser]);
+
+  // Landing page is public — no auth needed
+  if (pathname === "/") return <>{children}</>;
 
   // Already logged in — show the app
   if (currentUser) {
