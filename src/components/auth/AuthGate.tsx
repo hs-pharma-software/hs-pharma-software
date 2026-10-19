@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { anyUserExists } from "@/lib/repo/users";
 import { useAuthStore } from "@/store/authStore";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
@@ -14,7 +15,11 @@ import { LoginScreen } from "./LoginScreen";
  *   3. Login screen (when no session)
  *   4. The real app (when logged in) */
 export function AuthGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const currentUser = useAuthStore((s) => s.currentUser);
+
+  // Landing page is public — no auth needed
+  if (pathname === "/") return <>{children}</>;
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
 
   useEffect(() => {
