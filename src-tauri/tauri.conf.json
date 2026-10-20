@@ -25,6 +25,18 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUyQTE2NEZCQTZGQkNENkEKUldScXpmdW0rMlNoVXI4S1BqUktoVkVoWlNHanF4SFVsaEFZZGY2YmlXU0lTWHU4bWdSVjdqNmEK",
+      "endpoints": [
+        "https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

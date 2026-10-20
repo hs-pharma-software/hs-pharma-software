@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
 import { triggerManualSync } from "@/components/sync/SyncProvider";
+import { UpdateChecker } from "./UpdateChecker";
 
 export function Topbar() {
   const online = useAppStore((s) => s.online);
@@ -107,6 +108,7 @@ export function Topbar() {
           </AnimatePresence>
         </div>
 
+        <UpdateChecker />
         <motion.button
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.94 }}
