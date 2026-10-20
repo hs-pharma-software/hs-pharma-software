@@ -62,6 +62,7 @@ async function buildSession(
     maxStaffLogins: plan?.max_staff_logins ?? 0,
     maxInvoicesPerMonth: plan?.max_invoices_per_month ?? null,
     mrpDiscountPct: tenant.mrp_discount_pct ?? 0,
+    sourceTenantId: (tenant as any).source_tenant_id ?? null,
   };
 
   return { user: sessionUser, tenant: sessionTenant };

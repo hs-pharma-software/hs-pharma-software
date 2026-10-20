@@ -24,6 +24,8 @@ export interface SessionTenant {
   maxInvoicesPerMonth: number | null;
   /** 0 means no discount; e.g. 14.5 means show prices at MRP * 0.855 */
   mrpDiscountPct: number;
+  /** When set, stock is read from this tenant instead of the dealer's own */
+  sourceTenantId: string | null;
 }
 
 interface AuthState {

@@ -1,0 +1,182 @@
+/**
+ * migrate-turso.cjs
+ *
+ * Applies all SQLite schema migrations to the Turso cloud database.
+ * Run this EVERY TIME you add a new migration to src-tauri/src/lib.rs.
+ *
+ *   node scripts/migrate-turso.cjs
+ *
+ * The script is idempotent — it uses IF NOT EXISTS / IF NOT EXISTS and
+ * catches "duplicate column" errors, so re-running is always safe.
+ */
+
+// Reads credentials from .env.local (never commit tokens to git)
+const fs = require('fs');
+const envPath = require('path').join(__dirname, '..', '.env.local');
+const env = fs.existsSync(envPath)
+  ? Object.fromEntries(fs.readFileSync(envPath,'utf8').split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return[l.slice(0,i).trim(),l.slice(i+1).trim()]}))
+  : {};
+
+const TURSO_URL   = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
+const TURSO_TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
+if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing NEXT_PUBLIC_TURSO_DATABASE_URL or NEXT_PUBLIC_TURSO_AUTH_TOKEN in .env.local'); process.exit(1); }
+
+async function exec(sql) {
+  const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${TURSO_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ type: 'execute', stmt: { sql, args: [] } }, { type: 'close' }] }),
+  });
+  const data = await res.json();
+  const result = data.results?.[0];
+  if (result?.type === 'error') {
+    const msg = result.error?.message ?? '';
+    // "duplicate column" and "already exists" are expected for idempotent re-runs
+    if (msg.includes('duplicate column') || msg.includes('already exists')) return 'skipped';
+    throw new Error(`SQL error: ${msg}\nSQL: ${sql.trim().slice(0, 120)}`);
+  }
+  return 'ok';
+}
+
+// Each entry mirrors one schema_sql_v* function in src-tauri/src/lib.rs.
+// ADD A NEW ENTRY HERE whenever you add a new migration there.
+const MIGRATIONS = [
+  // v1 — base schema (all CREATE TABLE IF NOT EXISTS, safe to re-run)
+  { version: 1, label: 'Base schema', statements: [
+    `CREATE TABLE IF NOT EXISTS sync_outbox (id TEXT PRIMARY KEY, table_name TEXT NOT NULL, row_id TEXT NOT NULL, op TEXT NOT NULL CHECK (op IN ('insert','update','delete')), payload TEXT, created_at TEXT NOT NULL, synced_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_sync_outbox_pending ON sync_outbox (synced_at)`,
+    `CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT)`,
+    `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, flat_discount_pct REAL DEFAULT 0, description TEXT, image_url TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS sub_categories (id TEXT PRIMARY KEY, category_id TEXT NOT NULL REFERENCES categories(id), name TEXT NOT NULL, description TEXT, image_url TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS uoms (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, barcode TEXT, name TEXT NOT NULL, company_name TEXT, description TEXT, category_id TEXT REFERENCES categories(id), sub_category_id TEXT REFERENCES sub_categories(id), base_unit_id TEXT REFERENCES uoms(id), secondary_unit_id TEXT REFERENCES uoms(id), packing REAL DEFAULT 1, tax_rate_pct REAL DEFAULT 0, gst_rate_pct REAL DEFAULT 0, apply_further_tax INTEGER DEFAULT 0, max_stock_qty REAL, stock_expiry_limit_days INTEGER, location TEXT, sale_type TEXT, sro_no TEXT, sro_item_serial_no TEXT, pct_code TEXT, online_store_status TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_products_barcode ON products (barcode)`,
+    `CREATE INDEX IF NOT EXISTS idx_products_name ON products (name)`,
+    `CREATE TABLE IF NOT EXISTS product_batches (id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id), batch_no TEXT, expiry_date TEXT, qty REAL NOT NULL DEFAULT 0, location TEXT, purchase_price REAL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_product_batches_product ON product_batches (product_id)`,
+    `CREATE TABLE IF NOT EXISTS price_list (id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id), batch_no TEXT, sale_price REAL DEFAULT 0, wholesale_price REAL DEFAULT 0, mrp REAL DEFAULT 0, comment TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, phone TEXT, cnic_ntn TEXT, address TEXT, area TEXT, province TEXT, license_no TEXT, license_expiry TEXT, discount_pct REAL DEFAULT 0, opening_balance REAL DEFAULT 0, criteria TEXT DEFAULT 'receivable', credit_limit REAL, income_tax_status TEXT, sales_tax_status TEXT, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS suppliers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, company_name TEXT, email TEXT, phone TEXT, cnic TEXT, address TEXT, discount_pct REAL DEFAULT 0, opening_balance REAL DEFAULT 0, criteria TEXT DEFAULT 'payable', description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_suppliers_tenant ON suppliers (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS staff (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, designation TEXT, address TEXT, phone TEXT, cnic TEXT, basic_pay REAL DEFAULT 0, opening_balance REAL DEFAULT 0, criteria TEXT DEFAULT 'payable', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_staff_tenant ON staff (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS salesmen (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, phone TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS invoices (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, invoice_no INTEGER, date TEXT NOT NULL, inv_on TEXT NOT NULL DEFAULT 'cash', invoice_type TEXT NOT NULL DEFAULT 'retail', salesman_id TEXT REFERENCES salesmen(id), customer_id TEXT REFERENCES customers(id), description TEXT, total REAL NOT NULL DEFAULT 0, charges REAL DEFAULT 0, discount_pct REAL DEFAULT 0, discount_rs REAL DEFAULT 0, tax_pct REAL DEFAULT 0, payable REAL NOT NULL DEFAULT 0, paid REAL DEFAULT 0, balance REAL DEFAULT 0, is_return INTEGER DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices (tenant_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices (date)`,
+    `CREATE TABLE IF NOT EXISTS invoice_items (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL REFERENCES invoices(id), product_id TEXT REFERENCES products(id), batch_no TEXT, product_name TEXT NOT NULL, packing TEXT, uom TEXT, qty REAL NOT NULL DEFAULT 0, bonus_qty REAL DEFAULT 0, purchase_price REAL DEFAULT 0, sale_price REAL NOT NULL DEFAULT 0, tax_pct REAL DEFAULT 0, further_tax_pct REAL DEFAULT 0, tax_rs REAL DEFAULT 0, discount_pct REAL DEFAULT 0, discount_rs REAL DEFAULT 0, total REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items (invoice_id)`,
+    `CREATE TABLE IF NOT EXISTS orders (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_no INTEGER, date TEXT NOT NULL, supplier_id TEXT REFERENCES suppliers(id), order_type TEXT, estimated_price REAL DEFAULT 0, advance_payment REAL DEFAULT 0, payment_method TEXT DEFAULT 'cash', bank_id TEXT, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS order_items (id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id), product_id TEXT REFERENCES products(id), barcode TEXT, product_name TEXT NOT NULL, packing TEXT, uom TEXT, purchase_price REAL DEFAULT 0, qty REAL DEFAULT 0, avail_qty REAL DEFAULT 0, max_stock REAL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, purchase_no INTEGER, date TEXT NOT NULL, supplier_id TEXT REFERENCES suppliers(id), order_id TEXT REFERENCES orders(id), invoice_no TEXT, advance_payment REAL DEFAULT 0, discount_rs REAL DEFAULT 0, discount_pct REAL DEFAULT 0, tax REAL DEFAULT 0, payable REAL DEFAULT 0, paid REAL DEFAULT 0, balance REAL DEFAULT 0, payment_method TEXT DEFAULT 'cash', bank_id TEXT, slip_no TEXT, description TEXT, is_return INTEGER DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_purchases_tenant ON purchases (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS purchase_items (id TEXT PRIMARY KEY, purchase_id TEXT NOT NULL REFERENCES purchases(id), product_id TEXT REFERENCES products(id), location TEXT, barcode TEXT, product_name TEXT NOT NULL, packing TEXT, batch_no TEXT, uom TEXT, expiry_date TEXT, purchase_price REAL DEFAULT 0, booked_qty REAL DEFAULT 0, received_qty REAL DEFAULT 0, amount REAL DEFAULT 0, sales_tax_pct REAL DEFAULT 0, wht_pct REAL DEFAULT 0, total REAL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS ledger_adjustments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, party_type TEXT NOT NULL CHECK (party_type IN ('customer','supplier','staff')), party_id TEXT NOT NULL, date TEXT NOT NULL, balance_type TEXT, payment_method TEXT DEFAULT 'cash', bank_id TEXT, paid_amount REAL DEFAULT 0, comment TEXT, invoice_no TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_ledger_tenant ON ledger_adjustments (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS cash_register_entries (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, date TEXT NOT NULL, transaction_type TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_cash_register_tenant ON cash_register_entries (tenant_id)`,
+    `CREATE TABLE IF NOT EXISTS banks (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, bank_name TEXT NOT NULL, account_no TEXT, account_title TEXT, address TEXT, phone TEXT, opening_balance REAL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS bank_ledger_entries (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, bank_id TEXT NOT NULL REFERENCES banks(id), date TEXT NOT NULL, transaction_type TEXT NOT NULL, slip_no TEXT, amount REAL NOT NULL DEFAULT 0, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS expense_categories (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, date TEXT NOT NULL, category_id TEXT REFERENCES expense_categories(id), expense_by TEXT, amount REAL NOT NULL DEFAULT 0, payment_method TEXT DEFAULT 'cash', bank_id TEXT, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS salaries (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, date TEXT NOT NULL, salary_month TEXT NOT NULL, salary_year TEXT NOT NULL, staff_id TEXT REFERENCES staff(id), basic_pay REAL DEFAULT 0, incentive REAL DEFAULT 0, deduction REAL DEFAULT 0, tax_rs REAL DEFAULT 0, payable_salary REAL DEFAULT 0, paid_salary REAL DEFAULT 0, balance_salary REAL DEFAULT 0, payment_method TEXT DEFAULT 'cash', bank_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS revenue_categories (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS revenues (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, date TEXT NOT NULL, category_id TEXT REFERENCES revenue_categories(id), revenue_by TEXT, amount REAL NOT NULL DEFAULT 0, payment_method TEXT DEFAULT 'cash', bank_id TEXT, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, assign_date TEXT NOT NULL, task_name TEXT NOT NULL, assign_by TEXT, assign_to TEXT, status TEXT, finished_date TEXT, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS attendance (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, staff_id TEXT REFERENCES staff(id), date TEXT NOT NULL, time_in TEXT, time_out TEXT, hours REAL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS audits (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, date TEXT NOT NULL, audit_name TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS audit_items (id TEXT PRIMARY KEY, audit_id TEXT NOT NULL REFERENCES audits(id), product_id TEXT REFERENCES products(id), batch_no TEXT, counted_qty REAL DEFAULT 0, system_qty REAL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS delete_history (id TEXT PRIMARY KEY, tenant_id TEXT, table_name TEXT NOT NULL, row_id TEXT NOT NULL, deleted_by TEXT, reason TEXT, created_at TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS backup_records (id TEXT PRIMARY KEY, tenant_id TEXT, date TEXT NOT NULL, status TEXT NOT NULL, file_name TEXT, created_at TEXT NOT NULL)`,
+  ]},
+
+  // v2
+  { version: 2, label: 'product_suppliers', statements: [
+    `CREATE TABLE IF NOT EXISTS product_suppliers (id TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id), supplier_id TEXT NOT NULL REFERENCES suppliers(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_product_suppliers_supplier ON product_suppliers (supplier_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_product_suppliers_product ON product_suppliers (product_id)`,
+  ]},
+
+  // v3
+  { version: 3, label: 'invoices.original_invoice_id', statements: [
+    `ALTER TABLE invoices ADD COLUMN original_invoice_id TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_invoices_original ON invoices (original_invoice_id)`,
+  ]},
+
+  // v4
+  { version: 4, label: 'invoices quotation columns', statements: [
+    `ALTER TABLE invoices ADD COLUMN is_quotation INTEGER DEFAULT 0`,
+    `ALTER TABLE invoices ADD COLUMN quotation_no INTEGER`,
+    `CREATE INDEX IF NOT EXISTS idx_invoices_quotation ON invoices (is_quotation)`,
+  ]},
+
+  // v5
+  { version: 5, label: 'purchases.original_purchase_id', statements: [
+    `ALTER TABLE purchases ADD COLUMN original_purchase_id TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_purchases_original ON purchases (original_purchase_id)`,
+  ]},
+
+  // v6
+  { version: 6, label: 'sub_categories.flat_discount_pct', statements: [
+    `ALTER TABLE sub_categories ADD COLUMN flat_discount_pct REAL DEFAULT 0`,
+  ]},
+
+  // v7
+  { version: 7, label: 'financial_closings table', statements: [
+    `CREATE TABLE IF NOT EXISTS financial_closings (id TEXT PRIMARY KEY, date TEXT NOT NULL, closed_at TEXT NOT NULL, batch_action TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+  ]},
+
+  // v8
+  { version: 8, label: 'sub_categories.default_secondary_unit_id', statements: [
+    `ALTER TABLE sub_categories ADD COLUMN default_secondary_unit_id TEXT`,
+  ]},
+
+  // v9 — multi-tenant (large, all IF NOT EXISTS)
+  { version: 9, label: 'Multi-tenant support', statements: [
+    `CREATE TABLE IF NOT EXISTS subscription_plans (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, allowed_modules TEXT, max_staff_logins INTEGER DEFAULT 5, max_invoices_per_month INTEGER, duration_days INTEGER DEFAULT 30, price REAL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_name TEXT, phone TEXT, email TEXT, address TEXT, subscription_plan_id TEXT REFERENCES subscription_plans(id), subscription_status TEXT NOT NULL DEFAULT 'active', subscription_started_at TEXT, subscription_expires_at TEXT, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, tenant_id TEXT REFERENCES tenants(id), username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'staff', display_name TEXT, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `ALTER TABLE product_batches ADD COLUMN tenant_id TEXT`,
+    `ALTER TABLE price_list      ADD COLUMN tenant_id TEXT`,
+    `ALTER TABLE invoices        ADD COLUMN converted_invoice_id TEXT`,
+    `ALTER TABLE invoices        ADD COLUMN converted_quotation_id TEXT`,
+  ]},
+
+  // v10
+  { version: 10, label: 'tenants.mrp_discount_pct (dealer portal)', statements: [
+    `ALTER TABLE tenants ADD COLUMN mrp_discount_pct REAL DEFAULT 0`,
+  ]},
+
+  // v11
+  { version: 11, label: 'tenants.source_tenant_id (dealer portal)', statements: [
+    `ALTER TABLE tenants ADD COLUMN source_tenant_id TEXT`,
+  ]},
+
+  // ── ADD NEW MIGRATIONS BELOW THIS LINE ──────────────────────────────
+  // { version: 12, label: 'describe change', statements: [ `ALTER TABLE ...` ] },
+];
+
+async function main() {
+  let ok = 0, skipped = 0, failed = 0;
+  for (const m of MIGRATIONS) {
+    process.stdout.write(`v${m.version} ${m.label} ... `);
+    let mOk = 0, mSkip = 0;
+    for (const sql of m.statements) {
+      try {
+        const r = await exec(sql);
+        if (r === 'skipped') mSkip++; else mOk++;
+      } catch (err) {
+        console.error(`\n  ✗ FAILED: ${err.message}`);
+        failed++;
+      }
+    }
+    console.log(mSkip === m.statements.length ? 'already up to date' : `✓ (${mOk} applied, ${mSkip} skipped)`);
+    ok += mOk; skipped += mSkip;
+  }
+  console.log(`\nDone. ${ok} statements applied, ${skipped} skipped, ${failed} failed.`);
+}
+
+main().catch(console.error);

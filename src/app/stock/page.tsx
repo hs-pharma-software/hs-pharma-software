@@ -43,8 +43,9 @@ export default function StockPage() {
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const tenantId = useAuthStore.getState().currentTenant?.id ?? null;
-  const mrpDiscountPct = useAuthStore.getState().currentTenant?.mrpDiscountPct ?? 0;
+  const sessionTenant = useAuthStore.getState().currentTenant;
+  const tenantId = sessionTenant?.sourceTenantId ?? sessionTenant?.id ?? null;
+  const mrpDiscountPct = sessionTenant?.mrpDiscountPct ?? 0;
 
   async function reload() {
     if (!isTauri()) return;
@@ -109,7 +110,7 @@ export default function StockPage() {
     { header: "Sale Price", render: (r) => r.sale_price > 0 ? r.sale_price.toFixed(2) : "—" },
     { header: "MRP", render: (r) => r.mrp > 0 ? r.mrp.toFixed(2) : "—" },
     ...(mrpDiscountPct > 0 ? [{
-      header: `Your Price (${mrpDiscountPct}% off MRP)`,
+      header: "Your Price",
       render: (r: StockRow) => r.mrp > 0
         ? <span className="font-bold text-emerald-700">{(r.mrp * discountFactor).toFixed(2)}</span>
         : "—",
@@ -132,7 +133,7 @@ export default function StockPage() {
   return (
     <div>
       <PageHeader
-        title={mrpDiscountPct > 0 ? `Stock Report — ${mrpDiscountPct}% Dealer Discount` : "Stock Details"}
+        title="Stock Details"
         actions={
           <>
             <Button
