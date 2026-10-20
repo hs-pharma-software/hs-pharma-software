@@ -33,6 +33,7 @@ export function TenantFormModal({
   const [email, setEmail] = useState(tenant?.email ?? "");
   const [address, setAddress] = useState(tenant?.address ?? "");
   const [planId, setPlanId] = useState(tenant?.subscription_plan_id ?? plans[0]?.id ?? "");
+  const [mrpDiscountPct, setMrpDiscountPct] = useState(String(tenant?.mrp_discount_pct ?? 0));
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export function TenantFormModal({
         email: email || null,
         address: address || null,
         subscription_plan_id: planId,
+        mrp_discount_pct: Number(mrpDiscountPct) || 0,
       };
       if (isEdit && tenant) {
         await tenantsRepo.update(tenant.id, payload);
@@ -106,7 +108,8 @@ export function TenantFormModal({
         <Field label="Address">
           <Input value={address} onChange={(e) => setAddress(e.target.value)} />
         </Field>
-        <Field label="Subscription Plan" required>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Subscription Plan" required>
           <Select value={planId} onChange={(e) => setPlanId(e.target.value)} required>
             <option value="">Select...</option>
             {plans.map((p) => (
@@ -115,7 +118,11 @@ export function TenantFormModal({
               </option>
             ))}
           </Select>
-        </Field>
+          </Field>
+          <Field label="MRP Discount % (dealer portal, 0 = none)">
+            <Input type="number" min="0" max="100" step="0.1" value={mrpDiscountPct} onChange={(e) => setMrpDiscountPct(e.target.value)} />
+          </Field>
+        </div>
 
         {!isEdit && (
           <div className="rounded-xl border border-neutral-200 p-4">

@@ -265,6 +265,7 @@ export interface Tenant extends BaseRow {
   subscription_started_at: string | null;
   subscription_expires_at: string | null;
   is_active: number;
+  mrp_discount_pct: number;
 }
 
 export interface UserAccount extends BaseRow {

@@ -22,6 +22,10 @@ interface StockRow {
   category_name: string | null;
   uom_name: string | null;
   avail_qty: number;
+  batch_no: string | null;
+  expiry_date: string | null;
+  mrp: number;
+  sale_price: number;
 }
 
 export default function StockPage() {
@@ -39,21 +43,34 @@ export default function StockPage() {
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const tenantId = useAuthStore.getState().currentTenant?.id ?? null;
+  const mrpDiscountPct = useAuthStore.getState().currentTenant?.mrpDiscountPct ?? 0;
+
   async function reload() {
     if (!isTauri()) return;
     setRows(
       await dbSelect<StockRow>(
         `
         SELECT pb.id, p.barcode, p.name AS product_name, p.company_name, pb.location,
-               c.name AS category_name, u.name AS uom_name, pb.qty AS avail_qty
+               c.name AS category_name, u.name AS uom_name, pb.qty AS avail_qty,
+               pb.batch_no, pb.expiry_date,
+               COALESCE(pl.mrp, 0) AS mrp,
+               COALESCE(pl.sale_price, 0) AS sale_price
         FROM product_batches pb
         JOIN products p ON p.id = pb.product_id
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN uoms u ON u.id = p.base_unit_id
+        LEFT JOIN (
+          SELECT product_id, sale_price, mrp
+          FROM price_list
+          WHERE deleted_at IS NULL
+          GROUP BY product_id
+          HAVING MAX(created_at)
+        ) pl ON pl.product_id = p.id
         WHERE pb.deleted_at IS NULL AND pb.tenant_id = ? AND pb.qty > 0
-        ORDER BY pb.updated_at DESC
+        ORDER BY p.name ASC
       `,
-        [useAuthStore.getState().currentTenant?.id ?? null]
+        [tenantId]
       )
     );
   }
@@ -78,14 +95,25 @@ export default function StockPage() {
     return !term || r.product_name.toLowerCase().includes(term) || (r.barcode ?? "").toLowerCase().includes(term);
   });
 
+  const discountFactor = mrpDiscountPct > 0 ? 1 - mrpDiscountPct / 100 : 0;
+
   const columns: Column<StockRow>[] = [
     { header: "Barcode", render: (r) => r.barcode ?? "—" },
     { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
     { header: "Company", render: (r) => r.company_name ?? "—" },
+    { header: "Batch", render: (r) => r.batch_no ?? "—" },
+    { header: "Expiry", render: (r) => r.expiry_date ?? "—" },
     { header: "Location", render: (r) => r.location ?? "—" },
-    { header: "Category Name", render: (r) => r.category_name ?? "—" },
     { header: "UOM", render: (r) => r.uom_name ?? "—" },
-    { header: "Avail Qty", render: (r) => r.avail_qty },
+    { header: "Avail Qty", render: (r) => <span className="font-semibold">{r.avail_qty}</span> },
+    { header: "Sale Price", render: (r) => r.sale_price > 0 ? r.sale_price.toFixed(2) : "—" },
+    { header: "MRP", render: (r) => r.mrp > 0 ? r.mrp.toFixed(2) : "—" },
+    ...(mrpDiscountPct > 0 ? [{
+      header: `Your Price (${mrpDiscountPct}% off MRP)`,
+      render: (r: StockRow) => r.mrp > 0
+        ? <span className="font-bold text-emerald-700">{(r.mrp * discountFactor).toFixed(2)}</span>
+        : "—",
+    }] : []),
   ];
 
   function resetForm() {
@@ -104,7 +132,7 @@ export default function StockPage() {
   return (
     <div>
       <PageHeader
-        title="Stock Details"
+        title={mrpDiscountPct > 0 ? `Stock Report — ${mrpDiscountPct}% Dealer Discount` : "Stock Details"}
         actions={
           <>
             <Button
@@ -116,6 +144,7 @@ export default function StockPage() {
             >
               Add
             </Button>
+            <Button onClick={() => window.print()}>Print Report</Button>
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
         }

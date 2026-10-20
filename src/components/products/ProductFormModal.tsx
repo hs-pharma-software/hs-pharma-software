@@ -362,10 +362,10 @@ export function ProductFormModal({
                     min="0"
                     step="any"
                     value={purchaseRate}
-                    disabled={!currentBatchId}
-                    title={!currentBatchId ? "No stock received yet — add via Purchase first" : undefined}
-                    onChange={(e) => setPurchaseRate(e.target.value)}
-                    className={purchaseRateChanged ? "!border-amber-400 !bg-amber-50" : ""}
+                    readOnly
+                    disabled
+                    title="Purchase rate cannot be changed here — update via Purchase entry"
+                    className="cursor-not-allowed opacity-60"
                   />
                 </Field>
                 <Field label={`Retail Rate / ${currentRatesUnit === "secondary" ? secondaryUnitName : baseUnitName}`}>

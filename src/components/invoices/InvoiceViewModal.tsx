@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { listItemsForInvoice, invoicesRepo, type InvoiceItemWithProduct } from "@/lib/repo/invoices";
-import type { Invoice } from "@/lib/types2";
+import { useAuthStore } from "@/store/authStore";
+import { isTauri } from "@/lib/platform";
+import { tenantsRepo } from "@/lib/repo/tenants";
+import type { Invoice, Tenant } from "@/lib/types2";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -25,6 +28,9 @@ export function InvoiceViewModal({
   const [items, setItems] = useState<InvoiceItemWithProduct[]>([]);
   const [originalInvoiceNo, setOriginalInvoiceNo] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tenantInfo, setTenantInfo] = useState<Tenant | null>(null);
+  const [template, setTemplate] = useState<"invoice" | "receipt">("invoice");
+  const sessionTenant = useAuthStore((s) => s.currentTenant);
 
   useEffect(() => {
     void listItemsForInvoice(row.invoice.id).then((rows) => {
@@ -36,7 +42,10 @@ export function InvoiceViewModal({
         setOriginalInvoiceNo(orig?.invoice_no ?? null);
       });
     }
-  }, [row.invoice.id, row.invoice.original_invoice_id]);
+    if (isTauri() && sessionTenant?.id) {
+      void tenantsRepo.get(sessionTenant.id).then(setTenantInfo);
+    }
+  }, [row.invoice.id, row.invoice.original_invoice_id, sessionTenant?.id]);
 
   const inv = row.invoice;
 
@@ -46,33 +55,67 @@ export function InvoiceViewModal({
       onClose={onClose}
       width="max-w-3xl"
     >
-      <div className="flex justify-end gap-2 pb-3">
-        <Button onClick={() => window.print()}>Print</Button>
-        <Button variant="primary" onClick={onClose}>
-          Close
-        </Button>
+      <div className="flex items-center justify-between pb-3">
+        <div className="flex gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setTemplate("invoice")}
+            className={`rounded-md px-3 py-1 font-medium transition-colors ${template === "invoice" ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+          >
+            Invoice (A4)
+          </button>
+          <button
+            type="button"
+            onClick={() => setTemplate("receipt")}
+            className={`rounded-md px-3 py-1 font-medium transition-colors ${template === "receipt" ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+          >
+            Receipt (Thermal)
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => window.print()}>Print</Button>
+          <Button variant="primary" onClick={onClose}>Close</Button>
+        </div>
       </div>
 
       {loading ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading...</p>
       ) : (
-        <div id="invoice-print-area" className="print-area rounded-lg border border-neutral-200 p-5 text-sm">
-          <div className="mb-4 flex items-start justify-between border-b border-neutral-200 pb-3">
-            <div>
-              <h3 className="font-serif text-lg text-neutral-800">Billora</h3>
-              <p className="text-neutral-500">
-                {inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "—"}
-                {inv.is_return ? (
-                  <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
-                    Return{originalInvoiceNo ? ` of Bill #${originalInvoiceNo}` : ""}
-                  </span>
-                ) : null}
-              </p>
+        <div
+          id="invoice-print-area"
+          className={`print-area rounded-lg border border-neutral-200 p-5 text-sm ${template === "receipt" ? "mx-auto max-w-xs" : ""}`}
+        >
+          {/* ── Pharmacy Header ── */}
+          <div className={`mb-4 border-b border-neutral-200 pb-3 ${template === "receipt" ? "text-center" : "flex items-start justify-between"}`}>
+            <div className={template === "receipt" ? "" : ""}>
+              <h3 className={`font-serif font-bold text-neutral-900 ${template === "receipt" ? "text-base" : "text-xl"}`}>
+                {tenantInfo?.name ?? sessionTenant?.name ?? "Billora"}
+              </h3>
+              {tenantInfo?.address && <p className="text-xs text-neutral-500">{tenantInfo.address}</p>}
+              {tenantInfo?.phone && <p className="text-xs text-neutral-500">Ph: {tenantInfo.phone}</p>}
+              {template !== "receipt" && (
+                <p className="mt-1 text-neutral-500">
+                  {inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "—"}
+                  {inv.is_return ? (
+                    <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
+                      Return{originalInvoiceNo ? ` of Bill #${originalInvoiceNo}` : ""}
+                    </span>
+                  ) : null}
+                </p>
+              )}
             </div>
-            <div className="text-right text-neutral-600">
-              <p>Date: {inv.date}</p>
-              <p>{inv.inv_on === "credit" ? "Credit" : "Cash"} · {inv.invoice_type}</p>
-            </div>
+            {template === "receipt" ? (
+              <div className="mt-1 text-center text-xs text-neutral-500">
+                <p>{inv.is_return ? "RETURN" : "RECEIPT"} #{inv.invoice_no ?? "—"}</p>
+                <p>{inv.date} · {inv.inv_on === "credit" ? "Credit" : "Cash"}</p>
+                {inv.is_return && originalInvoiceNo && <p className="text-rose-600">of Bill #{originalInvoiceNo}</p>}
+              </div>
+            ) : (
+              <div className="text-right text-neutral-600">
+                <p>Date: {inv.date}</p>
+                <p>{inv.inv_on === "credit" ? "Credit" : "Cash"} · {inv.invoice_type}</p>
+              </div>
+            )}
           </div>
 
           <div className="mb-4 grid grid-cols-2 gap-3 text-neutral-600">

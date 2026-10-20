@@ -22,6 +22,8 @@ export interface SessionTenant {
   allowedModules: string[];
   maxStaffLogins: number;
   maxInvoicesPerMonth: number | null;
+  /** 0 means no discount; e.g. 14.5 means show prices at MRP * 0.855 */
+  mrpDiscountPct: number;
 }
 
 interface AuthState {

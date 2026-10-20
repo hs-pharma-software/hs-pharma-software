@@ -601,6 +601,15 @@ fn schema_sql_v8() -> &'static str {
     "#
 }
 
+/// Tenants can now carry an MRP discount percentage so that a "dealer portal"
+/// login shows all stock prices as MRP * (1 - discount / 100) — used e.g.
+/// for "Hadayat Ullah & Sons Pharmacy" at 14.5 %.
+fn schema_sql_v10() -> &'static str {
+    r#"
+    ALTER TABLE tenants ADD COLUMN mrp_discount_pct REAL DEFAULT 0;
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -794,6 +803,12 @@ pub fn run() {
             version: 9,
             description: "multi_tenant_auth_and_subscriptions",
             sql: schema_sql_v9(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 10,
+            description: "tenant_mrp_discount_pct",
+            sql: schema_sql_v10(),
             kind: MigrationKind::Up,
         },
     ];

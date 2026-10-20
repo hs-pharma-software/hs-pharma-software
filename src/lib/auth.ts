@@ -61,6 +61,7 @@ async function buildSession(
     allowedModules: plan ? parseAllowedModules(plan) : [],
     maxStaffLogins: plan?.max_staff_logins ?? 0,
     maxInvoicesPerMonth: plan?.max_invoices_per_month ?? null,
+    mrpDiscountPct: tenant.mrp_discount_pct ?? 0,
   };
 
   return { user: sessionUser, tenant: sessionTenant };
