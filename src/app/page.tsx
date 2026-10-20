@@ -117,15 +117,10 @@ export default function LandingPage() {
             position:"sticky",top:0,zIndex:100,
           }}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{
-                width:38,height:38,
-                background:"linear-gradient(135deg,#10b981,#059669)",
-                borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:20,flexShrink:0,
-                boxShadow:"0 0 16px rgba(16,185,129,.4)",
-              }}>💊</div>
-              <span style={{fontWeight:800,fontSize:17,letterSpacing:"-.02em"}}>
-                eSales <span style={{color:"#10b981"}}>Pharmacy</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="Billora" style={{width:38,height:38,objectFit:"contain",flexShrink:0}} />
+              <span style={{fontWeight:800,fontSize:17,letterSpacing:"-.02em",color:"#fff"}}>
+                Billora
               </span>
             </div>
             <Link href="/dashboard" style={{
@@ -189,7 +184,7 @@ export default function LandingPage() {
 
               {/* primary download */}
               <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/download/v1.0.0/eSales-Pharmacy_1.0.0_x64-setup.exe"
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora_0.1.1_x64-setup.exe"
                 className="dl-btn"
                 style={{
                   display:"inline-flex",alignItems:"center",gap:10,
@@ -320,7 +315,7 @@ export default function LandingPage() {
               </p>
 
               <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/download/v1.0.0/eSales-Pharmacy_1.0.0_x64-setup.exe"
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora_0.1.1_x64-setup.exe"
                 className="dl-btn"
                 style={{
                   display:"inline-flex",alignItems:"center",gap:12,
@@ -354,9 +349,9 @@ export default function LandingPage() {
                 borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",
                 fontSize:13,
               }}>💊</div>
-              <span style={{fontWeight:700,color:"rgba(255,255,255,.4)"}}>eSales Pharmacy</span>
+              <span style={{fontWeight:700,color:"rgba(255,255,255,.4)"}}>Billora</span>
             </div>
-            <p>© 2026 eSales Pharmacy · Built for Pakistani Pharmacies · Version 2026</p>
+            <p>© 2026 Billora · Built for Pakistani Pharmacies</p>
             <Link href="/dashboard" style={{color:"rgba(16,185,129,.6)",textDecoration:"none",fontSize:13}}>
               Sign in to Web App →
             </Link>

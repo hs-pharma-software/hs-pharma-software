@@ -33,7 +33,7 @@ export function LoginScreen() {
     <div className="flex min-h-screen items-center justify-center bg-neutral-100 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl ring-1 ring-black/5">
         <div className="mb-5 text-center">
-          <h1 className="font-serif text-2xl text-neutral-800">eSales Pharmacy</h1>
+          <h1 className="font-serif text-2xl text-neutral-800">Billora</h1>
           <p className="mt-1 text-sm text-neutral-500">Sign in to continue</p>
         </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">

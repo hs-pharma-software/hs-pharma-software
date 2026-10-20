@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "eSales Pharmacy",
+  "productName": "Billora",
   "version": "0.1.1",
-  "identifier": "com.esalespharmacy.app",
+  "identifier": "com.billora.app",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "eSales Pharmacy",
+        "title": "Billora",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,

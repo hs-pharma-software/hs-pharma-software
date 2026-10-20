@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Pill, RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut } from "lucide-react";
+import Image from "next/image";
+import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
@@ -23,15 +24,15 @@ export function Topbar() {
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-neutral-200/70 bg-white/80 px-4 backdrop-blur-md">
       <div className="flex items-center gap-2.5">
         <motion.div
-          initial={{ scale: 0.8, rotate: -8 }}
-          animate={{ scale: 1, rotate: 0 }}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 15 }}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-700 text-white shadow-sm shadow-rose-500/40"
+          className="flex h-8 w-8 items-center justify-center"
         >
-          <Pill size={18} />
+          <Image src="/logo.png" alt="Billora" width={32} height={32} className="object-contain" />
         </motion.div>
-        <span className="bg-gradient-to-r from-amber-700 to-amber-500 bg-clip-text text-lg font-semibold tracking-tight text-transparent">
-          eSales Pharmacy
+        <span className="text-lg font-bold tracking-tight text-[#1a1a6e]">
+          Billora
         </span>
       </div>
 

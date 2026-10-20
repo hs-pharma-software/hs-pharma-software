@@ -59,7 +59,7 @@ export function InvoiceViewModal({
         <div id="invoice-print-area" className="print-area rounded-lg border border-neutral-200 p-5 text-sm">
           <div className="mb-4 flex items-start justify-between border-b border-neutral-200 pb-3">
             <div>
-              <h3 className="font-serif text-lg text-neutral-800">eSales Pharmacy</h3>
+              <h3 className="font-serif text-lg text-neutral-800">Billora</h3>
               <p className="text-neutral-500">
                 {inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "—"}
                 {inv.is_return ? (
