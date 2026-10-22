@@ -619,6 +619,15 @@ fn schema_sql_v11() -> &'static str {
     "#
 }
 
+/// Per-user module permissions for staff accounts. NULL means full access
+/// (backward-compatible default). A JSON array of module keys restricts the
+/// user to only those modules in the sidebar and settings.
+fn schema_sql_v12() -> &'static str {
+    r#"
+    ALTER TABLE users ADD COLUMN permissions TEXT;
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -824,6 +833,12 @@ pub fn run() {
             version: 11,
             description: "tenant_source_tenant_id",
             sql: schema_sql_v11(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 12,
+            description: "user_permissions",
+            sql: schema_sql_v12(),
             kind: MigrationKind::Up,
         },
     ];

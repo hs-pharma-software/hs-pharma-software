@@ -276,4 +276,7 @@ export interface UserAccount extends BaseRow {
   role: UserRole;
   display_name: string | null;
   is_active: number;
+  /** JSON array of allowed module keys. NULL = full access (owner default).
+   * A non-null array restricts the staff user to only those modules. */
+  permissions: string | null;
 }

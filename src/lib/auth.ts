@@ -35,12 +35,18 @@ export class AuthError extends Error {}
 async function buildSession(
   user: UserAccount
 ): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
+  let parsedPermissions: string[] | null = null;
+  if (user.role === "staff" && user.permissions != null) {
+    try { parsedPermissions = JSON.parse(user.permissions) as string[]; } catch { parsedPermissions = null; }
+  }
+
   const sessionUser: SessionUser = {
     id: user.id,
     username: user.username,
     displayName: user.display_name,
     role: user.role,
     tenantId: user.tenant_id,
+    permissions: parsedPermissions,
   };
 
   if (!user.tenant_id) {
@@ -91,6 +97,7 @@ export async function createUser(params: {
   role: UserRole;
   tenantId: string | null;
   displayName?: string | null;
+  permissions?: string[] | null;
 }): Promise<UserAccount> {
   const existing = await findUserByUsername(params.username.trim());
   if (existing) throw new AuthError(`Username "${params.username}" is already taken.`);
@@ -115,6 +122,7 @@ export async function createUser(params: {
     role: params.role,
     display_name: params.displayName ?? null,
     is_active: 1,
+    permissions: params.permissions != null ? JSON.stringify(params.permissions) : null,
   });
 }
 
@@ -122,4 +130,10 @@ export async function changePassword(userId: string, newPassword: string): Promi
   const salt = randomSalt();
   const hash = await hashPassword(newPassword, salt);
   await usersRepo.update(userId, { password_hash: hash, password_salt: salt });
+}
+
+/** Saves a staff user's module permission list. Pass null to restore full
+ * access (removes all restrictions). */
+export async function updateUserPermissions(userId: string, permissions: string[] | null): Promise<void> {
+  await usersRepo.update(userId, { permissions: permissions != null ? JSON.stringify(permissions) : null });
 }

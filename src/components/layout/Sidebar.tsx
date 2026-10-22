@@ -38,7 +38,12 @@ function findActiveHref(pathname: string): string | null {
 export function Sidebar() {
   const pathname = usePathname();
   const allowedModules = useAuthStore((s) => s.currentTenant?.allowedModules ?? null);
-  const visibleNav = allowedModules ? NAV.filter((item) => allowedModules.includes(item.moduleKey)) : NAV;
+  const userPermissions = useAuthStore((s) => s.currentUser?.permissions ?? null);
+  const visibleNav = NAV.filter((item) => {
+    if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) return false;
+    if (userPermissions !== null && !userPermissions.includes(item.moduleKey)) return false;
+    return true;
+  });
   const activeHref = findActiveHref(pathname);
   const activeTop = visibleNav.find(
     (item) => item.href === activeHref || item.children?.some((c) => c.href === activeHref)

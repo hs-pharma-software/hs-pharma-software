@@ -9,9 +9,10 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { UserFormModal } from "./UserFormModal";
 import { listUsersForTenant, usersRepo } from "@/lib/repo/users";
 import { tenantsRepo } from "@/lib/repo/tenants";
-import { changePassword } from "@/lib/auth";
+import { changePassword, updateUserPermissions } from "@/lib/auth";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
+import { NAV } from "@/config/nav";
 import type { Tenant, UserAccount } from "@/lib/types2";
 
 /** Lists login accounts. `scope: "all"` (Super Admin, at /admin/users) shows
@@ -27,6 +28,9 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [resetting, setResetting] = useState<UserAccount | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [editingPerms, setEditingPerms] = useState<UserAccount | null>(null);
+  const [permsState, setPermsState] = useState<string[] | null>(null);
+  const [permsSaving, setPermsSaving] = useState(false);
 
   async function reload() {
     if (!isTauri()) return;
@@ -47,6 +51,43 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
   async function toggleActive(u: UserAccount) {
     await usersRepo.update(u.id, { is_active: u.is_active ? 0 : 1 });
     void reload();
+  }
+
+  function openPermissions(u: UserAccount) {
+    let parsed: string[] | null = null;
+    if (u.permissions != null) {
+      try { parsed = JSON.parse(u.permissions) as string[]; } catch { parsed = null; }
+    }
+    setPermsState(parsed);
+    setEditingPerms(u);
+  }
+
+  function toggleModule(key: string) {
+    if (permsState === null) {
+      setPermsState(NAV.map((n) => n.moduleKey).filter((k) => k !== key));
+    } else if (permsState.includes(key)) {
+      setPermsState(permsState.filter((k) => k !== key));
+    } else {
+      const updated = [...permsState, key];
+      if (updated.length === NAV.length) setPermsState(null);
+      else setPermsState(updated);
+    }
+  }
+
+  function isChecked(key: string) {
+    return permsState === null || permsState.includes(key);
+  }
+
+  async function savePermissions() {
+    if (!editingPerms) return;
+    setPermsSaving(true);
+    try {
+      await updateUserPermissions(editingPerms.id, permsState);
+      setEditingPerms(null);
+      void reload();
+    } finally {
+      setPermsSaving(false);
+    }
   }
 
   const columns: Column<UserAccount>[] = [
@@ -73,6 +114,11 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
           <button type="button" onClick={() => setResetting(u)} className="text-amber-600 hover:underline">
             Reset Password
           </button>
+          {u.role === "staff" && (
+            <button type="button" onClick={() => openPermissions(u)} className="text-blue-600 hover:underline">
+              Permissions
+            </button>
+          )}
           {u.id !== currentUser?.id && (
             <button type="button" onClick={() => void toggleActive(u)} className="text-rose-600 hover:underline">
               {u.is_active ? "Deactivate" : "Activate"}
@@ -152,6 +198,61 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {editingPerms && (
+        <Modal
+          title={`-:Permissions — ${editingPerms.username}:-`}
+          onClose={() => setEditingPerms(null)}
+          width="max-w-lg"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  Module Access
+                </span>
+                <div className="flex gap-2 text-xs">
+                  <button type="button" onClick={() => setPermsState(null)} className="text-amber-600 hover:underline">
+                    Allow All
+                  </button>
+                  <span className="text-neutral-300">|</span>
+                  <button type="button" onClick={() => setPermsState([])} className="text-rose-600 hover:underline">
+                    Block All
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {NAV.map((item) => (
+                  <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
+                    <input
+                      type="checkbox"
+                      checked={isChecked(item.moduleKey)}
+                      onChange={() => toggleModule(item.moduleKey)}
+                      className="accent-amber-500"
+                    />
+                    <span className="text-xs text-neutral-700">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-neutral-400">
+              {permsState === null
+                ? "Full access — all modules are allowed."
+                : permsState.length === 0
+                ? "No access — all modules are blocked."
+                : `${permsState.length} of ${NAV.length} modules allowed.`}
+            </p>
+            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+              <Button type="button" onClick={() => setEditingPerms(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => void savePermissions()} disabled={permsSaving}>
+                {permsSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>

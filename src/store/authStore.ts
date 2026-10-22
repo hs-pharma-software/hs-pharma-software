@@ -12,6 +12,9 @@ export interface SessionUser {
   displayName: string | null;
   role: UserRole;
   tenantId: string | null;
+  /** null = full access (owner / super_admin, or staff with no explicit restrictions).
+   * A string array restricts the staff user to only those module keys. */
+  permissions: string[] | null;
 }
 
 export interface SessionTenant {

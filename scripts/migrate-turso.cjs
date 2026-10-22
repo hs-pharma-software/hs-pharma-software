@@ -155,8 +155,10 @@ const MIGRATIONS = [
     `ALTER TABLE tenants ADD COLUMN source_tenant_id TEXT`,
   ]},
 
-  // ── ADD NEW MIGRATIONS BELOW THIS LINE ──────────────────────────────
-  // { version: 12, label: 'describe change', statements: [ `ALTER TABLE ...` ] },
+  // v12
+  { version: 12, label: 'users.permissions (per-user module access)', statements: [
+    `ALTER TABLE users ADD COLUMN permissions TEXT`,
+  ]},
 ];
 
 async function main() {
