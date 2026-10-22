@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { forwardRef, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 const baseClass =
   "w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-800 outline-none focus:border-neutral-500";
@@ -22,9 +22,11 @@ export function Field({
   );
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`${baseClass} ${props.className ?? ""}`} />;
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input(props, ref) {
+    return <input ref={ref} {...props} className={`${baseClass} ${props.className ?? ""}`} />;
+  }
+);
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...props} className={`${baseClass} ${props.className ?? ""}`} />;

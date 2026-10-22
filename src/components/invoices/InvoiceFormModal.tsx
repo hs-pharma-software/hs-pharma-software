@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
-import { ProductPicker } from "@/components/products/ProductPicker";
+import { ProductPicker, type ProductPickerHandle } from "@/components/products/ProductPicker";
 import { customersRepo } from "@/lib/repo/customers";
 import { salesmenRepo } from "@/lib/repo/salesmen";
 import {
@@ -47,6 +47,14 @@ interface Line {
   unit: "base" | "secondary";
 }
 
+// Column indices for the editable inputs in each line row.
+const COL_QTY = 0;
+const COL_BONUS = 1;
+const COL_PRICE = 2;
+const COL_TAX = 3;
+const COL_DISC = 4;
+const LAST_COL = COL_DISC;
+
 export function InvoiceFormModal({
   invoice,
   onClose,
@@ -80,6 +88,50 @@ export function InvoiceFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uoms, setUoms] = useState<Uom[]>([]);
+
+  // Refs for keyboard navigation
+  const formRef = useRef<HTMLFormElement>(null);
+  const pickerRef = useRef<ProductPickerHandle>(null);
+  // lineInputRefs[rowIdx][colIdx] → the input element
+  const lineInputRefs = useRef<(HTMLInputElement | null)[][]>([]);
+  const prevLinesLen = useRef(0);
+
+  // After a new line is appended, focus its Qty input.
+  useEffect(() => {
+    if (lines.length > prevLinesLen.current) {
+      const newIdx = lines.length - 1;
+      lineInputRefs.current[newIdx]?.[COL_QTY]?.focus();
+    }
+    prevLinesLen.current = lines.length;
+  }, [lines.length]);
+
+  // Ctrl+S / Cmd+S → submit the form (same as clicking Save).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function setLineRef(rowIdx: number, colIdx: number, el: HTMLInputElement | null) {
+    if (!lineInputRefs.current[rowIdx]) lineInputRefs.current[rowIdx] = [];
+    lineInputRefs.current[rowIdx][colIdx] = el;
+  }
+
+  /** Enter on a line input: advance to next column; last column returns focus to the product search bar. */
+  function handleLineEnter(e: React.KeyboardEvent, rowIdx: number, colIdx: number) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (colIdx < LAST_COL) {
+      lineInputRefs.current[rowIdx]?.[colIdx + 1]?.focus();
+    } else {
+      pickerRef.current?.focus();
+    }
+  }
 
   useEffect(() => {
     void customersRepo.list().then(setCustomers);
@@ -210,6 +262,64 @@ export function InvoiceFormModal({
   const payable = total - lineDiscountTotal - (Number(discountRs) || 0) + (Number(charges) || 0) + taxTotal;
   const balance = payable - (Number(paid) || 0);
 
+  async function buildLineItems(invoiceId: string, skipStockDeduct = false) {
+    for (const l of lines) {
+      let batchId = l.batch.id;
+      if (isEdit && batchId.startsWith("stale:")) {
+        const fresh = await listAvailableBatches(l.product.id);
+        const match = fresh.find((b) => b.batch_no === l.batch.batch_no) ?? fresh[0];
+        if (!match) throw new Error(`No stock available for ${l.product.name}.`);
+        batchId = match.id;
+      }
+      const isSecondary = l.unit === "secondary";
+      const packing = l.product.packing || 1;
+      const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
+      const finalBonusQty = toBaseUnitQty(l.bonusQty, isSecondary, packing);
+      const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
+
+      if (!skipStockDeduct) {
+        await deductStock(batchId, finalQty + finalBonusQty);
+      }
+      await invoiceItemsRepo.create({
+        invoice_id: invoiceId,
+        product_id: l.product.id,
+        batch_no: l.batch.batch_no,
+        packing: l.product.packing,
+        uom_id: l.product.base_unit_id,
+        avail_qty: l.batch.qty,
+        qty: finalQty,
+        bonus_qty: finalBonusQty,
+        purchase_price: l.batch.purchase_price,
+        sale_price: finalSalePrice,
+        tax_pct: l.taxPct,
+        further_tax_pct: 0,
+        tax_rs: (finalSalePrice * finalQty - finalSalePrice * finalQty * (l.discountPct / 100)) * (l.taxPct / 100),
+        discount_pct: l.discountPct,
+        discount_rs: finalSalePrice * finalQty * (l.discountPct / 100),
+        total: lineTotal(l),
+      });
+    }
+  }
+
+  function invoiceHeader() {
+    return {
+      date: invoice?.date ?? new Date().toISOString().slice(0, 10),
+      inv_on: invOn.toLowerCase(),
+      invoice_type: invoiceType.toLowerCase(),
+      description: description || null,
+      salesman_id: salesmanId || null,
+      customer_id: customerId || null,
+      total,
+      charges: Number(charges) || 0,
+      discount_pct: 0,
+      discount_rs: Number(discountRs) || 0,
+      tax_pct: 0,
+      payable,
+      paid: Number(paid) || 0,
+      balance,
+    };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (lines.length === 0) {
@@ -231,23 +341,6 @@ export function InvoiceFormModal({
     setSaving(true);
     setError(null);
     try {
-      const header = {
-        date: invoice?.date ?? new Date().toISOString().slice(0, 10),
-        inv_on: invOn.toLowerCase(),
-        invoice_type: invoiceType.toLowerCase(),
-        description: description || null,
-        salesman_id: salesmanId || null,
-        customer_id: customerId || null,
-        total,
-        charges: Number(charges) || 0,
-        discount_pct: 0,
-        discount_rs: Number(discountRs) || 0,
-        tax_pct: 0,
-        payable,
-        paid: Number(paid) || 0,
-        balance,
-      };
-
       let invoiceId: string;
       if (isEdit && invoice) {
         // Put back what the original items had deducted, delete them, then
@@ -255,12 +348,12 @@ export function InvoiceFormModal({
         // can't drift from a plain delete+recreate's stock bookkeeping.
         await restoreInvoiceStock(originalItems);
         for (const item of originalItems) await invoiceItemsRepo.remove(item.id);
-        await invoicesRepo.update(invoice.id, header);
+        await invoicesRepo.update(invoice.id, invoiceHeader());
         invoiceId = invoice.id;
       } else {
         const invoiceNo = await nextInvoiceNo();
         const created = await invoicesRepo.create({
-          ...header,
+          ...invoiceHeader(),
           invoice_no: invoiceNo,
           is_return: 0,
           is_memorized: 0,
@@ -268,46 +361,33 @@ export function InvoiceFormModal({
         });
         invoiceId = created.id;
       }
+      await buildLineItems(invoiceId);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
 
-      for (const l of lines) {
-        let batchId = l.batch.id;
-        if (isEdit && batchId.startsWith("stale:")) {
-          // The line's original batch may only exist again now that
-          // restoreInvoiceStock() above re-created it — look up its real id.
-          const fresh = await listAvailableBatches(l.product.id);
-          const match = fresh.find((b) => b.batch_no === l.batch.batch_no) ?? fresh[0];
-          if (!match) throw new Error(`No stock available for ${l.product.name}.`);
-          batchId = match.id;
-        }
-        // Normalized to base units (packs) — what invoice_items and
-        // product_batches always store, regardless of which unit was used
-        // to enter this line (e.g. sold as Tab off a Pack-tracked batch).
-        const isSecondary = l.unit === "secondary";
-        const packing = l.product.packing || 1;
-        const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
-        const finalBonusQty = toBaseUnitQty(l.bonusQty, isSecondary, packing);
-        const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
-
-        await deductStock(batchId, finalQty + finalBonusQty);
-        await invoiceItemsRepo.create({
-          invoice_id: invoiceId,
-          product_id: l.product.id,
-          batch_no: l.batch.batch_no,
-          packing: l.product.packing,
-          uom_id: l.product.base_unit_id,
-          avail_qty: l.batch.qty,
-          qty: finalQty,
-          bonus_qty: finalBonusQty,
-          purchase_price: l.batch.purchase_price,
-          sale_price: finalSalePrice,
-          tax_pct: l.taxPct,
-          further_tax_pct: 0,
-          tax_rs: (finalSalePrice * finalQty - finalSalePrice * finalQty * (l.discountPct / 100)) * (l.taxPct / 100),
-          discount_pct: l.discountPct,
-          discount_rs: finalSalePrice * finalQty * (l.discountPct / 100),
-          total: lineTotal(l),
-        });
-      }
+  async function handleDraft() {
+    if (lines.length === 0) {
+      setError("Add at least one product line.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const invoiceNo = await nextInvoiceNo();
+      const created = await invoicesRepo.create({
+        ...invoiceHeader(),
+        invoice_no: invoiceNo,
+        is_return: 0,
+        is_memorized: 1,
+        converted_invoice_id: null,
+      });
+      // Drafts don't deduct stock — stock is deducted when converting to a real invoice.
+      await buildLineItems(created.id, true);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -321,7 +401,7 @@ export function InvoiceFormModal({
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Field label="Inv On (F9)" required>
             <Select value={invOn} onChange={(e) => setInvOn(e.target.value)} required>
@@ -372,7 +452,7 @@ export function InvoiceFormModal({
         </div>
 
         <Field label="Barcode/Product Name">
-          <ProductPicker onSelect={(p) => void onProductSelected(p)} autoFocus />
+          <ProductPicker ref={pickerRef} onSelect={(p) => void onProductSelected(p)} autoFocus />
         </Field>
 
         <div className="overflow-x-auto rounded-lg border border-neutral-200">
@@ -422,52 +502,62 @@ export function InvoiceFormModal({
                     <td className="px-2 py-1.5">{availInLineUnit}</td>
                     <td className="px-2 py-1.5">
                       <input
+                        ref={(el) => setLineRef(idx, COL_QTY, el)}
                         type="number"
                         min="1"
                         max={availInLineUnit - l.bonusQty}
                         step="any"
                         value={l.qty}
                         onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
+                        onKeyDown={(e) => handleLineEnter(e, idx, COL_QTY)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        ref={(el) => setLineRef(idx, COL_BONUS, el)}
                         type="number"
                         min="0"
                         step="any"
                         value={l.bonusQty}
                         onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })}
+                        onKeyDown={(e) => handleLineEnter(e, idx, COL_BONUS)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        ref={(el) => setLineRef(idx, COL_PRICE, el)}
                         type="number"
                         min="0"
                         step="any"
                         value={l.salePrice}
                         onChange={(e) => updateLine(idx, { salePrice: Number(e.target.value) })}
+                        onKeyDown={(e) => handleLineEnter(e, idx, COL_PRICE)}
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        ref={(el) => setLineRef(idx, COL_TAX, el)}
                         type="number"
                         min="0"
                         step="any"
                         value={l.taxPct}
                         onChange={(e) => updateLine(idx, { taxPct: Number(e.target.value) })}
+                        onKeyDown={(e) => handleLineEnter(e, idx, COL_TAX)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        ref={(el) => setLineRef(idx, COL_DISC, el)}
                         type="number"
                         min="0"
                         step="any"
                         value={l.discountPct}
                         onChange={(e) => updateLine(idx, { discountPct: Number(e.target.value) })}
+                        onKeyDown={(e) => handleLineEnter(e, idx, COL_DISC)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
@@ -520,7 +610,16 @@ export function InvoiceFormModal({
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
+          {!isEdit && (
+            <Button
+              type="button"
+              onClick={() => void handleDraft()}
+              disabled={saving || lines.length === 0}
+            >
+              Draft
+            </Button>
+          )}
+          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>
