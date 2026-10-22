@@ -28,6 +28,9 @@ export interface ProductListRow {
   packing: number;
   avail_qty: number;
   sale_price: number | null;
+  hs_code: string | null;
+  fbr_sale_type: string | null;
+  fbr_uom: string | null;
 }
 
 /** Products list screen: joins category/UOM names and rolls up available
@@ -50,6 +53,9 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
       p.secondary_unit_id,
       su.name AS secondary_unit_name,
       COALESCE(p.packing, 1) AS packing,
+      p.hs_code,
+      p.fbr_sale_type,
+      p.fbr_uom,
       COALESCE((
         SELECT SUM(pb.qty) FROM product_batches pb
         WHERE pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL

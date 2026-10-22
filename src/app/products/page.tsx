@@ -45,23 +45,42 @@ export default function ProductsPage() {
   });
 
   const columns: Column<ProductListRow>[] = [
-    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
-    { header: "Product Name", render: (r) => <span className="font-medium">{r.name}</span> },
-    { header: "Company", render: (r) => r.company_name ?? "â€”" },
-    { header: "Category", render: (r) => r.category_name ?? "â€”" },
-    { header: "Sub Category", render: (r) => r.sub_category_name ?? "â€”" },
-    { header: "UOM", render: (r) => r.base_unit_name ?? "â€”" },
     {
-      header: "Avail Qty",
+      header: “FBR”,
+      render: (r) => {
+        const hasFbr = !!(r.hs_code && r.fbr_sale_type && r.fbr_uom);
+        return (
+          <div className=”flex items-center justify-center”>
+            <div
+              title={
+                hasFbr
+                  ? `HS: ${r.hs_code} | ${r.fbr_sale_type}`
+                  : “FBR data incomplete — click to edit”
+              }
+              className={`h-2.5 w-2.5 rounded-full ${hasFbr ? “bg-emerald-500” : “bg-rose-500”}`}
+            />
+          </div>
+        );
+      },
+    },
+    { header: “Barcode”, render: (r) => r.barcode ?? “—“ },
+    { header: “Product Name”, render: (r) => <span className=”font-medium”>{r.name}</span> },
+    { header: “Company”, render: (r) => r.company_name ?? “—“ },
+    { header: “Category”, render: (r) => r.category_name ?? “—“ },
+    { header: “Sub Category”, render: (r) => r.sub_category_name ?? “—“ },
+    { header: “UOM”, render: (r) => r.base_unit_name ?? “—“ },
+    {
+      header: “Avail Qty”,
       render: (r) => {
         const packing = r.packing || 1;
         if (r.secondary_unit_id && packing > 1) {
-          return `${r.avail_qty * packing} ${r.secondary_unit_name ?? ""}`.trim();
+          return `${r.avail_qty * packing} ${r.secondary_unit_name ?? “”}`.trim();
         }
-        return `${r.avail_qty} ${r.base_unit_name ?? ""}`.trim();
+        return `${r.avail_qty} ${r.base_unit_name ?? “”}`.trim();
       },
     },
-    { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "â€”") },
+    { header: “Sale Price”, render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : “—“) },
+    { header: “HS Code”, render: (r) => r.hs_code ?? “—“ },
   ];
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
