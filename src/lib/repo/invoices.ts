@@ -46,6 +46,42 @@ export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorize
   );
 }
 
+export interface NarcoticInvoiceRow {
+  id: string;
+  invoice_no: number | null;
+  date: string;
+  customer_name: string;
+  customer_phone: string | null;
+  buyer_ntn_cnic: string | null;
+  salesman_name: string | null;
+  narcotic_items: string;
+  total: number;
+}
+
+/** Sale invoices that contain at least one product flagged is_narcotic. */
+export async function listNarcoticInvoices(): Promise<NarcoticInvoiceRow[]> {
+  return dbSelect<NarcoticInvoiceRow>(
+    `
+    SELECT i.id, i.invoice_no, i.date,
+           COALESCE(NULLIF(i.customer_name, ''), c.name, 'Walk-in') AS customer_name,
+           COALESCE(NULLIF(i.customer_phone, ''), c.phone) AS customer_phone,
+           COALESCE(NULLIF(i.buyer_ntn_cnic, ''), c.cnic_ntn) AS buyer_ntn_cnic,
+           sm.name AS salesman_name,
+           GROUP_CONCAT(p.name || ' x' || (ii.qty + ii.bonus_qty), ', ') AS narcotic_items,
+           i.payable AS total
+    FROM invoices i
+    JOIN invoice_items ii ON ii.invoice_id = i.id AND ii.deleted_at IS NULL
+    JOIN products p ON p.id = ii.product_id AND p.is_narcotic = 1
+    LEFT JOIN customers c ON c.id = i.customer_id
+    LEFT JOIN salesmen sm ON sm.id = i.salesman_id
+    WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0
+    GROUP BY i.id
+    ORDER BY i.date DESC, i.invoice_no DESC
+  `,
+    [currentTenantId()]
+  );
+}
+
 /** How many real (non-return, non-quotation) invoices the current tenant has
  * created since the given month started \u2014 used to enforce a subscription
  * plan's `max_invoices_per_month` cap. */

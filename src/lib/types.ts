@@ -48,6 +48,7 @@ export interface Product extends BaseRow {
   fbr_sale_type: string | null;
   fbr_sale_rate: number;
   fbr_uom: string | null;
+  is_narcotic: number;
 }
 
 export interface ProductBatch extends TenantRow {

@@ -176,6 +176,18 @@ const MIGRATIONS = [
     `ALTER TABLE invoices ADD COLUMN buyer_address TEXT`,
     `ALTER TABLE invoices ADD COLUMN buyer_registration_type TEXT`,
   ]},
+  // The backfill UPDATE is `once`: it only runs when the ALTER before it was
+  // actually applied, so re-running this script never re-flags products a
+  // user has manually unflagged.
+  { version: 16, label: 'products.is_narcotic + backfill from name/description', statements: [
+    `ALTER TABLE products ADD COLUMN is_narcotic INTEGER DEFAULT 0`,
+    { once: true, sql: `UPDATE products SET is_narcotic = 1 WHERE ` + [
+      'ALPRAZOLAM','BROMAZEPAM','DIAZEPAM','LORAZEPAM','CLONAZEPAM','MIDAZOLAM','CHLORDIAZEPOXIDE',
+      'OXAZEPAM','TEMAZEPAM','NITRAZEPAM','ZOLPIDEM','PHENOBARBITAL','TRAMADOL','TAPENTADOL',
+      'NALBUPHINE','PENTAZOCINE','BUPRENORPHINE','MORPHINE','PETHIDINE','MEPERIDINE','FENTANYL',
+      'CODEINE','METHADONE','KETAMINE','OXYCODONE','HYDROCODONE','DEXTROPROPOXYPHENE','EPHEDRINE',
+    ].map((k) => `UPPER(name || ' ' || COALESCE(description, '')) LIKE '%${k}%'`).join(' OR ') },
+  ]},
 ];
 
 async function main() {
@@ -183,9 +195,13 @@ async function main() {
   for (const m of MIGRATIONS) {
     process.stdout.write(`v${m.version} ${m.label} ... `);
     let mOk = 0, mSkip = 0;
-    for (const sql of m.statements) {
+    let prevApplied = false;
+    for (const stmt of m.statements) {
+      const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+      if (typeof stmt === 'object' && stmt.once && !prevApplied) { mSkip++; continue; }
       try {
         const r = await exec(sql);
+        prevApplied = r !== 'skipped';
         if (r === 'skipped') mSkip++; else mOk++;
       } catch (err) {
         console.error(`\n  ✗ FAILED: ${err.message}`);

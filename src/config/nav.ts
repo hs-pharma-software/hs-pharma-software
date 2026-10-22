@@ -86,6 +86,7 @@ export const NAV: NavItem[] = [
       { label: "Customer Detail", href: "/customers" },
       { label: "Accounts Receivable", href: "/customers/receivable" },
       { label: "Outstanding", href: "/customers/outstanding" },
+      { label: "Narcotics", href: "/customers/narcotics" },
     ],
   },
   {

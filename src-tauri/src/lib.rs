@@ -656,6 +656,43 @@ fn schema_sql_v15() -> &'static str {
     "#
 }
 
+/// Narcotic / controlled-drug flag. Backfilled from name + description using
+/// the same keywords as src/lib/narcotics.ts.
+fn schema_sql_v16() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN is_narcotic INTEGER DEFAULT 0;
+    UPDATE products SET is_narcotic = 1
+    WHERE UPPER(name || ' ' || COALESCE(description, '')) LIKE '%ALPRAZOLAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%BROMAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%DIAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%LORAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%CLONAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%MIDAZOLAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%CHLORDIAZEPOXIDE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%OXAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%TEMAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%NITRAZEPAM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%ZOLPIDEM%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%PHENOBARBITAL%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%TRAMADOL%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%TAPENTADOL%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%NALBUPHINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%PENTAZOCINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%BUPRENORPHINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%MORPHINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%PETHIDINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%MEPERIDINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%FENTANYL%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%CODEINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%METHADONE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%KETAMINE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%OXYCODONE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%HYDROCODONE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%DEXTROPROPOXYPHENE%'
+       OR UPPER(name || ' ' || COALESCE(description, '')) LIKE '%EPHEDRINE%';
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -885,6 +922,12 @@ pub fn run() {
             version: 15,
             description: "invoice_buyer_fields",
             sql: schema_sql_v15(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 16,
+            description: "product_is_narcotic",
+            sql: schema_sql_v16(),
             kind: MigrationKind::Up,
         },
     ];

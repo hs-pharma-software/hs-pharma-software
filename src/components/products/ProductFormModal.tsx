@@ -14,6 +14,7 @@ import {
   FBR_SRO_SCHEDULES,
   FBR_SRO_ITEMS,
 } from "@/lib/fbrData";
+import { detectNarcotic } from "@/lib/narcotics";
 import { categoriesRepo, subCategoriesRepo } from "@/lib/repo/categories";
 import { uomsRepo } from "@/lib/repo/uoms";
 import { productsRepo, productBatchesRepo, priceListRepo, getCurrentRates } from "@/lib/repo/products";
@@ -60,6 +61,14 @@ export function ProductFormModal({
   const [fbrUom, setFbrUom] = useState(product?.fbr_uom ?? "");
   const [sroNo, setSroNo] = useState(product?.sro_no ?? "");
   const [sroItemSerialNo, setSroItemSerialNo] = useState(product?.sro_item_serial_no ?? "");
+
+  const [isNarcotic, setIsNarcotic] = useState(Boolean(product?.is_narcotic));
+  const [narcoticTouched, setNarcoticTouched] = useState(isEdit);
+  const narcoticMatch = detectNarcotic(name, description);
+
+  useEffect(() => {
+    if (!narcoticTouched) setIsNarcotic(Boolean(narcoticMatch));
+  }, [narcoticMatch, narcoticTouched]);
 
   // Opening stock (create only)
   const [batchNo, setBatchNo] = useState("");
@@ -191,6 +200,7 @@ export function ProductFormModal({
         fbr_uom: fbrUom || null,
         sro_no: sroNo || null,
         sro_item_serial_no: sroItemSerialNo || null,
+        is_narcotic: isNarcotic ? 1 : 0,
       };
 
       if (isEdit && product) {
@@ -262,6 +272,28 @@ export function ProductFormModal({
         <Field label="Description">
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
+
+        <label
+          className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ring-1 ${
+            isNarcotic ? "bg-rose-50 text-rose-800 ring-rose-200" : "bg-neutral-50 text-neutral-600 ring-black/[0.04]"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={isNarcotic}
+            onChange={(e) => {
+              setIsNarcotic(e.target.checked);
+              setNarcoticTouched(true);
+            }}
+            className="h-4 w-4 accent-rose-600"
+          />
+          <span className="font-medium">Narcotic / Controlled drug</span>
+          <span className="text-xs opacity-75">
+            {narcoticMatch
+              ? `Detected: ${narcoticMatch}. Invoices need customer name and mobile.`
+              : "Invoices with this product will need customer name and mobile."}
+          </span>
+        </label>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex items-end gap-1.5">

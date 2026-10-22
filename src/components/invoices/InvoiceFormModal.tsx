@@ -164,6 +164,11 @@ export function InvoiceFormModal({
   }
 
   function validateBuyer(): string | null {
+    if (narcoticNames.length > 0) {
+      if (!customerName.trim() || !customerPhone.trim()) {
+        return `Customer name and mobile number are required for narcotic products (${narcoticNames.join(", ")}).`;
+      }
+    }
     if (customerPhone.trim() && !isValidPkMobile(customerPhone)) {
       return "Mobile number must be like 03XXXXXXXXX or +923XXXXXXXXX.";
     }
@@ -292,6 +297,7 @@ export function InvoiceFormModal({
     return taxable + tax;
   }
 
+  const narcoticNames = lines.filter((l) => l.product.is_narcotic).map((l) => l.product.name);
   const total = lines.reduce((s, l) => s + l.salePrice * l.qty, 0);
   const lineDiscountTotal = lines.reduce((s, l) => s + l.salePrice * l.qty * (l.discountPct / 100), 0);
   const taxTotal = lines.reduce((s, l) => {
@@ -426,6 +432,11 @@ export function InvoiceFormModal({
       setError("Add at least one product line.");
       return;
     }
+    const buyerError = validateBuyer();
+    if (buyerError) {
+      setError(buyerError);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -508,11 +519,16 @@ export function InvoiceFormModal({
             <span className="text-xs font-semibold text-neutral-700">Customer &amp; Buyer Details</span>
             {fbrEnabled && <span className="text-[11px] text-neutral-400">Sent to FBR with this invoice</span>}
           </div>
+          {narcoticNames.length > 0 && (
+            <p className="mb-2 rounded-lg bg-rose-50 px-3 py-1.5 text-xs text-rose-700 ring-1 ring-rose-200">
+              Narcotic product on this invoice ({narcoticNames.join(", ")}). Customer name and mobile number are required.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label="Customer Name">
+            <Field label="Customer Name" required={narcoticNames.length > 0}>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in Customer" />
             </Field>
-            <Field label="Mobile Number">
+            <Field label="Mobile Number" required={narcoticNames.length > 0}>
               <Input
                 type="tel"
                 value={customerPhone}
@@ -583,7 +599,14 @@ export function InvoiceFormModal({
                   const availInLineUnit = fromBaseUnitQty(l.batch.qty, isSecondary, l.product.packing || 1);
                   return (
                   <tr key={idx} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-2 py-1.5">{l.product.name}</td>
+                    <td className="px-2 py-1.5">
+                      {l.product.name}
+                      {Boolean(l.product.is_narcotic) && (
+                        <span className="ml-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                          NARCOTIC
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5">
                       {hasSecondaryUnit(l.product) ? (
                         <UnitToggle
