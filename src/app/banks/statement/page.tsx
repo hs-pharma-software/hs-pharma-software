@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -41,15 +41,15 @@ export default function BankStatementPage() {
 
   const bankColumns: Column<Bank>[] = [
     { header: "Bank Name", render: (b) => b.name },
-    { header: "Address", render: (b) => b.address ?? "—" },
+    { header: "Address", render: (b) => b.address ?? "â€”" },
   ];
 
   const entryColumns: Column<BankLedgerEntry>[] = [
     { header: "Date", render: (e) => e.date },
-    { header: "Description", render: (e) => e.description ?? "—" },
-    { header: "Slip No", render: (e) => e.slip_no ?? "—" },
-    { header: "Deposit", render: (e) => (e.transaction_type === "deposit" ? e.amount.toFixed(2) : "—") },
-    { header: "Withdraw", render: (e) => (e.transaction_type === "withdraw" ? e.amount.toFixed(2) : "—") },
+    { header: "Description", render: (e) => e.description ?? "â€”" },
+    { header: "Slip No", render: (e) => e.slip_no ?? "â€”" },
+    { header: "Deposit", render: (e) => (e.transaction_type === "deposit" ? e.amount.toFixed(2) : "â€”") },
+    { header: "Withdraw", render: (e) => (e.transaction_type === "withdraw" ? e.amount.toFixed(2) : "â€”") },
   ];
 
   const tauriReady = useIsTauri();
@@ -81,12 +81,12 @@ export default function BankStatementPage() {
             </div>
             <div>
               <p className="mb-2 text-xs font-medium text-neutral-500">
-                {selected ? `Statement — ${selected.name}` : "Select a bank on the left"}
+                {selected ? `Statement â€” ${selected.name}` : "Select a bank on the left"}
               </p>
               <DataTable columns={entryColumns} rows={entries} />
             </div>
           </div>
-          <div className="mt-3 flex justify-end gap-6 rounded-xl border border-neutral-200/70 bg-white px-5 py-2.5 text-sm shadow-sm">
+          <div className="mt-3 flex justify-end gap-6 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-2.5 text-sm">
             <span className="text-neutral-500">
               Opening Cash: <span className="font-medium text-neutral-800">{(selected?.opening_balance ?? 0).toFixed(2)}</span>
             </span>
@@ -161,3 +161,4 @@ export default function BankStatementPage() {
     </div>
   );
 }
+

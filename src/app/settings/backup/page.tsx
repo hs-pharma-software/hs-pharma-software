@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -41,9 +41,9 @@ export default function BackupPage() {
           Run inside the desktop app to create a backup of the local database file.
         </p>
       ) : (
-        <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
+        <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] text-sm text-neutral-600">
           <p>
-            This copies the local SQLite file (<code>pharmacy.db</code>) to a location you choose —
+            This copies the local SQLite file (<code>pharmacy.db</code>) to a location you choose â€”
             independent of Turso sync, so it works even if you&apos;ve never connected to the
             internet. A cloud backup (uploading this copy somewhere automatically) isn&apos;t wired
             up yet; for now, treat Turso sync itself as the &quot;online backup&quot;.
@@ -54,3 +54,4 @@ export default function BackupPage() {
     </div>
   );
 }
+

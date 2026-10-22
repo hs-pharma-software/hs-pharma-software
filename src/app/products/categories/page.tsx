@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -20,7 +20,7 @@ export default function CategoriesPage() {
   const [editingSubCategory, setEditingSubCategory] = useState<SubCategory | null>(null);
   const [subCategoryModalOpen, setSubCategoryModalOpen] = useState(false);
 
-  const uomName = (id: string | null) => uoms.find((u) => u.id === id)?.name ?? "—";
+  const uomName = (id: string | null) => uoms.find((u) => u.id === id)?.name ?? "â€”";
 
   async function reload() {
     if (!isTauri()) return;
@@ -52,14 +52,14 @@ export default function CategoriesPage() {
   const categoryColumns: Column<Category>[] = [
     { header: "Category Name", render: (c) => c.name },
     { header: "Flat discount (%)", render: (c) => c.flat_discount_pct },
-    { header: "Description", render: (c) => c.description ?? "—" },
+    { header: "Description", render: (c) => c.description ?? "â€”" },
   ];
 
   const subCategoryColumns: Column<SubCategory>[] = [
     { header: "Sub Category Name", render: (c) => c.name },
     { header: "Flat discount (%)", render: (c) => c.flat_discount_pct },
     { header: "Default Secondary Unit", render: (c) => uomName(c.default_secondary_unit_id) },
-    { header: "Description", render: (c) => c.description ?? "—" },
+    { header: "Description", render: (c) => c.description ?? "â€”" },
   ];
 
   const tauriReady = useIsTauri();
@@ -68,7 +68,7 @@ export default function CategoriesPage() {
     <div>
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div>
-          <div className="mb-2 flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-4 py-2.5">
+          <div className="mb-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
             <h2 className="font-serif text-lg text-neutral-800">Categories</h2>
             <div className="flex gap-2">
               <Button
@@ -102,7 +102,7 @@ export default function CategoriesPage() {
         </div>
 
         <div>
-          <div className="mb-2 flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-4 py-2.5">
+          <div className="mb-2 flex items-center justify-between rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
             <h2 className="font-serif text-lg text-neutral-800">Sub Categories</h2>
             <div className="flex gap-2">
               <Button
@@ -162,3 +162,4 @@ export default function CategoriesPage() {
     </div>
   );
 }
+

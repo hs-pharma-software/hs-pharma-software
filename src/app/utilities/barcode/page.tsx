@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -34,7 +34,7 @@ export default function GenerateBarcodePage() {
   }
 
   const columns: Column<LabelLine & { id: string }>[] = [
-    { header: "Barcode", render: (l) => l.product.barcode ?? "—" },
+    { header: "Barcode", render: (l) => l.product.barcode ?? "â€”" },
     { header: "Product Name", render: (l) => l.product.name },
     {
       header: "No Of Label",
@@ -87,14 +87,14 @@ export default function GenerateBarcodePage() {
         }
       />
 
-      <div className="mb-3 rounded-xl border border-neutral-200/70 bg-white px-4 py-2.5 shadow-sm">
+      <div className="mb-3 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-4 py-2.5">
         <ProductPicker onSelect={(p) => void addProduct(p)} />
       </div>
 
       <DataTable columns={columns} rows={lines.map((l) => ({ ...l, id: l.product.id }))} />
 
       {lines.length > 0 && (
-        <div className="print-area mt-4 flex flex-wrap gap-2 rounded-xl border border-neutral-200/70 bg-white p-4 shadow-sm">
+        <div className="print-area mt-4 flex flex-wrap gap-2 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-4">
           {lines.flatMap((l) =>
             Array.from({ length: l.noOfLabel }).map((_, i) => (
               <div
@@ -112,3 +112,4 @@ export default function GenerateBarcodePage() {
     </div>
   );
 }
+

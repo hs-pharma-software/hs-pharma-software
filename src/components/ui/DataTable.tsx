@@ -20,12 +20,12 @@ export function DataTable<T extends { id: string }>({
   emptyMessage?: string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-neutral-200/70 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
       <table className="w-full min-w-max border-collapse text-sm">
         <thead>
-          <tr className="bg-gradient-to-r from-neutral-900 to-neutral-800 text-left text-white">
+          <tr className="border-b border-neutral-100 bg-neutral-50/80 text-left">
             {columns.map((col) => (
-              <th key={col.header} className="whitespace-nowrap px-3 py-2.5 font-medium">
+              <th key={col.header} className="whitespace-nowrap px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
                 {col.header}
               </th>
             ))}
@@ -46,13 +46,13 @@ export function DataTable<T extends { id: string }>({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18, delay: Math.min(i, 12) * 0.02 }}
                 onClick={() => onRowClick?.(row)}
-                whileHover={onRowClick ? { backgroundColor: "rgba(251,191,36,0.08)" } : undefined}
-                className={`border-b border-neutral-100 last:border-0 ${
+                whileHover={onRowClick ? { backgroundColor: "rgba(0,0,0,0.025)" } : undefined}
+                className={`border-b border-neutral-50 last:border-0 ${
                   onRowClick ? "cursor-pointer" : ""
                 }`}
               >
                 {columns.map((col) => (
-                  <td key={col.header} className={`whitespace-nowrap px-3 py-2 ${col.className ?? ""}`}>
+                  <td key={col.header} className={`whitespace-nowrap px-4 py-2.5 ${col.className ?? ""}`}>
                     {col.render(row)}
                   </td>
                 ))}

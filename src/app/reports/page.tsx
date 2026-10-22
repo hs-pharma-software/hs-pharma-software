@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { NAV } from "@/config/nav";
 
@@ -12,7 +12,7 @@ export default function ReportsIndexPage() {
           <Link
             key={r.href}
             href={r.href}
-            className="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-700 hover:border-amber-400 hover:text-amber-700"
+            className="rounded-2xl bg-white px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] text-sm font-medium text-neutral-700 hover:border-amber-400 hover:text-amber-700"
           >
             {r.label}
           </Link>
@@ -21,3 +21,4 @@ export default function ReportsIndexPage() {
     </div>
   );
 }
+

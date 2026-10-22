@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -35,7 +35,7 @@ export default function BalanceSheetReportPage() {
         </p>
       ) : (
         <>
-          <div className="mb-3 flex items-end gap-3 rounded-xl border border-neutral-200/70 bg-white px-4 py-3 shadow-sm">
+          <div className="mb-3 flex items-end gap-3 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-4 py-3">
             <Field label="As Date Of">
               <Input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
             </Field>
@@ -49,3 +49,4 @@ export default function BalanceSheetReportPage() {
     </div>
   );
 }
+

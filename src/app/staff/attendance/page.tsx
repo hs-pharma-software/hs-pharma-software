@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -52,10 +52,10 @@ export default function AttendancePage() {
   const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
 
   const columns: Column<AttendanceRow>[] = [
-    { header: "Employee Name", render: (r) => r.staff_name ?? "—" },
+    { header: "Employee Name", render: (r) => r.staff_name ?? "â€”" },
     { header: "Date Of Attendance", render: (r) => r.date },
-    { header: "Time In", render: (r) => r.time_in ?? "—" },
-    { header: "Time Out", render: (r) => r.time_out ?? "—" },
+    { header: "Time In", render: (r) => r.time_in ?? "â€”" },
+    { header: "Time Out", render: (r) => r.time_out ?? "â€”" },
     { header: "Hours", render: (r) => r.hours.toFixed(2) },
   ];
 
@@ -82,7 +82,7 @@ export default function AttendancePage() {
       ) : (
         <>
           <DataTable columns={columns} rows={rows} />
-          <div className="mt-3 flex justify-end rounded-xl border border-neutral-200/70 bg-white px-5 py-2.5 text-sm shadow-sm">
+          <div className="mt-3 flex justify-end rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-2.5 text-sm">
             <span className="font-medium text-neutral-700">Total Hours: {totalHours.toFixed(2)}</span>
           </div>
         </>
@@ -146,3 +146,4 @@ export default function AttendancePage() {
     </div>
   );
 }
+

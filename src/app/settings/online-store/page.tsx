@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -43,10 +43,10 @@ export default function OnlineStorePage() {
   }, []);
 
   const columns: Column<StoreProductRow>[] = [
-    { header: "Barcode", render: (r) => r.barcode ?? "—" },
+    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
     { header: "Product Name", render: (r) => r.name },
-    { header: "Company Name", render: (r) => r.company_name ?? "—" },
-    { header: "Category Name", render: (r) => r.category_name ?? "—" },
+    { header: "Company Name", render: (r) => r.company_name ?? "â€”" },
+    { header: "Category Name", render: (r) => r.category_name ?? "â€”" },
     {
       header: "Status",
       render: (r) => (
@@ -86,7 +86,7 @@ export default function OnlineStorePage() {
       ) : (
         <>
           <DataTable columns={columns} rows={rows} />
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-neutral-200/70 bg-white px-5 py-3 text-sm shadow-sm">
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-3 text-sm">
             {editingUrl ? (
               <div className="flex flex-1 items-end gap-2">
                 <div className="flex-1">
@@ -125,3 +125,4 @@ export default function OnlineStorePage() {
     </div>
   );
 }
+

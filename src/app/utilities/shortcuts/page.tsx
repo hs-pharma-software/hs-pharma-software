@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/PageHeader";
+﻿import { PageHeader } from "@/components/ui/PageHeader";
 
 const VIEW_SHORTCUTS = [
   ["ALT + I", "Invoice Details"],
@@ -40,7 +40,7 @@ export default function ShortcutsPage() {
 
 function ShortcutTable({ heading, rows }: { heading: string; rows: string[][] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+    <div className="overflow-hidden rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
       <div className="bg-neutral-100 px-4 py-2 text-center font-serif text-neutral-700">{heading}</div>
       <table className="w-full text-sm">
         <tbody>
@@ -55,3 +55,4 @@ function ShortcutTable({ heading, rows }: { heading: string; rows: string[][] })
     </div>
   );
 }
+

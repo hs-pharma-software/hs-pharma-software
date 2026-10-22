@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Eye, Pencil, Printer, Trash2 } from "lucide-react";
@@ -130,8 +130,8 @@ export default function AuditDetailPage() {
 
   const columns: Column<AuditRow>[] = [
     { header: "Date", render: (a) => a.date },
-    { header: "Audit Name", render: (a) => a.audit_name ?? "—" },
-    { header: "Description", render: (a) => a.description ?? "—" },
+    { header: "Audit Name", render: (a) => a.audit_name ?? "â€”" },
+    { header: "Description", render: (a) => a.description ?? "â€”" },
     {
       header: "Actions",
       render: (a) => (
@@ -239,7 +239,7 @@ export default function AuditDetailPage() {
               <ProductPicker onSelect={(p) => void addProduct(p)} />
             </Field>
 
-            <div className="overflow-x-auto rounded-lg border border-neutral-200">
+            <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
               <table className="w-full min-w-max text-sm">
                 <thead>
                   <tr className="bg-neutral-900 text-left text-white">
@@ -297,7 +297,7 @@ export default function AuditDetailPage() {
       )}
 
       {viewing && (
-        <Modal title={`-:Audit — ${viewing.audit.audit_name ?? ""}:-`} onClose={() => setViewing(null)} width="max-w-2xl">
+        <Modal title={`-:Audit â€” ${viewing.audit.audit_name ?? ""}:-`} onClose={() => setViewing(null)} width="max-w-2xl">
           <div className="flex justify-end pb-3">
             <Button onClick={() => window.print()}>Print</Button>
           </div>
@@ -352,3 +352,4 @@ export default function AuditDetailPage() {
     </div>
   );
 }
+

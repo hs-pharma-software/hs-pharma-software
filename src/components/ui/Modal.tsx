@@ -34,8 +34,8 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
         className={`w-full ${width} overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5`}
       >
-        <div className="flex items-center justify-between bg-gradient-to-r from-neutral-100 to-neutral-50 px-5 py-3.5">
-          <h2 className="font-serif text-lg text-neutral-800">{title}</h2>
+        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3.5">
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">{title}</h2>
           <motion.button
             type="button"
             whileHover={{ scale: 1.08, rotate: 90 }}

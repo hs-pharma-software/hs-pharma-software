@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -45,12 +45,12 @@ export default function ProductsPage() {
   });
 
   const columns: Column<ProductListRow>[] = [
-    { header: "Barcode", render: (r) => r.barcode ?? "—" },
+    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
     { header: "Product Name", render: (r) => <span className="font-medium">{r.name}</span> },
-    { header: "Company", render: (r) => r.company_name ?? "—" },
-    { header: "Category", render: (r) => r.category_name ?? "—" },
-    { header: "Sub Category", render: (r) => r.sub_category_name ?? "—" },
-    { header: "UOM", render: (r) => r.base_unit_name ?? "—" },
+    { header: "Company", render: (r) => r.company_name ?? "â€”" },
+    { header: "Category", render: (r) => r.category_name ?? "â€”" },
+    { header: "Sub Category", render: (r) => r.sub_category_name ?? "â€”" },
+    { header: "UOM", render: (r) => r.base_unit_name ?? "â€”" },
     {
       header: "Avail Qty",
       render: (r) => {
@@ -61,7 +61,7 @@ export default function ProductsPage() {
         return `${r.avail_qty} ${r.base_unit_name ?? ""}`.trim();
       },
     },
-    { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "—") },
+    { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "â€”") },
   ];
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -96,7 +96,7 @@ export default function ProductsPage() {
         }
       />
 
-      <div className="mb-3 flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5">
+      <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <Input
           placeholder="Search by product, barcode or company..."
           value={search}
@@ -132,3 +132,4 @@ export default function ProductsPage() {
     </div>
   );
 }
+

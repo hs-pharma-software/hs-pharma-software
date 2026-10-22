@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -87,7 +87,7 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
         description: description || null,
       });
       for (const line of lines) {
-        // Normalized to base units (packs) — same convention as
+        // Normalized to base units (packs) â€” same convention as
         // product_batches/purchase_items everywhere else in the app.
         const isSecondary = line.unit === "secondary";
         const packing = line.product.packing || 1;
@@ -143,7 +143,7 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
           <ProductPicker onSelect={addProduct} />
         </Field>
 
-        <div className="overflow-x-auto rounded-lg border border-neutral-200">
+        <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
           <table className="w-full min-w-max text-sm">
             <thead>
               <tr className="bg-neutral-900 text-left text-white">
@@ -258,3 +258,4 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
     </Modal>
   );
 }
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -205,12 +205,12 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
               style={{ fontFamily: theme.font !== "System Default" ? `"${theme.font}", sans-serif` : undefined }}
             >
               <p className="text-lg font-semibold">The quick brown fox jumps over the lazy dog</p>
-              <p className="mt-1 text-sm text-neutral-500">0123456789 — Invoice #1042 · Rs 2,500.00</p>
+              <p className="mt-1 text-sm text-neutral-500">0123456789 â€” Invoice #1042 Â· Rs 2,500.00</p>
             </div>
           )}
           {theme.font !== "System Default" && (
             <p className="mt-1 text-xs text-neutral-400">
-              Fonts load from Google Fonts — requires an internet connection.
+              Fonts load from Google Fonts â€” requires an internet connection.
             </p>
           )}
         </div>
@@ -221,7 +221,7 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
             Reset to defaults
           </button>
           <div className="flex items-center gap-2">
-            {saved && <span className="text-xs text-emerald-600">Saved ✓</span>}
+            {saved && <span className="text-xs text-emerald-600">Saved âœ“</span>}
             <Button type="button" onClick={onClose}>Cancel</Button>
             <Button variant="primary" disabled={!tauriReady} onClick={() => void saveTheme()}>
               Save Changes
@@ -256,14 +256,14 @@ export default function GeneralSettingsPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap gap-2 rounded-2xl bg-white px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <StatusPill ok={isTursoConfigured()} label="Turso sync" />
         <StatusPill ok={isCloudinaryConfigured()} label="Cloudinary images" />
         <StatusPill ok={tauriReady} label="Desktop shell" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-neutral-200 bg-white p-5">
+        <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
           <h2 className="mb-3 font-serif text-lg text-neutral-800">Tax Rate Info</h2>
           <div className="flex items-end gap-2">
             <div className="w-40">
@@ -286,7 +286,7 @@ export default function GeneralSettingsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
+        <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] text-sm text-neutral-600">
           <h2 className="mb-2 font-serif text-lg text-neutral-800">Connecting Turso &amp; Cloudinary</h2>
           <p>
             Set <code>NEXT_PUBLIC_TURSO_DATABASE_URL</code>, <code>NEXT_PUBLIC_TURSO_AUTH_TOKEN</code>,{" "}
@@ -306,3 +306,5 @@ export default function GeneralSettingsPage() {
     </div>
   );
 }
+
+

@@ -11,7 +11,7 @@ export const DEFAULT_THEME: AppTheme = {
   accent: "#f59e0b",
   sidebarFrom: "#0a0a0a",
   sidebarTo: "#171717",
-  appBg: "#f4f4f5",
+  appBg: "#f5f5f7",
   modalOverlay: "#171717",
   font: "System Default",
 };

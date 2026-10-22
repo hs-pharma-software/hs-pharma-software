@@ -21,7 +21,7 @@ export function Topbar() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-neutral-200/70 bg-white/80 px-4 backdrop-blur-md">
+    <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/80 px-4 backdrop-blur-xl">
       <div className="flex items-center gap-2.5">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}

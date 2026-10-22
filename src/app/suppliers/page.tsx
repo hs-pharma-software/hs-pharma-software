@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -37,10 +37,10 @@ export default function SuppliersPage() {
 
   const columns: Column<Supplier>[] = [
     { header: "Name", render: (s) => <span className="font-medium">{s.name}</span> },
-    { header: "Company Name", render: (s) => s.company_name ?? "—" },
-    { header: "Phone No", render: (s) => s.phone ?? "—" },
-    { header: "CNIC", render: (s) => s.cnic ?? "—" },
-    { header: "Address", render: (s) => s.address ?? "—" },
+    { header: "Company Name", render: (s) => s.company_name ?? "â€”" },
+    { header: "Phone No", render: (s) => s.phone ?? "â€”" },
+    { header: "CNIC", render: (s) => s.cnic ?? "â€”" },
+    { header: "Address", render: (s) => s.address ?? "â€”" },
     { header: "Opening Balance", render: (s) => s.opening_balance.toFixed(2) },
   ];
 
@@ -66,7 +66,7 @@ export default function SuppliersPage() {
         }
       />
 
-      <div className="mb-3 flex items-center gap-2 rounded-xl border border-neutral-200/70 bg-white px-4 py-2.5 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-4 py-2.5">
         <Input
           placeholder="Search by name, phone or company..."
           value={search}
@@ -103,3 +103,4 @@ export default function SuppliersPage() {
     </div>
   );
 }
+

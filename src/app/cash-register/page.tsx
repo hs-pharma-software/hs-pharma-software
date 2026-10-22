@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,9 +32,9 @@ export default function CashRegisterPage() {
 
   const columns: Column<CashRegisterEntry>[] = [
     { header: "Date", render: (e) => e.date },
-    { header: "Description", render: (e) => e.description ?? "—" },
-    { header: "Payment In", render: (e) => (e.transaction_type === "in" ? e.amount.toFixed(2) : "—") },
-    { header: "Payment Out", render: (e) => (e.transaction_type === "out" ? e.amount.toFixed(2) : "—") },
+    { header: "Description", render: (e) => e.description ?? "â€”" },
+    { header: "Payment In", render: (e) => (e.transaction_type === "in" ? e.amount.toFixed(2) : "â€”") },
+    { header: "Payment Out", render: (e) => (e.transaction_type === "out" ? e.amount.toFixed(2) : "â€”") },
   ];
 
   const tauriReady = useIsTauri();
@@ -60,7 +60,7 @@ export default function CashRegisterPage() {
       ) : (
         <>
           <DataTable columns={columns} rows={entries} />
-          <div className="mt-3 flex justify-end gap-6 rounded-xl border border-neutral-200/70 bg-white px-5 py-2.5 text-sm shadow-sm">
+          <div className="mt-3 flex justify-end gap-6 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-2.5 text-sm">
             <span className="text-neutral-500">
               Cash In: <span className="font-medium text-emerald-700">{cashIn.toFixed(2)}</span>
             </span>
@@ -123,3 +123,4 @@ export default function CashRegisterPage() {
     </div>
   );
 }
+

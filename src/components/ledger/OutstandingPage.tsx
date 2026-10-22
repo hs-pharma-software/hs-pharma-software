@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -22,7 +22,7 @@ export function OutstandingPage({ title, partyType, table }: { title: string; pa
   const [rows, setRows] = useState<OutstandingRow[]>([]);
 
   // Customers owe against their invoices, suppliers are owed against
-  // purchases — staff have neither, so their trade balance is always 0.
+  // purchases â€” staff have neither, so their trade balance is always 0.
   const tradeClause =
     partyType === "customer"
       ? `COALESCE((SELECT SUM(CASE WHEN is_return = 0 THEN balance ELSE -balance END) FROM invoices WHERE customer_id = p.id AND tenant_id = ? AND deleted_at IS NULL AND is_quotation = 0), 0)`
@@ -65,7 +65,7 @@ export function OutstandingPage({ title, partyType, table }: { title: string; pa
 
   const columns: Column<OutstandingRow>[] = [
     { header: "Name", render: (r) => r.name },
-    { header: "Phone No", render: (r) => r.phone ?? "—" },
+    { header: "Phone No", render: (r) => r.phone ?? "â€”" },
     { header: "Opening Balance", render: (r) => r.opening_balance.toFixed(2) },
     { header: "Total Adjusted", render: (r) => r.total_paid.toFixed(2) },
     { header: "Current Balance", render: (r) => r.balance.toFixed(2) },
@@ -83,7 +83,7 @@ export function OutstandingPage({ title, partyType, table }: { title: string; pa
       ) : (
         <>
           <DataTable columns={columns} rows={rows} />
-          <div className="mt-3 flex justify-end gap-6 rounded-xl border border-neutral-200/70 bg-white px-5 py-2.5 text-sm shadow-sm">
+          <div className="mt-3 flex justify-end gap-6 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-2.5 text-sm">
             <span className="text-neutral-500">
               Opening: <span className="font-medium text-neutral-800">{totals.opening.toFixed(2)}</span>
             </span>
@@ -99,3 +99,4 @@ export function OutstandingPage({ title, partyType, table }: { title: string; pa
     </div>
   );
 }
+

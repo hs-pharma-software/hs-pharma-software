@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -20,7 +20,7 @@ interface PreviewLine {
 }
 
 /** Invoice-wise return: pick the original purchase and send everything
- * still on hand from it back to the supplier in one action — no picking
+ * still on hand from it back to the supplier in one action â€” no picking
  * individual lines/quantities. See PurchaseItemReturnModal for a partial,
  * item-by-item return instead. */
 export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -88,7 +88,7 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
           <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
             <span>
               Returning <span className="font-medium">everything</span> from{" "}
-              <span className="font-medium">Purchase #{selected.purchase_no}</span> — {selected.supplier_name} (
+              <span className="font-medium">Purchase #{selected.purchase_no}</span> â€” {selected.supplier_name} (
               {selected.date})
             </span>
             <Button type="button" onClick={changePurchase}>
@@ -105,7 +105,7 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
               Every line still on hand from this purchase will be returned at full remaining quantity. Use Purchase
               Item Return instead if you only want to return specific items.
             </p>
-            <div className="overflow-x-auto rounded-lg border border-neutral-200">
+            <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
               <table className="w-full min-w-max text-sm">
                 <thead>
                   <tr className="bg-neutral-900 text-left text-white">
@@ -132,9 +132,9 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
                         className={`border-b border-neutral-100 last:border-0 ${l.returnQty === 0 ? "text-neutral-300" : ""}`}
                       >
                         <td className="px-2 py-1.5">{l.item.product_name}</td>
-                        <td className="px-2 py-1.5">{l.item.batch_no ?? "—"}</td>
+                        <td className="px-2 py-1.5">{l.item.batch_no ?? "â€”"}</td>
                         <td className="px-2 py-1.5">{l.item.received_qty}</td>
-                        <td className="px-2 py-1.5">{l.alreadyReturned || "—"}</td>
+                        <td className="px-2 py-1.5">{l.alreadyReturned || "â€”"}</td>
                         <td className="px-2 py-1.5 font-medium text-neutral-800">
                           {l.returnQty === 0 ? "Fully returned" : l.returnQty}
                         </td>
@@ -172,3 +172,4 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
     </Modal>
   );
 }
+

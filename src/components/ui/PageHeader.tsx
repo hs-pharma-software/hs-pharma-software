@@ -14,9 +14,9 @@ export function PageHeader({
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="mb-4 flex items-center justify-between rounded-xl border border-neutral-200/70 bg-white/90 px-5 py-3 shadow-sm backdrop-blur-sm"
+      className="mb-5 flex items-center justify-between"
     >
-      <h1 className="font-serif text-xl text-neutral-800">{title}</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-neutral-900">{title}</h1>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </motion.div>
   );

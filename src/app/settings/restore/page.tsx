@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -45,7 +45,7 @@ export default function RestorePage() {
           Run inside the desktop app to restore from a backup file.
         </p>
       ) : (
-        <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm text-neutral-600">
+        <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] text-sm text-neutral-600">
           <p>Opens a file picker (matching the reference app&apos;s Windows &quot;This PC&quot; browser) to select a previously-saved <code>.db</code> backup and overwrite the local database.</p>
           {status && <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-neutral-800">{status}</p>}
         </div>
@@ -53,3 +53,4 @@ export default function RestorePage() {
     </div>
   );
 }
+

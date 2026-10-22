@@ -6,7 +6,7 @@ type Variant = "primary" | "secondary" | "danger" | "ghost";
 const VARIANT_CLASSES: Record<Variant, string> = {
   primary: "btn-primary-theme",
   secondary:
-    "bg-white text-neutral-700 border border-neutral-200 shadow-sm hover:bg-neutral-50 hover:border-neutral-300",
+    "bg-white text-neutral-700 shadow-[0_1px_3px_rgba(0,0,0,0.08)] ring-1 ring-black/[0.06] hover:bg-neutral-50",
   danger:
     "bg-gradient-to-b from-rose-500 to-rose-600 text-white shadow-sm shadow-rose-600/30 hover:from-rose-400 hover:to-rose-600",
   ghost: "bg-transparent text-neutral-600 hover:bg-neutral-100",

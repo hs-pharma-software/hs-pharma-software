@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -37,10 +37,10 @@ export default function CustomersPage() {
 
   const columns: Column<Customer>[] = [
     { header: "Name", render: (c) => <span className="font-medium">{c.name}</span> },
-    { header: "Phone No", render: (c) => c.phone ?? "—" },
-    { header: "CNIC / NTN", render: (c) => c.cnic_ntn ?? "—" },
-    { header: "Address", render: (c) => c.address ?? "—" },
-    { header: "Area", render: (c) => c.area ?? "—" },
+    { header: "Phone No", render: (c) => c.phone ?? "â€”" },
+    { header: "CNIC / NTN", render: (c) => c.cnic_ntn ?? "â€”" },
+    { header: "Address", render: (c) => c.address ?? "â€”" },
+    { header: "Area", render: (c) => c.area ?? "â€”" },
     {
       header: "Opening Balance",
       render: (c) => `${c.opening_balance.toFixed(2)} (${c.balance_type})`,
@@ -69,7 +69,7 @@ export default function CustomersPage() {
         }
       />
 
-      <div className="mb-3 flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5">
+      <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <Input
           placeholder="Search by name, phone or area..."
           value={search}
@@ -106,3 +106,4 @@ export default function CustomersPage() {
     </div>
   );
 }
+

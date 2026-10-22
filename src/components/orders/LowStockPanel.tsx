@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, ShoppingCart } from "lucide-react";
@@ -8,7 +8,7 @@ import { productsRepo } from "@/lib/repo/products";
 import type { Product } from "@/lib/types";
 
 /** Reorder list: every product at/below the low-stock threshold, with a
- * per-row "Add to Purchase" button and a bulk "Add Selected" action — both
+ * per-row "Add to Purchase" button and a bulk "Add Selected" action â€” both
  * open the Purchase form pre-loaded with those products so the user only
  * has to fill in batch/expiry/price/qty against the supplier invoice. */
 export function LowStockPanel({
@@ -16,7 +16,7 @@ export function LowStockPanel({
   refreshSignal,
 }: {
   onAddToPurchase: (products: Product[]) => void;
-  /** Bump this (e.g. after a Purchase saves) to re-fetch — a restocked
+  /** Bump this (e.g. after a Purchase saves) to re-fetch â€” a restocked
    * product should drop off the list once it's above threshold again. */
   refreshSignal?: number;
 }) {
@@ -72,11 +72,11 @@ export function LowStockPanel({
   }
 
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-neutral-200/70 bg-white shadow-sm">
+    <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <div className="flex items-center gap-2">
           <AlertTriangle size={17} className="text-amber-600" />
-          <h2 className="font-serif text-base text-neutral-800">Low Stock — Needs Reorder</h2>
+          <h2 className="font-serif text-base text-neutral-800">Low Stock â€” Needs Reorder</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => void addSelected()} disabled={selected.size === 0}>
@@ -90,7 +90,7 @@ export function LowStockPanel({
         <p className="px-4 py-6 text-center text-sm text-neutral-400">Loading...</p>
       ) : rows.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-neutral-400">
-          Nothing low on stock right now — every product is above its reorder threshold.
+          Nothing low on stock right now â€” every product is above its reorder threshold.
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -115,10 +115,10 @@ export function LowStockPanel({
                     <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
                   </td>
                   <td className="px-3 py-2 font-medium text-neutral-800">{r.name}</td>
-                  <td className="px-3 py-2 text-neutral-500">{r.barcode ?? "—"}</td>
-                  <td className="px-3 py-2 text-neutral-500">{r.company_name ?? "—"}</td>
+                  <td className="px-3 py-2 text-neutral-500">{r.barcode ?? "â€”"}</td>
+                  <td className="px-3 py-2 text-neutral-500">{r.company_name ?? "â€”"}</td>
                   <td className="px-3 py-2 text-rose-600 font-medium">{r.avail_qty}</td>
-                  <td className="px-3 py-2 text-neutral-500">{r.max_stock_qty ?? "—"}</td>
+                  <td className="px-3 py-2 text-neutral-500">{r.max_stock_qty ?? "â€”"}</td>
                   <td className="px-3 py-2">
                     <button
                       type="button"
@@ -138,3 +138,4 @@ export function LowStockPanel({
     </div>
   );
 }
+

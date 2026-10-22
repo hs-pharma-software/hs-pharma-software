@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const subscriptionLocked = Boolean(currentTenant) && currentTenant?.subscriptionStatus !== "active";
 
   return (
-    <div className="flex h-screen flex-col bg-gradient-to-br from-neutral-100 via-neutral-100 to-amber-50/40">
+    <div className="flex h-screen flex-col bg-[#f5f5f7]">
       <GlobalShortcuts />
       <Calculator />
       <Topbar />

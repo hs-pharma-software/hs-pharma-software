@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -41,7 +41,7 @@ interface Line {
   salePrice: number;
   taxPct: number;
   discountPct: number;
-  /** Which unit qty/bonusQty/salePrice above are currently expressed in —
+  /** Which unit qty/bonusQty/salePrice above are currently expressed in â€”
    * everything is normalized back to base units (packs) on save, matching
    * how invoice_items/product_batches always store it. */
   unit: "base" | "secondary";
@@ -92,7 +92,7 @@ export function InvoiceFormModal({
   // Refs for keyboard navigation
   const formRef = useRef<HTMLFormElement>(null);
   const pickerRef = useRef<ProductPickerHandle>(null);
-  // lineInputRefs[rowIdx][colIdx] → the input element
+  // lineInputRefs[rowIdx][colIdx] â†’ the input element
   const lineInputRefs = useRef<(HTMLInputElement | null)[][]>([]);
   const prevLinesLen = useRef(0);
 
@@ -105,7 +105,7 @@ export function InvoiceFormModal({
     prevLinesLen.current = lines.length;
   }, [lines.length]);
 
-  // Ctrl+S / Cmd+S → submit the form (same as clicking Save).
+  // Ctrl+S / Cmd+S â†’ submit the form (same as clicking Save).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
@@ -333,7 +333,7 @@ export function InvoiceFormModal({
         monthStart.setDate(1);
         const used = await countInvoicesThisMonth(monthStart.toISOString().slice(0, 10));
         if (used >= cap) {
-          setError(`Your plan allows up to ${cap} invoices per month — that limit has been reached for this month.`);
+          setError(`Your plan allows up to ${cap} invoices per month â€” that limit has been reached for this month.`);
           return;
         }
       }
@@ -344,7 +344,7 @@ export function InvoiceFormModal({
       let invoiceId: string;
       if (isEdit && invoice) {
         // Put back what the original items had deducted, delete them, then
-        // deduct fresh for whatever the form now says — this way editing
+        // deduct fresh for whatever the form now says â€” this way editing
         // can't drift from a plain delete+recreate's stock bookkeeping.
         await restoreInvoiceStock(originalItems);
         for (const item of originalItems) await invoiceItemsRepo.remove(item.id);
@@ -386,7 +386,7 @@ export function InvoiceFormModal({
         is_memorized: 1,
         converted_invoice_id: null,
       });
-      // Drafts don't deduct stock — stock is deducted when converting to a real invoice.
+      // Drafts don't deduct stock â€” stock is deducted when converting to a real invoice.
       await buildLineItems(created.id, true);
       onSaved();
     } catch (err) {
@@ -419,7 +419,7 @@ export function InvoiceFormModal({
             <div className="flex-1">
               <Field label="Salesman (Optional)">
                 <Select value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}>
-                  <option value="">—</option>
+                  <option value="">â€”</option>
                   {salesmen.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -455,7 +455,7 @@ export function InvoiceFormModal({
           <ProductPicker ref={pickerRef} onSelect={(p) => void onProductSelected(p)} autoFocus />
         </Field>
 
-        <div className="overflow-x-auto rounded-lg border border-neutral-200">
+        <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
           <table className="w-full min-w-max text-sm">
             <thead>
               <tr className="bg-neutral-900 text-left text-white">
@@ -498,7 +498,7 @@ export function InvoiceFormModal({
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">{l.batch.batch_no ?? "—"}</td>
+                    <td className="px-2 py-1.5">{l.batch.batch_no ?? "â€”"}</td>
                     <td className="px-2 py-1.5">{availInLineUnit}</td>
                     <td className="px-2 py-1.5">
                       <input
@@ -653,3 +653,4 @@ export function InvoiceFormModal({
     </Modal>
   );
 }
+

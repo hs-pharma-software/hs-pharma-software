@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,10 +32,10 @@ export default function StaffPage() {
 
   const columns: Column<Staff>[] = [
     { header: "Name", render: (s) => <span className="font-medium">{s.name}</span> },
-    { header: "Designation", render: (s) => s.designation ?? "—" },
-    { header: "Phone No", render: (s) => s.phone ?? "—" },
-    { header: "CNIC", render: (s) => s.cnic ?? "—" },
-    { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "—" },
+    { header: "Designation", render: (s) => s.designation ?? "â€”" },
+    { header: "Phone No", render: (s) => s.phone ?? "â€”" },
+    { header: "CNIC", render: (s) => s.cnic ?? "â€”" },
+    { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "â€”" },
     { header: "Basic Pay", render: (s) => s.basic_pay.toFixed(2) },
   ];
 
@@ -61,7 +61,7 @@ export default function StaffPage() {
         }
       />
 
-      <div className="mb-3 flex items-center gap-2 rounded-xl border border-neutral-200/70 bg-white px-4 py-2.5 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-4 py-2.5">
         <Input
           placeholder="Search by name or phone..."
           value={search}
@@ -98,3 +98,4 @@ export default function StaffPage() {
     </div>
   );
 }
+

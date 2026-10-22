@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -37,13 +37,13 @@ export default function AssignToSupplierPage() {
 
   const supplierColumns: Column<Supplier>[] = [
     { header: "Name", render: (s) => s.name },
-    { header: "Phone No", render: (s) => s.phone ?? "—" },
+    { header: "Phone No", render: (s) => s.phone ?? "â€”" },
   ];
 
   const productColumns: Column<AssignedProductRow>[] = [
     { header: "Product Name", render: (r) => r.product_name },
-    { header: "Barcode", render: (r) => r.barcode ?? "—" },
-    { header: "Company Name", render: (r) => r.company_name ?? "—" },
+    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
+    { header: "Company Name", render: (r) => r.company_name ?? "â€”" },
     {
       header: "",
       render: (r) => (
@@ -92,9 +92,10 @@ export default function AssignToSupplierPage() {
         </div>
       )}
 
-      <div className="mt-3 flex justify-end rounded-xl border border-neutral-200/70 bg-white px-5 py-2.5 text-sm shadow-sm">
+      <div className="mt-3 flex justify-end rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-2.5 text-sm">
         <span className="font-medium text-neutral-700">Total Number Of Assigned Products: {assigned.length}</span>
       </div>
     </div>
   );
 }
+

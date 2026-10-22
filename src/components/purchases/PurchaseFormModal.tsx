@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -24,13 +24,13 @@ interface Line {
   qty: number;
   stPct: number;
   whtPct: number;
-  /** Retail (sale) price — prefilled from the current price list so the
+  /** Retail (sale) price â€” prefilled from the current price list so the
    * cashier can see it and only has to touch it when it actually needs to
    * change on this purchase. */
   salePrice: number;
   initialSalePrice: number;
   /** Which unit qty/purchasePrice/salePrice above are currently expressed
-   * in — everything is normalized back to base units (packs) on save, same
+   * in â€” everything is normalized back to base units (packs) on save, same
    * as product_batches/price_list always store. */
   unit: "base" | "secondary";
 }
@@ -168,7 +168,7 @@ export function PurchaseFormModal({
 
       for (const l of lines) {
         // Everything the cashier typed (possibly in the secondary unit, e.g.
-        // Tab) gets normalized back to base units (Pack) here — that's what
+        // Tab) gets normalized back to base units (Pack) here â€” that's what
         // product_batches, purchase_items and price_list always store in,
         // regardless of which unit was used to enter this line.
         const isSecondary = l.unit === "secondary";
@@ -203,7 +203,7 @@ export function PurchaseFormModal({
           total: lineTotalValue,
         });
         // Only write a new price-list entry when the retail price was
-        // actually changed on this purchase — avoids spamming price_list
+        // actually changed on this purchase â€” avoids spamming price_list
         // with an unchanged duplicate row on every routine purchase.
         if (Math.abs(finalSalePrice - l.initialSalePrice) > 0.0001) {
           await priceListRepo.create({
@@ -215,7 +215,7 @@ export function PurchaseFormModal({
             comment: "Updated via Purchase",
           });
         }
-        // Buying a product from this supplier is what "assigned" means —
+        // Buying a product from this supplier is what "assigned" means â€”
         // Assign To Supplier no longer requires manually re-adding every
         // product a supplier has already sold you.
         await assignProductToSupplier(l.product.id, supplierId);
@@ -256,7 +256,7 @@ export function PurchaseFormModal({
           <ProductPicker onSelect={(p) => void addProduct(p)} />
         </Field>
 
-        <div className="overflow-x-auto rounded-lg border border-neutral-200">
+        <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
           <table className="w-full min-w-max text-sm">
             <thead>
               <tr className="bg-neutral-900 text-left text-white">
@@ -330,7 +330,7 @@ export function PurchaseFormModal({
                         onChange={(e) => updateLine(idx, { salePrice: Number(e.target.value) })}
                         title={
                           l.salePrice !== l.initialSalePrice
-                            ? `Changed from ${l.initialSalePrice.toFixed(2)} — will update the price list`
+                            ? `Changed from ${l.initialSalePrice.toFixed(2)} â€” will update the price list`
                             : "Current retail price"
                         }
                         className={`w-24 rounded border px-1.5 py-1 ${
@@ -437,3 +437,4 @@ export function PurchaseFormModal({
     </Modal>
   );
 }
+

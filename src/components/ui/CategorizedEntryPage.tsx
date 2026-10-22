@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "./PageHeader";
@@ -22,7 +22,7 @@ interface EntryRow extends BaseRow {
   description: string | null;
 }
 
-/** Shared shape for Expenses Details and Revenue Details — both are
+/** Shared shape for Expenses Details and Revenue Details â€” both are
  * "date + category (quick-addable) + amount + payment method + description"
  * logs against their own category table. */
 export function CategorizedEntryPage<T extends EntryRow>({
@@ -44,7 +44,7 @@ export function CategorizedEntryPage<T extends EntryRow>({
     list: (opts?: { orderBy?: string }) => Promise<T[]>;
     create: (data: Record<string, unknown>) => Promise<T>;
   };
-  /** Bump this (e.g. from 0 to 1) to force the Add modal open externally —
+  /** Bump this (e.g. from 0 to 1) to force the Add modal open externally â€”
    * powers ALT+E (New Expense) since this component has no page of its own
    * for GlobalShortcuts to watch pendingAction from directly. */
   externalAddTrigger?: number;
@@ -81,12 +81,12 @@ export function CategorizedEntryPage<T extends EntryRow>({
 
   const columns: Column<T>[] = [
     { header: "Date", render: (r) => r.date },
-    { header: "Category", render: (r) => (r.category_id ? categoryMap.get(r.category_id) ?? "—" : "—") },
-    { header: "Description", render: (r) => r.description ?? "—" },
+    { header: "Category", render: (r) => (r.category_id ? categoryMap.get(r.category_id) ?? "â€”" : "â€”") },
+    { header: "Description", render: (r) => r.description ?? "â€”" },
     { header: "Amount", render: (r) => r.amount.toFixed(2) },
     {
       header: byLabel,
-      render: (r) => ((r as unknown as Record<string, unknown>)[byField] as string | null) ?? "—",
+      render: (r) => ((r as unknown as Record<string, unknown>)[byField] as string | null) ?? "â€”",
     },
   ];
 
@@ -113,7 +113,7 @@ export function CategorizedEntryPage<T extends EntryRow>({
       ) : (
         <>
           <DataTable columns={columns} rows={rows} />
-          <div className="mt-3 flex justify-end rounded-xl border border-neutral-200/70 bg-white px-5 py-2.5 text-sm shadow-sm">
+          <div className="mt-3 flex justify-end rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] px-5 py-2.5 text-sm">
             <span className="font-medium text-neutral-700">Total: {total.toFixed(2)}</span>
           </div>
         </>
@@ -205,3 +205,4 @@ export function CategorizedEntryPage<T extends EntryRow>({
     </div>
   );
 }
+
