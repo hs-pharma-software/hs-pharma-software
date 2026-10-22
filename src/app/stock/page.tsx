@@ -98,6 +98,8 @@ export default function StockPage() {
 
   const discountFactor = mrpDiscountPct > 0 ? 1 - mrpDiscountPct / 100 : 0;
 
+  const totalStockValue = filtered.reduce((sum, r) => sum + r.avail_qty * r.sale_price, 0);
+
   const columns: Column<StockRow>[] = [
     { header: "Barcode", render: (r) => r.barcode ?? "—" },
     { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
@@ -152,6 +154,13 @@ export default function StockPage() {
       />
 
       <div className="mb-3 flex items-center gap-2 rounded-xl border border-neutral-200/70 bg-white px-4 py-2.5 shadow-sm">
+        <div className="flex shrink-0 flex-col leading-tight">
+          <span className="text-xs text-neutral-400">Total Stock Value</span>
+          <span className="text-sm font-semibold text-neutral-800">
+            Rs {totalStockValue.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
+        <div className="mx-2 h-8 w-px bg-neutral-200" />
         <Input
           placeholder="Search by product or barcode..."
           value={search}
