@@ -51,7 +51,16 @@ export default function ProductsPage() {
     { header: "Category", render: (r) => r.category_name ?? "—" },
     { header: "Sub Category", render: (r) => r.sub_category_name ?? "—" },
     { header: "UOM", render: (r) => r.base_unit_name ?? "—" },
-    { header: "Avail Qty", render: (r) => r.avail_qty },
+    {
+      header: "Avail Qty",
+      render: (r) => {
+        const packing = r.packing || 1;
+        if (r.secondary_unit_id && packing > 1) {
+          return `${r.avail_qty * packing} ${r.secondary_unit_name ?? ""}`.trim();
+        }
+        return `${r.avail_qty} ${r.base_unit_name ?? ""}`.trim();
+      },
+    },
     { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "—") },
   ];
 

@@ -55,7 +55,17 @@ body {
    element carries .print-area (InvoiceViewModal, TaskViewModal,
    AuditViewModal, financial closing view, ...), so window.print() only
    ever outputs that one record instead of the whole app chrome/backdrop. */
+/* Elements that should only appear in print output — hidden on screen,
+   shown during @media print. Use alongside .print-area so the visibility
+   rules below also apply. */
+.print-only {
+  display: none;
+}
+
 @media print {
+  .print-only {
+    display: block !important;
+  }
   body * {
     visibility: hidden;
   }
@@ -64,10 +74,10 @@ body {
     visibility: visible;
   }
   .print-area {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
     border: none !important;
   }
 }

@@ -23,6 +23,9 @@ export interface ProductListRow {
   category_name: string | null;
   sub_category_name: string | null;
   base_unit_name: string | null;
+  secondary_unit_id: string | null;
+  secondary_unit_name: string | null;
+  packing: number;
   avail_qty: number;
   sale_price: number | null;
 }
@@ -44,6 +47,9 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
       c.name AS category_name,
       sc.name AS sub_category_name,
       u.name AS base_unit_name,
+      p.secondary_unit_id,
+      su.name AS secondary_unit_name,
+      COALESCE(p.packing, 1) AS packing,
       COALESCE((
         SELECT SUM(pb.qty) FROM product_batches pb
         WHERE pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
@@ -57,6 +63,7 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
     LEFT JOIN uoms u ON u.id = p.base_unit_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE p.deleted_at IS NULL
     ORDER BY p.created_at DESC
   `,

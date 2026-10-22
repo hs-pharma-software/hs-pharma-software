@@ -21,6 +21,9 @@ interface StockRow {
   location: string | null;
   category_name: string | null;
   uom_name: string | null;
+  secondary_unit_id: string | null;
+  secondary_unit_name: string | null;
+  packing: number;
   avail_qty: number;
   batch_no: string | null;
   expiry_date: string | null;
@@ -53,7 +56,10 @@ export default function StockPage() {
       await dbSelect<StockRow>(
         `
         SELECT pb.id, p.barcode, p.name AS product_name, p.company_name, pb.location,
-               c.name AS category_name, u.name AS uom_name, pb.qty AS avail_qty,
+               c.name AS category_name, u.name AS uom_name,
+               p.secondary_unit_id, su.name AS secondary_unit_name,
+               COALESCE(p.packing, 1) AS packing,
+               pb.qty AS avail_qty,
                pb.batch_no, pb.expiry_date,
                COALESCE(pl.mrp, 0) AS mrp,
                COALESCE(pl.sale_price, 0) AS sale_price
@@ -61,6 +67,7 @@ export default function StockPage() {
         JOIN products p ON p.id = pb.product_id
         LEFT JOIN categories c ON c.id = p.category_id
         LEFT JOIN uoms u ON u.id = p.base_unit_id
+        LEFT JOIN uoms su ON su.id = p.secondary_unit_id
         LEFT JOIN (
           SELECT product_id, sale_price, mrp
           FROM price_list
@@ -108,7 +115,16 @@ export default function StockPage() {
     { header: "Expiry", render: (r) => r.expiry_date ?? "—" },
     { header: "Location", render: (r) => r.location ?? "—" },
     { header: "UOM", render: (r) => r.uom_name ?? "—" },
-    { header: "Avail Qty", render: (r) => <span className="font-semibold">{r.avail_qty}</span> },
+    {
+      header: "Avail Qty",
+      render: (r) => {
+        const packing = r.packing || 1;
+        if (r.secondary_unit_id && packing > 1) {
+          return <span className="font-semibold">{r.avail_qty * packing} <span className="font-normal text-neutral-500">{r.secondary_unit_name ?? ""}</span></span>;
+        }
+        return <span className="font-semibold">{r.avail_qty} <span className="font-normal text-neutral-500">{r.uom_name ?? ""}</span></span>;
+      },
+    },
     { header: "Sale Price", render: (r) => r.sale_price > 0 ? r.sale_price.toFixed(2) : "—" },
     { header: "MRP", render: (r) => r.mrp > 0 ? r.mrp.toFixed(2) : "—" },
     ...(mrpDiscountPct > 0 ? [{
@@ -178,8 +194,8 @@ export default function StockPage() {
         <DataTable columns={columns} rows={filtered} />
       )}
 
-      {/* ── Print-only stock report ── hidden off-screen on screen; @media print repositions it */}
-      <div className="print-area" style={{ position: "fixed", left: "-9999px", top: "-9999px" }}>
+      {/* ── Print-only stock report ── .print-only hides on screen; @media print shows + repositions it */}
+      <div className="print-area print-only">
         <div style={{ padding: "24px", fontFamily: "sans-serif", fontSize: "12px", color: "#111" }}>
           <h1 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "2px" }}>
             {sessionTenant?.name ?? "Pharmacy"}
@@ -208,7 +224,11 @@ export default function StockPage() {
                   <td style={{ padding: "4px 8px" }}>{r.expiry_date ?? "—"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.location ?? "—"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.uom_name ?? "—"}</td>
-                  <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.avail_qty}</td>
+                  <td style={{ padding: "4px 8px", textAlign: "right" }}>
+                    {r.secondary_unit_id && (r.packing || 1) > 1
+                      ? `${r.avail_qty * (r.packing || 1)} ${r.secondary_unit_name ?? ""}`
+                      : `${r.avail_qty} ${r.uom_name ?? ""}`}
+                  </td>
                   <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.sale_price > 0 ? r.sale_price.toFixed(2) : "—"}</td>
                   <td style={{ padding: "4px 8px", textAlign: "right" }}>
                     {r.sale_price > 0 ? (r.avail_qty * r.sale_price).toFixed(2) : "—"}
