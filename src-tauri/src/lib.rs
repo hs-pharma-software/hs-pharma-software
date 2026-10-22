@@ -643,6 +643,19 @@ fn schema_sql_v14() -> &'static str {
     "#
 }
 
+/// Per-invoice buyer snapshot: walk-in customers have no customers row, and
+/// FBR needs the buyer details exactly as they were at sale time.
+fn schema_sql_v15() -> &'static str {
+    r#"
+    ALTER TABLE invoices ADD COLUMN customer_name TEXT;
+    ALTER TABLE invoices ADD COLUMN customer_phone TEXT;
+    ALTER TABLE invoices ADD COLUMN buyer_ntn_cnic TEXT;
+    ALTER TABLE invoices ADD COLUMN buyer_province TEXT;
+    ALTER TABLE invoices ADD COLUMN buyer_address TEXT;
+    ALTER TABLE invoices ADD COLUMN buyer_registration_type TEXT;
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -866,6 +879,12 @@ pub fn run() {
             version: 14,
             description: "product_fbr_fields",
             sql: schema_sql_v14(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 15,
+            description: "invoice_buyer_fields",
+            sql: schema_sql_v15(),
             kind: MigrationKind::Up,
         },
     ];

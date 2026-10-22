@@ -3,6 +3,35 @@
  * Used for searchable autocomplete in product FBR fields.
  */
 
+// ── Provinces ───────────────────────────────────────────────────────────────
+// Labels are what the app stores; `fbr` is the name the DI API expects.
+export const FBR_PROVINCES: { label: string; fbr: string }[] = [
+  { label: "Punjab", fbr: "PUNJAB" },
+  { label: "Sindh", fbr: "SINDH" },
+  { label: "KPK", fbr: "KHYBER PAKHTUNKHWA" },
+  { label: "Balochistan", fbr: "BALOCHISTAN" },
+  { label: "Federal", fbr: "CAPITAL TERRITORY" },
+  { label: "AJK", fbr: "AZAD JAMMU AND KASHMIR" },
+  { label: "Gilgit Baltistan", fbr: "GILGIT BALTISTAN" },
+];
+
+export function toFbrProvince(label: string | null | undefined): string {
+  if (!label) return "";
+  const hit = FBR_PROVINCES.find(
+    (p) => p.label.toLowerCase() === label.toLowerCase() || p.fbr.toLowerCase() === label.toLowerCase()
+  );
+  return hit ? hit.fbr : label.toUpperCase();
+}
+
+export function isValidNtnOrCnic(value: string): boolean {
+  const digits = value.replace(/[\s-]/g, "");
+  return /^\d{7,9}$/.test(digits) || /^\d{13}$/.test(digits);
+}
+
+export function isValidPkMobile(value: string): boolean {
+  return /^(\+92|0092|0)3\d{9}$/.test(value.replace(/[\s-]/g, ""));
+}
+
 // ── HS Codes ─────────────────────────────────────────────────────────────────
 export interface HsCodeEntry {
   code: string;

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -10,6 +10,7 @@ import { isTursoConfigured } from "@/lib/sync/engine";
 import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
+import { FBR_PROVINCES } from "@/lib/fbrData";
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -205,12 +206,12 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
               style={{ fontFamily: theme.font !== "System Default" ? `"${theme.font}", sans-serif` : undefined }}
             >
               <p className="text-lg font-semibold">The quick brown fox jumps over the lazy dog</p>
-              <p className="mt-1 text-sm text-neutral-500">0123456789 â€” Invoice #1042 Â· Rs 2,500.00</p>
+              <p className="mt-1 text-sm text-neutral-500">0123456789 - Invoice #1042 | Rs 2,500.00</p>
             </div>
           )}
           {theme.font !== "System Default" && (
             <p className="mt-1 text-xs text-neutral-400">
-              Fonts load from Google Fonts â€” requires an internet connection.
+              Fonts load from Google Fonts - requires an internet connection.
             </p>
           )}
         </div>
@@ -221,7 +222,7 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
             Reset to defaults
           </button>
           <div className="flex items-center gap-2">
-            {saved && <span className="text-xs text-emerald-600">Saved âœ“</span>}
+            {saved && <span className="text-xs text-emerald-600">Saved {"\u2713"}</span>}
             <Button type="button" onClick={onClose}>Cancel</Button>
             <Button variant="primary" disabled={!tauriReady} onClick={() => void saveTheme()}>
               Save Changes
@@ -233,7 +234,7 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
   );
 }
 
-const PROVINCES = ["Punjab", "Sindh", "KPK", "Balochistan", "Federal", "AJK", "Gilgit Baltistan"];
+const PROVINCES = FBR_PROVINCES.map((p) => p.label);
 
 function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   const [enabled, setEnabled] = useState("false");
@@ -384,7 +385,7 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
       {/* Info note */}
       <p className="mt-3 text-xs text-neutral-400">
         Tokens are issued by PRAL and valid for 5 years. Both sandbox and production use{" "}
-        <code className="rounded bg-neutral-100 px-1">gw.fbr.gov.pk</code> \u2014 routing is determined by the token.
+        <code className="rounded bg-neutral-100 px-1">gw.fbr.gov.pk</code> {"\u2014"} routing is determined by the token.
       </p>
 
       <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3">

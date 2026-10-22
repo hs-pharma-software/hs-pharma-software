@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -30,6 +30,8 @@ import {
   toBaseUnitQty,
   fromBaseUnitQty,
 } from "@/lib/uom";
+import { loadFbrSettings } from "@/lib/fbr";
+import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile } from "@/lib/fbrData";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
 
@@ -41,7 +43,7 @@ interface Line {
   salePrice: number;
   taxPct: number;
   discountPct: number;
-  /** Which unit qty/bonusQty/salePrice above are currently expressed in â€”
+  /** Which unit qty/bonusQty/salePrice above are currently expressed in -
    * everything is normalized back to base units (packs) on save, matching
    * how invoice_items/product_batches always store it. */
   unit: "base" | "secondary";
@@ -78,6 +80,14 @@ export function InvoiceFormModal({
   );
   const [description, setDescription] = useState(invoice?.description ?? "");
 
+  const [customerName, setCustomerName] = useState(invoice?.customer_name ?? "");
+  const [customerPhone, setCustomerPhone] = useState(invoice?.customer_phone ?? "");
+  const [buyerNtn, setBuyerNtn] = useState(invoice?.buyer_ntn_cnic ?? "");
+  const [buyerProvince, setBuyerProvince] = useState(invoice?.buyer_province ?? "");
+  const [buyerAddress, setBuyerAddress] = useState(invoice?.buyer_address ?? "");
+  const [buyerRegType, setBuyerRegType] = useState(invoice?.buyer_registration_type ?? "Unregistered");
+  const [fbrEnabled, setFbrEnabled] = useState(false);
+
   const [lines, setLines] = useState<Line[]>([]);
   const [originalItems, setOriginalItems] = useState<InvoiceItemWithProduct[]>([]);
   const [loadingExisting, setLoadingExisting] = useState(isEdit);
@@ -92,7 +102,7 @@ export function InvoiceFormModal({
   // Refs for keyboard navigation
   const formRef = useRef<HTMLFormElement>(null);
   const pickerRef = useRef<ProductPickerHandle>(null);
-  // lineInputRefs[rowIdx][colIdx] â†’ the input element
+  // lineInputRefs[rowIdx][colIdx] -> the input element
   const lineInputRefs = useRef<(HTMLInputElement | null)[][]>([]);
   const prevLinesLen = useRef(0);
 
@@ -105,7 +115,7 @@ export function InvoiceFormModal({
     prevLinesLen.current = lines.length;
   }, [lines.length]);
 
-  // Ctrl+S / Cmd+S â†’ submit the form (same as clicking Save).
+  // Ctrl+S / Cmd+S -> submit the form (same as clicking Save).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
@@ -137,7 +147,37 @@ export function InvoiceFormModal({
     void customersRepo.list().then(setCustomers);
     void salesmenRepo.list().then(setSalesmen);
     void uomsRepo.list().then(setUoms);
+    void loadFbrSettings().then((s) => {
+      setFbrEnabled(s.enabled);
+      setBuyerProvince((prev) => prev || s.sellerProvince);
+    });
   }, []);
+
+  function onCustomerChange(id: string) {
+    setCustomerId(id);
+    const c = customers.find((x) => x.id === id);
+    setCustomerName(c?.name ?? "");
+    setCustomerPhone(c?.phone ?? "");
+    setBuyerNtn(c?.cnic_ntn ?? "");
+    setBuyerAddress(c?.address ?? "");
+    if (c?.province) setBuyerProvince(c.province);
+  }
+
+  function validateBuyer(): string | null {
+    if (customerPhone.trim() && !isValidPkMobile(customerPhone)) {
+      return "Mobile number must be like 03XXXXXXXXX or +923XXXXXXXXX.";
+    }
+    if (buyerNtn.trim() && !isValidNtnOrCnic(buyerNtn)) {
+      return "Buyer NTN must be 7-9 digits or CNIC 13 digits.";
+    }
+    if (buyerRegType === "Registered" && !buyerNtn.trim()) {
+      return "A registered buyer needs an NTN/CNIC for FBR.";
+    }
+    if (fbrEnabled && !buyerProvince) {
+      return "Buyer province is required for FBR digital invoicing.";
+    }
+    return null;
+  }
 
   function unitName(id: string | null) {
     return uoms.find((u) => u.id === id)?.name ?? "Unit";
@@ -309,6 +349,12 @@ export function InvoiceFormModal({
       description: description || null,
       salesman_id: salesmanId || null,
       customer_id: customerId || null,
+      customer_name: customerName.trim() || null,
+      customer_phone: customerPhone.trim() || null,
+      buyer_ntn_cnic: buyerNtn.replace(/[\s-]/g, "") || null,
+      buyer_province: buyerProvince || null,
+      buyer_address: buyerAddress.trim() || null,
+      buyer_registration_type: buyerRegType,
       total,
       charges: Number(charges) || 0,
       discount_pct: 0,
@@ -326,6 +372,11 @@ export function InvoiceFormModal({
       setError("Add at least one product line.");
       return;
     }
+    const buyerError = validateBuyer();
+    if (buyerError) {
+      setError(buyerError);
+      return;
+    }
     if (!isEdit) {
       const cap = useAuthStore.getState().currentTenant?.maxInvoicesPerMonth;
       if (cap != null) {
@@ -333,7 +384,7 @@ export function InvoiceFormModal({
         monthStart.setDate(1);
         const used = await countInvoicesThisMonth(monthStart.toISOString().slice(0, 10));
         if (used >= cap) {
-          setError(`Your plan allows up to ${cap} invoices per month â€” that limit has been reached for this month.`);
+          setError(`Your plan allows up to ${cap} invoices per month - that limit has been reached for this month.`);
           return;
         }
       }
@@ -344,7 +395,7 @@ export function InvoiceFormModal({
       let invoiceId: string;
       if (isEdit && invoice) {
         // Put back what the original items had deducted, delete them, then
-        // deduct fresh for whatever the form now says â€” this way editing
+        // deduct fresh for whatever the form now says - this way editing
         // can't drift from a plain delete+recreate's stock bookkeeping.
         await restoreInvoiceStock(originalItems);
         for (const item of originalItems) await invoiceItemsRepo.remove(item.id);
@@ -386,7 +437,7 @@ export function InvoiceFormModal({
         is_memorized: 1,
         converted_invoice_id: null,
       });
-      // Drafts don't deduct stock â€” stock is deducted when converting to a real invoice.
+      // Drafts don't deduct stock - stock is deducted when converting to a real invoice.
       await buildLineItems(created.id, true);
       onSaved();
     } catch (err) {
@@ -419,7 +470,7 @@ export function InvoiceFormModal({
             <div className="flex-1">
               <Field label="Salesman (Optional)">
                 <Select value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}>
-                  <option value="">â€”</option>
+                  <option value="">{"\u2014"}</option>
                   {salesmen.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -435,7 +486,7 @@ export function InvoiceFormModal({
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Customer Name (F3)">
-                <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                <Select value={customerId} onChange={(e) => onCustomerChange(e.target.value)}>
                   <option value="">Walk-in</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -448,6 +499,53 @@ export function InvoiceFormModal({
             <Button type="button" onClick={() => setQuickAddCustomer(true)}>
               +
             </Button>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-neutral-50/80 p-3 ring-1 ring-black/[0.04]">
+          <div className="mb-2 flex items-center gap-2">
+            <div className="flex h-5 w-7 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
+            <span className="text-xs font-semibold text-neutral-700">Customer &amp; Buyer Details</span>
+            {fbrEnabled && <span className="text-[11px] text-neutral-400">Sent to FBR with this invoice</span>}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="Customer Name">
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in Customer" />
+            </Field>
+            <Field label="Mobile Number">
+              <Input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="03XXXXXXXXX"
+              />
+            </Field>
+            <Field label="Buyer Registration Type" required={fbrEnabled}>
+              <Select value={buyerRegType} onChange={(e) => setBuyerRegType(e.target.value)}>
+                <option value="Unregistered">Unregistered</option>
+                <option value="Registered">Registered</option>
+              </Select>
+            </Field>
+            <Field label="Buyer NTN / CNIC" required={buyerRegType === "Registered"}>
+              <Input
+                value={buyerNtn}
+                onChange={(e) => setBuyerNtn(e.target.value)}
+                placeholder="NTN (7 digits) or CNIC (13 digits)"
+              />
+            </Field>
+            <Field label="Buyer Province" required={fbrEnabled}>
+              <Select value={buyerProvince} onChange={(e) => setBuyerProvince(e.target.value)}>
+                <option value="">Select...</option>
+                {FBR_PROVINCES.map((p) => (
+                  <option key={p.label} value={p.label}>
+                    {p.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Buyer Address">
+              <Input value={buyerAddress} onChange={(e) => setBuyerAddress(e.target.value)} />
+            </Field>
           </div>
         </div>
 
@@ -498,7 +596,7 @@ export function InvoiceFormModal({
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">{l.batch.batch_no ?? "â€”"}</td>
+                    <td className="px-2 py-1.5">{l.batch.batch_no ?? "\u2014"}</td>
                     <td className="px-2 py-1.5">{availInLineUnit}</td>
                     <td className="px-2 py-1.5">
                       <input
@@ -634,6 +732,7 @@ export function InvoiceFormModal({
             const created = await customersRepo.create({ name, opening_balance: 0, balance_type: "receivable" });
             setCustomers((prev) => [...prev, created]);
             setCustomerId(created.id);
+            setCustomerName(created.name);
             setQuickAddCustomer(false);
           }}
         />

@@ -168,6 +168,14 @@ const MIGRATIONS = [
     `ALTER TABLE products ADD COLUMN fbr_sale_rate REAL DEFAULT 0`,
     `ALTER TABLE products ADD COLUMN fbr_uom TEXT`,
   ]},
+  { version: 15, label: 'invoices buyer fields (customer name/phone, FBR buyer NTN/province/address/type)', statements: [
+    `ALTER TABLE invoices ADD COLUMN customer_name TEXT`,
+    `ALTER TABLE invoices ADD COLUMN customer_phone TEXT`,
+    `ALTER TABLE invoices ADD COLUMN buyer_ntn_cnic TEXT`,
+    `ALTER TABLE invoices ADD COLUMN buyer_province TEXT`,
+    `ALTER TABLE invoices ADD COLUMN buyer_address TEXT`,
+    `ALTER TABLE invoices ADD COLUMN buyer_registration_type TEXT`,
+  ]},
 ];
 
 async function main() {

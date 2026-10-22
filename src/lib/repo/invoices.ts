@@ -30,7 +30,7 @@ export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorize
   return dbSelect<InvoiceListRow>(
     `
     SELECT i.id, i.invoice_no, i.date,
-           COALESCE(c.name, 'Walk-in') AS customer_name,
+           COALESCE(NULLIF(i.customer_name, ''), c.name, 'Walk-in') AS customer_name,
            sm.name AS salesman_name,
            i.total, i.payable, i.paid, i.balance,
            orig.invoice_no AS original_invoice_no,

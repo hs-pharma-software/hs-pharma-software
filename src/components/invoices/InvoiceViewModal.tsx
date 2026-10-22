@@ -8,7 +8,8 @@ import { listItemsForInvoice, invoicesRepo, type InvoiceItemWithProduct } from "
 import { useAuthStore } from "@/store/authStore";
 import { isTauri } from "@/lib/platform";
 import { tenantsRepo } from "@/lib/repo/tenants";
-import { loadFbrSettings, submitInvoiceToFbr, type FbrSettings } from "@/lib/fbr";
+import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
+import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import type { Invoice, Tenant } from "@/lib/types2";
 
 interface InvoiceViewRow {
@@ -60,44 +61,10 @@ export function InvoiceViewModal({
     if (!fbrSettings || items.length === 0) return;
     setFbrSubmitting(true);
     setFbrError(null);
-    const result = await submitInvoiceToFbr(
-      {
-        invoiceType: "Sale Invoice",
-        invoiceDate: inv.date,
-        sellerNTNCNIC: fbrSettings.sellerNtn,
-        sellerBusinessName: fbrSettings.sellerName,
-        sellerProvince: fbrSettings.sellerProvince,
-        sellerAddress: fbrSettings.sellerAddress,
-        buyerBusinessName: row.customerName,
-        buyerProvince: fbrSettings.sellerProvince,
-        buyerAddress: "",
-        buyerRegistrationType: "Unregistered",
-        items: items.map((item) => ({
-          hsCode: "0000.0000",
-          productDescription: item.product_name,
-          rate: item.tax_pct > 0 ? `${item.tax_pct}%` : "0%",
-          uoM: "Numbers, pieces, units",
-          quantity: item.qty,
-          totalValues: item.total,
-          valueSalesExcludingST: item.total,
-          fixedNotifiedValueOrRetailPrice: 0,
-          salesTaxApplicable: (item.total * (item.tax_pct ?? 0)) / 100,
-          salesTaxWithheldAtSource: 0,
-          extraTax: 0,
-          furtherTax: item.further_tax_pct > 0 ? (item.total * item.further_tax_pct) / 100 : 0,
-          sroScheduleNo: "",
-          fedPayable: 0,
-          discount: item.discount_rs,
-          saleType: "Goods at standard rate (default)",
-          sroItemSerialNo: "",
-        })),
-      },
-      fbrSettings
-    );
+    const result = await submitInvoiceToFbrById(inv.id, fbrSettings);
     setFbrSubmitting(false);
     if (result.success && result.fbrInvoiceNo) {
       setFbrInvoiceNo(result.fbrInvoiceNo);
-      await invoicesRepo.update(inv.id, { fbr_invoice_no: result.fbrInvoiceNo });
     } else {
       setFbrError(result.error ?? "Unknown error");
     }
@@ -190,13 +157,18 @@ export function InvoiceViewModal({
           {/* ── Customer / Salesman ── */}
           {template === "receipt" ? (
             <div className="mb-3 text-xs text-neutral-600">
-              <p><span className="font-medium text-neutral-800">Customer:</span> {row.customerName}</p>
+              <p><span className="font-medium text-neutral-800">Customer:</span> {inv.customer_name || row.customerName}</p>
+              {inv.customer_phone && <p><span className="font-medium text-neutral-800">Mobile:</span> {inv.customer_phone}</p>}
+              {inv.buyer_ntn_cnic && <p><span className="font-medium text-neutral-800">NTN/CNIC:</span> {inv.buyer_ntn_cnic}</p>}
               {row.salesmanName && <p><span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName}</p>}
             </div>
           ) : (
-            <div className="mb-4 grid grid-cols-2 gap-3 text-neutral-600">
-              <p><span className="font-medium text-neutral-800">Customer:</span> {row.customerName}</p>
+            <div className="mb-4 grid grid-cols-2 gap-x-3 gap-y-1 text-neutral-600">
+              <p><span className="font-medium text-neutral-800">Customer:</span> {inv.customer_name || row.customerName}</p>
               <p><span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName ?? "\u2014"}</p>
+              {inv.customer_phone && <p><span className="font-medium text-neutral-800">Mobile:</span> {inv.customer_phone}</p>}
+              {inv.buyer_ntn_cnic && <p><span className="font-medium text-neutral-800">NTN/CNIC:</span> {inv.buyer_ntn_cnic}</p>}
+              {inv.buyer_address && <p className="col-span-2"><span className="font-medium text-neutral-800">Address:</span> {inv.buyer_address}{inv.buyer_province ? `, ${inv.buyer_province}` : ""}</p>}
             </div>
           )}
 

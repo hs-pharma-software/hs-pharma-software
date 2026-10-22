@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -9,14 +9,14 @@ import { InvoiceFormModal } from "@/components/invoices/InvoiceFormModal";
 import { InvoiceViewModal } from "@/components/invoices/InvoiceViewModal";
 import {
   listInvoicesForGrid,
-  listItemsForInvoice,
   invoicesRepo,
   deleteInvoiceWithStockRestore,
   type InvoiceListRow,
 } from "@/lib/repo/invoices";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAppStore } from "@/store/appStore";
-import { loadFbrSettings, submitInvoiceToFbr, type FbrSettings } from "@/lib/fbr";
+import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
+import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import type { Invoice } from "@/lib/types2";
 
 export default function InvoicesPage() {
@@ -91,48 +91,11 @@ export default function InvoicesPage() {
     setSubmittingIds((prev) => new Set(prev).add(row.id));
     setFbrErrors((prev) => { const n = { ...prev }; delete n[row.id]; return n; });
 
-    const items = await listItemsForInvoice(row.id);
-
-    const result = await submitInvoiceToFbr(
-      {
-        invoiceType: "Sale Invoice",
-        invoiceDate: row.date,
-        sellerNTNCNIC: fbrSettings.sellerNtn,
-        sellerBusinessName: fbrSettings.sellerName,
-        sellerProvince: fbrSettings.sellerProvince,
-        sellerAddress: fbrSettings.sellerAddress,
-        buyerBusinessName: row.customer_name,
-        buyerProvince: fbrSettings.sellerProvince,
-        buyerAddress: "",
-        buyerRegistrationType: "Unregistered",
-        items: items.map((item) => ({
-          hsCode: "0000.0000",
-          productDescription: item.product_name,
-          rate: item.tax_pct > 0 ? `${item.tax_pct}%` : "0%",
-          uoM: "Numbers, pieces, units",
-          quantity: item.qty,
-          totalValues: item.total,
-          valueSalesExcludingST: item.total,
-          fixedNotifiedValueOrRetailPrice: 0,
-          salesTaxApplicable: (item.total * (item.tax_pct ?? 0)) / 100,
-          salesTaxWithheldAtSource: 0,
-          extraTax: 0,
-          furtherTax: item.further_tax_pct > 0 ? (item.total * item.further_tax_pct) / 100 : 0,
-          sroScheduleNo: "",
-          fedPayable: 0,
-          discount: item.discount_rs,
-          saleType: "Goods at standard rate (default)",
-          sroItemSerialNo: "",
-        })),
-      },
-      fbrSettings
-    );
+    const result = await submitInvoiceToFbrById(row.id, fbrSettings);
 
     setSubmittingIds((prev) => { const n = new Set(prev); n.delete(row.id); return n; });
 
     if (result.success && result.fbrInvoiceNo) {
-      await invoicesRepo.update(row.id, { fbr_invoice_no: result.fbrInvoiceNo });
-      // Optimistically update this row in state
       setRows((prev) =>
         prev.map((r) => r.id === row.id ? { ...r, fbr_invoice_no: result.fbrInvoiceNo } : r)
       );

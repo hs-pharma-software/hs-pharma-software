@@ -195,6 +195,12 @@ export interface Invoice extends TenantRow {
   is_quotation: number;
   quotation_no: number | null;
   fbr_invoice_no: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  buyer_ntn_cnic: string | null;
+  buyer_province: string | null;
+  buyer_address: string | null;
+  buyer_registration_type: string | null;
 }
 
 export interface InvoiceItem extends TenantRow {
