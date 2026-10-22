@@ -634,6 +634,15 @@ fn schema_sql_v13() -> &'static str {
     "#
 }
 
+fn schema_sql_v14() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN hs_code TEXT;
+    ALTER TABLE products ADD COLUMN fbr_sale_type TEXT;
+    ALTER TABLE products ADD COLUMN fbr_sale_rate REAL DEFAULT 0;
+    ALTER TABLE products ADD COLUMN fbr_uom TEXT;
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -851,6 +860,12 @@ pub fn run() {
             version: 13,
             description: "invoice_fbr_invoice_no",
             sql: schema_sql_v13(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "product_fbr_fields",
+            sql: schema_sql_v14(),
             kind: MigrationKind::Up,
         },
     ];

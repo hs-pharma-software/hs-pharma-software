@@ -162,6 +162,12 @@ const MIGRATIONS = [
   { version: 13, label: 'invoices.fbr_invoice_no (FBR Digital Invoicing)', statements: [
     `ALTER TABLE invoices ADD COLUMN fbr_invoice_no TEXT`,
   ]},
+  { version: 14, label: 'products.fbr_fields (HS Code, FBR Sale Type/Rate/UOM)', statements: [
+    `ALTER TABLE products ADD COLUMN hs_code TEXT`,
+    `ALTER TABLE products ADD COLUMN fbr_sale_type TEXT`,
+    `ALTER TABLE products ADD COLUMN fbr_sale_rate REAL DEFAULT 0`,
+    `ALTER TABLE products ADD COLUMN fbr_uom TEXT`,
+  ]},
 ];
 
 async function main() {

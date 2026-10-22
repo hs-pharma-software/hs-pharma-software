@@ -45,6 +45,14 @@ export function ProductFormModal({
   const [expiryLimitDays, setExpiryLimitDays] = useState(String(product?.stock_expiry_limit_days ?? ""));
   const [location, setLocation] = useState(product?.location ?? "");
 
+  // FBR fields
+  const [hsCode, setHsCode] = useState(product?.hs_code ?? "");
+  const [fbrSaleType, setFbrSaleType] = useState(product?.fbr_sale_type ?? "");
+  const [fbrSaleRate, setFbrSaleRate] = useState(String(product?.fbr_sale_rate ?? 0));
+  const [fbrUom, setFbrUom] = useState(product?.fbr_uom ?? "");
+  const [sroNo, setSroNo] = useState(product?.sro_no ?? "");
+  const [sroItemSerialNo, setSroItemSerialNo] = useState(product?.sro_item_serial_no ?? "");
+
   // Opening stock (create only)
   const [batchNo, setBatchNo] = useState("");
   const [quantity, setQuantity] = useState("0");
@@ -169,6 +177,12 @@ export function ProductFormModal({
         max_stock_qty: maxStockQty ? Number(maxStockQty) : null,
         stock_expiry_limit_days: expiryLimitDays ? Number(expiryLimitDays) : null,
         location: location || null,
+        hs_code: hsCode || null,
+        fbr_sale_type: fbrSaleType || null,
+        fbr_sale_rate: Number(fbrSaleRate) || 0,
+        fbr_uom: fbrUom || null,
+        sro_no: sroNo || null,
+        sro_item_serial_no: sroItemSerialNo || null,
       };
 
       if (isEdit && product) {
@@ -334,6 +348,53 @@ export function ProductFormModal({
           </Field>
           <Field label="Location">
             <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+          </Field>
+        </div>
+
+        {/* FBR / Tax Details */}
+        <div className="flex items-center rounded-md bg-[#006633]/[0.06] px-3 py-1.5">
+          <div className="mr-2 flex h-5 w-5 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
+          <span className="text-sm font-medium text-neutral-700">FBR / Tax Details</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label="HS Code">
+            <Input value={hsCode} onChange={(e) => setHsCode(e.target.value)} placeholder="e.g. 3004.9090" />
+          </Field>
+          <Field label="FBR Sale Type">
+            <Select value={fbrSaleType} onChange={(e) => setFbrSaleType(e.target.value)}>
+              <option value="">Select...</option>
+              <option value="Goods at standard rate (default)">Goods at standard rate (default)</option>
+              <option value="Goods at reduced rate">Goods at reduced rate</option>
+              <option value="Goods at zero rate">Goods at zero rate</option>
+              <option value="Goods exempt">Goods exempt</option>
+              <option value="Goods at further tax rate">Goods at further tax rate</option>
+              <option value="Services at standard rate">Services at standard rate</option>
+            </Select>
+          </Field>
+          <Field label="FBR Sale Rate %">
+            <Input type="number" min="0" step="any" value={fbrSaleRate} onChange={(e) => setFbrSaleRate(e.target.value)} />
+          </Field>
+          <Field label="FBR UOM">
+            <Select value={fbrUom} onChange={(e) => setFbrUom(e.target.value)}>
+              <option value="">Select...</option>
+              <option value="Numbers, pieces, units">Numbers, pieces, units</option>
+              <option value="Kilograms">Kilograms</option>
+              <option value="Grams">Grams</option>
+              <option value="Litres">Litres</option>
+              <option value="Millilitres">Millilitres</option>
+              <option value="Metres">Metres</option>
+              <option value="Square Metres">Square Metres</option>
+              <option value="Cubic Metres">Cubic Metres</option>
+              <option value="Pairs">Pairs</option>
+              <option value="Dozens">Dozens</option>
+              <option value="Sets">Sets</option>
+            </Select>
+          </Field>
+          <Field label="SRO Schedule No">
+            <Input value={sroNo} onChange={(e) => setSroNo(e.target.value)} placeholder="e.g. 5th Schedule" />
+          </Field>
+          <Field label="SRO Item Serial No">
+            <Input value={sroItemSerialNo} onChange={(e) => setSroItemSerialNo(e.target.value)} placeholder="e.g. 1" />
           </Field>
         </div>
 

@@ -44,6 +44,10 @@ export interface Product extends BaseRow {
   sro_item_serial_no: string | null;
   pct_code: string | null;
   online_store_status: string | null;
+  hs_code: string | null;
+  fbr_sale_type: string | null;
+  fbr_sale_rate: number;
+  fbr_uom: string | null;
 }
 
 export interface ProductBatch extends TenantRow {
