@@ -6,7 +6,7 @@
  *   sro_no, sro_item_serial_no
  *
  * Rules (Pakistan FBR / Sales Tax Act 1990):
- *  - Registered medicines          → HS 3004.9099, Exempt goods, 6th Schd Table I (item serial must be set)
+ *  - Registered medicines          → HS 3004.9099, Exempt goods, Eighth Schedule Table 1 item 81
  *  - Antibiotics                   → HS 3004.2000
  *  - Vitamins / Supplements        → HS 3004.5000
  *  - Hormones / Steroids           → HS 3004.3200
@@ -78,9 +78,9 @@ function classifyProduct(name, description) {
 
   // ── Surgical sutures / dressings (exempt) ─────────────────────────────────
   if (/CATGUT|SUTURE|POLYPROPYLENE|PACRYL|TRULENE|UNILENE|SILK BRAIDED|NYLON SUTURE/.test(combined))
-    return { hs: '3005.9090', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+    return { hs: '3005.9090', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
   if (/DRESSING|BANDAGE|WOUND WASH/.test(combined))
-    return { hs: '3005.9090', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+    return { hs: '3005.9090', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
 
   // ── Herbal / Tinct / Unregistered ─────────────────────────────────────────
   if (/TINCT|HERBAL|ARQ |UNANI/.test(combined))
@@ -88,22 +88,22 @@ function classifyProduct(name, description) {
 
   // ── Vitamins / Supplements ────────────────────────────────────────────────
   if (/VITAMIN|ASCORBIC ACID|FOLIC ACID|FOLATE|CALCIUM|VITAMIN C|VITAMIN D|VITAMIN B|IRON|ZINC|SELENIUM|L-ARGININE|OMEGA|FISH OIL/.test(combined))
-    return { hs: '3004.5090', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+    return { hs: '3004.5090', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
 
   // ── Antibiotics ───────────────────────────────────────────────────────────
   if (/AMOXICILLIN|AMOXICLAV|CO-AMOX|CEFTRIAXONE|CEFTRIXONE|CEFIXIME|CEPHRADINE|CIPROFLOXACIN|CIPROFLAXACIN|DOXYCYCLINE|LEVOFLOXACIN|AZITHROMYCIN|CLARITHROMYCIN|METRONIDAZOLE|CLINDAMYCIN|PENICILLIN|OFLOXACIN|MEROPENEM|IMIPENEM|ERTAPENEM|CEFUROXIME/.test(combined))
-    return { hs: '3004.2000', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+    return { hs: '3004.2000', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
 
   // ── Corticosteroids / Steroids ────────────────────────────────────────────
   if (/DEXAMETHASONE|PREDNISOLONE|HYDROCORTISONE|TRIAMCINOLONE|BUDESONIDE|FLUTICASONE|BETAMETHASONE|MOMETASONE|CLOBETASOL/.test(combined))
-    return { hs: '3004.3200', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+    return { hs: '3004.3200', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
 
   // ── Hormones / Endocrine ──────────────────────────────────────────────────
   if (/INSULIN|METFORMIN|SITAGLIPTIN|GLIPIZIDE|GLIBENCLAMIDE|GLICLAZIDE|PIOGLITAZONE|LEVOTHYROXINE|THYROXINE/.test(combined))
-    return { hs: '3004.3900', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+    return { hs: '3004.3900', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
 
   // ── Default: all other registered medicines → Exempt, HS 3004.9099 ────────
-  return { hs: '3004.9099', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
+  return { hs: '3004.9099', saleType: 'Exempt goods', rate: 0, uom, sro: 'Eighth Schedule Table 1', sroItem: '81' };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

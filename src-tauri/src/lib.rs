@@ -717,6 +717,16 @@ fn schema_sql_v17() -> &'static str {
     "#
 }
 
+/// Exempt products get SRO "Eighth Schedule Table 1" item 81, the only SRO
+/// item FBR's reference APIs (SroSchedule/SROItem) offer for drugs at the
+/// Exempt rate. Products already given a serial are left alone.
+fn schema_sql_v18() -> &'static str {
+    r#"
+    UPDATE products SET sro_no = 'Eighth Schedule Table 1', sro_item_serial_no = '81'
+    WHERE fbr_sale_type = 'Exempt goods' AND COALESCE(sro_item_serial_no, '') = '';
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -958,6 +968,12 @@ pub fn run() {
             version: 17,
             description: "product_fbr_data_corrections",
             sql: schema_sql_v17(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 18,
+            description: "product_exempt_sro_serial_81",
+            sql: schema_sql_v18(),
             kind: MigrationKind::Up,
         },
     ];

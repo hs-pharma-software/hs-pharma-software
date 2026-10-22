@@ -83,7 +83,7 @@ export const FBR_SALE_TYPES: SaleTypeEntry[] = [
     defaultRate: 0,
     rateLabel: () => "Exempt",
     scenario: () => "SN006",
-    description: "Exempt from sales tax (needs SRO and item serial, e.g. 6th Schd Table I)",
+    description: "Exempt (registered drugs: SRO Eighth Schedule Table 1, item 81)",
   },
   {
     value: "Goods at zero-rate",
