@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createTenantRepo } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { OrderRow, OrderItem } from "../types2";
@@ -44,7 +44,7 @@ export interface LowStockOrderRow {
 }
 
 /** Same low-stock threshold as the Dashboard widget (20% of max_stock_qty,
- * or a flat 10-unit fallback when a product never got one configured) — kept
+ * or a flat 10-unit fallback when a product never got one configured) \u2014 kept
  * here too so the Order screen can drive "add to purchase" straight off it.
  * `avail_qty` is this tenant's own stock of an otherwise-shared product. */
 export async function getLowStockForOrder(limit = 100): Promise<LowStockOrderRow[]> {

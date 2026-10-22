@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Image from "next/image";
@@ -100,7 +100,7 @@ export function Topbar() {
                 {lastError && <p className="mt-1 text-rose-600">{lastError}</p>}
                 {!online && (
                   <p className="mt-1 text-neutral-500">
-                    Working offline — everything you do is saved locally and will push to Turso
+                    Working offline \u2014 everything you do is saved locally and will push to Turso
                     automatically once you&apos;re back online.
                   </p>
                 )}
@@ -143,7 +143,7 @@ export function Topbar() {
               >
                 <p className="font-medium text-neutral-800">{currentUser?.displayName || currentUser?.username}</p>
                 <p className="mt-0.5 text-neutral-500">
-                  {currentUser?.role === "super_admin" ? "Super Admin" : currentTenant?.name ?? "—"}
+                  {currentUser?.role === "super_admin" ? "Super Admin" : currentTenant?.name ?? "\u2014"}
                 </p>
                 <button
                   type="button"

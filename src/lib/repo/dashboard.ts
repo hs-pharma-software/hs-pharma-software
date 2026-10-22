@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { useAuthStore } from "../../store/authStore";
 
 function currentTenantId(): string | null {
@@ -13,7 +13,7 @@ export interface LowStockRow {
 }
 
 /** Flags products at or below a low-stock threshold: their own
- * `max_stock_qty * 0.2` when set, else a flat fallback of 10 units — so
+ * `max_stock_qty * 0.2` when set, else a flat fallback of 10 units \u2014 so
  * products that never got a max stock configured still surface here instead
  * of silently never alerting. `avail_qty` is this tenant's own stock of an
  * otherwise shared product. */
@@ -93,7 +93,7 @@ export interface TopProductRow {
   sales: number;
 }
 
-/** Nets returns out of qty/sales per product — a return invoice (is_return=1)
+/** Nets returns out of qty/sales per product \u2014 a return invoice (is_return=1)
  * subtracts from the original sale instead of being invisible to this
  * ranking (previously it only looked at is_return=0, so returning an item
  * had zero effect on "top selling"). */

@@ -1,9 +1,9 @@
-import { create } from "zustand";
+﻿import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export type UserRole = "super_admin" | "owner" | "staff";
 
-/** Trimmed-down session shapes — just what the UI/repo layer needs on every
+/** Trimmed-down session shapes \u2014 just what the UI/repo layer needs on every
  * screen, not the full DB rows (which live in `users`/`tenants` tables and
  * are fetched in full by the admin screens that manage them). */
 export interface SessionUser {

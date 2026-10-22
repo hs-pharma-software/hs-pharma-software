@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store/authStore";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
 import { LoginScreen } from "./LoginScreen";
 
-/** Root gate mounted in the app layout, outside `SyncProvider`/`AppShell` —
+/** Root gate mounted in the app layout, outside `SyncProvider`/`AppShell` \u2014
  * Works in both Tauri (desktop) and browser (Vercel web).
  * Shows, in order:
  *   1. Loading spinner while checking DB
@@ -25,15 +25,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     void anyUserExists().then((exists) => setNeedsSetup(!exists));
   }, [pathname, currentUser]);
 
-  // Landing page is public — no auth needed
+  // Landing page is public \u2014 no auth needed
   if (pathname === "/") return <>{children}</>;
 
-  // Already logged in — show the app
+  // Already logged in \u2014 show the app
   if (currentUser) {
     return <>{children}</>;
   }
 
-  // Still checking the DB — show a minimal loading state
+  // Still checking the DB \u2014 show a minimal loading state
   if (needsSetup === null) {
     return (
       <div className="flex h-screen items-center justify-center bg-neutral-50">
@@ -42,11 +42,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // No users in DB yet — first-run setup
+  // No users in DB yet \u2014 first-run setup
   if (needsSetup) {
     return <SetupSuperAdmin onDone={() => setNeedsSetup(false)} />;
   }
 
-  // Users exist but not logged in — show login
+  // Users exist but not logged in \u2014 show login
   return <LoginScreen />;
 }

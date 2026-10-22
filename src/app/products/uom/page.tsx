@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -24,7 +24,7 @@ export default function UomPage() {
 
   const columns: Column<Uom>[] = [
     { header: "Unit Name", render: (u) => u.name },
-    { header: "Description", render: (u) => u.description ?? "—" },
+    { header: "Description", render: (u) => u.description ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

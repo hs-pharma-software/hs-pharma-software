@@ -1,10 +1,10 @@
-export interface AppTheme {
+﻿export interface AppTheme {
   accent: string;      // main brand color (default amber #f59e0b)
   sidebarFrom: string; // sidebar gradient top
   sidebarTo: string;   // sidebar gradient bottom
   appBg: string;       // page canvas background
   modalOverlay: string;// modal backdrop color (hex, opacity applied separately)
-  font: string;        // font name — "System Default" uses Geist
+  font: string;        // font name \u2014 "System Default" uses Geist
 }
 
 export const DEFAULT_THEME: AppTheme = {

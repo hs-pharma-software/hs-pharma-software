@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/authStore";
 import { AppShell } from "./AppShell";
 import { SuperAdminShell } from "./SuperAdminShell";
 
-/** Picks which chrome wraps the current page based on who's logged in — the
+/** Picks which chrome wraps the current page based on who's logged in \u2014 the
  * Super Admin never sees pharmacy business screens (or any tenant's private
  * data), so `/admin/*` and every other route are two separate worlds. */
 export function RoleShell({ children }: { children: React.ReactNode }) {
@@ -22,7 +22,7 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
     if (!isSuperAdmin && isAdminRoute) router.replace("/dashboard");
   }, [pathname, isSuperAdmin, isAdminRoute, router]);
 
-  // Landing page — no shell, no sidebar
+  // Landing page \u2014 no shell, no sidebar
   if (pathname === "/") return <>{children}</>;
 
   if (isSuperAdmin) {

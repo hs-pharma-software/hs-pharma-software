@@ -1,8 +1,8 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createRepo } from "./base";
 import type { UserAccount } from "../types2";
 
-/** Login accounts (Super Admin + tenant owner/staff) — global/system table,
+/** Login accounts (Super Admin + tenant owner/staff) \u2014 global/system table,
  * not itself scoped by tenant_id (tenant_id is a plain column here, nullable
  * for the Super Admin). */
 export const usersRepo = createRepo<UserAccount>("users");

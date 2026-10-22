@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+﻿import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   FileText,
@@ -30,7 +30,7 @@ export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  /** Vocabulary used by `subscription_plans.allowed_modules` — see
+  /** Vocabulary used by `subscription_plans.allowed_modules` \u2014 see
    * src/lib/moduleAccess.ts and src/components/layout/Sidebar.tsx. */
   moduleKey: string;
   children?: NavChild[];

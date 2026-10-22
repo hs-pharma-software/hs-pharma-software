@@ -1,4 +1,4 @@
-import { createClient, type Client } from "@libsql/client/web";
+﻿import { createClient, type Client } from "@libsql/client/web";
 import { dbExecute, dbSelect } from "../db";
 import { nowIso } from "../id";
 import { SYNCABLE_TABLES, TENANT_SCOPED_TABLES } from "./tables";
@@ -80,7 +80,7 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
 }
 
 /** Pull rows changed remotely since the last cursor per table, and upsert
- * them locally — but only when the remote row is actually newer
+ * them locally \u2014 but only when the remote row is actually newer
  * (last-write-wins on `updated_at`), so a local edit made while offline
  * isn't clobbered by a stale remote copy during the same sync pass. */
 export async function pullChanges(): Promise<{ pulled: number }> {
@@ -94,10 +94,10 @@ export async function pullChanges(): Promise<{ pulled: number }> {
   for (const table of SYNCABLE_TABLES) {
     const isTenantScoped = (TENANT_SCOPED_TABLES as readonly string[]).includes(table);
     // The Super Admin has no tenant and no business seeing any tenant's
-    // private stock/pricing/sales — skip these tables for that session
+    // private stock/pricing/sales \u2014 skip these tables for that session
     // entirely rather than pulling everyone's data down.
     if (isTenantScoped && isSuperAdmin) continue;
-    // Not logged in yet, or a tenant user with no tenant resolved somehow —
+    // Not logged in yet, or a tenant user with no tenant resolved somehow \u2014
     // nothing safe to pull for tenant-scoped tables.
     if (isTenantScoped && !tenantId) continue;
 

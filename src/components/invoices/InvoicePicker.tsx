@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/Field";
 import { searchInvoicesForReturn, type InvoiceListRow } from "@/lib/repo/invoices";
 
 /** Typeahead "search by bill # or customer" used to pick the original
- * invoice a return is against — the first step of Sale Item Return. */
+ * invoice a return is against \u2014 the first step of Sale Item Return. */
 export function InvoicePicker({
   onSelect,
   autoFocus,
@@ -49,7 +49,7 @@ export function InvoicePicker({
               className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-amber-50"
             >
               <span>
-                #{inv.invoice_no} — {inv.customer_name} <span className="text-neutral-400">({inv.date})</span>
+                #{inv.invoice_no} \u2014 {inv.customer_name} <span className="text-neutral-400">({inv.date})</span>
               </span>
               <span className="text-neutral-500">{inv.total.toFixed(2)}</span>
             </button>

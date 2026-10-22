@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -22,8 +22,8 @@ export default function PurchaseItemReturnPage() {
   }, []);
 
   const columns: Column<PurchaseListRow>[] = [
-    { header: "Return #", render: (r) => r.purchase_no ?? "—" },
-    { header: "Against P.ID", render: (r) => r.original_purchase_no ?? "—" },
+    { header: "Return #", render: (r) => r.purchase_no ?? "\u2014" },
+    { header: "Against P.ID", render: (r) => r.original_purchase_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
     { header: "Supplier", render: (r) => r.supplier_name },
     { header: "Paid Amount", render: (r) => r.paid_amount.toFixed(2) },

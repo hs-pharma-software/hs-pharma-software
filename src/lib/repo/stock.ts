@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { productBatchesRepo } from "./products";
 import { useAuthStore } from "../../store/authStore";
 import type { ProductBatch } from "../types";
@@ -7,10 +7,10 @@ function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
 }
 
-/** Adds received stock to a batch — reuses an existing batch row for the
+/** Adds received stock to a batch \u2014 reuses an existing batch row for the
  * same product+batch_no if one exists (bumping its qty and purchase price),
  * otherwise creates a new one. Used by Purchase and the manual Stock screen.
- * Matched within the logged-in tenant's own stock only — the product itself
+ * Matched within the logged-in tenant's own stock only \u2014 the product itself
  * may be shared, but two tenants reusing the same batch number must not
  * collide into one row. */
 export async function receiveStock(input: {

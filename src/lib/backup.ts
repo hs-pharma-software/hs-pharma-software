@@ -1,4 +1,4 @@
-import { appDataDir, join } from "@tauri-apps/api/path";
+﻿import { appDataDir, join } from "@tauri-apps/api/path";
 import { readFile, writeFile, exists } from "@tauri-apps/plugin-fs";
 import { save, open } from "@tauri-apps/plugin-dialog";
 
@@ -9,11 +9,11 @@ async function getDbPath(): Promise<string> {
 
 /** Copies the local SQLite file to a location the user picks. This backs up
  * exactly what's on this machine, independent of whether Turso sync has run
- * — useful as a last-resort recovery path if sync/Turso is unavailable. */
+ * \u2014 useful as a last-resort recovery path if sync/Turso is unavailable. */
 export async function createLocalBackup(): Promise<string | null> {
   const dbPath = await getDbPath();
   if (!(await exists(dbPath))) {
-    throw new Error("No local database file found yet — add some data first.");
+    throw new Error("No local database file found yet \u2014 add some data first.");
   }
   const bytes = await readFile(dbPath);
   const dest = await save({

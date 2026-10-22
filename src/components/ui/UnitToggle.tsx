@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-/** Small Base/Secondary unit segmented switch — e.g. "Pack | Tab". Used
+/** Small Base/Secondary unit segmented switch \u2014 e.g. "Pack | Tab". Used
  * anywhere a product with a configured secondary unit lets you enter qty
  * and price in either one (Products, Purchase, Order, Quotation, Invoice). */
 export function UnitToggle({

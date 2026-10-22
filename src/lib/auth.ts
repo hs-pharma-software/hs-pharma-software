@@ -1,12 +1,12 @@
-import { usersRepo, findUserByUsername, countActiveStaffLogins } from "./repo/users";
+﻿import { usersRepo, findUserByUsername, countActiveStaffLogins } from "./repo/users";
 import { tenantsRepo } from "./repo/tenants";
 import { subscriptionPlansRepo, parseAllowedModules } from "./repo/subscriptionPlans";
 import type { SessionTenant, SessionUser } from "../store/authStore";
 import type { UserAccount, UserRole } from "./types2";
 
 /** Client-side password hashing (SHA-256, salted). There is no backend
- * server in this app's architecture — the desktop client talks directly to
- * the shared Turso database — so this protects against casual inspection of
+ * server in this app's architecture \u2014 the desktop client talks directly to
+ * the shared Turso database \u2014 so this protects against casual inspection of
  * the `users` table, not against a determined attacker with access to the
  * embedded Turso credential. See the multi-tenant plan's caveat. */
 async function sha256Hex(text: string): Promise<string> {
@@ -108,7 +108,7 @@ export async function createUser(params: {
     const cap = plan?.max_staff_logins ?? 0;
     const current = await countActiveStaffLogins(params.tenantId);
     if (current >= cap) {
-      throw new AuthError(`This plan allows up to ${cap} staff login(s) — the limit has been reached.`);
+      throw new AuthError(`This plan allows up to ${cap} staff login(s) \u2014 the limit has been reached.`);
     }
   }
 

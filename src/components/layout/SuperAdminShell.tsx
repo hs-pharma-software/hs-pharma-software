@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { AdminSidebar } from "./AdminSidebar";
 import { Topbar } from "./Topbar";
 import { PageTransition } from "./PageTransition";
 
 /** Shown instead of the normal pharmacy `AppShell` when the logged-in user
- * is the Super Admin — a different nav (Tenants / Subscription Plans /
+ * is the Super Admin \u2014 a different nav (Tenants / Subscription Plans /
  * Users), and deliberately no `GlobalShortcuts`/`Calculator` (those are
  * cashier/POS shortcuts for the pharmacy screens, not relevant here). */
 export function SuperAdminShell({ children }: { children: React.ReactNode }) {

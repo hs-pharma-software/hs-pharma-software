@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppStore, type PendingAction } from "@/store/appStore";
 
-/** ALT-key shortcuts that just navigate to a screen — mirrors the "To Open
+/** ALT-key shortcuts that just navigate to a screen \u2014 mirrors the "To Open
  * View Forms" half of Utilities -> System Shortcuts. */
 const VIEW_ROUTES: Record<string, string> = {
   d: "/dashboard",
@@ -23,7 +23,7 @@ const VIEW_ROUTES: Record<string, string> = {
   w: "/banks/statement",
 };
 
-/** ALT-key shortcuts that navigate AND open that screen's "Add" modal —
+/** ALT-key shortcuts that navigate AND open that screen's "Add" modal \u2014
  * mirrors the "To Open New Forms" half of the same sheet. Each target page
  * watches `pendingAction` (see appStore.ts) the same way Invoices already
  * did for Ctrl+N. */

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Eye, Printer, Trash2 } from "lucide-react";
@@ -85,8 +85,8 @@ export default function TasksPage() {
   const columns: Column<TaskItem>[] = [
     { header: "Assign Date", render: (t) => t.assign_date },
     { header: "Task", render: (t) => t.task_name },
-    { header: "Assign By", render: (t) => t.assign_by ?? "—" },
-    { header: "Assign To", render: (t) => t.assign_to ?? "—" },
+    { header: "Assign By", render: (t) => t.assign_by ?? "\u2014" },
+    { header: "Assign To", render: (t) => t.assign_to ?? "\u2014" },
     {
       header: "Status",
       render: (t) => (
@@ -103,7 +103,7 @@ export default function TasksPage() {
         </span>
       ),
     },
-    { header: "Finished Date", render: (t) => t.finished_date ?? "—" },
+    { header: "Finished Date", render: (t) => t.finished_date ?? "\u2014" },
     {
       header: "Actions",
       render: (t) => (
@@ -265,13 +265,13 @@ export default function TasksPage() {
                 <span className="font-medium text-neutral-800">Status:</span> {viewing.status}
               </p>
               <p>
-                <span className="font-medium text-neutral-800">Assign By:</span> {viewing.assign_by ?? "—"}
+                <span className="font-medium text-neutral-800">Assign By:</span> {viewing.assign_by ?? "\u2014"}
               </p>
               <p>
-                <span className="font-medium text-neutral-800">Assign To:</span> {viewing.assign_to ?? "—"}
+                <span className="font-medium text-neutral-800">Assign To:</span> {viewing.assign_to ?? "\u2014"}
               </p>
               <p>
-                <span className="font-medium text-neutral-800">Finished Date:</span> {viewing.finished_date ?? "—"}
+                <span className="font-medium text-neutral-800">Finished Date:</span> {viewing.finished_date ?? "\u2014"}
               </p>
             </div>
             {viewing.description && (

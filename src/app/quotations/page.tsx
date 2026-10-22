@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -41,17 +41,17 @@ export default function QuotationsPage() {
   }
 
   const columns: Column<QuotationListRow>[] = [
-    { header: "Quotation #", render: (r) => r.quotation_no ?? "—" },
+    { header: "Quotation #", render: (r) => r.quotation_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
     { header: "Customer", render: (r) => r.customer_name },
-    { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
+    { header: "Salesman", render: (r) => r.salesman_name ?? "\u2014" },
     { header: "Payable (Est.)", render: (r) => r.payable.toFixed(2) },
     {
       header: "Status",
       render: (r) =>
         r.converted_invoice_id ? (
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-            Converted → Invoice #{r.converted_invoice_no ?? "—"}
+            Converted → Invoice #{r.converted_invoice_no ?? "\u2014"}
           </span>
         ) : (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Pending</span>
@@ -61,7 +61,7 @@ export default function QuotationsPage() {
       header: "Action",
       render: (r) =>
         r.converted_invoice_id ? (
-          <span className="text-neutral-400">—</span>
+          <span className="text-neutral-400">\u2014</span>
         ) : (
           <button
             type="button"
@@ -106,7 +106,7 @@ export default function QuotationsPage() {
         <DataTable
           columns={columns}
           rows={rows}
-          emptyMessage="No content in table — use Add to create a quotation. Quotations don't count toward sales/invoices until accepted."
+          emptyMessage="No content in table \u2014 use Add to create a quotation. Quotations don't count toward sales/invoices until accepted."
         />
       )}
 

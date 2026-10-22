@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useCallback } from "react";
 import { useAppStore } from "@/store/appStore";
@@ -67,7 +67,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
     // Apply the real browser online/offline state post-mount (the store
     // starts as `true` on both server and client to avoid a hydration
-    // mismatch — see appStore.ts).
+    // mismatch \u2014 see appStore.ts).
     setOnline(navigator.onLine);
 
     void refreshPendingCount();

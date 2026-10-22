@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -28,7 +28,7 @@ function compute(a: number, op: string, b: number): number {
 }
 
 /** CTRL+T (System Calculator, per Utilities -> System Shortcuts) toggles
- * this — mounted once in AppShell so it works from anywhere in the app. */
+ * this \u2014 mounted once in AppShell so it works from anywhere in the app. */
 export function Calculator() {
   const open = useAppStore((s) => s.calculatorOpen);
   const setOpen = useAppStore((s) => s.setCalculatorOpen);

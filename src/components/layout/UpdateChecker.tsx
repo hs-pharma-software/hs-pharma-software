@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { Download, CheckCircle } from "lucide-react";
@@ -23,7 +23,7 @@ export function UpdateChecker() {
           setStatus("available");
         }
       } catch {
-        // silently ignore — no update or no network
+        // silently ignore \u2014 no update or no network
       }
     };
 
@@ -52,7 +52,7 @@ export function UpdateChecker() {
     return (
       <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
         <CheckCircle size={13} />
-        Updated — restart to apply
+        Updated \u2014 restart to apply
       </div>
     );
   }

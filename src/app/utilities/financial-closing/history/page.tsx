@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Eye, Printer, Trash2 } from "lucide-react";
@@ -45,7 +45,7 @@ export default function FinancialClosingHistoryPage() {
     { header: "Date", render: (r) => r.date },
     { header: "Closed At", render: (r) => new Date(r.closed_at).toLocaleString() },
     { header: "Batch Action", render: (r) => (r.batch_action === "archive" ? "Archive expired batches" : "Keep all batches") },
-    { header: "Description", render: (r) => r.description ?? "—" },
+    { header: "Description", render: (r) => r.description ?? "\u2014" },
     {
       header: "Actions",
       render: (r) => (

@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 
 /** True ONLY when running inside the Tauri desktop shell.
  * Used internally by db.ts (pick SQLite vs Turso) and outbox.ts.
- * Don't use this in pages — use isTauri() / useIsTauri() instead. */
+ * Don't use this in pages \u2014 use isTauri() / useIsTauri() instead. */
 export function isTauriShell(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-/** True when the database is available — either:
+/** True when the database is available \u2014 either:
  *  - Running inside the Tauri desktop shell (local SQLite), OR
  *  - Running in a browser / Vercel with Turso credentials configured.
  *
@@ -32,5 +32,5 @@ export function useIsTauri(): boolean {
   return ready;
 }
 
-/** @deprecated use isTauri() — kept for any import that used isDbReady() */
+/** @deprecated use isTauri() \u2014 kept for any import that used isDbReady() */
 export const isDbReady = isTauri;

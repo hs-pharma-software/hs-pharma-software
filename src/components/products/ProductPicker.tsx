@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Input } from "@/components/ui/Field";
@@ -10,7 +10,7 @@ export interface ProductPickerHandle {
 }
 
 /** Typeahead "Barcode/Product Name" input used across Stock, Orders,
- * Purchases and Invoices — mirrors the reference app's product search box.
+ * Purchases and Invoices \u2014 mirrors the reference app's product search box.
  * Supports arrow-key navigation through suggestions and Enter to select. */
 export const ProductPicker = forwardRef<
   ProductPickerHandle,

@@ -1,4 +1,4 @@
-import { dbExecute, dbSelect } from "../db";
+﻿import { dbExecute, dbSelect } from "../db";
 import { newId, nowIso } from "../id";
 import { isTauriShell as isTauri } from "../platform";
 
@@ -6,14 +6,14 @@ export type SyncOp = "insert" | "update" | "delete";
 
 /** Every local write on the desktop is mirrored into `sync_outbox` so the
  * sync engine can replay it against Turso when online.
- * On the web (Vercel), writes go directly to Turso — no outbox needed. */
+ * On the web (Vercel), writes go directly to Turso \u2014 no outbox needed. */
 export async function recordOutbox(
   table: string,
   rowId: string,
   op: SyncOp,
   payload: Record<string, unknown> | null
 ): Promise<void> {
-  // Web: writing directly to Turso already — outbox is desktop-only
+  // Web: writing directly to Turso already \u2014 outbox is desktop-only
   if (!isTauri()) return;
 
   await dbExecute(

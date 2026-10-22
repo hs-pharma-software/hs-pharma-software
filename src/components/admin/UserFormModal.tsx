@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -11,7 +11,7 @@ import type { Tenant, UserRole } from "@/lib/types2";
 /** Creates a new login. Two modes:
  * - Super Admin (`scope: "all"`): picks any tenant and role (owner/staff).
  * - Tenant owner (`scope: "own"`): tenant and role are fixed (their own
- *   tenant, role "staff") — they can only add staff seats for themselves,
+ *   tenant, role "staff") \u2014 they can only add staff seats for themselves,
  *   capped by their plan's max_staff_logins (enforced in `createUser`). */
 export function UserFormModal({
   scope,

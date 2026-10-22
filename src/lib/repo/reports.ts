@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { getTotalPartyBalance } from "./ledger";
 import { useAuthStore } from "../../store/authStore";
 
@@ -118,7 +118,7 @@ async function groupedProfitLoss(
             : "COALESCE(cu.name, 'Walk-in')";
 
   // Returns (is_return=1) subtract from the matching product/company/
-  // category/customer instead of being ignored — a return with no effect
+  // category/customer instead of being ignored \u2014 a return with no effect
   // here was exactly the "still shows in profit" bug.
   const sign = "CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END";
   return dbSelect<GroupedPL>(
@@ -307,7 +307,7 @@ export async function getTrialBalance(): Promise<TrialBalanceRow[]> {
     { id: "cash", account: "Cash In Hand", debit: Math.max(cash[0].n, 0), credit: Math.max(-cash[0].n, 0) },
     ...banks.map((b, i) => ({
       id: `bank-${i}`,
-      account: `Bank — ${b.name}`,
+      account: `Bank \u2014 ${b.name}`,
       debit: Math.max(b.n, 0),
       credit: Math.max(-b.n, 0),
     })),

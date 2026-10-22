@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -25,11 +25,11 @@ export default function BanksPage() {
 
   const columns: Column<Bank>[] = [
     { header: "Bank Name", render: (b) => <span className="font-medium">{b.name}</span> },
-    { header: "Account No", render: (b) => b.account_no ?? "—" },
-    { header: "Account Title", render: (b) => b.account_title ?? "—" },
+    { header: "Account No", render: (b) => b.account_no ?? "\u2014" },
+    { header: "Account Title", render: (b) => b.account_title ?? "\u2014" },
     { header: "Opening Balance", render: (b) => b.opening_balance.toFixed(2) },
-    { header: "Address", render: (b) => b.address ?? "—" },
-    { header: "Phone No", render: (b) => b.phone ?? "—" },
+    { header: "Address", render: (b) => b.address ?? "\u2014" },
+    { header: "Phone No", render: (b) => b.phone ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

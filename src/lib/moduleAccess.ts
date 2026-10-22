@@ -1,4 +1,4 @@
-import { useAuthStore } from "../store/authStore";
+﻿import { useAuthStore } from "../store/authStore";
 import { NAV } from "../config/nav";
 
 /** Maps a pathname like "/invoices/returns" back to its top-level module key
@@ -15,7 +15,7 @@ export function moduleKeyForPath(pathname: string): string | null {
 }
 
 /** Whether the logged-in tenant's subscription plan includes this module.
- * Always true for the Super Admin (who isn't on a plan) — module gating
+ * Always true for the Super Admin (who isn't on a plan) \u2014 module gating
  * only applies to tenant users. */
 export function hasModuleAccess(moduleKey: string | null): boolean {
   const { currentUser, currentTenant } = useAuthStore.getState();

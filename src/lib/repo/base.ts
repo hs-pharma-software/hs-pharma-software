@@ -1,4 +1,4 @@
-import { dbExecute, dbSelect } from "../db";
+﻿import { dbExecute, dbSelect } from "../db";
 import { newId, nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
 import { useAuthStore } from "../../store/authStore";
@@ -11,8 +11,8 @@ export interface BaseRow {
 }
 
 /** Base shape for every table that's private to one pharmacy tenant (as
- * opposed to the shared medicine catalog — categories/sub_categories/uoms/
- * products — which stays plain `BaseRow` with no `tenant_id`). */
+ * opposed to the shared medicine catalog \u2014 categories/sub_categories/uoms/
+ * products \u2014 which stays plain `BaseRow` with no `tenant_id`). */
 export interface TenantRow extends BaseRow {
   tenant_id: string;
 }
@@ -20,14 +20,14 @@ export interface TenantRow extends BaseRow {
 function requireCurrentTenantId(): string {
   const tenantId = useAuthStore.getState().currentTenant?.id;
   if (!tenantId) {
-    throw new Error("No tenant is logged in — this action requires a tenant session.");
+    throw new Error("No tenant is logged in \u2014 this action requires a tenant session.");
   }
   return tenantId;
 }
 
 /** Generic CRUD factory shared by every module's repository. Handles id/
  * timestamp stamping, soft deletes, and recording every write to the sync
- * outbox — so individual repo files only need to add table-specific queries
+ * outbox \u2014 so individual repo files only need to add table-specific queries
  * (joins, filters) on top of this. */
 export function createRepo<T extends BaseRow>(table: string) {
   async function get(id: string): Promise<T | null> {

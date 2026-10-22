@@ -1,9 +1,9 @@
-import { isTauriShell as isTauri } from "./platform";
+﻿import { isTauriShell as isTauri } from "./platform";
 import { createClient, type Client } from "@libsql/client/web";
 
 // ── Turso client (browser / Vercel web version) ──────────────────────
 // When running in a browser (deployed on Vercel), every read/write goes
-// directly to the Turso cloud DB — no local SQLite, no sync delay.
+// directly to the Turso cloud DB \u2014 no local SQLite, no sync delay.
 let tursoClient: Client | null = null;
 
 function getTursoClient(): Client {
@@ -12,7 +12,7 @@ function getTursoClient(): Client {
     const authToken = process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN;
     if (!url || !authToken)
       throw new Error(
-        "Turso not configured — set NEXT_PUBLIC_TURSO_DATABASE_URL and NEXT_PUBLIC_TURSO_AUTH_TOKEN"
+        "Turso not configured \u2014 set NEXT_PUBLIC_TURSO_DATABASE_URL and NEXT_PUBLIC_TURSO_AUTH_TOKEN"
       );
     tursoClient = createClient({ url, authToken });
   }
@@ -23,7 +23,7 @@ function getTursoClient(): Client {
 // Dynamically imported so the browser bundle never tries to load the
 // Tauri plugin (which only exists inside the desktop shell).
 // The sync engine (lib/sync/engine.ts) pushes local changes to Turso
-// and pulls remote changes back — every 60 s and on demand.
+// and pulls remote changes back \u2014 every 60 s and on demand.
 let dbPromise: Promise<import("@tauri-apps/plugin-sql").default> | null = null;
 
 async function getTauriDb(): Promise<import("@tauri-apps/plugin-sql").default> {

@@ -1,4 +1,4 @@
-import type { BaseRow, TenantRow } from "./repo/base";
+﻿import type { BaseRow, TenantRow } from "./repo/base";
 
 export interface Salesman extends TenantRow {
   name: string;
@@ -238,7 +238,7 @@ export interface FinancialClosing extends TenantRow {
 // ===== Multi-tenant: Super Admin, tenants, subscriptions ================
 // These three are global/system tables, not owned by any tenant themselves
 // (a `tenants` row IS a tenant; `users.tenant_id` is nullable for the Super
-// Admin) — so they extend plain `BaseRow`, not `TenantRow`.
+// Admin) \u2014 so they extend plain `BaseRow`, not `TenantRow`.
 
 export type SubscriptionStatus = "active" | "suspended" | "expired";
 export type UserRole = "super_admin" | "owner" | "staff";
@@ -248,7 +248,7 @@ export interface SubscriptionPlan extends BaseRow {
   description: string | null;
   price: number;
   duration_days: number;
-  /** JSON-encoded array of nav module keys (see src/config/nav.ts) — parse
+  /** JSON-encoded array of nav module keys (see src/config/nav.ts) \u2014 parse
    * with `JSON.parse` before use, see src/lib/repo/subscriptionPlans.ts. */
   allowed_modules: string;
   max_staff_logins: number;

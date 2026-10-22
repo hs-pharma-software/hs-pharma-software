@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createTenantRepo } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { deductStock, listAvailableBatches } from "./stock";
@@ -109,7 +109,7 @@ export async function getReturnedQtyByProduct(originalPurchaseId: string): Promi
 /** One-click "return whole invoice": returns every line of the original
  * purchase at its full still-returnable qty (received_qty minus whatever
  * was already returned against it) in a single new return purchase, rather
- * than the cashier re-picking each item — Purchase Item Return remains the
+ * than the cashier re-picking each item \u2014 Purchase Item Return remains the
  * flow for a partial, item-by-item return. */
 export async function returnWholePurchase(purchaseId: string, paidAmount = 0): Promise<string> {
   const original = await purchasesRepo.get(purchaseId);
@@ -124,7 +124,7 @@ export async function returnWholePurchase(purchaseId: string, paidAmount = 0): P
     }))
     .filter((l) => l.returnQty > 0);
 
-  if (lines.length === 0) throw new Error("Nothing left to return on this purchase — every item was already returned.");
+  if (lines.length === 0) throw new Error("Nothing left to return on this purchase \u2014 every item was already returned.");
 
   const payable = lines.reduce((s, l) => s + l.item.purchase_price * l.returnQty, 0);
 

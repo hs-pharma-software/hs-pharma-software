@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
@@ -19,7 +19,7 @@ interface InvoiceViewRow {
 
 /** Read-only invoice detail + print. The printable area is isolated by id
  * so `window.print()` (wired to the Print button) only outputs this content
- * — see the `@media print` rule in globals.css scoped to #invoice-print-area. */
+ * \u2014 see the `@media print` rule in globals.css scoped to #invoice-print-area. */
 export function InvoiceViewModal({
   row,
   onClose,
@@ -107,7 +107,7 @@ export function InvoiceViewModal({
 
   return (
     <Modal
-      title={`-:${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "—"}:-`}
+      title={`-:${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "\u2014"}:-`}
       onClose={onClose}
       width="max-w-3xl"
     >
@@ -164,7 +164,7 @@ export function InvoiceViewModal({
               {tenantInfo?.phone && <p className="text-xs text-neutral-500">Ph: {tenantInfo.phone}</p>}
               {template !== "receipt" && (
                 <p className="mt-1 text-neutral-500">
-                  {!!inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "—"}
+                  {!!inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "\u2014"}
                   {!!inv.is_return && (
                     <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
                       Return{originalInvoiceNo ? ` of Bill #${originalInvoiceNo}` : ""}
@@ -175,7 +175,7 @@ export function InvoiceViewModal({
             </div>
             {template === "receipt" ? (
               <div className="mt-1 text-center text-xs text-neutral-500">
-                <p className="font-semibold">{!!inv.is_return ? "RETURN" : "RECEIPT"} #{inv.invoice_no ?? "—"}</p>
+                <p className="font-semibold">{!!inv.is_return ? "RETURN" : "RECEIPT"} #{inv.invoice_no ?? "\u2014"}</p>
                 <p>{inv.date} · {inv.inv_on === "credit" ? "Credit" : "Cash"}</p>
                 {!!inv.is_return && originalInvoiceNo && <p className="text-rose-600">of Bill #{originalInvoiceNo}</p>}
               </div>
@@ -196,7 +196,7 @@ export function InvoiceViewModal({
           ) : (
             <div className="mb-4 grid grid-cols-2 gap-3 text-neutral-600">
               <p><span className="font-medium text-neutral-800">Customer:</span> {row.customerName}</p>
-              <p><span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName ?? "—"}</p>
+              <p><span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName ?? "\u2014"}</p>
             </div>
           )}
 
@@ -257,15 +257,15 @@ export function InvoiceViewModal({
                   return (
                     <tr key={item.id} className="border-b border-neutral-100">
                       <td className="py-1.5 pr-2">{item.product_name}</td>
-                      <td className="py-1.5 pr-2">{item.batch_no ?? "—"}</td>
+                      <td className="py-1.5 pr-2">{item.batch_no ?? "\u2014"}</td>
                       <td className="py-1.5 pr-2 text-right">
                         {dispQty % 1 === 0 ? dispQty : dispQty.toFixed(2)}{unitLabel ? ` ${unitLabel}` : ""}
                       </td>
                       <td className="py-1.5 pr-2 text-right">
-                        {dispBonus > 0 ? `${dispBonus % 1 === 0 ? dispBonus : dispBonus.toFixed(2)}${unitLabel ? ` ${unitLabel}` : ""}` : "—"}
+                        {dispBonus > 0 ? `${dispBonus % 1 === 0 ? dispBonus : dispBonus.toFixed(2)}${unitLabel ? ` ${unitLabel}` : ""}` : "\u2014"}
                       </td>
                       <td className="py-1.5 pr-2 text-right">{dispPrice.toFixed(2)}</td>
-                      <td className="py-1.5 pr-2 text-right">{item.discount_pct ? `${item.discount_pct}%` : "—"}</td>
+                      <td className="py-1.5 pr-2 text-right">{item.discount_pct ? `${item.discount_pct}%` : "\u2014"}</td>
                       <td className="py-1.5 text-right">{item.total.toFixed(2)}</td>
                     </tr>
                   );

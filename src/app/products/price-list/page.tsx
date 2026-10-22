@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -56,13 +56,13 @@ export default function PriceListPage() {
   }, []);
 
   const columns: Column<PriceListRow>[] = [
-    { header: "Barcode", render: (r) => r.barcode ?? "—" },
+    { header: "Barcode", render: (r) => r.barcode ?? "\u2014" },
     { header: "Product", render: (r) => r.product_name },
-    { header: "Batch", render: (r) => r.batch_no ?? "—" },
+    { header: "Batch", render: (r) => r.batch_no ?? "\u2014" },
     { header: "Sales Price", render: (r) => r.sale_price.toFixed(2) },
     { header: "Wholesale Price", render: (r) => r.wholesale_price.toFixed(2) },
     { header: "MRP", render: (r) => r.mrp.toFixed(2) },
-    { header: "Comment", render: (r) => r.comment ?? "—" },
+    { header: "Comment", render: (r) => r.comment ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

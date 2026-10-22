@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -53,14 +53,14 @@ export function ProductFormModal({
   const [wholesalePrice, setWholesalePrice] = useState("0");
   const [mrp, setMrp] = useState("0");
   const [expiryDate, setExpiryDate] = useState("");
-  /** Which unit Quantity/prices above are currently expressed in — e.g. for
+  /** Which unit Quantity/prices above are currently expressed in \u2014 e.g. for
    * a Pack of 10 Tab, entering "1" Pack here at Rs.100 is the same physical
    * stock as "10" Tab at Rs.10 each; toggling converts qty and price so the
    * total value stays put, and everything is normalized back to base units
    * (packs) on save since that's what product_batches always tracks in. */
   const [openingStockUnit, setOpeningStockUnit] = useState<"base" | "secondary">("base");
 
-  // Current rates (edit only) — the product's most recent batch cost and
+  // Current rates (edit only) \u2014 the product's most recent batch cost and
   // retail price, shown so they can actually be changed after creation
   // instead of only ever being set once at Add time.
   const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
@@ -111,7 +111,7 @@ export function ProductFormModal({
   }, [categoryId]);
 
   // Auto-fill Secondary Unit from the chosen sub category's default (e.g.
-  // "Tablets" -> Tab) — only when nothing's picked yet, so it never
+  // "Tablets" -> Tab) \u2014 only when nothing's picked yet, so it never
   // clobbers a deliberate choice.
   useEffect(() => {
     if (!subCategoryId || secondaryUnitId) return;
@@ -364,7 +364,7 @@ export function ProductFormModal({
                     value={purchaseRate}
                     readOnly
                     disabled
-                    title="Purchase rate cannot be changed here — update via Purchase entry"
+                    title="Purchase rate cannot be changed here \u2014 update via Purchase entry"
                     className="cursor-not-allowed opacity-60"
                   />
                 </Field>

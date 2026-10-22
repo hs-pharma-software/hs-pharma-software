@@ -1,10 +1,10 @@
-import { dbExecute, dbSelect } from "../db";
+﻿import { dbExecute, dbSelect } from "../db";
 import { nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
 import { useAuthStore } from "../../store/authStore";
 
 /** Settings are tenant-private (tax rate, receipt layout, etc.) but the
- * table has no `tenant_id` column of its own — scoping is done by prefixing
+ * table has no `tenant_id` column of its own \u2014 scoping is done by prefixing
  * the key instead, so no schema change was needed. Falls back to the bare
  * key when no tenant is logged in (shouldn't normally happen outside the
  * Super Admin, who has no use for these settings). */

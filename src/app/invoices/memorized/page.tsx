@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -51,7 +51,7 @@ export default function MemorizedInvoicesPage() {
           Run inside the desktop app to view memorized invoices.
         </p>
       ) : (
-        <DataTable columns={columns} rows={rows} emptyMessage="No content in table — use Memorize on Create Invoice to save a draft here (not wired up in this build yet)." />
+        <DataTable columns={columns} rows={rows} emptyMessage="No content in table \u2014 use Memorize on Create Invoice to save a draft here (not wired up in this build yet)." />
       )}
     </div>
   );

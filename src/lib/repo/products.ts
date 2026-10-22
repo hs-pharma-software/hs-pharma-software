@@ -1,9 +1,9 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createRepo, createTenantRepo } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { Product, ProductBatch, PriceListEntry } from "../types";
 
-/** The medicine catalog itself is shared across every tenant — adding a
+/** The medicine catalog itself is shared across every tenant \u2014 adding a
  * product here makes it visible to everyone, including the Super Admin, so
  * this stays on the plain (non-tenant-scoped) factory. Stock and pricing
  * below are each tenant's own private data. */
@@ -34,7 +34,7 @@ export interface ProductListRow {
  * stock + current sale price, matching the reference app's Product Detail
  * grid (`Barcode | Product Name | Company | ... | UOM | Avail Qty`).
  * `avail_qty`/`sale_price` are scoped to the logged-in tenant's own stock and
- * pricing — the product row itself (name/category/etc.) is shared. */
+ * pricing \u2014 the product row itself (name/category/etc.) is shared. */
 export async function listProductsForGrid(): Promise<ProductListRow[]> {
   const tenantId = currentTenantId();
   return dbSelect<ProductListRow>(
@@ -82,7 +82,7 @@ export async function getLatestPrice(productId: string): Promise<{ salePrice: nu
 
 export interface CurrentRates {
   /** The most recently received batch, or null if the product has never
-   * had stock — Purchase Rate has nowhere to persist against without one. */
+   * had stock \u2014 Purchase Rate has nowhere to persist against without one. */
   batchId: string | null;
   batchNo: string | null;
   purchasePrice: number;
@@ -92,7 +92,7 @@ export interface CurrentRates {
 }
 
 /** Powers the "current purchase & retail rate" fields on Product Detail's
- * edit form — previously those rates were only ever entered once, at
+ * edit form \u2014 previously those rates were only ever entered once, at
  * creation, with no way to see or change them afterwards short of going to
  * Purchase or Price List separately. Scoped to the logged-in tenant's own
  * batch/price history for this (possibly shared) product. */
@@ -115,7 +115,7 @@ export async function getCurrentRates(productId: string): Promise<CurrentRates> 
   };
 }
 
-/** Only touches the shared `products` table — no tenant filter needed, every
+/** Only touches the shared `products` table \u2014 no tenant filter needed, every
  * tenant (and the Super Admin) searches the same catalog. */
 export async function searchProductsByNameOrBarcode(term: string): Promise<Product[]> {
   const like = `%${term}%`;

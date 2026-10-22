@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -34,7 +34,7 @@ export default function TenantsPage() {
     void reload();
   }, []);
 
-  const planName = (id: string | null) => plans.find((p) => p.id === id)?.name ?? "—";
+  const planName = (id: string | null) => plans.find((p) => p.id === id)?.name ?? "\u2014";
 
   async function toggleSuspend(t: Tenant) {
     await tenantsRepo.update(t.id, {
@@ -55,8 +55,8 @@ export default function TenantsPage() {
 
   const columns: Column<Tenant>[] = [
     { header: "Name", render: (t) => <span className="font-medium">{t.name}</span> },
-    { header: "Owner", render: (t) => t.owner_name ?? "—" },
-    { header: "Phone", render: (t) => t.phone ?? "—" },
+    { header: "Owner", render: (t) => t.owner_name ?? "\u2014" },
+    { header: "Phone", render: (t) => t.phone ?? "\u2014" },
     { header: "Plan", render: (t) => planName(t.subscription_plan_id) },
     {
       header: "Status",
@@ -74,7 +74,7 @@ export default function TenantsPage() {
     },
     {
       header: "Expires On",
-      render: (t) => (t.subscription_expires_at ? new Date(t.subscription_expires_at).toLocaleDateString() : "—"),
+      render: (t) => (t.subscription_expires_at ? new Date(t.subscription_expires_at).toLocaleDateString() : "\u2014"),
     },
     {
       header: "Actions",

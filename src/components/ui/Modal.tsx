@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { X } from "lucide-react";
 import { motion } from "motion/react";
 
 /** Note: callers conditionally render `<Modal />` itself (`{open && <Modal/>}`),
  * so there's no persistent parent for `AnimatePresence` to track an exit
- * transition against — only the entrance animates. That's a deliberate
+ * transition against \u2014 only the entrance animates. That's a deliberate
  * simplification; wiring real exit transitions would mean threading open/close
  * state through every call site instead of this single component. */
 export function Modal({

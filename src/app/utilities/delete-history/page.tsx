@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -36,8 +36,8 @@ export default function DeleteHistoryPage() {
   const columns: Column<DeleteHistoryRow>[] = [
     { header: "Date", render: (r) => r.date },
     { header: "Delete From", render: (r) => r.delete_from },
-    { header: "Delete By", render: (r) => r.delete_by ?? "—" },
-    { header: "Reason", render: (r) => r.reason ?? "—" },
+    { header: "Delete By", render: (r) => r.delete_by ?? "\u2014" },
+    { header: "Reason", render: (r) => r.reason ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

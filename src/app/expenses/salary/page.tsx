@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -54,7 +54,7 @@ export default function SalaryDetailsPage() {
 
   const columns: Column<SalaryRow>[] = [
     { header: "Salary Month", render: (r) => `${r.salary_month} ${r.salary_year}` },
-    { header: "Employee Name", render: (r) => r.staff_name ?? "—" },
+    { header: "Employee Name", render: (r) => r.staff_name ?? "\u2014" },
     { header: "Payable Salary", render: (r) => r.payable_salary.toFixed(2) },
     { header: "Paid Salary", render: (r) => r.paid_salary.toFixed(2) },
     { header: "Balance Salary", render: (r) => r.balance_salary.toFixed(2) },

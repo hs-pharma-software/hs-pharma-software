@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -126,7 +126,7 @@ export function SubscriptionPlanFormModal({
           </div>
         </div>
         <div className="flex items-center justify-between border-t border-neutral-200 pt-3">
-          {/* Delete — only shown when editing an existing plan */}
+          {/* Delete \u2014 only shown when editing an existing plan */}
           {isEdit && plan && (
             confirmDelete ? (
               <div className="flex items-center gap-2">

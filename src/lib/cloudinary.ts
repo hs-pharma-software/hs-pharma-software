@@ -1,7 +1,7 @@
-/** Unsigned upload to Cloudinary's free tier. Requires an unsigned upload
+﻿/** Unsigned upload to Cloudinary's free tier. Requires an unsigned upload
  * preset configured in the Cloudinary dashboard (Settings -> Upload ->
  * Upload presets -> add preset -> Signing Mode: Unsigned) so the desktop app
- * never needs to embed an API secret. Needs network — see
+ * never needs to embed an API secret. Needs network \u2014 see
  * `isImageUploadAvailable()` before calling this from offline-aware code. */
 export async function uploadImageToCloudinary(file: File | Blob): Promise<string> {
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;

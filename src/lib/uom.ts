@@ -1,14 +1,14 @@
-import type { Product } from "./types";
+﻿import type { Product } from "./types";
 
 /** Whether a product actually has a distinct secondary unit worth offering
- * a Pack/sub-unit toggle for — no secondary unit (or same as base) means
+ * a Pack/sub-unit toggle for \u2014 no secondary unit (or same as base) means
  * there's nothing to convert to, so callers should just show a plain
  * qty/price field the way every screen already did before this feature. */
 export function hasSecondaryUnit(product: Pick<Product, "secondary_unit_id" | "base_unit_id">): boolean {
   return Boolean(product.secondary_unit_id) && product.secondary_unit_id !== product.base_unit_id;
 }
 
-/** Effective packing (sub-units per base unit) — guards against a stray 0
+/** Effective packing (sub-units per base unit) \u2014 guards against a stray 0
  * that would otherwise divide-by-zero when converting to the secondary
  * unit. */
 export function effectivePacking(packing: number): number {
@@ -17,14 +17,14 @@ export function effectivePacking(packing: number): number {
 
 /** Quantity conversion when the unit toggle flips: going TO the secondary
  * unit multiplies by packing (1 pack -> 10 Tab), going back to base divides
- * by it — preserves the physical amount the qty describes. */
+ * by it \u2014 preserves the physical amount the qty describes. */
 export function convertQtyOnUnitToggle(qty: number, togglingToSecondary: boolean, packing: number): number {
   const p = effectivePacking(packing);
   return togglingToSecondary ? qty * p : qty / p;
 }
 
 /** Price conversion is the inverse of quantity's, so qty * price (the line
- * total) stays the same across the toggle — a Rs.100 pack of 10 becomes
+ * total) stays the same across the toggle \u2014 a Rs.100 pack of 10 becomes
  * Rs.10 per Tab automatically ("MRP auto divides by sub-unit count"). */
 export function convertPriceOnUnitToggle(price: number, togglingToSecondary: boolean, packing: number): number {
   const p = effectivePacking(packing);
@@ -32,13 +32,13 @@ export function convertPriceOnUnitToggle(price: number, togglingToSecondary: boo
 }
 
 /** Normalizes a qty entered in whichever unit was selected back to base
- * units (packs) — what product_batches.qty / stock deduction and receipt
+ * units (packs) \u2014 what product_batches.qty / stock deduction and receipt
  * always operate in, regardless of which unit the cashier transacted in. */
 export function toBaseUnitQty(qty: number, isSecondaryUnit: boolean, packing: number): number {
   return isSecondaryUnit ? qty / effectivePacking(packing) : qty;
 }
 
-/** Inverse of toBaseUnitQty — how much of a base-unit stock figure (avail
+/** Inverse of toBaseUnitQty \u2014 how much of a base-unit stock figure (avail
  * qty, max stock, ...) reads as when displayed in the secondary unit. */
 export function fromBaseUnitQty(qty: number, isSecondaryUnit: boolean, packing: number): number {
   return isSecondaryUnit ? qty * effectivePacking(packing) : qty;

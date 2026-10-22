@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Eye, Pencil, Trash2, Printer } from "lucide-react";
@@ -79,9 +79,9 @@ export default function InvoicesPage() {
   }
 
   const columns: Column<InvoiceListRow>[] = [
-    { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
+    { header: "Bill #", render: (r) => r.invoice_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
-    { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
+    { header: "Salesman", render: (r) => r.salesman_name ?? "\u2014" },
     { header: "Customer", render: (r) => r.customer_name },
     { header: "Total Bill", render: (r) => r.total.toFixed(2) },
     { header: "Paid", render: (r) => r.paid.toFixed(2) },

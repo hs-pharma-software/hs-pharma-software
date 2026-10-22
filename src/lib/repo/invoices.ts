@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createTenantRepo } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { receiveStock, deductStock, listAvailableBatches } from "./stock";
@@ -45,7 +45,7 @@ export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorize
 }
 
 /** How many real (non-return, non-quotation) invoices the current tenant has
- * created since the given month started — used to enforce a subscription
+ * created since the given month started \u2014 used to enforce a subscription
  * plan's `max_invoices_per_month` cap. */
 export async function countInvoicesThisMonth(monthStartIso: string): Promise<number> {
   const rows = await dbSelect<{ n: number }>(
@@ -112,7 +112,7 @@ export interface QuotationListRow {
 }
 
 /** Quotations live in the same `invoices` table (is_quotation=1) but never
- * consume the invoice_no sequence and never touch stock — that only happens
+ * consume the invoice_no sequence and never touch stock \u2014 that only happens
  * when one is accepted, via convertQuotationToInvoice(). */
 export async function listQuotations(): Promise<QuotationListRow[]> {
   return dbSelect<QuotationListRow>(
@@ -135,7 +135,7 @@ export async function listQuotations(): Promise<QuotationListRow[]> {
 }
 
 /** Accepting a quotation creates a brand-new real invoice (fresh invoice_no,
- * today's date, actual stock deduction against currently available batches —
+ * today's date, actual stock deduction against currently available batches \u2014
  * a quotation never reserved stock, so it re-resolves FEFO batches at accept
  * time rather than trusting whatever batch it was quoted against) and
  * stamps `converted_invoice_id` back onto the quotation. The quotation row
@@ -247,7 +247,7 @@ export async function listItemsForInvoice(invoiceId: string): Promise<InvoiceIte
 }
 
 /** Adds each line's qty+bonus_qty back into stock (re-creating the batch by
- * product_id+batch_no if it no longer exists) — used when editing or
+ * product_id+batch_no if it no longer exists) \u2014 used when editing or
  * deleting an invoice so stock stays correct either way. */
 export async function restoreInvoiceStock(items: InvoiceItem[]): Promise<void> {
   for (const item of items) {
@@ -263,7 +263,7 @@ export async function restoreInvoiceStock(items: InvoiceItem[]): Promise<void> {
 }
 
 /** Soft-deletes an invoice, its line items, and restores the stock they'd
- * deducted — the single place both "Delete" and "Edit" (delete-then-recreate
+ * deducted \u2014 the single place both "Delete" and "Edit" (delete-then-recreate
  * under the hood) route through, so stock bookkeeping can't drift between
  * the two actions. */
 export async function deleteInvoiceWithStockRestore(invoiceId: string, reason?: string): Promise<void> {

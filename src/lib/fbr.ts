@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FBR Digital Invoicing API integration.
  * Spec: Technical Documentation for DI API V1.12 (PRAL, 2025)
  *
@@ -115,7 +115,7 @@ export async function submitInvoiceToFbr(
     });
 
     if (res.status === 401) {
-      return { success: false, fbrInvoiceNo: null, error: "FBR API: Unauthorized — check your Bearer token.", rawResponse: null };
+      return { success: false, fbrInvoiceNo: null, error: "FBR API: Unauthorized \u2014 check your Bearer token.", rawResponse: null };
     }
 
     const json = await res.json() as {

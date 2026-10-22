@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createTenantRepo } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { LedgerAdjustment, PartyType } from "../types2";
@@ -29,13 +29,13 @@ export async function sumPaidForParty(partyType: PartyType, partyId: string): Pr
 
 /** What a party's actual trade balance is from real business (unpaid
  * invoice balances for a customer, unpaid purchase balances for a
- * supplier) — a return nets against it. Staff have no invoices/purchases,
+ * supplier) \u2014 a return nets against it. Staff have no invoices/purchases,
  * so this is 0 for them. Previously the Accounts Receivable/Payable and
  * Outstanding screens only looked at opening_balance and manual ledger
  * adjustments, so a credit sale or purchase never actually moved the
- * balance shown — this is what closes that gap. */
+ * balance shown \u2014 this is what closes that gap. */
 /** Same formula as getPartyTradeBalance, but summed across every customer
- * or supplier at once — powers the Dashboard's Customer Receivable /
+ * or supplier at once \u2014 powers the Dashboard's Customer Receivable /
  * Supplier Payable tiles and the Trial Balance / Balance Sheet reports,
  * all of which previously summed opening_balance alone (or opening_balance
  * minus adjustments) and so never reflected real credit sales/purchases. */

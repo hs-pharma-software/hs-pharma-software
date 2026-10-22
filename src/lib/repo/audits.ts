@@ -1,4 +1,4 @@
-import { dbSelect } from "../db";
+﻿import { dbSelect } from "../db";
 import { createTenantRepo } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { AuditRow, AuditItem } from "../types2";
@@ -12,7 +12,7 @@ export interface AuditItemWithProduct extends AuditItem {
 }
 
 /** Each line's system qty is looked up live (current stock), not stored on
- * the audit item — a re-print or edit later reflects any stock that's
+ * the audit item \u2014 a re-print or edit later reflects any stock that's
  * moved since the count, same way the variance would appear in real life. */
 export async function listItemsForAudit(auditId: string): Promise<AuditItemWithProduct[]> {
   const tenantId = useAuthStore.getState().currentTenant?.id ?? null;

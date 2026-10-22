@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -39,13 +39,13 @@ export default function OrdersPage() {
   }, [pendingAction, setPendingAction]);
 
   const columns: Column<OrderListRow>[] = [
-    { header: "Order No", render: (r) => r.order_no ?? "—" },
+    { header: "Order No", render: (r) => r.order_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
     { header: "Supplier Name", render: (r) => r.supplier_name },
     { header: "Estimated Price", render: (r) => r.estimated_price.toFixed(2) },
     { header: "Advance Payment", render: (r) => r.advance_payment.toFixed(2) },
-    { header: "Payment Method", render: (r) => r.payment_method ?? "—" },
-    { header: "Description", render: (r) => r.description ?? "—" },
+    { header: "Payment Method", render: (r) => r.payment_method ?? "\u2014" },
+    { header: "Description", render: (r) => r.description ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

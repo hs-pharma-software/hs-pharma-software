@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -8,7 +8,7 @@ import { categoriesRepo } from "@/lib/repo/categories";
 import type { Category } from "@/lib/types";
 
 /** Unlike the generic "+" QuickAddDialog (name + description only), this is
- * the full Add/Edit form for Categories Details — the only place
+ * the full Add/Edit form for Categories Details \u2014 the only place
  * flat_discount_pct can actually be set, since QuickAddDialog always wrote
  * it as 0 and there was previously no way to edit a category afterwards. */
 export function CategoryFormModal({

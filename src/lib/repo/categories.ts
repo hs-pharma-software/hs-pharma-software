@@ -1,11 +1,11 @@
-import { createRepo } from "./base";
+﻿import { createRepo } from "./base";
 import type { Category, SubCategory, Product } from "../types";
 
 export const categoriesRepo = createRepo<Category>("categories");
 export const subCategoriesRepo = createRepo<SubCategory>("sub_categories");
 
 /** A product's flat discount comes from its Sub Category when that has one
- * set, else its Category, else no discount — used to prefill the discount %
+ * set, else its Category, else no discount \u2014 used to prefill the discount %
  * when a product is first added to an invoice line instead of always
  * starting at 0. */
 export async function getEffectiveDiscountPct(product: Product): Promise<number> {

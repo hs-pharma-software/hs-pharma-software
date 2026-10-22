@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -22,8 +22,8 @@ export default function SaleItemReturnPage() {
   }, []);
 
   const columns: Column<InvoiceListRow>[] = [
-    { header: "Return #", render: (r) => r.invoice_no ?? "—" },
-    { header: "Against Bill #", render: (r) => r.original_invoice_no ?? "—" },
+    { header: "Return #", render: (r) => r.invoice_no ?? "\u2014" },
+    { header: "Against Bill #", render: (r) => r.original_invoice_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
     { header: "Customer", render: (r) => r.customer_name },
     { header: "Total Refunded", render: (r) => r.total.toFixed(2) },

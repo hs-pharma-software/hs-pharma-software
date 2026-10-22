@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "./PageHeader";
@@ -38,7 +38,7 @@ export function SimpleCategoryPage({
 
   const columns: Column<CategoryRow>[] = [
     { header: "Category Name", render: (r) => r.name },
-    { header: "Description", render: (r) => r.description ?? "—" },
+    { header: "Description", render: (r) => r.description ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

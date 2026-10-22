@@ -1,4 +1,4 @@
-import { create } from "zustand";
+﻿import { create } from "zustand";
 
 export type SyncStatus = "idle" | "syncing" | "error";
 
@@ -21,7 +21,7 @@ interface AppState {
    * the page that can act on it (e.g. Invoices opens Create Invoice when
    * this becomes "new-invoice"), which then clears it back to null. */
   pendingAction: PendingAction;
-  /** CTRL+T (System Calculator) toggles this — see GlobalShortcuts.tsx and
+  /** CTRL+T (System Calculator) toggles this \u2014 see GlobalShortcuts.tsx and
    * the Calculator component mounted in AppShell. */
   calculatorOpen: boolean;
   setOnline: (online: boolean) => void;
@@ -35,7 +35,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  // Deterministic on first render (server and client agree) — the real
+  // Deterministic on first render (server and client agree) \u2014 the real
   // navigator.onLine value is applied post-mount in SyncProvider so we don't
   // get a hydration mismatch from reading a browser-only API during SSR.
   online: true,

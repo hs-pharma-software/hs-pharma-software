@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Field, Input } from "@/components/ui/Field";
@@ -7,7 +7,7 @@ import { createUser, login, AuthError } from "@/lib/auth";
 import { useAuthStore } from "@/store/authStore";
 
 /** Shown exactly once, right after migration v9 runs on a device that
- * already has pre-multi-tenant data — that data was backfilled onto a
+ * already has pre-multi-tenant data \u2014 that data was backfilled onto a
  * "tenant-default" / "My Pharmacy" tenant (see schema_sql_v9 in
  * src-tauri/src/lib.rs), so this screen creates real login credentials for
  * both: the Super Admin (for managing tenants/subscriptions going forward)
@@ -55,7 +55,7 @@ export function SetupSuperAdmin({ onDone }: { onDone: () => void }) {
         <div className="mb-5 text-center">
           <h1 className="font-serif text-2xl text-neutral-800">Welcome to Billora</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            First-time setup — create the administrator account and your pharmacy&apos;s login. Any
+            First-time setup \u2014 create the administrator account and your pharmacy&apos;s login. Any
             existing data on this device is kept and assigned to the pharmacy account below.
           </p>
         </div>

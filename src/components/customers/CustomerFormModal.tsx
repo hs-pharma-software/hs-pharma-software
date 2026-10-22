@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -129,14 +129,14 @@ export function CustomerFormModal({
           </Field>
           <Field label="Income Tax Status">
             <Select value={incomeTaxStatus} onChange={(e) => setIncomeTaxStatus(e.target.value)}>
-              <option value="">—</option>
+              <option value="">\u2014</option>
               <option value="filer">Filer</option>
               <option value="non-filer">Non-Filer</option>
             </Select>
           </Field>
           <Field label="Sales Tax Status">
             <Select value={salesTaxStatus} onChange={(e) => setSalesTaxStatus(e.target.value)}>
-              <option value="">—</option>
+              <option value="">\u2014</option>
               <option value="registered">Registered</option>
               <option value="unregistered">Unregistered</option>
             </Select>

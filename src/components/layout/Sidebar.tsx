@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,7 +16,7 @@ function normalize(path: string): string {
 
 /** Several nav children share a path prefix with their own parent's `href`
  * (e.g. Invoices' parent link is "/invoices", and so is its first child,
- * "Invoices Details") — a naive `pathname.startsWith(href)` check would then
+ * "Invoices Details") \u2014 a naive `pathname.startsWith(href)` check would then
  * light up both "/invoices" and "/invoices/returns" at once. Instead, match
  * every href in the whole nav tree and keep only the longest (most specific)
  * one, so exactly one entry is ever active. */

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -34,15 +34,15 @@ export default function PurchasesPage() {
   }, [pendingAction, setPendingAction]);
 
   const columns: Column<PurchaseListRow>[] = [
-    { header: "P.ID", render: (r) => r.purchase_no ?? "—" },
+    { header: "P.ID", render: (r) => r.purchase_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
     { header: "Supplier", render: (r) => r.supplier_name },
-    { header: "Invoice #", render: (r) => r.supplier_invoice_no ?? "—" },
+    { header: "Invoice #", render: (r) => r.supplier_invoice_no ?? "\u2014" },
     { header: "Discount", render: (r) => r.discount_rs.toFixed(2) },
     { header: "Tax", render: (r) => r.tax.toFixed(2) },
     { header: "Paid Amount", render: (r) => r.paid_amount.toFixed(2) },
     { header: "Balance", render: (r) => r.balance.toFixed(2) },
-    { header: "Payment Method", render: (r) => r.payment_method ?? "—" },
+    { header: "Payment Method", render: (r) => r.payment_method ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

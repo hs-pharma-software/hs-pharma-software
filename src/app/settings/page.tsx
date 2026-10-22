@@ -384,7 +384,7 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
       {/* Info note */}
       <p className="mt-3 text-xs text-neutral-400">
         Tokens are issued by PRAL and valid for 5 years. Both sandbox and production use{" "}
-        <code className="rounded bg-neutral-100 px-1">gw.fbr.gov.pk</code> — routing is determined by the token.
+        <code className="rounded bg-neutral-100 px-1">gw.fbr.gov.pk</code> \u2014 routing is determined by the token.
       </p>
 
       <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3">

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { Modal } from "./Modal";
@@ -7,7 +7,7 @@ import { Button } from "./Button";
 
 /** Small "+" quick-add popup used next to dependent-entity dropdowns
  * (Category, Sub Category, UOM, ...) so a screen never has to be left to
- * create a missing lookup value — mirrors the reference app's inline "+"
+ * create a missing lookup value \u2014 mirrors the reference app's inline "+"
  * buttons on Product/Order/Purchase forms. */
 export function QuickAddDialog({
   title,

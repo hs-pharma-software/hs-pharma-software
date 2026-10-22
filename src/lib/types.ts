@@ -1,4 +1,4 @@
-import type { BaseRow, TenantRow } from "./repo/base";
+﻿import type { BaseRow, TenantRow } from "./repo/base";
 
 export interface Category extends BaseRow {
   name: string;
@@ -12,7 +12,7 @@ export interface SubCategory extends BaseRow {
   name: string;
   flat_discount_pct: number;
   /** New products in this sub category auto-fill their Secondary Unit from
-   * here (e.g. "Tablets" sub category -> Tab) — see lib/uom.ts. */
+   * here (e.g. "Tablets" sub category -> Tab) \u2014 see lib/uom.ts. */
   default_secondary_unit_id: string | null;
   description: string | null;
   image_url: string | null;

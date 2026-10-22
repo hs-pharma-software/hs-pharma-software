@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -46,7 +46,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
   }, [currentTenant?.id]);
 
   const tenantName = (id: string | null) =>
-    id === null ? "— (Super Admin)" : tenants.find((t) => t.id === id)?.name ?? "—";
+    id === null ? "\u2014 (Super Admin)" : tenants.find((t) => t.id === id)?.name ?? "\u2014";
 
   async function toggleActive(u: UserAccount) {
     await usersRepo.update(u.id, { is_active: u.is_active ? 0 : 1 });
@@ -92,7 +92,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
 
   const columns: Column<UserAccount>[] = [
     { header: "Username", render: (u) => <span className="font-medium">{u.username}</span> },
-    { header: "Name", render: (u) => u.display_name ?? "—" },
+    { header: "Name", render: (u) => u.display_name ?? "\u2014" },
     { header: "Role", render: (u) => u.role },
     ...(scope === "all" ? [{ header: "Tenant", render: (u: UserAccount) => tenantName(u.tenant_id) }] : []),
     {
@@ -149,7 +149,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
 
       {capReached && (
         <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Your plan allows up to {currentTenant?.maxStaffLogins} staff login(s) — that limit has been reached.
+          Your plan allows up to {currentTenant?.maxStaffLogins} staff login(s) \u2014 that limit has been reached.
         </p>
       )}
 
@@ -175,7 +175,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
       )}
 
       {resetting && (
-        <Modal title={`-:Reset Password — ${resetting.username}:-`} onClose={() => setResetting(null)} width="max-w-sm">
+        <Modal title={`-:Reset Password \u2014 ${resetting.username}:-`} onClose={() => setResetting(null)} width="max-w-sm">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {
@@ -203,7 +203,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
 
       {editingPerms && (
         <Modal
-          title={`-:Permissions — ${editingPerms.username}:-`}
+          title={`-:Permissions \u2014 ${editingPerms.username}:-`}
           onClose={() => setEditingPerms(null)}
           width="max-w-lg"
         >
@@ -239,9 +239,9 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
             </div>
             <p className="text-xs text-neutral-400">
               {permsState === null
-                ? "Full access — all modules are allowed."
+                ? "Full access \u2014 all modules are allowed."
                 : permsState.length === 0
-                ? "No access — all modules are blocked."
+                ? "No access \u2014 all modules are blocked."
                 : `${permsState.length} of ${NAV.length} modules allowed.`}
             </p>
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
