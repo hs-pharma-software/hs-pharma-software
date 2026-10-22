@@ -48,7 +48,7 @@ export interface ExpiringBatchRow {
   qty: number;
 }
 
-export async function getExpiringSoonBatches(days = 30, limit = 8): Promise<ExpiringBatchRow[]> {
+export async function getExpiringSoonBatches(days = 180, limit = 12): Promise<ExpiringBatchRow[]> {
   return dbSelect<ExpiringBatchRow>(
     `
     SELECT pb.id, p.name AS product_name, pb.batch_no, pb.expiry_date, pb.qty
@@ -113,6 +113,36 @@ export async function getTopSellingProducts(limit = 5): Promise<TopProductRow[]>
     LIMIT ?
   `,
     [currentTenantId(), limit]
+  );
+}
+
+export interface InventoryUnitRow {
+  unit_type: string;
+  product_count: number;
+  total_qty: number;
+}
+
+/** Groups available stock by secondary-unit type (Tab, Inj, Susp, Drops …).
+ * Falls back to base-unit name when no secondary unit is set, so every
+ * product is counted. */
+export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
+  return dbSelect<InventoryUnitRow>(
+    `
+    SELECT
+      COALESCE(su.name, u.name, 'Other') AS unit_type,
+      COUNT(DISTINCT p.id) AS product_count,
+      COALESCE(SUM(pb.qty), 0) AS total_qty
+    FROM products p
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
+    LEFT JOIN uoms u  ON u.id  = p.base_unit_id
+    LEFT JOIN product_batches pb
+           ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL
+    GROUP BY COALESCE(su.name, u.name, 'Other')
+    ORDER BY product_count DESC
+    LIMIT 8
+  `,
+    [currentTenantId()]
   );
 }
 
