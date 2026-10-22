@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -22,7 +22,7 @@ export function OutstandingPage({ title, partyType, table }: { title: string; pa
   const [rows, setRows] = useState<OutstandingRow[]>([]);
 
   // Customers owe against their invoices, suppliers are owed against
-  // purchases â€” staff have neither, so their trade balance is always 0.
+  // purchases - staff have neither, so their trade balance is always 0.
   const tradeClause =
     partyType === "customer"
       ? `COALESCE((SELECT SUM(CASE WHEN is_return = 0 THEN balance ELSE -balance END) FROM invoices WHERE customer_id = p.id AND tenant_id = ? AND deleted_at IS NULL AND is_quotation = 0), 0)`
@@ -65,7 +65,7 @@ export function OutstandingPage({ title, partyType, table }: { title: string; pa
 
   const columns: Column<OutstandingRow>[] = [
     { header: "Name", render: (r) => r.name },
-    { header: "Phone No", render: (r) => r.phone ?? "â€”" },
+    { header: "Phone No", render: (r) => r.phone ?? "\u2014" },
     { header: "Opening Balance", render: (r) => r.opening_balance.toFixed(2) },
     { header: "Total Adjusted", render: (r) => r.total_paid.toFixed(2) },
     { header: "Current Balance", render: (r) => r.balance.toFixed(2) },

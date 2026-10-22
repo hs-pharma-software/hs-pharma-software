@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -64,14 +64,14 @@ export function PartyLedgerPage({
 
   const partyColumns: Column<PartyRow>[] = [
     { header: "Name", render: (p) => p.name },
-    { header: "Phone No", render: (p) => p.phone ?? "â€”" },
+    { header: "Phone No", render: (p) => p.phone ?? "\u2014" },
   ];
 
   const ledgerColumns: Column<LedgerAdjustment>[] = [
     { header: "Date", render: (l) => l.date },
     { header: "Description", render: (l) => l.comment ?? l.balance_type },
     { header: "Amount", render: (l) => l.paid_amount.toFixed(2) },
-    { header: "Comment", render: (l) => l.comment ?? "â€”" },
+    { header: "Comment", render: (l) => l.comment ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();
@@ -103,7 +103,7 @@ export function PartyLedgerPage({
             </div>
             <div>
               <p className="mb-2 text-xs font-medium text-neutral-500">
-                {selected ? `Ledger â€” ${selected.name}` : "Select a party on the left"}
+                {selected ? `Ledger - ${selected.name}` : "Select a party on the left"}
               </p>
               <DataTable columns={ledgerColumns} rows={ledger} />
             </div>

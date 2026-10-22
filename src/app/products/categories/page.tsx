@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -20,7 +20,7 @@ export default function CategoriesPage() {
   const [editingSubCategory, setEditingSubCategory] = useState<SubCategory | null>(null);
   const [subCategoryModalOpen, setSubCategoryModalOpen] = useState(false);
 
-  const uomName = (id: string | null) => uoms.find((u) => u.id === id)?.name ?? "â€”";
+  const uomName = (id: string | null) => uoms.find((u) => u.id === id)?.name ?? "\u2014";
 
   async function reload() {
     if (!isTauri()) return;
@@ -52,14 +52,14 @@ export default function CategoriesPage() {
   const categoryColumns: Column<Category>[] = [
     { header: "Category Name", render: (c) => c.name },
     { header: "Flat discount (%)", render: (c) => c.flat_discount_pct },
-    { header: "Description", render: (c) => c.description ?? "â€”" },
+    { header: "Description", render: (c) => c.description ?? "\u2014" },
   ];
 
   const subCategoryColumns: Column<SubCategory>[] = [
     { header: "Sub Category Name", render: (c) => c.name },
     { header: "Flat discount (%)", render: (c) => c.flat_discount_pct },
     { header: "Default Secondary Unit", render: (c) => uomName(c.default_secondary_unit_id) },
-    { header: "Description", render: (c) => c.description ?? "â€”" },
+    { header: "Description", render: (c) => c.description ?? "\u2014" },
   ];
 
   const tauriReady = useIsTauri();

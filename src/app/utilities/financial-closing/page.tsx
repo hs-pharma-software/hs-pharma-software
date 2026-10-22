@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -57,7 +57,7 @@ export default function FinancialClosingPage() {
       ) : (
         <div className="mx-auto max-w-md rounded-xl border border-rose-200 bg-white p-5 shadow-sm">
           <p className="mb-3 text-sm font-medium text-rose-700">
-            You are going to close the financial year. This is destructive and cannot be undone \u2014
+            You are going to close the financial year. This is destructive and cannot be undone {"\u2014"}
             confirm before closing.
           </p>
           <p className="mb-3 rounded-md bg-neutral-100 px-3 py-2 text-sm text-neutral-700">

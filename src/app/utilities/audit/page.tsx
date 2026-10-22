@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { Eye, Pencil, Printer, Trash2 } from "lucide-react";
@@ -130,8 +130,8 @@ export default function AuditDetailPage() {
 
   const columns: Column<AuditRow>[] = [
     { header: "Date", render: (a) => a.date },
-    { header: "Audit Name", render: (a) => a.audit_name ?? "â€”" },
-    { header: "Description", render: (a) => a.description ?? "â€”" },
+    { header: "Audit Name", render: (a) => a.audit_name ?? "\u2014" },
+    { header: "Description", render: (a) => a.description ?? "\u2014" },
     {
       header: "Actions",
       render: (a) => (
@@ -297,7 +297,7 @@ export default function AuditDetailPage() {
       )}
 
       {viewing && (
-        <Modal title={`-:Audit â€” ${viewing.audit.audit_name ?? ""}:-`} onClose={() => setViewing(null)} width="max-w-2xl">
+        <Modal title={`-:Audit - ${viewing.audit.audit_name ?? ""}:-`} onClose={() => setViewing(null)} width="max-w-2xl">
           <div className="flex justify-end pb-3">
             <Button onClick={() => window.print()}>Print</Button>
           </div>

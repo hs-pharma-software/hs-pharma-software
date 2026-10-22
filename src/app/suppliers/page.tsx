@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -37,10 +37,10 @@ export default function SuppliersPage() {
 
   const columns: Column<Supplier>[] = [
     { header: "Name", render: (s) => <span className="font-medium">{s.name}</span> },
-    { header: "Company Name", render: (s) => s.company_name ?? "â€”" },
-    { header: "Phone No", render: (s) => s.phone ?? "â€”" },
-    { header: "CNIC", render: (s) => s.cnic ?? "â€”" },
-    { header: "Address", render: (s) => s.address ?? "â€”" },
+    { header: "Company Name", render: (s) => s.company_name ?? "\u2014" },
+    { header: "Phone No", render: (s) => s.phone ?? "\u2014" },
+    { header: "CNIC", render: (s) => s.cnic ?? "\u2014" },
+    { header: "Address", render: (s) => s.address ?? "\u2014" },
     { header: "Opening Balance", render: (s) => s.opening_balance.toFixed(2) },
   ];
 

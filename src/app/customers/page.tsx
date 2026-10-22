@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -37,10 +37,10 @@ export default function CustomersPage() {
 
   const columns: Column<Customer>[] = [
     { header: "Name", render: (c) => <span className="font-medium">{c.name}</span> },
-    { header: "Phone No", render: (c) => c.phone ?? "â€”" },
-    { header: "CNIC / NTN", render: (c) => c.cnic_ntn ?? "â€”" },
-    { header: "Address", render: (c) => c.address ?? "â€”" },
-    { header: "Area", render: (c) => c.area ?? "â€”" },
+    { header: "Phone No", render: (c) => c.phone ?? "\u2014" },
+    { header: "CNIC / NTN", render: (c) => c.cnic_ntn ?? "\u2014" },
+    { header: "Address", render: (c) => c.address ?? "\u2014" },
+    { header: "Area", render: (c) => c.area ?? "\u2014" },
     {
       header: "Opening Balance",
       render: (c) => `${c.opening_balance.toFixed(2)} (${c.balance_type})`,

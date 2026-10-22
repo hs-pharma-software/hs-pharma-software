@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/Field";
@@ -50,7 +50,7 @@ export function PurchasePicker({
               className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-amber-50"
             >
               <span>
-                #{pu.purchase_no} \u2014 {pu.supplier_name} <span className="text-neutral-400">({pu.date})</span>
+                #{pu.purchase_no} {"\u2014"} {pu.supplier_name} <span className="text-neutral-400">({pu.date})</span>
               </span>
               <span className="text-neutral-500">Bal {pu.balance.toFixed(2)}</span>
             </button>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -52,10 +52,10 @@ export default function AttendancePage() {
   const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
 
   const columns: Column<AttendanceRow>[] = [
-    { header: "Employee Name", render: (r) => r.staff_name ?? "â€”" },
+    { header: "Employee Name", render: (r) => r.staff_name ?? "\u2014" },
     { header: "Date Of Attendance", render: (r) => r.date },
-    { header: "Time In", render: (r) => r.time_in ?? "â€”" },
-    { header: "Time Out", render: (r) => r.time_out ?? "â€”" },
+    { header: "Time In", render: (r) => r.time_in ?? "\u2014" },
+    { header: "Time Out", render: (r) => r.time_out ?? "\u2014" },
     { header: "Hours", render: (r) => r.hours.toFixed(2) },
   ];
 

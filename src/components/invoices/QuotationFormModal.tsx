@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -28,7 +28,7 @@ interface Line {
 }
 
 /** Quotations are estimates, not sales: unlike InvoiceFormModal, saving one
- * never touches stock (no deductStock calls) â€” it just records the lines the
+ * never touches stock (no deductStock calls) - it just records the lines the
  * customer was quoted. Stock is only committed once the quotation is
  * accepted, via convertQuotationToInvoice() in the list page. */
 export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -74,7 +74,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
   }
 
   /** Estimate-only: still shows current stock/price for reference, but
-   * doesn't reserve a batch â€” the real batch is picked at accept time since
+   * doesn't reserve a batch - the real batch is picked at accept time since
    * stock may have moved by then. */
   async function onProductSelected(p: Product) {
     setError(null);
@@ -207,7 +207,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
             <div className="flex-1">
               <Field label="Salesman (Optional)">
                 <Select value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}>
-                  <option value="">â€”</option>
+                  <option value="">{"\u2014"}</option>
                   {salesmen.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -149,7 +149,7 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
         ) : (
           <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
             <span>
-              Returning against <span className="font-medium">Bill #{selected.invoice_no}</span> â€”{" "}
+              Returning against <span className="font-medium">Bill #{selected.invoice_no}</span> -{" "}
               {selected.customer_name} ({selected.date})
             </span>
             <Button type="button" onClick={changeInvoice}>
@@ -187,9 +187,9 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
                     lines.map((l, idx) => (
                       <tr key={l.item.id} className="border-b border-neutral-100 last:border-0">
                         <td className="px-2 py-1.5">{l.item.product_name}</td>
-                        <td className="px-2 py-1.5">{l.item.batch_no ?? "â€”"}</td>
+                        <td className="px-2 py-1.5">{l.item.batch_no ?? "\u2014"}</td>
                         <td className="px-2 py-1.5">{l.item.qty}</td>
-                        <td className="px-2 py-1.5">{l.alreadyReturned || "â€”"}</td>
+                        <td className="px-2 py-1.5">{l.alreadyReturned || "\u2014"}</td>
                         <td className="px-2 py-1.5">{l.remaining}</td>
                         <td className="px-2 py-1.5">
                           <input

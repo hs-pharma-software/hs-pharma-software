@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -41,15 +41,15 @@ export default function BankStatementPage() {
 
   const bankColumns: Column<Bank>[] = [
     { header: "Bank Name", render: (b) => b.name },
-    { header: "Address", render: (b) => b.address ?? "â€”" },
+    { header: "Address", render: (b) => b.address ?? "\u2014" },
   ];
 
   const entryColumns: Column<BankLedgerEntry>[] = [
     { header: "Date", render: (e) => e.date },
-    { header: "Description", render: (e) => e.description ?? "â€”" },
-    { header: "Slip No", render: (e) => e.slip_no ?? "â€”" },
-    { header: "Deposit", render: (e) => (e.transaction_type === "deposit" ? e.amount.toFixed(2) : "â€”") },
-    { header: "Withdraw", render: (e) => (e.transaction_type === "withdraw" ? e.amount.toFixed(2) : "â€”") },
+    { header: "Description", render: (e) => e.description ?? "\u2014" },
+    { header: "Slip No", render: (e) => e.slip_no ?? "\u2014" },
+    { header: "Deposit", render: (e) => (e.transaction_type === "deposit" ? e.amount.toFixed(2) : "\u2014") },
+    { header: "Withdraw", render: (e) => (e.transaction_type === "withdraw" ? e.amount.toFixed(2) : "\u2014") },
   ];
 
   const tauriReady = useIsTauri();
@@ -81,7 +81,7 @@ export default function BankStatementPage() {
             </div>
             <div>
               <p className="mb-2 text-xs font-medium text-neutral-500">
-                {selected ? `Statement â€” ${selected.name}` : "Select a bank on the left"}
+                {selected ? `Statement - ${selected.name}` : "Select a bank on the left"}
               </p>
               <DataTable columns={entryColumns} rows={entries} />
             </div>

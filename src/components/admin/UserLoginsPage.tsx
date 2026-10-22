@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -149,7 +149,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
 
       {capReached && (
         <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Your plan allows up to {currentTenant?.maxStaffLogins} staff login(s) \u2014 that limit has been reached.
+          Your plan allows up to {currentTenant?.maxStaffLogins} staff login(s) {"\u2014"} that limit has been reached.
         </p>
       )}
 

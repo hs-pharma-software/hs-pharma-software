@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -12,7 +12,7 @@ interface RowBase {
 }
 
 /** Shared shape for every report screen: a From/To date range + a "Report"
- * button that runs the query and renders a table â€” matches the reference
+ * button that runs the query and renders a table - matches the reference
  * app's Duration-filter-then-Report pattern, simplified to an explicit date
  * range instead of the Daily/Monthly/... preset dropdown. */
 export function ReportTablePage<T extends RowBase>({

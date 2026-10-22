@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -34,7 +34,7 @@ export default function GenerateBarcodePage() {
   }
 
   const columns: Column<LabelLine & { id: string }>[] = [
-    { header: "Barcode", render: (l) => l.product.barcode ?? "â€”" },
+    { header: "Barcode", render: (l) => l.product.barcode ?? "\u2014" },
     { header: "Product Name", render: (l) => l.product.name },
     {
       header: "No Of Label",

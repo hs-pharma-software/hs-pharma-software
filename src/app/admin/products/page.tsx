@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -88,13 +88,13 @@ export default function AdminProductsPage() {
     return !t || p.name.toLowerCase().includes(t) || (p.barcode ?? "").toLowerCase().includes(t) || (p.company_name ?? "").toLowerCase().includes(t);
   });
 
-  const uomName = (id: string | null) => uoms.find((u) => u.id === id)?.name ?? "â€”";
-  const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "â€”";
+  const uomName = (id: string | null) => uoms.find((u) => u.id === id)?.name ?? "\u2014";
+  const catName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? "\u2014";
 
   const columns: Column<Product>[] = [
-    { header: "Barcode", render: (p) => p.barcode ?? "â€”" },
+    { header: "Barcode", render: (p) => p.barcode ?? "\u2014" },
     { header: "Medicine Name", render: (p) => <span className="font-medium">{p.name}</span> },
-    { header: "Company", render: (p) => p.company_name ?? "â€”" },
+    { header: "Company", render: (p) => p.company_name ?? "\u2014" },
     { header: "Category", render: (p) => catName(p.category_id) },
     { header: "UOM", render: (p) => uomName(p.base_unit_id) },
     { header: "GST %", render: (p) => p.gst_rate_pct ?? 0 },

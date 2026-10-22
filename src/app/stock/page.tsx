@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -108,13 +108,13 @@ export default function StockPage() {
   const totalStockValue = filtered.reduce((sum, r) => sum + r.avail_qty * r.sale_price, 0);
 
   const columns: Column<StockRow>[] = [
-    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
+    { header: "Barcode", render: (r) => r.barcode ?? "\u2014" },
     { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
-    { header: "Company", render: (r) => r.company_name ?? "â€”" },
-    { header: "Batch", render: (r) => r.batch_no ?? "â€”" },
-    { header: "Expiry", render: (r) => r.expiry_date ?? "â€”" },
-    { header: "Location", render: (r) => r.location ?? "â€”" },
-    { header: "UOM", render: (r) => r.uom_name ?? "â€”" },
+    { header: "Company", render: (r) => r.company_name ?? "\u2014" },
+    { header: "Batch", render: (r) => r.batch_no ?? "\u2014" },
+    { header: "Expiry", render: (r) => r.expiry_date ?? "\u2014" },
+    { header: "Location", render: (r) => r.location ?? "\u2014" },
+    { header: "UOM", render: (r) => r.uom_name ?? "\u2014" },
     {
       header: "Avail Qty",
       render: (r) => {
@@ -125,13 +125,13 @@ export default function StockPage() {
         return <span className="font-semibold">{r.avail_qty} <span className="font-normal text-neutral-500">{r.uom_name ?? ""}</span></span>;
       },
     },
-    { header: "Sale Price", render: (r) => r.sale_price > 0 ? r.sale_price.toFixed(2) : "â€”" },
-    { header: "MRP", render: (r) => r.mrp > 0 ? r.mrp.toFixed(2) : "â€”" },
+    { header: "Sale Price", render: (r) => r.sale_price > 0 ? r.sale_price.toFixed(2) : "\u2014" },
+    { header: "MRP", render: (r) => r.mrp > 0 ? r.mrp.toFixed(2) : "\u2014" },
     ...(mrpDiscountPct > 0 ? [{
       header: "Your Price",
       render: (r: StockRow) => r.mrp > 0
         ? <span className="font-bold text-emerald-700">{(r.mrp * discountFactor).toFixed(2)}</span>
-        : "â€”",
+        : "\u2014",
     }] : []),
   ];
 
@@ -194,7 +194,7 @@ export default function StockPage() {
         <DataTable columns={columns} rows={filtered} />
       )}
 
-      {/* â”€â”€ Print-only stock report â”€â”€ .print-only hides on screen; @media print shows + repositions it */}
+      {/* -- Print-only stock report -- .print-only hides on screen; @media print shows + repositions it */}
       <div className="print-area print-only">
         <div style={{ padding: "24px", fontFamily: "sans-serif", fontSize: "12px", color: "#111" }}>
           <h1 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "2px" }}>
@@ -217,21 +217,21 @@ export default function StockPage() {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #e5e5e5" }}>
-                  <td style={{ padding: "4px 8px" }}>{r.barcode ?? "â€”"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.barcode ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px", fontWeight: "600" }}>{r.product_name}</td>
-                  <td style={{ padding: "4px 8px" }}>{r.company_name ?? "â€”"}</td>
-                  <td style={{ padding: "4px 8px" }}>{r.batch_no ?? "â€”"}</td>
-                  <td style={{ padding: "4px 8px" }}>{r.expiry_date ?? "â€”"}</td>
-                  <td style={{ padding: "4px 8px" }}>{r.location ?? "â€”"}</td>
-                  <td style={{ padding: "4px 8px" }}>{r.uom_name ?? "â€”"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.company_name ?? "\u2014"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.batch_no ?? "\u2014"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.expiry_date ?? "\u2014"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.location ?? "\u2014"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.uom_name ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px", textAlign: "right" }}>
                     {r.secondary_unit_id && (r.packing || 1) > 1
                       ? `${r.avail_qty * (r.packing || 1)} ${r.secondary_unit_name ?? ""}`
                       : `${r.avail_qty} ${r.uom_name ?? ""}`}
                   </td>
-                  <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.sale_price > 0 ? r.sale_price.toFixed(2) : "â€”"}</td>
+                  <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.sale_price > 0 ? r.sale_price.toFixed(2) : "\u2014"}</td>
                   <td style={{ padding: "4px 8px", textAlign: "right" }}>
-                    {r.sale_price > 0 ? (r.avail_qty * r.sale_price).toFixed(2) : "â€”"}
+                    {r.sale_price > 0 ? (r.avail_qty * r.sale_price).toFixed(2) : "\u2014"}
                   </td>
                 </tr>
               ))}
@@ -239,7 +239,7 @@ export default function StockPage() {
             <tfoot>
               <tr style={{ borderTop: "2px solid #222", fontWeight: "bold", background: "#f5f5f5" }}>
                 <td colSpan={7} style={{ padding: "6px 8px" }}>
-                  Total â€” {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+                  Total - {filtered.length} item{filtered.length !== 1 ? "s" : ""}
                 </td>
                 <td style={{ padding: "6px 8px", textAlign: "right" }}>
                   {filtered.reduce((s, r) => s + r.avail_qty, 0)}

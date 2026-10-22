@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 
@@ -169,7 +169,7 @@ export default function LandingPage() {
               color:"#64748b",
               maxWidth:520,lineHeight:1.75,marginBottom:44,
             }}>
-              Complete POS, inventory, invoicing, purchasing &amp; accounting \u2014
+              Complete POS, inventory, invoicing, purchasing &amp; accounting {"\u2014"}
               in one powerful desktop app for Pakistani pharmacies.
             </p>
 
@@ -242,7 +242,7 @@ export default function LandingPage() {
                 Everything Your Pharmacy Needs
               </h2>
               <p style={{color:"#64748b",fontSize:16}}>
-                Built for Pakistani pharmacies \u2014 GST, WHT, batch tracking &amp; FBR digital invoicing
+                Built for Pakistani pharmacies {"\u2014"} GST, WHT, batch tracking &amp; FBR digital invoicing
               </p>
             </div>
             <div style={{

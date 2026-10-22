@@ -1,4 +1,4 @@
-﻿import { PageHeader } from "@/components/ui/PageHeader";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 /** Every report screen in the reference app shares the same shape: a small
  * parameter form (Type / Duration / Base Unit dropdowns) + a Report button
@@ -11,7 +11,7 @@ export function ReportPlaceholder({ title }: { title: string }) {
       <PageHeader title={title} />
       <div className="mx-auto max-w-sm rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <p className="mb-3 text-xs text-neutral-500">
-          Parameter form (Type / Duration / Base Unit) â€” wiring pending until source data
+          Parameter form (Type / Duration / Base Unit) - wiring pending until source data
           (Invoices, Purchases, Expenses) is entered.
         </p>
         <div className="flex flex-col gap-2 opacity-50">

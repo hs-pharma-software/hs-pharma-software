@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,9 +32,9 @@ export default function CashRegisterPage() {
 
   const columns: Column<CashRegisterEntry>[] = [
     { header: "Date", render: (e) => e.date },
-    { header: "Description", render: (e) => e.description ?? "â€”" },
-    { header: "Payment In", render: (e) => (e.transaction_type === "in" ? e.amount.toFixed(2) : "â€”") },
-    { header: "Payment Out", render: (e) => (e.transaction_type === "out" ? e.amount.toFixed(2) : "â€”") },
+    { header: "Description", render: (e) => e.description ?? "\u2014" },
+    { header: "Payment In", render: (e) => (e.transaction_type === "in" ? e.amount.toFixed(2) : "\u2014") },
+    { header: "Payment Out", render: (e) => (e.transaction_type === "out" ? e.amount.toFixed(2) : "\u2014") },
   ];
 
   const tauriReady = useIsTauri();

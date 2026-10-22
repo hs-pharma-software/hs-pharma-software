@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -37,13 +37,13 @@ export default function AssignToSupplierPage() {
 
   const supplierColumns: Column<Supplier>[] = [
     { header: "Name", render: (s) => s.name },
-    { header: "Phone No", render: (s) => s.phone ?? "â€”" },
+    { header: "Phone No", render: (s) => s.phone ?? "\u2014" },
   ];
 
   const productColumns: Column<AssignedProductRow>[] = [
     { header: "Product Name", render: (r) => r.product_name },
-    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
-    { header: "Company Name", render: (r) => r.company_name ?? "â€”" },
+    { header: "Barcode", render: (r) => r.barcode ?? "\u2014" },
+    { header: "Company Name", render: (r) => r.company_name ?? "\u2014" },
     {
       header: "",
       render: (r) => (

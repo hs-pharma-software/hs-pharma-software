@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -221,7 +221,7 @@ export default function DashboardPage() {
         </div>
         {!tauriReady && (
           <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
-            Browser preview \u2014 no live data
+            Browser preview {"\u2014"} no live data
           </span>
         )}
       </div>

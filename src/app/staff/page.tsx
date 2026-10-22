@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,10 +32,10 @@ export default function StaffPage() {
 
   const columns: Column<Staff>[] = [
     { header: "Name", render: (s) => <span className="font-medium">{s.name}</span> },
-    { header: "Designation", render: (s) => s.designation ?? "â€”" },
-    { header: "Phone No", render: (s) => s.phone ?? "â€”" },
-    { header: "CNIC", render: (s) => s.cnic ?? "â€”" },
-    { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "â€”" },
+    { header: "Designation", render: (s) => s.designation ?? "\u2014" },
+    { header: "Phone No", render: (s) => s.phone ?? "\u2014" },
+    { header: "CNIC", render: (s) => s.cnic ?? "\u2014" },
+    { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "\u2014" },
     { header: "Basic Pay", render: (s) => s.basic_pay.toFixed(2) },
   ];
 

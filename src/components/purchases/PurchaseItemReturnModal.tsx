@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -24,7 +24,7 @@ interface ReturnLine {
 }
 
 /** Item-wise return: pick the original purchase first, then choose specific
- * lines/quantities to send back to the supplier â€” for a partial return.
+ * lines/quantities to send back to the supplier - for a partial return.
  * See PurchaseWholeReturnModal for the one-click "return everything" case. */
 export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [selected, setSelected] = useState<PurchaseListRow | null>(null);
@@ -145,7 +145,7 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
         ) : (
           <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
             <span>
-              Returning against <span className="font-medium">Purchase #{selected.purchase_no}</span> â€”{" "}
+              Returning against <span className="font-medium">Purchase #{selected.purchase_no}</span> -{" "}
               {selected.supplier_name} ({selected.date})
             </span>
             <Button type="button" onClick={changePurchase}>
@@ -183,9 +183,9 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
                     lines.map((l, idx) => (
                       <tr key={l.item.id} className="border-b border-neutral-100 last:border-0">
                         <td className="px-2 py-1.5">{l.item.product_name}</td>
-                        <td className="px-2 py-1.5">{l.item.batch_no ?? "â€”"}</td>
+                        <td className="px-2 py-1.5">{l.item.batch_no ?? "\u2014"}</td>
                         <td className="px-2 py-1.5">{l.item.received_qty}</td>
-                        <td className="px-2 py-1.5">{l.alreadyReturned || "â€”"}</td>
+                        <td className="px-2 py-1.5">{l.alreadyReturned || "\u2014"}</td>
                         <td className="px-2 py-1.5">{l.remaining}</td>
                         <td className="px-2 py-1.5">
                           <input

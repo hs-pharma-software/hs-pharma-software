@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { Field, Input } from "@/components/ui/Field";
@@ -55,7 +55,7 @@ export function SetupSuperAdmin({ onDone }: { onDone: () => void }) {
         <div className="mb-5 text-center">
           <h1 className="font-serif text-2xl text-neutral-800">Welcome to Billora</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            First-time setup \u2014 create the administrator account and your pharmacy&apos;s login. Any
+            First-time setup {"\u2014"} create the administrator account and your pharmacy&apos;s login. Any
             existing data on this device is kept and assigned to the pharmacy account below.
           </p>
         </div>

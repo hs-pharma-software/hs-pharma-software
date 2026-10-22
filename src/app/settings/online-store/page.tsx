@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -43,10 +43,10 @@ export default function OnlineStorePage() {
   }, []);
 
   const columns: Column<StoreProductRow>[] = [
-    { header: "Barcode", render: (r) => r.barcode ?? "â€”" },
+    { header: "Barcode", render: (r) => r.barcode ?? "\u2014" },
     { header: "Product Name", render: (r) => r.name },
-    { header: "Company Name", render: (r) => r.company_name ?? "â€”" },
-    { header: "Category Name", render: (r) => r.category_name ?? "â€”" },
+    { header: "Company Name", render: (r) => r.company_name ?? "\u2014" },
+    { header: "Category Name", render: (r) => r.category_name ?? "\u2014" },
     {
       header: "Status",
       render: (r) => (

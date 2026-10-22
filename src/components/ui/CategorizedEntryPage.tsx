@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "./PageHeader";
@@ -22,7 +22,7 @@ interface EntryRow extends BaseRow {
   description: string | null;
 }
 
-/** Shared shape for Expenses Details and Revenue Details â€” both are
+/** Shared shape for Expenses Details and Revenue Details - both are
  * "date + category (quick-addable) + amount + payment method + description"
  * logs against their own category table. */
 export function CategorizedEntryPage<T extends EntryRow>({
@@ -44,7 +44,7 @@ export function CategorizedEntryPage<T extends EntryRow>({
     list: (opts?: { orderBy?: string }) => Promise<T[]>;
     create: (data: Record<string, unknown>) => Promise<T>;
   };
-  /** Bump this (e.g. from 0 to 1) to force the Add modal open externally â€”
+  /** Bump this (e.g. from 0 to 1) to force the Add modal open externally -
    * powers ALT+E (New Expense) since this component has no page of its own
    * for GlobalShortcuts to watch pendingAction from directly. */
   externalAddTrigger?: number;
@@ -81,12 +81,12 @@ export function CategorizedEntryPage<T extends EntryRow>({
 
   const columns: Column<T>[] = [
     { header: "Date", render: (r) => r.date },
-    { header: "Category", render: (r) => (r.category_id ? categoryMap.get(r.category_id) ?? "â€”" : "â€”") },
-    { header: "Description", render: (r) => r.description ?? "â€”" },
+    { header: "Category", render: (r) => (r.category_id ? categoryMap.get(r.category_id) ?? "\u2014" : "\u2014") },
+    { header: "Description", render: (r) => r.description ?? "\u2014" },
     { header: "Amount", render: (r) => r.amount.toFixed(2) },
     {
       header: byLabel,
-      render: (r) => ((r as unknown as Record<string, unknown>)[byField] as string | null) ?? "â€”",
+      render: (r) => ((r as unknown as Record<string, unknown>)[byField] as string | null) ?? "\u2014",
     },
   ];
 

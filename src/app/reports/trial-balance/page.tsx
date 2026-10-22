@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -18,8 +18,8 @@ export default function TrialBalanceReportPage() {
 
   const columns: Column<TrialBalanceRow>[] = [
     { header: "Account", render: (r) => r.account },
-    { header: "Debit", render: (r) => (r.debit ? r.debit.toFixed(2) : "â€”") },
-    { header: "Credit", render: (r) => (r.credit ? r.credit.toFixed(2) : "â€”") },
+    { header: "Debit", render: (r) => (r.debit ? r.debit.toFixed(2) : "\u2014") },
+    { header: "Credit", render: (r) => (r.credit ? r.credit.toFixed(2) : "\u2014") },
   ];
 
   const totalDebit = rows.reduce((s, r) => s + r.debit, 0);

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -61,7 +61,7 @@ export default function QuotationsPage() {
       header: "Action",
       render: (r) =>
         r.converted_invoice_id ? (
-          <span className="text-neutral-400">\u2014</span>
+          <span className="text-neutral-400">{"\u2014"}</span>
         ) : (
           <button
             type="button"
