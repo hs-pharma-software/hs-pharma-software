@@ -205,6 +205,11 @@ const MIGRATIONS = [
     `UPDATE products SET sro_no = '6th Schd Table I' WHERE fbr_sale_type = 'Exempt goods' AND sro_no IN ('6th Schedule', 'Sixth Schedule Table I', '6th Schedule Table I')`,
     `UPDATE products SET sro_item_serial_no = '' WHERE fbr_sale_type = 'Exempt goods' AND sro_item_serial_no = '1'`,
   ]},
+  { version: 19, label: 'products.drap_reg_no + drap_meta (DRAP import)', statements: [
+    `ALTER TABLE products ADD COLUMN drap_reg_no TEXT`,
+    `ALTER TABLE products ADD COLUMN drap_meta TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_products_drap_reg_no ON products (drap_reg_no)`,
+  ]},
   { version: 18, label: 'exempt products: SRO Eighth Schedule Table 1, item 81', statements: [
     `UPDATE products SET sro_no = 'Eighth Schedule Table 1', sro_item_serial_no = '81' WHERE fbr_sale_type = 'Exempt goods' AND COALESCE(sro_item_serial_no, '') = ''`,
   ]},

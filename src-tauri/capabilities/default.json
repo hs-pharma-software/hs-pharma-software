@@ -21,7 +21,8 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://*.turso.io/*" },
-        { "url": "https://api.cloudinary.com/*" }
+        { "url": "https://api.cloudinary.com/*" },
+        { "url": "https://eapp.dra.gov.pk/*" }
       ]
     },
     "os:default"

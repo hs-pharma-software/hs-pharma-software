@@ -727,6 +727,17 @@ fn schema_sql_v18() -> &'static str {
     "#
 }
 
+/// DRAP regulatory data for imported products. Name/description/company stay
+/// in their existing columns; only the registration number (used to match on
+/// re-import) and the remaining regulatory details (JSON) are new.
+fn schema_sql_v19() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN drap_reg_no TEXT;
+    ALTER TABLE products ADD COLUMN drap_meta TEXT;
+    CREATE INDEX IF NOT EXISTS idx_products_drap_reg_no ON products (drap_reg_no);
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -974,6 +985,12 @@ pub fn run() {
             version: 18,
             description: "product_exempt_sro_serial_81",
             sql: schema_sql_v18(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 19,
+            description: "product_drap_fields",
+            sql: schema_sql_v19(),
             kind: MigrationKind::Up,
         },
     ];

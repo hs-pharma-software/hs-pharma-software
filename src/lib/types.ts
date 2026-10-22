@@ -49,6 +49,9 @@ export interface Product extends BaseRow {
   fbr_sale_rate: number;
   fbr_uom: string | null;
   is_narcotic: number;
+  drap_reg_no: string | null;
+  /** JSON of DrapMeta (see lib/drap.ts). */
+  drap_meta: string | null;
 }
 
 export interface ProductBatch extends TenantRow {
