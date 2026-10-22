@@ -6,6 +6,14 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
+import { FbrCombobox } from "@/components/ui/FbrCombobox";
+import {
+  FBR_HS_CODES,
+  FBR_SALE_TYPES,
+  FBR_UOM_LIST,
+  FBR_SRO_SCHEDULES,
+  FBR_SRO_ITEMS,
+} from "@/lib/fbrData";
 import { categoriesRepo, subCategoriesRepo } from "@/lib/repo/categories";
 import { uomsRepo } from "@/lib/repo/uoms";
 import { productsRepo, productBatchesRepo, priceListRepo, getCurrentRates } from "@/lib/repo/products";
@@ -358,43 +366,80 @@ export function ProductFormModal({
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="HS Code">
-            <Input value={hsCode} onChange={(e) => setHsCode(e.target.value)} placeholder="e.g. 3004.9090" />
+            <FbrCombobox
+              value={hsCode}
+              onChange={setHsCode}
+              placeholder="e.g. 3004.9090"
+              options={FBR_HS_CODES.map((h) => ({
+                value: h.code,
+                label: h.code,
+                sublabel: h.description,
+              }))}
+            />
           </Field>
           <Field label="FBR Sale Type">
-            <Select value={fbrSaleType} onChange={(e) => setFbrSaleType(e.target.value)}>
-              <option value="">Select...</option>
-              <option value="Goods at standard rate (default)">Goods at standard rate (default)</option>
-              <option value="Goods at reduced rate">Goods at reduced rate</option>
-              <option value="Goods at zero rate">Goods at zero rate</option>
-              <option value="Goods exempt">Goods exempt</option>
-              <option value="Goods at further tax rate">Goods at further tax rate</option>
-              <option value="Services at standard rate">Services at standard rate</option>
-            </Select>
+            <FbrCombobox
+              value={fbrSaleType}
+              onChange={(v) => {
+                setFbrSaleType(v);
+                const match = FBR_SALE_TYPES.find((t) => t.value === v);
+                if (match) setFbrSaleRate(String(match.defaultRate));
+              }}
+              placeholder="Select sale type..."
+              options={FBR_SALE_TYPES.map((t) => ({
+                value: t.value,
+                label: t.value,
+                sublabel: t.description,
+              }))}
+            />
           </Field>
           <Field label="FBR Sale Rate %">
-            <Input type="number" min="0" step="any" value={fbrSaleRate} onChange={(e) => setFbrSaleRate(e.target.value)} />
+            <Input
+              type="number"
+              min="0"
+              step="any"
+              value={fbrSaleRate}
+              onChange={(e) => setFbrSaleRate(e.target.value)}
+            />
           </Field>
           <Field label="FBR UOM">
-            <Select value={fbrUom} onChange={(e) => setFbrUom(e.target.value)}>
-              <option value="">Select...</option>
-              <option value="Numbers, pieces, units">Numbers, pieces, units</option>
-              <option value="Kilograms">Kilograms</option>
-              <option value="Grams">Grams</option>
-              <option value="Litres">Litres</option>
-              <option value="Millilitres">Millilitres</option>
-              <option value="Metres">Metres</option>
-              <option value="Square Metres">Square Metres</option>
-              <option value="Cubic Metres">Cubic Metres</option>
-              <option value="Pairs">Pairs</option>
-              <option value="Dozens">Dozens</option>
-              <option value="Sets">Sets</option>
-            </Select>
+            <FbrCombobox
+              value={fbrUom}
+              onChange={setFbrUom}
+              placeholder="e.g. Numbers, pieces, units"
+              options={FBR_UOM_LIST.map((u) => ({
+                value: u.value,
+                label: u.value,
+                sublabel: u.description,
+              }))}
+            />
           </Field>
           <Field label="SRO Schedule No">
-            <Input value={sroNo} onChange={(e) => setSroNo(e.target.value)} placeholder="e.g. 5th Schedule" />
+            <FbrCombobox
+              value={sroNo}
+              onChange={(v) => {
+                setSroNo(v);
+                setSroItemSerialNo(""); // reset item when schedule changes
+              }}
+              placeholder="e.g. Sixth Schedule Table I"
+              options={FBR_SRO_SCHEDULES.map((s) => ({
+                value: s.value,
+                label: s.value,
+                sublabel: s.description,
+              }))}
+            />
           </Field>
           <Field label="SRO Item Serial No">
-            <Input value={sroItemSerialNo} onChange={(e) => setSroItemSerialNo(e.target.value)} placeholder="e.g. 1" />
+            <FbrCombobox
+              value={sroItemSerialNo}
+              onChange={setSroItemSerialNo}
+              placeholder="e.g. 1"
+              options={FBR_SRO_ITEMS.filter((i) => !sroNo || i.schedule === sroNo).map((i) => ({
+                value: i.serial,
+                label: `S.No. ${i.serial}`,
+                sublabel: i.description,
+              }))}
+            />
           </Field>
         </div>
 
