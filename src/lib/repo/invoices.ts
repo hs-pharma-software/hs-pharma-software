@@ -225,14 +225,21 @@ export async function getReturnedQtyByProduct(originalInvoiceId: string): Promis
 export interface InvoiceItemWithProduct extends InvoiceItem {
   product_name: string;
   barcode: string | null;
+  packing: number;
+  secondary_unit_id: string | null;
+  secondary_unit_name: string | null;
 }
 
 export async function listItemsForInvoice(invoiceId: string): Promise<InvoiceItemWithProduct[]> {
   return dbSelect<InvoiceItemWithProduct>(
     `
-    SELECT ii.*, p.name AS product_name, p.barcode
+    SELECT ii.*, p.name AS product_name, p.barcode,
+           COALESCE(p.packing, 1) AS packing,
+           p.secondary_unit_id,
+           su.name AS secondary_unit_name
     FROM invoice_items ii
     LEFT JOIN products p ON p.id = ii.product_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL
   `,
     [invoiceId, currentTenantId()]

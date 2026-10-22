@@ -85,30 +85,30 @@ export function InvoiceViewModal({
           id="invoice-print-area"
           className={`print-area rounded-lg border border-neutral-200 p-5 text-sm ${template === "receipt" ? "mx-auto max-w-xs" : ""}`}
         >
-          {/* ── Pharmacy Header ── */}
+          {/* ── Header ── */}
           <div className={`mb-4 border-b border-neutral-200 pb-3 ${template === "receipt" ? "text-center" : "flex items-start justify-between"}`}>
-            <div className={template === "receipt" ? "" : ""}>
+            <div>
               <h3 className={`font-serif font-bold text-neutral-900 ${template === "receipt" ? "text-base" : "text-xl"}`}>
-                {tenantInfo?.name ?? sessionTenant?.name ?? "Billora"}
+                {tenantInfo?.name ?? sessionTenant?.name ?? "Pharmacy"}
               </h3>
               {tenantInfo?.address && <p className="text-xs text-neutral-500">{tenantInfo.address}</p>}
               {tenantInfo?.phone && <p className="text-xs text-neutral-500">Ph: {tenantInfo.phone}</p>}
               {template !== "receipt" && (
                 <p className="mt-1 text-neutral-500">
-                  {inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "—"}
-                  {inv.is_return ? (
+                  {!!inv.is_return ? "Return" : "Invoice"} #{inv.invoice_no ?? "—"}
+                  {!!inv.is_return && (
                     <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
                       Return{originalInvoiceNo ? ` of Bill #${originalInvoiceNo}` : ""}
                     </span>
-                  ) : null}
+                  )}
                 </p>
               )}
             </div>
             {template === "receipt" ? (
               <div className="mt-1 text-center text-xs text-neutral-500">
-                <p>{inv.is_return ? "RETURN" : "RECEIPT"} #{inv.invoice_no ?? "—"}</p>
+                <p className="font-semibold">{!!inv.is_return ? "RETURN" : "RECEIPT"} #{inv.invoice_no ?? "—"}</p>
                 <p>{inv.date} · {inv.inv_on === "credit" ? "Credit" : "Cash"}</p>
-                {inv.is_return && originalInvoiceNo && <p className="text-rose-600">of Bill #{originalInvoiceNo}</p>}
+                {!!inv.is_return && originalInvoiceNo && <p className="text-rose-600">of Bill #{originalInvoiceNo}</p>}
               </div>
             ) : (
               <div className="text-right text-neutral-600">
@@ -118,43 +118,95 @@ export function InvoiceViewModal({
             )}
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-3 text-neutral-600">
-            <p>
-              <span className="font-medium text-neutral-800">Customer:</span> {row.customerName}
-            </p>
-            <p>
-              <span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName ?? "—"}
-            </p>
-          </div>
+          {/* ── Customer / Salesman ── */}
+          {template === "receipt" ? (
+            <div className="mb-3 text-xs text-neutral-600">
+              <p><span className="font-medium text-neutral-800">Customer:</span> {row.customerName}</p>
+              {row.salesmanName && <p><span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName}</p>}
+            </div>
+          ) : (
+            <div className="mb-4 grid grid-cols-2 gap-3 text-neutral-600">
+              <p><span className="font-medium text-neutral-800">Customer:</span> {row.customerName}</p>
+              <p><span className="font-medium text-neutral-800">Salesman:</span> {row.salesmanName ?? "—"}</p>
+            </div>
+          )}
 
-          <table className="mb-4 w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-neutral-300 text-neutral-500">
-                <th className="py-1.5 pr-2">Product</th>
-                <th className="py-1.5 pr-2">Batch</th>
-                <th className="py-1.5 pr-2 text-right">Qty</th>
-                <th className="py-1.5 pr-2 text-right">Bonus</th>
-                <th className="py-1.5 pr-2 text-right">Price</th>
-                <th className="py-1.5 pr-2 text-right">Disc</th>
-                <th className="py-1.5 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-b border-neutral-100">
-                  <td className="py-1.5 pr-2">{item.product_name}</td>
-                  <td className="py-1.5 pr-2">{item.batch_no ?? "—"}</td>
-                  <td className="py-1.5 pr-2 text-right">{item.qty}</td>
-                  <td className="py-1.5 pr-2 text-right">{item.bonus_qty || "—"}</td>
-                  <td className="py-1.5 pr-2 text-right">{item.sale_price.toFixed(2)}</td>
-                  <td className="py-1.5 pr-2 text-right">{item.discount_pct ? `${item.discount_pct}%` : "—"}</td>
-                  <td className="py-1.5 text-right">{item.total.toFixed(2)}</td>
+          {/* ── Line items ── */}
+          {template === "receipt" ? (
+            /* Thermal receipt: two-line layout fits the narrow width */
+            <div className="mb-3 border-t border-neutral-300">
+              {items.map((item) => {
+                const packing = item.packing || 1;
+                const hasSecondary = !!item.secondary_unit_id && packing > 1;
+                const dispQty = hasSecondary ? item.qty * packing : item.qty;
+                const dispBonus = hasSecondary ? item.bonus_qty * packing : item.bonus_qty;
+                const dispPrice = hasSecondary ? item.sale_price / packing : item.sale_price;
+                const unitLabel = hasSecondary ? (item.secondary_unit_name ?? "") : "";
+                return (
+                  <div key={item.id} className="border-b border-neutral-100 py-1.5">
+                    <p className="font-medium text-neutral-900 leading-tight">{item.product_name}</p>
+                    <div className="flex justify-between text-xs text-neutral-600 mt-0.5">
+                      <span>
+                        {dispQty % 1 === 0 ? dispQty : dispQty.toFixed(2)}{unitLabel ? ` ${unitLabel}` : ""}
+                        {dispBonus > 0 && <span className="ml-1 text-emerald-600">+{dispBonus % 1 === 0 ? dispBonus : dispBonus.toFixed(2)} free</span>}
+                        {item.batch_no && <span className="ml-1 text-neutral-400">({item.batch_no})</span>}
+                      </span>
+                      <span>
+                        {dispPrice.toFixed(2)} × {dispQty % 1 === 0 ? dispQty : dispQty.toFixed(2)} ={" "}
+                        <span className="font-semibold text-neutral-800">{item.total.toFixed(2)}</span>
+                      </span>
+                    </div>
+                    {item.discount_pct > 0 && (
+                      <p className="text-xs text-rose-600">Disc: {item.discount_pct}%</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* A4 invoice: full table */
+            <table className="mb-4 w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-neutral-300 text-neutral-500">
+                  <th className="py-1.5 pr-2">Product</th>
+                  <th className="py-1.5 pr-2">Batch</th>
+                  <th className="py-1.5 pr-2 text-right">Qty</th>
+                  <th className="py-1.5 pr-2 text-right">Bonus</th>
+                  <th className="py-1.5 pr-2 text-right">Price</th>
+                  <th className="py-1.5 pr-2 text-right">Disc</th>
+                  <th className="py-1.5 text-right">Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item) => {
+                  const packing = item.packing || 1;
+                  const hasSecondary = !!item.secondary_unit_id && packing > 1;
+                  const dispQty = hasSecondary ? item.qty * packing : item.qty;
+                  const dispBonus = hasSecondary ? item.bonus_qty * packing : item.bonus_qty;
+                  const dispPrice = hasSecondary ? item.sale_price / packing : item.sale_price;
+                  const unitLabel = hasSecondary ? (item.secondary_unit_name ?? "") : "";
+                  return (
+                    <tr key={item.id} className="border-b border-neutral-100">
+                      <td className="py-1.5 pr-2">{item.product_name}</td>
+                      <td className="py-1.5 pr-2">{item.batch_no ?? "—"}</td>
+                      <td className="py-1.5 pr-2 text-right">
+                        {dispQty % 1 === 0 ? dispQty : dispQty.toFixed(2)}{unitLabel ? ` ${unitLabel}` : ""}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">
+                        {dispBonus > 0 ? `${dispBonus % 1 === 0 ? dispBonus : dispBonus.toFixed(2)}${unitLabel ? ` ${unitLabel}` : ""}` : "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right">{dispPrice.toFixed(2)}</td>
+                      <td className="py-1.5 pr-2 text-right">{item.discount_pct ? `${item.discount_pct}%` : "—"}</td>
+                      <td className="py-1.5 text-right">{item.total.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
 
-          <div className="ml-auto flex w-56 flex-col gap-1 text-neutral-700">
+          {/* ── Totals ── */}
+          <div className={`flex flex-col gap-1 text-neutral-700 ${template === "receipt" ? "text-xs border-t border-neutral-300 pt-2" : "ml-auto w-56"}`}>
             <div className="flex justify-between">
               <span>Total</span>
               <span>{inv.total.toFixed(2)}</span>
@@ -179,13 +231,18 @@ export function InvoiceViewModal({
               <span>Paid</span>
               <span>{inv.paid.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between font-medium text-neutral-900">
+            <div className="flex justify-between font-semibold text-neutral-900">
               <span>Balance</span>
               <span>{inv.balance.toFixed(2)}</span>
             </div>
           </div>
 
-          {inv.description && <p className="mt-4 text-neutral-500">Note: {inv.description}</p>}
+          {inv.description && <p className="mt-3 text-xs text-neutral-500">Note: {inv.description}</p>}
+          {template === "receipt" && (
+            <p className="mt-3 border-t border-dashed border-neutral-300 pt-2 text-center text-xs text-neutral-400">
+              Thank you for your visit!
+            </p>
+          )}
         </div>
       )}
     </Modal>
