@@ -66,7 +66,7 @@ export function SimpleCategoryPage({
 
       {adding && (
         <QuickAddDialog
-          title={`-:Add ${title.replace(" Details", "")}:-`}
+          title={`Add ${title.replace(" Details", "")}`}
           onClose={() => setAdding(false)}
           onSubmit={async ({ name, description }) => {
             await repo.create({ name, description: description || null });

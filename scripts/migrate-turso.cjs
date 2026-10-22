@@ -230,6 +230,10 @@ const MIGRATIONS = [
     `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("name")} AS n FROM generic_names WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
     `DELETE FROM generic_names WHERE id <> 'gn-' || lower(hex(UPPER(${normWs("name")})))`,
   ]},
+  { version: 24, label: 'purchase_drafts', statements: [
+    `CREATE TABLE IF NOT EXISTS purchase_drafts (id TEXT PRIMARY KEY, tenant_id TEXT, title TEXT, payload TEXT NOT NULL, is_auto INTEGER DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE INDEX IF NOT EXISTS idx_purchase_drafts_tenant ON purchase_drafts (tenant_id)`,
+  ]},
   { version: 23, label: 'users.denied_actions (staff action permissions)', statements: [
     `ALTER TABLE users ADD COLUMN denied_actions TEXT`,
   ]},

@@ -78,7 +78,7 @@ export function InvoiceViewModal({
 
   return (
     <Modal
-      title={`-:${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "\u2014"}:-`}
+      title={`${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "\u2014"}`}
       onClose={onClose}
       width="max-w-3xl"
     >

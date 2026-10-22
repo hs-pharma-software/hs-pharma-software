@@ -90,7 +90,7 @@ export default function SalesmanPage() {
 
       {adding && (
         <QuickAddDialog
-          title="-:Add Salesman:-"
+          title="Add Salesman"
           onClose={() => setAdding(false)}
           onSubmit={async ({ name }) => {
             await salesmenRepo.create({ name, phone: null });

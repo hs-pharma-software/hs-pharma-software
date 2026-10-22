@@ -104,7 +104,7 @@ export default function BankStatementPage() {
       )}
 
       {modalOpen && selected && (
-        <Modal title="-:Add Bank Ledger:-" onClose={() => setModalOpen(false)} width="max-w-md">
+        <Modal title="Add Bank Ledger" onClose={() => setModalOpen(false)} width="max-w-md">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {

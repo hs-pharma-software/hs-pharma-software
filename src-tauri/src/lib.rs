@@ -792,6 +792,25 @@ fn schema_sql_v23() -> &'static str {
     "#
 }
 
+/// Purchase drafts: the Add Purchase form's state as JSON. Saved explicitly
+/// (Draft button) or automatically while typing, so work survives the app
+/// closing or crashing; removed when the purchase is saved.
+fn schema_sql_v24() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS purchase_drafts (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT,
+        title TEXT,
+        payload TEXT NOT NULL,
+        is_auto INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchase_drafts_tenant ON purchase_drafts (tenant_id);
+    "#
+}
+
 /// v20 only trimmed spaces, so names with line breaks or repeated spaces were
 /// kept as separate entries. Re-key every name on its whitespace-normalized
 /// form (same rule as normalizeGenericName in the app: any run of
@@ -1092,6 +1111,12 @@ pub fn run() {
             version: 23,
             description: "user_denied_actions",
             sql: schema_sql_v23(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 24,
+            description: "purchase_drafts",
+            sql: schema_sql_v24(),
             kind: MigrationKind::Up,
         },
     ];

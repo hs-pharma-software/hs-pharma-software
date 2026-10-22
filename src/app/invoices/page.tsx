@@ -5,7 +5,7 @@ import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle } from "lucid
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { InvoiceFormModal } from "@/components/invoices/InvoiceFormModal";
+import { useFormTabs } from "@/store/formTabsStore";
 import { InvoiceViewModal } from "@/components/invoices/InvoiceViewModal";
 import {
   listInvoicesForGrid,
@@ -22,8 +22,9 @@ import type { Invoice } from "@/lib/types2";
 
 export default function InvoicesPage() {
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const openNewTab = useFormTabs((s) => s.openNew);
+  const openEditTab = useFormTabs((s) => s.openEditInvoice);
+  const savedTick = useFormTabs((s) => s.savedTick.invoice);
   const [viewing, setViewing] = useState<{ invoice: Invoice; customerName: string; salesmanName: string | null } | null>(
     null
   );
@@ -50,11 +51,15 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     if (pendingAction === "new-invoice") {
-      setEditingInvoice(null);
-      setModalOpen(true);
+      openNewTab("invoice");
       setPendingAction(null);
     }
-  }, [pendingAction, setPendingAction]);
+  }, [pendingAction, setPendingAction, openNewTab]);
+
+  // An invoice tab saved: refresh the list.
+  useEffect(() => {
+    if (savedTick > 0) void reload();
+  }, [savedTick]);
 
   const canEdit = useCan("invoice.edit");
   const canDelete = useCan("invoice.delete");
@@ -64,8 +69,7 @@ export default function InvoicesPage() {
     if (!can("invoice.edit")) return window.alert(NO_PERMISSION_MESSAGE);
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
-    setEditingInvoice(full);
-    setModalOpen(true);
+    openEditTab(full);
   }
 
   async function openView(row: InvoiceListRow) {
@@ -188,10 +192,7 @@ export default function InvoicesPage() {
           <>
             <Button
               variant="primary"
-              onClick={() => {
-                setEditingInvoice(null);
-                setModalOpen(true);
-              }}
+              onClick={() => openNewTab("invoice")}
               title="Ctrl+N"
             >
               New Invoice
@@ -209,16 +210,6 @@ export default function InvoicesPage() {
         <DataTable columns={columns} rows={rows} onRowClick={(r) => void openView(r)} />
       )}
 
-      {modalOpen && (
-        <InvoiceFormModal
-          invoice={editingInvoice}
-          onClose={() => setModalOpen(false)}
-          onSaved={() => {
-            setModalOpen(false);
-            void reload();
-          }}
-        />
-      )}
 
       {viewing && (
         <InvoiceViewModal

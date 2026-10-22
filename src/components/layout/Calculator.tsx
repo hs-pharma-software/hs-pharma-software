@@ -91,7 +91,7 @@ export function Calculator() {
   }
 
   return (
-    <Modal title="-:System Calculator:-" onClose={() => setOpen(false)} width="max-w-xs">
+    <Modal title="System Calculator" onClose={() => setOpen(false)} width="max-w-xs">
       <div className="rounded-lg bg-neutral-900 px-4 py-5 text-right font-mono text-3xl text-white">
         {display}
       </div>

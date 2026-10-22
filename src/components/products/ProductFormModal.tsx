@@ -305,7 +305,7 @@ export function ProductFormModal({
   }
 
   return (
-    <Modal title={isEdit ? "-:Edit Product:-" : "-:Add Product:-"} onClose={onClose} width="max-w-4xl">
+    <Modal title={isEdit ? "Edit Product" : "Add Product"} onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Barcode">
@@ -611,10 +611,10 @@ export function ProductFormModal({
         <QuickAddDialog
           title={
             quickAdd === "category"
-              ? "-:Add Categories:-"
+              ? "Add Categories"
               : quickAdd === "subCategory"
-                ? "-:Add SubCategories:-"
-                : "-:Add Unit:-"
+                ? "Add SubCategories"
+                : "Add Unit"
           }
           onClose={() => setQuickAdd(null)}
           onSubmit={async ({ name: n, description: d }) => {

@@ -184,7 +184,7 @@ export default function AuditDetailPage() {
       )}
 
       {modalOpen && (
-        <Modal title={editing ? "-:Edit Audit:-" : "-:Add Audit:-"} onClose={() => setModalOpen(false)} width="max-w-3xl">
+        <Modal title={editing ? "Edit Audit" : "Add Audit"} onClose={() => setModalOpen(false)} width="max-w-3xl">
           {loadingEdit ? (
             <p className="py-10 text-center text-sm text-neutral-400">Loading audit...</p>
           ) : (
@@ -297,7 +297,7 @@ export default function AuditDetailPage() {
       )}
 
       {viewing && (
-        <Modal title={`-:Audit - ${viewing.audit.audit_name ?? ""}:-`} onClose={() => setViewing(null)} width="max-w-2xl">
+        <Modal title={`Audit - ${viewing.audit.audit_name ?? ""}`} onClose={() => setViewing(null)} width="max-w-2xl">
           <div className="flex justify-end pb-3">
             <Button onClick={() => window.print()}>Print</Button>
           </div>

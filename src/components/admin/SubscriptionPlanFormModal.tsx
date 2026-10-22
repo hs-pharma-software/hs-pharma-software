@@ -68,7 +68,7 @@ export function SubscriptionPlanFormModal({
   }
 
   return (
-    <Modal title={isEdit ? "-:Edit Subscription Plan:-" : "-:Add Subscription Plan:-"} onClose={onClose} width="max-w-2xl">
+    <Modal title={isEdit ? "Edit Subscription Plan" : "Add Subscription Plan"} onClose={onClose} width="max-w-2xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Name" required>

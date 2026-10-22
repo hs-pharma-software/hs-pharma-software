@@ -56,7 +56,7 @@ export function SubCategoryFormModal({
   }
 
   return (
-    <Modal title={isEdit ? "-:Edit SubCategory:-" : "-:Add SubCategories:-"} onClose={onClose} width="max-w-sm">
+    <Modal title={isEdit ? "Edit SubCategory" : "Add SubCategories"} onClose={onClose} width="max-w-sm">
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus required />

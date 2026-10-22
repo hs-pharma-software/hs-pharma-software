@@ -78,7 +78,7 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
   }
 
   return (
-    <Modal title="-:Return Whole Purchase Invoice:-" onClose={onClose} width="max-w-4xl">
+    <Modal title="Return Whole Purchase Invoice" onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!selected ? (
           <Field label="Search P.ID or Supplier" required>

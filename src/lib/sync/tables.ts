@@ -42,6 +42,7 @@ export const SYNCABLE_TABLES = [
   "settings",
   "product_suppliers",
   "financial_closings",
+  "purchase_drafts",
 ] as const;
 
 /** Tables private to one pharmacy tenant \u2014 `pullChanges()` in
@@ -81,6 +82,7 @@ export const TENANT_SCOPED_TABLES: string[] = [
   "audit_items",
   "product_suppliers",
   "financial_closings",
+  "purchase_drafts",
 ];
 
 // `delete_history` and `backups` are intentionally excluded: they're

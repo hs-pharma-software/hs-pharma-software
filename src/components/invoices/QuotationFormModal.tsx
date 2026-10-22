@@ -194,7 +194,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
   }
 
   return (
-    <Modal title="-:Add Quotation:-" onClose={onClose} width="max-w-6xl">
+    <Modal title="Add Quotation" onClose={onClose} width="max-w-6xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Field label="Invoice Type">
@@ -374,7 +374,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
 
       {quickAddCustomer && (
         <QuickAddDialog
-          title="-:Add Customer:-"
+          title="Add Customer"
           onClose={() => setQuickAddCustomer(false)}
           onSubmit={async ({ name }) => {
             const created = await customersRepo.create({ name, opening_balance: 0, balance_type: "receivable" });
@@ -386,7 +386,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
       )}
       {quickAddSalesman && (
         <QuickAddDialog
-          title="-:Add Salesman:-"
+          title="Add Salesman"
           onClose={() => setQuickAddSalesman(false)}
           onSubmit={async ({ name }) => {
             const created = await salesmenRepo.create({ name, phone: null });

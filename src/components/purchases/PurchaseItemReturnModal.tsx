@@ -136,7 +136,7 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
   }
 
   return (
-    <Modal title="-:Purchase Item Return:-" onClose={onClose} width="max-w-4xl">
+    <Modal title="Purchase Item Return" onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!selected ? (
           <Field label="Search P.ID or Supplier" required>

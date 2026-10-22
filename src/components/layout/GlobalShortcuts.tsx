@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAppStore, type PendingAction } from "@/store/appStore";
+import { useFormTabs } from "@/store/formTabsStore";
 
 /** ALT-key shortcuts that just navigate to a screen \u2014 mirrors the "To Open
  * View Forms" half of Utilities -> System Shortcuts. */
@@ -52,13 +53,7 @@ export function GlobalShortcuts() {
     function handleKeyDown(e: KeyboardEvent) {
       const key = e.key.toLowerCase();
 
-      if (e.ctrlKey && !e.shiftKey && !e.altKey && key === "n") {
-        e.preventDefault();
-        setPendingAction("new-invoice");
-        if (!samePath(pathname, "/invoices")) router.push("/invoices");
-        return;
-      }
-
+      // Ctrl+N / Ctrl+D / tab switching live in FormTabsHost.
       if (e.ctrlKey && !e.shiftKey && !e.altKey && key === "t") {
         e.preventDefault();
         setCalculatorOpen(true);
@@ -66,6 +61,13 @@ export function GlobalShortcuts() {
       }
 
       if (!e.altKey || e.ctrlKey || e.shiftKey) return;
+
+      // New invoice / purchase open as floating tabs over the current screen.
+      if (key === "n" || key === "u") {
+        e.preventDefault();
+        useFormTabs.getState().openNew(key === "n" ? "invoice" : "purchase");
+        return;
+      }
 
       const newTarget = NEW_ROUTES[key];
       if (newTarget) {

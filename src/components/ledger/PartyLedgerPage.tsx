@@ -121,7 +121,7 @@ export function PartyLedgerPage({
       )}
 
       {modalOpen && selected && (
-        <Modal title="-: Add Adjustments:-" onClose={() => setModalOpen(false)} width="max-w-md">
+        <Modal title="Add Adjustments" onClose={() => setModalOpen(false)} width="max-w-md">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {

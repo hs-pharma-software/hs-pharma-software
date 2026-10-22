@@ -120,7 +120,7 @@ export function CategorizedEntryPage<T extends EntryRow>({
       )}
 
       {modalOpen && (
-        <Modal title={`-:Add ${title.replace(" Details", "")}:-`} onClose={() => setModalOpen(false)} width="max-w-md">
+        <Modal title={`Add ${title.replace(" Details", "")}`} onClose={() => setModalOpen(false)} width="max-w-md">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {
@@ -192,7 +192,7 @@ export function CategorizedEntryPage<T extends EntryRow>({
 
       {quickAddOpen && (
         <QuickAddDialog
-          title="-:Add Category:-"
+          title="Add Category"
           onClose={() => setQuickAddOpen(false)}
           onSubmit={async ({ name, description: d }) => {
             const created = await categoryRepo.create({ name, description: d || null });

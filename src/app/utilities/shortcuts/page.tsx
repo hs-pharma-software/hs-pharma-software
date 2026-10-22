@@ -15,10 +15,16 @@ const VIEW_SHORTCUTS = [
 ];
 
 const NEW_SHORTCUTS = [
-  ["ALT + U", "New Purchase"],
+  ["CTRL + N", "New Invoice (opens a new tab)"],
+  ["ALT + N", "New Invoice (opens a new tab)"],
+  ["ALT + U", "New Purchase (opens a new tab)"],
+  ["CTRL + S", "Save the invoice / purchase in front"],
+  ["CTRL + D", "Save the invoice / purchase in front as Draft (no form open: open Drafts)"],
+  ["CTRL + TAB  /  ALT + Right", "Next open tab"],
+  ["CTRL + SHIFT + TAB  /  ALT + Left", "Previous open tab"],
+  ["ALT + 1 ... 9", "Go to tab 1 ... 9"],
   ["ALT + O", "New Order"],
   ["ALT + E", "New Expense"],
-  ["ALT + N", "New Invoice"],
   ["ALT + Q", "Supplier Payable"],
   ["ALT + Y", "Customer Receivable"],
   ["ALT + G", "Generate Barcode"],

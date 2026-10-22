@@ -140,7 +140,7 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
   }
 
   return (
-    <Modal title="-:Sale Item Return:-" onClose={onClose} width="max-w-4xl">
+    <Modal title="Sale Item Return" onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!selected ? (
           <Field label="Search Bill # or Customer" required>

@@ -101,7 +101,7 @@ export default function PriceListPage() {
       )}
 
       {modalOpen && (
-        <Modal title="-:Add Price List:-" onClose={() => setModalOpen(false)} width="max-w-lg">
+        <Modal title="Add Price List" onClose={() => setModalOpen(false)} width="max-w-lg">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {

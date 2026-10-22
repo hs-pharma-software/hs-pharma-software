@@ -50,7 +50,7 @@ export function BankFormModal({
   }
 
   return (
-    <Modal title={isEdit ? "-:Edit Bank:-" : "-:Add Bank:-"} onClose={onClose} width="max-w-lg">
+    <Modal title={isEdit ? "Edit Bank" : "Add Bank"} onClose={onClose} width="max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <Field label="Bank Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />

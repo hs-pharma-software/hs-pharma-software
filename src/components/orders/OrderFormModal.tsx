@@ -111,7 +111,7 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
   }
 
   return (
-    <Modal title="-:Add Order:-" onClose={onClose} width="max-w-4xl">
+    <Modal title="Add Order" onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex items-end gap-1.5 sm:col-span-2">
@@ -241,7 +241,7 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
 
       {quickAddSupplier && (
         <QuickAddDialog
-          title="-:Add Supplier:-"
+          title="Add Supplier"
           onClose={() => setQuickAddSupplier(false)}
           onSubmit={async ({ name }) => {
             const created = await suppliersRepo.create({

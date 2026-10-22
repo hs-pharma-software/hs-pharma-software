@@ -89,7 +89,7 @@ export default function AttendancePage() {
       )}
 
       {modalOpen && (
-        <Modal title="-:Add Attendance:-" onClose={() => setModalOpen(false)} width="max-w-md">
+        <Modal title="Add Attendance" onClose={() => setModalOpen(false)} width="max-w-md">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {

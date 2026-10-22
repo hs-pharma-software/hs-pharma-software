@@ -104,7 +104,7 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
   }
 
   return (
-    <Modal title="-:Customization:-" onClose={onClose} width="max-w-2xl">
+    <Modal title="Customization" onClose={onClose} width="max-w-2xl">
       <div className="space-y-5">
 
         {/* Accent color */}

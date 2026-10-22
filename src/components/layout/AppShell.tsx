@@ -10,6 +10,7 @@ import { PageTransition } from "./PageTransition";
 import { GlobalShortcuts } from "./GlobalShortcuts";
 import { Calculator } from "./Calculator";
 import { AssistantChat } from "@/components/assistant/AssistantChat";
+import { FormTabsHost } from "./FormTabsHost";
 import { useAuthStore } from "@/store/authStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
 
@@ -30,6 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <GlobalShortcuts />
       <Calculator />
       {currentTenant && !subscriptionLocked && <AssistantChat />}
+      {currentTenant && !subscriptionLocked && <FormTabsHost />}
       <Topbar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />

@@ -75,7 +75,7 @@ export default function CashRegisterPage() {
       )}
 
       {modalOpen && (
-        <Modal title="-:Add Cash:-" onClose={() => setModalOpen(false)} width="max-w-md">
+        <Modal title="Add Cash" onClose={() => setModalOpen(false)} width="max-w-md">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {

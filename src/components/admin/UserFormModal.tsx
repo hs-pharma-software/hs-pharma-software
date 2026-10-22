@@ -80,7 +80,7 @@ export function UserFormModal({
   }
 
   return (
-    <Modal title="-:Add Login:-" onClose={onClose} width="max-w-lg">
+    <Modal title="Add Login" onClose={onClose} width="max-w-lg">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <Field label="Username" required>
           <Input value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />

@@ -91,7 +91,7 @@ export default function SalaryDetailsPage() {
       )}
 
       {modalOpen && (
-        <Modal title="-:Add Salary:-" onClose={() => setModalOpen(false)} width="max-w-2xl">
+        <Modal title="Add Salary" onClose={() => setModalOpen(false)} width="max-w-2xl">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {

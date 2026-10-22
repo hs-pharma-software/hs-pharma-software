@@ -182,7 +182,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
       )}
 
       {resetting && (
-        <Modal title={`-:Reset Password \u2014 ${resetting.username}:-`} onClose={() => setResetting(null)} width="max-w-sm">
+        <Modal title={`Reset Password \u2014 ${resetting.username}`} onClose={() => setResetting(null)} width="max-w-sm">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {
@@ -210,7 +210,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
 
       {editingPerms && (
         <Modal
-          title={`-:Permissions \u2014 ${editingPerms.username}:-`}
+          title={`Permissions \u2014 ${editingPerms.username}`}
           onClose={() => setEditingPerms(null)}
           width="max-w-lg"
         >

@@ -147,7 +147,7 @@ export default function AdminProductsPage() {
 
       {/* Add modal */}
       {modalOpen && (
-        <Modal title="-:Add Medicine:-" onClose={() => setModalOpen(false)} width="max-w-xl">
+        <Modal title="Add Medicine" onClose={() => setModalOpen(false)} width="max-w-xl">
           <form onSubmit={handleAdd} className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Medicine Name" required>
@@ -193,7 +193,7 @@ export default function AdminProductsPage() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <Modal title="-:Confirm Delete:-" onClose={() => setDeleteTarget(null)} width="max-w-sm">
+        <Modal title="Confirm Delete" onClose={() => setDeleteTarget(null)} width="max-w-sm">
           <p className="mb-4 text-sm text-neutral-700">
             Delete <strong>{deleteTarget.name}</strong> from the global medicine database?
             This affects all pharmacies.

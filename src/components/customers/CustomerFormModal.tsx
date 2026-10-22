@@ -70,7 +70,7 @@ export function CustomerFormModal({
   }
 
   return (
-    <Modal title={isEdit ? "-:Edit Customer:-" : "-:Add Customer:-"} onClose={onClose} width="max-w-3xl">
+    <Modal title={isEdit ? "Edit Customer" : "Add Customer"} onClose={onClose} width="max-w-3xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Customer Name" required>

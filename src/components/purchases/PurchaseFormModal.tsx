@@ -18,6 +18,14 @@ import {
 } from "@/lib/repo/purchases";
 import { receiveStock } from "@/lib/repo/stock";
 import { getLatestPrice, priceListRepo, productsRepo } from "@/lib/repo/products";
+import {
+  deleteDraft,
+  parseDraft,
+  purchaseDraftsRepo,
+  saveDraft,
+  type PurchaseDraftPayload,
+} from "@/lib/repo/purchaseDrafts";
+import { newId } from "@/lib/id";
 import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Purchase } from "@/lib/types2";
 import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
@@ -84,6 +92,8 @@ export function PurchaseFormModal({
   onSaved,
   initialProducts,
   purchase,
+  draftId,
+  active = true,
 }: {
   onClose: () => void;
   onSaved: () => void;
@@ -93,8 +103,16 @@ export function PurchaseFormModal({
   initialProducts?: Product[];
   /** Pass an existing purchase to edit it. */
   purchase?: Purchase | null;
+  /** Resume a saved draft. */
+  draftId?: string;
+  /** False while another tab is in front: shortcuts are ignored. */
+  active?: boolean;
 }) {
   const isEdit = Boolean(purchase);
+  // New purchases are drafted under this id (auto-save + Draft button).
+  const draftIdRef = useRef<string>(draftId ?? newId());
+  const draftReady = useRef(!draftId);
+  const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [quickAddSupplier, setQuickAddSupplier] = useState(false);
   const [supplierId, setSupplierId] = useState(purchase?.supplier_id ?? "");
@@ -106,8 +124,9 @@ export function PurchaseFormModal({
   const [description, setDescription] = useState(purchase?.description ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loadingExisting, setLoadingExisting] = useState(isEdit);
+  const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(draftId));
   const [uoms, setUoms] = useState<Uom[]>([]);
+  const formRef = useRef<HTMLFormElement>(null);
   /** Snapshot of the saved lines; if unchanged, an edit only updates the
    * header (paid amount, description...) and leaves stock alone. */
   const originalLinesKey = useRef<string | null>(null);
@@ -182,6 +201,96 @@ export function PurchaseFormModal({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Resume a draft: restore header fields and rebuild lines from product ids.
+  useEffect(() => {
+    if (!draftId || isEdit) return;
+    void (async () => {
+      const row = await purchaseDraftsRepo.get(draftId);
+      const d = row ? parseDraft(row) : null;
+      if (d) {
+        setSupplierId(d.supplierId);
+        setSupplierInvoiceNo(d.supplierInvoiceNo);
+        setDiscountRs(d.discountRs);
+        setPaidAmount(d.paidAmount);
+        setPaymentMethod(d.paymentMethod);
+        setDescription(d.description);
+        const rebuilt: Line[] = [];
+        for (const l of d.lines) {
+          const product = await productsRepo.get(l.productId);
+          if (product) rebuilt.push({ ...l, product });
+        }
+        setLines(rebuilt);
+      }
+      draftReady.current = true;
+      setLoadingExisting(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
+
+  function draftPayload(): PurchaseDraftPayload {
+    return {
+      supplierId,
+      supplierInvoiceNo,
+      discountRs,
+      paidAmount,
+      paymentMethod,
+      description,
+      lines: lines.map(({ product, ...rest }) => ({ ...rest, productId: product.id })),
+    };
+  }
+
+  function draftTitle(): string {
+    const supplier = suppliers.find((s) => s.id === supplierId)?.name ?? "No supplier";
+    return `${supplier} - ${lines.length} item(s)`;
+  }
+
+  // Auto-save new purchases while typing, so nothing is lost if the app is
+  // closed or crashes. Saved 1.5 s after the last change.
+  useEffect(() => {
+    if (isEdit || !draftReady.current) return;
+    if (!supplierId && lines.length === 0) return;
+    const t = setTimeout(() => {
+      void saveDraft(draftIdRef.current, draftPayload(), draftTitle(), true)
+        .then(() => setDraftStatus(`Auto-saved to drafts ${new Date().toLocaleTimeString()}`))
+        .catch(() => setDraftStatus("Auto-save failed"));
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierId, supplierInvoiceNo, discountRs, paidAmount, paymentMethod, description, lines, isEdit]);
+
+  async function saveAsDraft() {
+    if (isEdit) return;
+    if (!supplierId && lines.length === 0) {
+      setError("Nothing to save yet.");
+      return;
+    }
+    await saveDraft(draftIdRef.current, draftPayload(), draftTitle(), false);
+    onSaved();
+  }
+
+  // Ctrl+S save, Ctrl+D draft - only in the tab that's in front.
+  const keyActions = useRef({ save: () => undefined as void, draft: () => undefined as void });
+  keyActions.current = {
+    save: () => formRef.current?.requestSubmit(),
+    draft: () => void saveAsDraft(),
+  };
+  useEffect(() => {
+    if (!active) return;
+    function onKey(e: KeyboardEvent) {
+      const key = e.key.toLowerCase();
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      if (key === "s") {
+        e.preventDefault();
+        keyActions.current.save();
+      } else if (key === "d") {
+        e.preventDefault();
+        keyActions.current.draft();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active]);
 
   async function addProduct(p: Product) {
     if (lines.some((l) => l.product.id === p.id)) return;
@@ -313,6 +422,8 @@ export function PurchaseFormModal({
         // product a supplier has already sold you.
         await assignProductToSupplier(l.product.id, supplierId);
       }
+      // Saved for real: the in-progress draft is no longer needed.
+      if (!isEdit) await deleteDraft(draftIdRef.current).catch(() => undefined);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -322,11 +433,11 @@ export function PurchaseFormModal({
   }
 
   return (
-    <Modal title={isEdit ? `-:Edit Purchase #${purchase?.purchase_no ?? ""}:-` : "-:Add Purchase:-"} onClose={onClose} width="max-w-6xl">
+    <Modal title={isEdit ? `Edit Purchase #${purchase?.purchase_no ?? ""}` : "Add Purchase"} onClose={onClose} width="max-w-6xl">
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading purchase...</p>
       ) : (
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
@@ -514,11 +625,17 @@ export function PurchaseFormModal({
           <p className="whitespace-pre-line rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>
         )}
 
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3">
+          {!isEdit && draftStatus && <span className="mr-auto text-[11px] text-neutral-400">{draftStatus}</span>}
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
+          {!isEdit && (
+            <Button type="button" onClick={() => void saveAsDraft()} disabled={saving} title="Ctrl+D">
+              Draft
+            </Button>
+          )}
+          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>
@@ -527,7 +644,7 @@ export function PurchaseFormModal({
 
       {quickAddSupplier && (
         <QuickAddDialog
-          title="-:Add Supplier:-"
+          title="Add Supplier"
           onClose={() => setQuickAddSupplier(false)}
           onSubmit={async ({ name }) => {
             const created = await suppliersRepo.create({ name, opening_balance: 0, balance_type: "payable" });

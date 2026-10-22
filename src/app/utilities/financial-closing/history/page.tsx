@@ -89,7 +89,7 @@ export default function FinancialClosingHistoryPage() {
       )}
 
       {viewing && (
-        <Modal title="-:Financial Closing Detail:-" onClose={() => setViewing(null)} width="max-w-md">
+        <Modal title="Financial Closing Detail" onClose={() => setViewing(null)} width="max-w-md">
           <div className="flex justify-end pb-3">
             <Button onClick={() => window.print()}>Print</Button>
           </div>

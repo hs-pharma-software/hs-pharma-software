@@ -61,11 +61,15 @@ export function InvoiceFormModal({
   invoice,
   onClose,
   onSaved,
+  active = true,
 }: {
   /** Pass an existing invoice to edit it in place; omit to create a new one. */
   invoice?: Invoice | null;
   onClose: () => void;
   onSaved: () => void;
+  /** False while another invoice tab is in front: keyboard shortcuts are
+   * ignored so only the visible form reacts. */
+  active?: boolean;
 }) {
   const isEdit = Boolean(invoice);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -115,17 +119,29 @@ export function InvoiceFormModal({
     prevLinesLen.current = lines.length;
   }, [lines.length]);
 
-  // Ctrl+S / Cmd+S -> submit the form (same as clicking Save).
+  // Ctrl+S -> Save, Ctrl+D -> Save as draft. Only the form in the active tab
+  // listens, otherwise every open invoice tab would save at once.
+  const draftRef = useRef<() => void>(() => undefined);
   useEffect(() => {
+    if (!active) return;
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "s") {
         e.preventDefault();
         formRef.current?.requestSubmit();
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "d") {
+        e.preventDefault();
+        draftRef.current();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [active]);
+
+  // Back in front: put the cursor in the product search so scanning works.
+  useEffect(() => {
+    if (active) setTimeout(() => pickerRef.current?.focus(), 30);
+  }, [active]);
 
   function setLineRef(rowIdx: number, colIdx: number, el: HTMLInputElement | null) {
     if (!lineInputRefs.current[rowIdx]) lineInputRefs.current[rowIdx] = [];
@@ -458,8 +474,13 @@ export function InvoiceFormModal({
     }
   }
 
+  // Ctrl+D always runs the latest handleDraft (it closes over current state).
+  draftRef.current = () => {
+    if (!isEdit && !saving) void handleDraft();
+  };
+
   return (
-    <Modal title={isEdit ? "-:Edit Invoice:-" : "-:Create Invoice:-"} onClose={onClose} width="max-w-6xl">
+    <Modal title={isEdit ? "Edit Invoice" : "Create Invoice"} onClose={onClose} width="max-w-6xl">
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
@@ -736,6 +757,7 @@ export function InvoiceFormModal({
               type="button"
               onClick={() => void handleDraft()}
               disabled={saving || lines.length === 0}
+              title="Ctrl+D"
             >
               Draft
             </Button>
@@ -749,7 +771,7 @@ export function InvoiceFormModal({
 
       {quickAddCustomer && (
         <QuickAddDialog
-          title="-:Add Customer:-"
+          title="Add Customer"
           onClose={() => setQuickAddCustomer(false)}
           onSubmit={async ({ name }) => {
             const created = await customersRepo.create({ name, opening_balance: 0, balance_type: "receivable" });
@@ -762,7 +784,7 @@ export function InvoiceFormModal({
       )}
       {quickAddSalesman && (
         <QuickAddDialog
-          title="-:Add Salesman:-"
+          title="Add Salesman"
           onClose={() => setQuickAddSalesman(false)}
           onSubmit={async ({ name }) => {
             const created = await salesmenRepo.create({ name, phone: null });

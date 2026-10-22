@@ -48,7 +48,7 @@ export function CategoryFormModal({
   }
 
   return (
-    <Modal title={isEdit ? "-:Edit Category:-" : "-:Add Categories:-"} onClose={onClose} width="max-w-sm">
+    <Modal title={isEdit ? "Edit Category" : "Add Categories"} onClose={onClose} width="max-w-sm">
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus required />

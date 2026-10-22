@@ -172,7 +172,7 @@ export default function TasksPage() {
       )}
 
       {modalOpen && (
-        <Modal title={editing ? "-:Edit Task:-" : "-:Add Task:-"} onClose={() => setModalOpen(false)} width="max-w-lg">
+        <Modal title={editing ? "Edit Task" : "Add Task"} onClose={() => setModalOpen(false)} width="max-w-lg">
           <form
             className="flex flex-col gap-3"
             onSubmit={async (e) => {
@@ -251,7 +251,7 @@ export default function TasksPage() {
       )}
 
       {viewing && (
-        <Modal title="-:Task Detail:-" onClose={() => setViewing(null)} width="max-w-lg">
+        <Modal title="Task Detail" onClose={() => setViewing(null)} width="max-w-lg">
           <div className="flex justify-end pb-3">
             <Button onClick={() => window.print()}>Print</Button>
           </div>

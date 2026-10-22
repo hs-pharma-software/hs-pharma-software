@@ -53,7 +53,7 @@ export default function UomPage() {
 
       {adding && (
         <QuickAddDialog
-          title="-:Add Unit:-"
+          title="Add Unit"
           onClose={() => setAdding(false)}
           onSubmit={async ({ name, description }) => {
             await uomsRepo.create({ name, description: description || null });
