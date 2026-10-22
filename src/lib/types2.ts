@@ -286,4 +286,6 @@ export interface UserAccount extends BaseRow {
   /** JSON array of allowed module keys. NULL = full access (owner default).
    * A non-null array restricts the staff user to only those modules. */
   permissions: string | null;
+  /** JSON array of denied action keys (lib/actionPermissions). NULL = none. */
+  denied_actions: string | null;
 }

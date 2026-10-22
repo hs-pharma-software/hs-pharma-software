@@ -783,6 +783,15 @@ fn schema_sql_v22() -> &'static str {
     "#
 }
 
+/// Action permissions for staff logins (edit/delete invoice or purchase,
+/// submit to FBR), stored as a JSON array of DENIED action keys so every
+/// existing staff login keeps full access until the owner restricts it.
+fn schema_sql_v23() -> &'static str {
+    r#"
+    ALTER TABLE users ADD COLUMN denied_actions TEXT;
+    "#
+}
+
 /// v20 only trimmed spaces, so names with line breaks or repeated spaces were
 /// kept as separate entries. Re-key every name on its whitespace-normalized
 /// form (same rule as normalizeGenericName in the app: any run of
@@ -1077,6 +1086,12 @@ pub fn run() {
             version: 22,
             description: "product_fbr_qty_factor_and_non_medicine_fixes",
             sql: schema_sql_v22(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 23,
+            description: "user_denied_actions",
+            sql: schema_sql_v23(),
             kind: MigrationKind::Up,
         },
     ];

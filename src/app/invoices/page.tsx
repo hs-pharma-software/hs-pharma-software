@@ -17,6 +17,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAppStore } from "@/store/appStore";
 import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
 import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
+import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice } from "@/lib/types2";
 
 export default function InvoicesPage() {
@@ -55,7 +56,12 @@ export default function InvoicesPage() {
     }
   }, [pendingAction, setPendingAction]);
 
+  const canEdit = useCan("invoice.edit");
+  const canDelete = useCan("invoice.delete");
+  const canFbr = useCan("invoice.fbr_submit");
+
   async function openEdit(row: InvoiceListRow) {
+    if (!can("invoice.edit")) return window.alert(NO_PERMISSION_MESSAGE);
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     setEditingInvoice(full);
@@ -69,6 +75,7 @@ export default function InvoicesPage() {
   }
 
   async function handleDelete(row: InvoiceListRow) {
+    if (!can("invoice.delete")) return window.alert(NO_PERMISSION_MESSAGE);
     const reason = window.prompt(`Delete invoice #${row.invoice_no ?? ""}? This restores its stock. Reason:`);
     if (reason === null) return;
     setDeletingId(row.id);
@@ -87,6 +94,7 @@ export default function InvoicesPage() {
 
   async function handleFbrSubmit(row: InvoiceListRow) {
     if (!fbrSettings || submittingIds.has(row.id)) return;
+    if (!can("invoice.fbr_submit")) return window.alert(NO_PERMISSION_MESSAGE);
 
     setSubmittingIds((prev) => new Set(prev).add(row.id));
     setFbrErrors((prev) => { const n = { ...prev }; delete n[row.id]; return n; });
@@ -120,6 +128,7 @@ export default function InvoicesPage() {
           submitting={submittingIds.has(r.id)}
           error={fbrErrors[r.id] ?? null}
           onSubmit={() => void handleFbrSubmit(r)}
+          canSubmit={canFbr}
         />
       ),
     }] : []),
@@ -135,14 +144,16 @@ export default function InvoicesPage() {
           >
             <Eye size={16} />
           </button>
-          <button
-            type="button"
-            title="Edit"
-            onClick={(e) => { e.stopPropagation(); void openEdit(r); }}
-            className="hover:text-amber-700"
-          >
-            <Pencil size={16} />
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              title="Edit"
+              onClick={(e) => { e.stopPropagation(); void openEdit(r); }}
+              className="hover:text-amber-700"
+            >
+              <Pencil size={16} />
+            </button>
+          )}
           <button
             type="button"
             title="Print"
@@ -151,15 +162,17 @@ export default function InvoicesPage() {
           >
             <Printer size={16} />
           </button>
-          <button
-            type="button"
-            title="Delete"
-            disabled={deletingId === r.id}
-            onClick={(e) => { e.stopPropagation(); void handleDelete(r); }}
-            className="hover:text-rose-600 disabled:opacity-40"
-          >
-            <Trash2 size={16} />
-          </button>
+          {canDelete && (
+            <button
+              type="button"
+              title="Delete"
+              disabled={deletingId === r.id}
+              onClick={(e) => { e.stopPropagation(); void handleDelete(r); }}
+              className="hover:text-rose-600 disabled:opacity-40"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -226,11 +239,13 @@ function FbrCell({
   submitting,
   error,
   onSubmit,
+  canSubmit,
 }: {
   row: InvoiceListRow;
   submitting: boolean;
   error: string | null;
   onSubmit: () => void;
+  canSubmit: boolean;
 }) {
   // Fixed position so the table's overflow container can't clip the popup.
   const [errorAt, setErrorAt] = useState<{ top: number; left: number } | null>(null);
@@ -288,7 +303,7 @@ function FbrCell({
       </div>
 
       {/* Submit button — only when not yet submitted */}
-      {!valid && (
+      {!valid && canSubmit && (
         <button
           type="button"
           title="Submit to FBR"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -8,9 +8,18 @@ import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { suppliersRepo } from "@/lib/repo/suppliers";
-import { purchasesRepo, purchaseItemsRepo, nextPurchaseNo } from "@/lib/repo/purchases";
+import {
+  purchasesRepo,
+  purchaseItemsRepo,
+  nextPurchaseNo,
+  listItemsForPurchase,
+  planPurchaseReversal,
+  applyPurchaseReversal,
+} from "@/lib/repo/purchases";
 import { receiveStock } from "@/lib/repo/stock";
-import { getLatestPrice, priceListRepo } from "@/lib/repo/products";
+import { getLatestPrice, priceListRepo, productsRepo } from "@/lib/repo/products";
+import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
+import type { Purchase } from "@/lib/types2";
 import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
 import { uomsRepo } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
@@ -35,6 +44,26 @@ interface Line {
   unit: "base" | "secondary";
 }
 
+/** Stock-relevant content of the line grid, in base units. */
+function linesKey(lines: Line[]): string {
+  return JSON.stringify(
+    lines.map((l) => {
+      const packing = l.product.packing || 1;
+      const sec = l.unit === "secondary";
+      return [
+        l.product.id,
+        l.batchNo,
+        l.expiryDate,
+        toBaseUnitQty(l.qty, sec, packing),
+        sec ? l.purchasePrice * packing : l.purchasePrice,
+        l.stPct,
+        l.whtPct,
+        sec ? l.salePrice * packing : l.salePrice,
+      ];
+    })
+  );
+}
+
 function makeLine(p: Product): Line {
   return {
     product: p,
@@ -54,6 +83,7 @@ export function PurchaseFormModal({
   onClose,
   onSaved,
   initialProducts,
+  purchase,
 }: {
   onClose: () => void;
   onSaved: () => void;
@@ -61,23 +91,62 @@ export function PurchaseFormModal({
    * the cashier only has to fill in batch/expiry/price/qty per line instead
    * of re-searching for each product. */
   initialProducts?: Product[];
+  /** Pass an existing purchase to edit it. */
+  purchase?: Purchase | null;
 }) {
+  const isEdit = Boolean(purchase);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [quickAddSupplier, setQuickAddSupplier] = useState(false);
-  const [supplierId, setSupplierId] = useState("");
-  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
+  const [supplierId, setSupplierId] = useState(purchase?.supplier_id ?? "");
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState(purchase?.supplier_invoice_no ?? "");
   const [lines, setLines] = useState<Line[]>((initialProducts ?? []).map(makeLine));
-  const [discountRs, setDiscountRs] = useState("0");
-  const [paidAmount, setPaidAmount] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState("Cash");
-  const [description, setDescription] = useState("");
+  const [discountRs, setDiscountRs] = useState(String(purchase?.discount_rs ?? 0));
+  const [paidAmount, setPaidAmount] = useState(String(purchase?.paid_amount ?? 0));
+  const [paymentMethod, setPaymentMethod] = useState(purchase?.payment_method ?? "Cash");
+  const [description, setDescription] = useState(purchase?.description ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(isEdit);
   const [uoms, setUoms] = useState<Uom[]>([]);
+  /** Snapshot of the saved lines; if unchanged, an edit only updates the
+   * header (paid amount, description...) and leaves stock alone. */
+  const originalLinesKey = useRef<string | null>(null);
 
   useEffect(() => {
     void suppliersRepo.list().then(setSuppliers);
     void uomsRepo.list().then(setUoms);
   }, []);
+
+  // Edit mode: rebuild the line grid from the saved purchase lines (stored in
+  // base units, so every line starts in the base unit).
+  useEffect(() => {
+    if (!purchase) return;
+    void (async () => {
+      const items = await listItemsForPurchase(purchase.id);
+      const rebuilt: Line[] = [];
+      for (const item of items) {
+        const product = await productsRepo.get(item.product_id);
+        if (!product) continue;
+        const salePrice = (await getLatestPrice(item.product_id))?.salePrice ?? 0;
+        rebuilt.push({
+          product,
+          batchNo: item.batch_no ?? "",
+          expiryDate: item.expiry_date ?? "",
+          purchasePrice: item.purchase_price,
+          qty: item.received_qty,
+          stPct: item.st_pct,
+          whtPct: item.wht_pct,
+          salePrice,
+          initialSalePrice: salePrice,
+          unit: "base",
+        });
+      }
+      setLines(rebuilt);
+      originalLinesKey.current = linesKey(rebuilt);
+      setLoadingExisting(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchase?.id]);
 
   function unitName(id: string | null) {
     return uoms.find((u) => u.id === id)?.name ?? "Unit";
@@ -143,28 +212,52 @@ export function PurchaseFormModal({
     e.preventDefault();
     if (!supplierId || lines.length === 0) return;
     setSaving(true);
+    setError(null);
     try {
-      const purchaseNo = await nextPurchaseNo();
-      const purchase = await purchasesRepo.create({
-        purchase_no: purchaseNo,
-        date: new Date().toISOString().slice(0, 10),
-        order_id: null,
+      const header = {
         supplier_id: supplierId,
         supplier_invoice_no: supplierInvoiceNo || null,
         discount_rs: Number(discountRs) || 0,
-        discount_pct: 0,
         tax,
         payable,
         paid_amount: Number(paidAmount) || 0,
         balance,
         description: description || null,
         payment_method: paymentMethod,
-        bank_id: null,
-        slip_no: null,
-        advance_payment: 0,
-        is_return: 0,
-        original_purchase_id: null,
-      });
+      };
+      let purchaseId: string;
+      if (isEdit && purchase) {
+        if (!can("purchase.edit")) throw new Error(NO_PERMISSION_MESSAGE);
+        if (originalLinesKey.current === linesKey(lines)) {
+          await purchasesRepo.update(purchase.id, header);
+          onSaved();
+          return;
+        }
+        // Take the original stock back out first; refuse if part of it has
+        // already been sold, so stock can't go negative.
+        const reversal = await planPurchaseReversal(purchase.id);
+        if (reversal.problems.length > 0) {
+          throw new Error(`This purchase can't be edited:\n${reversal.problems.join("\n")}`);
+        }
+        await applyPurchaseReversal(reversal);
+        for (const item of await listItemsForPurchase(purchase.id)) await purchaseItemsRepo.remove(item.id);
+        await purchasesRepo.update(purchase.id, header);
+        purchaseId = purchase.id;
+      } else {
+        const created = await purchasesRepo.create({
+          ...header,
+          purchase_no: await nextPurchaseNo(),
+          date: new Date().toISOString().slice(0, 10),
+          order_id: null,
+          discount_pct: 0,
+          bank_id: null,
+          slip_no: null,
+          advance_payment: 0,
+          is_return: 0,
+          original_purchase_id: null,
+        });
+        purchaseId = created.id;
+      }
 
       for (const l of lines) {
         // Everything the cashier typed (possibly in the secondary unit, e.g.
@@ -187,7 +280,7 @@ export function PurchaseFormModal({
           location: null,
         });
         await purchaseItemsRepo.create({
-          purchase_id: purchase.id,
+          purchase_id: purchaseId,
           product_id: l.product.id,
           location: null,
           batch_no: l.batchNo || batch.batch_no,
@@ -221,13 +314,18 @@ export function PurchaseFormModal({
         await assignProductToSupplier(l.product.id, supplierId);
       }
       onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title="-:Add Purchase:-" onClose={onClose} width="max-w-6xl">
+    <Modal title={isEdit ? `-:Edit Purchase #${purchase?.purchase_no ?? ""}:-` : "-:Add Purchase:-"} onClose={onClose} width="max-w-6xl">
+      {loadingExisting ? (
+        <p className="py-10 text-center text-sm text-neutral-400">Loading purchase...</p>
+      ) : (
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex items-end gap-1.5">
@@ -412,15 +510,20 @@ export function PurchaseFormModal({
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
+        {error && (
+          <p className="whitespace-pre-line rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>
+        )}
+
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
           <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>
       </form>
+      )}
 
       {quickAddSupplier && (
         <QuickAddDialog

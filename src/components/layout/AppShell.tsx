@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { refreshSessionAccess } from "@/lib/auth";
+import { isTauri } from "@/lib/platform";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PageTransition } from "./PageTransition";
@@ -16,6 +19,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const moduleKey = moduleKeyForPath(pathname);
   const allowed = hasModuleAccess(moduleKey);
   const subscriptionLocked = Boolean(currentTenant) && currentTenant?.subscriptionStatus !== "active";
+
+  // Pick up permission changes an owner made while this staff user is logged in.
+  useEffect(() => {
+    if (isTauri()) void refreshSessionAccess().catch(() => undefined);
+  }, [pathname]);
 
   return (
     <div className="flex h-screen flex-col bg-[#f5f5f7]">

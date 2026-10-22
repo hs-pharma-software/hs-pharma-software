@@ -230,6 +230,9 @@ const MIGRATIONS = [
     `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("name")} AS n FROM generic_names WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
     `DELETE FROM generic_names WHERE id <> 'gn-' || lower(hex(UPPER(${normWs("name")})))`,
   ]},
+  { version: 23, label: 'users.denied_actions (staff action permissions)', statements: [
+    `ALTER TABLE users ADD COLUMN denied_actions TEXT`,
+  ]},
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(

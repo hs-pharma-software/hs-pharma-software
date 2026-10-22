@@ -1,7 +1,8 @@
 ﻿import { usersRepo, findUserByUsername, countActiveStaffLogins } from "./repo/users";
 import { tenantsRepo } from "./repo/tenants";
 import { subscriptionPlansRepo, parseAllowedModules } from "./repo/subscriptionPlans";
-import type { SessionTenant, SessionUser } from "../store/authStore";
+import { useAuthStore, type SessionTenant, type SessionUser } from "../store/authStore";
+import { parseDeniedActions } from "./actionPermissions";
 import type { UserAccount, UserRole } from "./types2";
 
 /** Client-side password hashing (SHA-256, salted). There is no backend
@@ -47,6 +48,7 @@ async function buildSession(
     role: user.role,
     tenantId: user.tenant_id,
     permissions: parsedPermissions,
+    deniedActions: user.role === "staff" ? parseDeniedActions(user.denied_actions) : [],
   };
 
   if (!user.tenant_id) {
@@ -134,6 +136,32 @@ export async function changePassword(userId: string, newPassword: string): Promi
 
 /** Saves a staff user's module permission list. Pass null to restore full
  * access (removes all restrictions). */
-export async function updateUserPermissions(userId: string, permissions: string[] | null): Promise<void> {
-  await usersRepo.update(userId, { permissions: permissions != null ? JSON.stringify(permissions) : null });
+export async function updateUserPermissions(
+  userId: string,
+  permissions: string[] | null,
+  deniedActions?: string[]
+): Promise<void> {
+  await usersRepo.update(userId, {
+    permissions: permissions != null ? JSON.stringify(permissions) : null,
+    ...(deniedActions ? { denied_actions: deniedActions.length ? JSON.stringify(deniedActions) : null } : {}),
+  });
+}
+
+/** Re-reads the logged-in user's module and action permissions so changes an
+ * owner makes take effect without the staff member logging out. A
+ * deactivated account is logged out. */
+export async function refreshSessionAccess(): Promise<void> {
+  const { currentUser, updateCurrentUserAccess, logout } = useAuthStore.getState();
+  if (!currentUser || currentUser.role !== "staff") return;
+  const row = await usersRepo.get(currentUser.id);
+  if (!row) return;
+  if (!row.is_active) {
+    logout();
+    return;
+  }
+  let permissions: string[] | null = null;
+  if (row.permissions != null) {
+    try { permissions = JSON.parse(row.permissions) as string[]; } catch { permissions = null; }
+  }
+  updateCurrentUserAccess({ permissions, deniedActions: parseDeniedActions(row.denied_actions) });
 }

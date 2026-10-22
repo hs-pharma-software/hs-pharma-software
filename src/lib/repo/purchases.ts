@@ -89,6 +89,85 @@ export async function listItemsForPurchase(purchaseId: string): Promise<Purchase
   );
 }
 
+interface BatchRow {
+  id: string;
+  product_id: string;
+  batch_no: string | null;
+  qty: number;
+}
+
+export interface PurchaseReversal {
+  /** Batch id -> qty to take back out. */
+  deductions: Map<string, number>;
+  /** Why the purchase can't be reversed (empty when it can). */
+  problems: string[];
+}
+
+/** Works out how to take a purchase's received stock back out of the batches
+ * it went into. purchase_items keep product + batch_no (not the batch id), so
+ * matching batches are used newest first. Stock that has since been sold
+ * can't be taken back, which is reported as a problem rather than letting a
+ * batch go negative. */
+export async function planPurchaseReversal(purchaseId: string): Promise<PurchaseReversal> {
+  const tenantId = currentTenantId();
+  const problems: string[] = [];
+  const returns = await dbSelect<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM purchases WHERE original_purchase_id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+    [purchaseId, tenantId]
+  );
+  if ((returns[0]?.n ?? 0) > 0) {
+    problems.push("Purchase returns are recorded against this purchase. Delete those returns first.");
+  }
+
+  const items = await listItemsForPurchase(purchaseId);
+  const batches = await dbSelect<BatchRow>(
+    `SELECT id, product_id, batch_no, qty FROM product_batches
+     WHERE tenant_id = ? AND deleted_at IS NULL AND product_id IN (${items.map(() => "?").join(",") || "''"})
+     ORDER BY created_at DESC`,
+    [tenantId, ...items.map((i) => i.product_id)]
+  );
+  const available = new Map(batches.map((b) => [b.id, b.qty]));
+  const deductions = new Map<string, number>();
+
+  for (const item of items) {
+    let needed = item.received_qty;
+    const candidates = batches.filter(
+      (b) => b.product_id === item.product_id && (b.batch_no ?? "") === (item.batch_no ?? "")
+    );
+    for (const b of candidates) {
+      if (needed <= 0) break;
+      const take = Math.min(needed, available.get(b.id) ?? 0);
+      if (take <= 0) continue;
+      available.set(b.id, (available.get(b.id) ?? 0) - take);
+      deductions.set(b.id, (deductions.get(b.id) ?? 0) + take);
+      needed -= take;
+    }
+    if (needed > 0.0001) {
+      const fmt = (n: number) => String(Math.round(n * 100) / 100);
+      problems.push(
+        `${item.product_name}${item.batch_no ? ` (batch ${item.batch_no})` : ""}: ${fmt(item.received_qty)} received but only ${fmt(item.received_qty - needed)} still in stock - the rest has been sold or adjusted.`
+      );
+    }
+  }
+  return { deductions, problems };
+}
+
+export async function applyPurchaseReversal(reversal: PurchaseReversal): Promise<void> {
+  for (const [batchId, qty] of reversal.deductions) await deductStock(batchId, qty);
+}
+
+/** Soft-deletes a purchase and its lines after taking the received stock back
+ * out. Refuses (throws) when that stock is no longer all on hand. */
+export async function deletePurchaseWithStockReversal(purchaseId: string, reason?: string): Promise<void> {
+  const reversal = await planPurchaseReversal(purchaseId);
+  if (reversal.problems.length > 0) {
+    throw new Error(`This purchase can't be deleted:\n${reversal.problems.join("\n")}`);
+  }
+  await applyPurchaseReversal(reversal);
+  for (const item of await listItemsForPurchase(purchaseId)) await purchaseItemsRepo.remove(item.id);
+  await purchasesRepo.remove(purchaseId, reason, "Purchase");
+}
+
 /** Sums qty already returned to the supplier per product on a given
  * original purchase (across all its return purchases), so both return
  * flows can cap a line at what's actually still returnable. */

@@ -10,6 +10,7 @@ import { isTauri } from "@/lib/platform";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
 import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
+import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice, Tenant } from "@/lib/types2";
 
 interface InvoiceViewRow {
@@ -57,8 +58,11 @@ export function InvoiceViewModal({
     }
   }, [row.invoice.id, row.invoice.original_invoice_id, sessionTenant?.id]);
 
+  const canFbr = useCan("invoice.fbr_submit");
+
   async function handleFbrSubmit() {
     if (!fbrSettings || items.length === 0) return;
+    if (!can("invoice.fbr_submit")) return setFbrError(NO_PERMISSION_MESSAGE);
     setFbrSubmitting(true);
     setFbrError(null);
     const result = await submitInvoiceToFbrById(inv.id, fbrSettings);
@@ -96,7 +100,7 @@ export function InvoiceViewModal({
           </button>
         </div>
         <div className="flex gap-2">
-          {fbrSettings && !fbrInvoiceNo && !inv.is_return && (
+          {fbrSettings && !fbrInvoiceNo && !inv.is_return && canFbr && (
             <Button
               variant="secondary"
               disabled={fbrSubmitting}

@@ -13,6 +13,7 @@ import { changePassword, updateUserPermissions } from "@/lib/auth";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { NAV } from "@/config/nav";
+import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions";
 import type { Tenant, UserAccount } from "@/lib/types2";
 
 /** Lists login accounts. `scope: "all"` (Super Admin, at /admin/users) shows
@@ -30,6 +31,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
   const [newPassword, setNewPassword] = useState("");
   const [editingPerms, setEditingPerms] = useState<UserAccount | null>(null);
   const [permsState, setPermsState] = useState<string[] | null>(null);
+  const [deniedState, setDeniedState] = useState<string[]>([]);
   const [permsSaving, setPermsSaving] = useState(false);
 
   async function reload() {
@@ -59,7 +61,12 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
       try { parsed = JSON.parse(u.permissions) as string[]; } catch { parsed = null; }
     }
     setPermsState(parsed);
+    setDeniedState(parseDeniedActions(u.denied_actions));
     setEditingPerms(u);
+  }
+
+  function toggleAction(key: string) {
+    setDeniedState((d) => (d.includes(key) ? d.filter((k) => k !== key) : [...d, key]));
   }
 
   function toggleModule(key: string) {
@@ -82,7 +89,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
     if (!editingPerms) return;
     setPermsSaving(true);
     try {
-      await updateUserPermissions(editingPerms.id, permsState);
+      await updateUserPermissions(editingPerms.id, permsState, deniedState);
       setEditingPerms(null);
       void reload();
     } finally {
@@ -237,12 +244,52 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
                 ))}
               </div>
             </div>
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Actions</span>
+                <div className="flex gap-2 text-xs">
+                  <button type="button" onClick={() => setDeniedState([])} className="text-amber-600 hover:underline">
+                    Allow All
+                  </button>
+                  <span className="text-neutral-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setDeniedState(ACTION_PERMISSIONS.map((a) => a.key))}
+                    className="text-rose-600 hover:underline"
+                  >
+                    Block All
+                  </button>
+                </div>
+              </div>
+              {(["Invoices", "Purchases"] as const).map((group) => (
+                <div key={group} className="mb-1.5 last:mb-0">
+                  <p className="mb-1 text-[11px] font-medium text-neutral-500">{group}</p>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    {ACTION_PERMISSIONS.filter((a) => a.group === group).map((a) => (
+                      <label key={a.key} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
+                        <input
+                          type="checkbox"
+                          checked={!deniedState.includes(a.key)}
+                          onChange={() => toggleAction(a.key)}
+                          className="accent-amber-500"
+                        />
+                        <span className="text-xs text-neutral-700">{a.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <p className="mt-2 text-[11px] text-neutral-400">
+                Unticked actions are hidden for this login. Changes apply on their next screen change.
+              </p>
+            </div>
             <p className="text-xs text-neutral-400">
               {permsState === null
                 ? "Full access \u2014 all modules are allowed."
                 : permsState.length === 0
                 ? "No access \u2014 all modules are blocked."
                 : `${permsState.length} of ${NAV.length} modules allowed.`}
+              {deniedState.length > 0 && ` ${deniedState.length} action(s) restricted.`}
             </p>
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button type="button" onClick={() => setEditingPerms(null)}>

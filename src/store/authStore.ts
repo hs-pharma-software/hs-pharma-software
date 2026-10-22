@@ -15,6 +15,9 @@ export interface SessionUser {
   /** null = full access (owner / super_admin, or staff with no explicit restrictions).
    * A string array restricts the staff user to only those module keys. */
   permissions: string[] | null;
+  /** Action keys this staff login may not perform (see lib/actionPermissions).
+   * Optional so sessions saved before this field existed still load. */
+  deniedActions?: string[];
 }
 
 export interface SessionTenant {
@@ -40,6 +43,8 @@ interface AuthState {
   /** Called after a tenant's subscription plan is edited/renewed so the
    * logged-in session reflects it immediately without a re-login. */
   updateCurrentTenant: (tenant: SessionTenant) => void;
+  /** Re-applies permissions edited while this user was logged in. */
+  updateCurrentUserAccess: (access: Pick<SessionUser, "permissions" | "deniedActions">) => void;
   logout: () => void;
 }
 
@@ -50,6 +55,8 @@ export const useAuthStore = create<AuthState>()(
       currentTenant: null,
       setSession: (currentUser, currentTenant) => set({ currentUser, currentTenant }),
       updateCurrentTenant: (currentTenant) => set({ currentTenant }),
+      updateCurrentUserAccess: (access) =>
+        set((s) => (s.currentUser ? { currentUser: { ...s.currentUser, ...access } } : {})),
       logout: () => set({ currentUser: null, currentTenant: null }),
     }),
     { name: "pharmacy-auth-session" }
