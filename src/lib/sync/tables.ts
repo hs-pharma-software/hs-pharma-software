@@ -8,6 +8,7 @@ export const SYNCABLE_TABLES = [
   "sub_categories",
   "uoms",
   "products",
+  "generic_names",
   "subscription_plans",
   "tenants",
   "users",

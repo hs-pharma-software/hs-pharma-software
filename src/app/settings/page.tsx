@@ -11,6 +11,7 @@ import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
 import { FBR_PROVINCES } from "@/lib/fbrData";
+import { AI_KEY_SETTING } from "@/lib/fbrAutofill";
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -235,6 +236,69 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
 }
 
 const PROVINCES = FBR_PROVINCES.map((p) => p.label);
+
+function AiSettingsCard({ tauriReady }: { tauriReady: boolean }) {
+  const [apiKey, setApiKey] = useState("");
+  const [show, setShow] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void getSetting(AI_KEY_SETTING).then((k) => setApiKey(k ?? ""));
+  }, []);
+
+  async function save() {
+    await setSetting(AI_KEY_SETTING, apiKey.trim());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900 text-[10px] font-bold tracking-tight text-white shadow-sm">
+          AI
+        </div>
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">AI Assistant</h2>
+          <p className="text-xs text-neutral-400">Claude fills a product&apos;s FBR details from its description</p>
+        </div>
+        <span
+          className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${apiKey.trim() ? "bg-emerald-100 text-emerald-800" : "bg-neutral-100 text-neutral-500"}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${apiKey.trim() ? "bg-emerald-500" : "bg-neutral-400"}`} />
+          {apiKey.trim() ? "Key set" : "No key"}
+        </span>
+      </div>
+      <Field label="Claude API Key">
+        <div className="flex gap-2">
+          <Input
+            type={show ? "text" : "password"}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-ant-..."
+            autoComplete="off"
+          />
+          <button type="button" onClick={() => setShow((v) => !v)} className="shrink-0 px-2 text-xs text-neutral-500 hover:text-neutral-800">
+            {show ? "Hide" : "Show"}
+          </button>
+        </div>
+      </Field>
+      <p className="mt-3 text-xs leading-relaxed text-neutral-400">
+        Used when a product&apos;s description is new to your catalog. If another product already has the same
+        description, its FBR details are copied instead, with no AI call. Without a key, built-in rules are used.
+        Results are always checked against FBR&apos;s code lists and stay editable. The key is stored with your settings
+        and synced like the FBR tokens.
+      </p>
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {saved && <span className="text-xs text-emerald-600">Saved {"✓"}</span>}
+        <Button variant="primary" disabled={!tauriReady} onClick={() => void save()}>
+          Save Changes
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   const [enabled, setEnabled] = useState("false");
@@ -484,6 +548,8 @@ export default function GeneralSettingsPage() {
 
       {/* FBR Digital Invoicing */}
       <FbrSettingsCard tauriReady={tauriReady} />
+
+      <AiSettingsCard tauriReady={tauriReady} />
 
       {customizeOpen && (
         <CustomizationModal

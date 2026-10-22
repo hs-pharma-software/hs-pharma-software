@@ -738,6 +738,51 @@ fn schema_sql_v19() -> &'static str {
     "#
 }
 
+/// Shared list of product descriptions (generic names) for the Description
+/// suggestion menu, seeded once from existing products. The id is derived
+/// from the uppercased name so every device and Turso produce the same id
+/// for the same name, and the unique index blocks case-only duplicates.
+fn schema_sql_v20() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS generic_names (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_generic_names_name ON generic_names (UPPER(TRIM(name)));
+    INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at)
+    SELECT 'gn-' || lower(hex(UPPER(TRIM(description)))), TRIM(MIN(description)), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z'
+    FROM products
+    WHERE deleted_at IS NULL AND TRIM(COALESCE(description, '')) <> ''
+    GROUP BY UPPER(TRIM(description));
+    "#
+}
+
+/// v20 only trimmed spaces, so names with line breaks or repeated spaces were
+/// kept as separate entries. Re-key every name on its whitespace-normalized
+/// form (same rule as normalizeGenericName in the app: any run of
+/// whitespace -> one space) and drop the unnormalized copies. Idempotent.
+fn schema_sql_v21() -> &'static str {
+    r#"
+    INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at)
+    SELECT 'gn-' || lower(hex(UPPER(n))), n, '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z'
+    FROM (
+        SELECT TRIM(REPLACE(REPLACE(REPLACE(REPLACE(
+                 REPLACE(REPLACE(REPLACE(REPLACE(name, char(13), ' '), char(10), ' '), char(9), ' '), char(160), ' '),
+                 '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' ')) AS n
+        FROM generic_names WHERE deleted_at IS NULL
+    )
+    WHERE n <> ''
+    GROUP BY UPPER(n);
+    DELETE FROM generic_names
+    WHERE id <> 'gn-' || lower(hex(UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(
+                 REPLACE(REPLACE(REPLACE(REPLACE(name, char(13), ' '), char(10), ' '), char(9), ' '), char(160), ' '),
+                 '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' ')))));
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -991,6 +1036,18 @@ pub fn run() {
             version: 19,
             description: "product_drap_fields",
             sql: schema_sql_v19(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 20,
+            description: "generic_names",
+            sql: schema_sql_v20(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 21,
+            description: "generic_names_whitespace_normalize",
+            sql: schema_sql_v21(),
             kind: MigrationKind::Up,
         },
     ];

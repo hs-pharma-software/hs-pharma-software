@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { DescriptionCombobox } from "@/components/ui/DescriptionCombobox";
+import { addGenericName, findExact, listGenericNames, normalizeGenericName } from "@/lib/repo/genericNames";
+import { suggestFbrDetails, type CatalogProduct, type FbrFields, type FbrSuggestion } from "@/lib/fbrAutofill";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
@@ -62,6 +65,58 @@ export function ProductFormModal({
   useEffect(() => {
     if (!narcoticTouched) setIsNarcotic(Boolean(narcoticMatch));
   }, [narcoticMatch, narcoticTouched]);
+
+  // Description list + FBR auto-fill from description.
+  const [genericNames, setGenericNames] = useState<string[]>([]);
+  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [autofill, setAutofill] = useState<
+    | { status: "idle" }
+    | { status: "running" }
+    | { status: "done"; suggestion: FbrSuggestion; previous: FbrFields }
+  >({ status: "idle" });
+  // Opening an existing product must not re-classify it; only a changed
+  // description (or the Auto-fill button) triggers a fill.
+  const lastAutofilled = useRef(normalizeGenericName(product?.description ?? "").toUpperCase());
+
+  useEffect(() => {
+    void Promise.all([listGenericNames(), productsRepo.list()]).then(([names, products]) => {
+      setGenericNames(names);
+      setCatalog(products);
+    });
+  }, []);
+
+  function currentFbr(): FbrFields {
+    return { hsCode, saleType: fbrSaleType, saleRate: fbrSaleRate, uom: fbrUom, sroNo, sroItem: sroItemSerialNo };
+  }
+
+  function applyFbr(f: FbrFields) {
+    setHsCode(f.hsCode);
+    setFbrSaleType(f.saleType);
+    setFbrSaleRate(f.saleRate);
+    setFbrUom(f.uom);
+    setSroNo(f.sroNo);
+    setSroItemSerialNo(f.sroItem);
+  }
+
+  async function runAutofill(desc: string, opts: { force?: boolean; forceAi?: boolean } = {}) {
+    const key = normalizeGenericName(desc).toUpperCase();
+    if (!key || (!opts.force && !opts.forceAi && key === lastAutofilled.current)) return;
+    lastAutofilled.current = key;
+    const previous = currentFbr();
+    setAutofill({ status: "running" });
+    const suggestion = await suggestFbrDetails(name, desc, catalog, { excludeId: product?.id, forceAi: opts.forceAi });
+    applyFbr(suggestion);
+    setAutofill({ status: "done", suggestion, previous });
+  }
+
+  async function addDescription(value: string) {
+    const stored = await addGenericName(value, genericNames);
+    setGenericNames((prev) =>
+      findExact(prev, stored) ? prev : [...prev, stored].sort((a, b) => a.localeCompare(b))
+    );
+    setDescription(stored);
+    void runAutofill(stored);
+  }
 
   // Opening stock (create only)
   const [batchNo, setBatchNo] = useState("");
@@ -262,8 +317,14 @@ export function ProductFormModal({
           </Field>
         </div>
 
-        <Field label="Description">
-          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Field label="Description (Generic Name)">
+          <DescriptionCombobox
+            value={description}
+            onChange={setDescription}
+            onCommit={(v) => void runAutofill(v)}
+            options={genericNames}
+            onAdd={addDescription}
+          />
         </Field>
 
         <label
@@ -388,7 +449,49 @@ export function ProductFormModal({
         <div className="flex items-center rounded-md bg-[#006633]/[0.06] px-3 py-1.5">
           <div className="mr-2 flex h-5 w-5 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
           <span className="text-sm font-medium text-neutral-700">FBR / Tax Details</span>
+          <button
+            type="button"
+            disabled={!description.trim() || autofill.status === "running"}
+            onClick={() => void runAutofill(description, { force: true })}
+            className="ml-auto rounded-full bg-white px-3 py-1 text-xs font-medium text-[#006633] ring-1 ring-[#006633]/20 hover:bg-[#006633]/[0.06] disabled:opacity-40"
+            title="Fill the FBR fields from the description"
+          >
+            Auto-fill from description
+          </button>
         </div>
+        {autofill.status === "running" && (
+          <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">Filling FBR details from the description...</p>
+        )}
+        {autofill.status === "done" && (
+          <div className="flex flex-wrap items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-100">
+            <span className="flex-1 whitespace-normal break-words">
+              <span className="font-semibold">
+                {autofill.suggestion.source === "catalog"
+                  ? "Filled from your catalog"
+                  : autofill.suggestion.source === "ai"
+                    ? "Filled by AI (Claude)"
+                    : "Filled by built-in rules"}
+                :
+              </span>{" "}
+              {autofill.suggestion.note}. Please review - every field below can be changed.
+            </span>
+            {autofill.suggestion.source !== "ai" && (
+              <button type="button" className="font-medium underline" onClick={() => void runAutofill(description, { forceAi: true })}>
+                Ask AI
+              </button>
+            )}
+            <button
+              type="button"
+              className="font-medium underline"
+              onClick={() => {
+                applyFbr(autofill.previous);
+                setAutofill({ status: "idle" });
+              }}
+            >
+              Undo
+            </button>
+          </div>
+        )}
         <ProductFbrFields
           hsCode={hsCode}
           setHsCode={setHsCode}

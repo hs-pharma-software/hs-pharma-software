@@ -40,6 +40,11 @@ async function exec(sql) {
 
 // Each entry mirrors one schema_sql_v* function in src-tauri/src/lib.rs.
 // ADD A NEW ENTRY HERE whenever you add a new migration there.
+// SQL for normalizeGenericName(): line breaks/tabs/nbsp -> space, runs of
+// spaces -> one, trimmed.
+const normWs = (col) =>
+  `TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, char(13), ' '), char(10), ' '), char(9), ' '), char(160), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '))`;
+
 const MIGRATIONS = [
   // v1 — base schema (all CREATE TABLE IF NOT EXISTS, safe to re-run)
   { version: 1, label: 'Base schema', statements: [
@@ -205,13 +210,25 @@ const MIGRATIONS = [
     `UPDATE products SET sro_no = '6th Schd Table I' WHERE fbr_sale_type = 'Exempt goods' AND sro_no IN ('6th Schedule', 'Sixth Schedule Table I', '6th Schedule Table I')`,
     `UPDATE products SET sro_item_serial_no = '' WHERE fbr_sale_type = 'Exempt goods' AND sro_item_serial_no = '1'`,
   ]},
+  { version: 18, label: 'exempt products: SRO Eighth Schedule Table 1, item 81', statements: [
+    `UPDATE products SET sro_no = 'Eighth Schedule Table 1', sro_item_serial_no = '81' WHERE fbr_sale_type = 'Exempt goods' AND COALESCE(sro_item_serial_no, '') = ''`,
+  ]},
   { version: 19, label: 'products.drap_reg_no + drap_meta (DRAP import)', statements: [
     `ALTER TABLE products ADD COLUMN drap_reg_no TEXT`,
     `ALTER TABLE products ADD COLUMN drap_meta TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_products_drap_reg_no ON products (drap_reg_no)`,
   ]},
-  { version: 18, label: 'exempt products: SRO Eighth Schedule Table 1, item 81', statements: [
-    `UPDATE products SET sro_no = 'Eighth Schedule Table 1', sro_item_serial_no = '81' WHERE fbr_sale_type = 'Exempt goods' AND COALESCE(sro_item_serial_no, '') = ''`,
+  // This script re-runs every statement, so the seed uses the same
+  // whitespace normalization as v21 / normalizeGenericName() and stays a no-op
+  // for names already present.
+  { version: 20, label: 'generic_names (Description suggestion list, seeded from products)', statements: [
+    `CREATE TABLE IF NOT EXISTS generic_names (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS ux_generic_names_name ON generic_names (UPPER(TRIM(name)))`,
+    `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("description")} AS n FROM products WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
+  ]},
+  { version: 21, label: 'generic_names whitespace normalization (idempotent)', statements: [
+    `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("name")} AS n FROM generic_names WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
+    `DELETE FROM generic_names WHERE id <> 'gn-' || lower(hex(UPPER(${normWs("name")})))`,
   ]},
 ];
 
