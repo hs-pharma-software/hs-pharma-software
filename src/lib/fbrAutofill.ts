@@ -76,11 +76,50 @@ export function suggestFromRules(name: string, description: string): FbrSuggesti
   if (/SPINAL NEEDLE|LUMBAR|NEEDLE/.test(t)) return device("9018.3200", "Needle (medical device)");
   if (/CANNULA|CANULA|CATHETER|FOLEY|DRAINAGE BAG|URINE BAG/.test(t)) return device("9018.3990", "Cannula / catheter / bag (medical device)");
   if (/SLING|BRACE|SPLINT|BELT/.test(t)) return device("9021.1000", "Orthopaedic appliance");
-  if (/BREAST PUMP|THERMOMETER|NEBULI[SZ]ER|BP APPARATUS/.test(t)) return device("9018.9090", "Medical instrument");
+  if (/BREAST PUMP|NEBULI[SZ]ER|BP APPARATUS/.test(t)) return device("9018.9090", "Medical instrument");
   if (/RAPID TEST|TEST CASSETTE|TEST STRIP|DIAGNOSTIC|\bHCV\b|MALARIA ANTIGEN/.test(t)) return device("3822.1900", "Diagnostic kit / reagent");
   if (/CATGUT|SUTURE|POLYPROPYLENE|SILK BRAIDED|DRESSING|BANDAGE|GAUZE/.test(t)) {
     return { hsCode: "3005.9090", uom: "KG", ...MEDICINE_DEFAULT, source: "rules", note: "Dressing / suture" };
   }
+  // General store items (standard rate). UOM is FBR's allowed unit for the
+  // code; for KG/Liter the product also needs its quantity factor.
+  const store = (hsCode: string, uom: string, note: string): FbrSuggestion => ({
+    hsCode, saleType: "Goods at standard rate (default)", saleRate: "18", uom, sroNo: "", sroItem: "", source: "rules", note,
+  });
+  // Feeder vs nipple: decide on the product name first ("MECHICO FEEDER" with
+  // description "silicone nipple" is a feeder; "RUBBER NIPPLE" for a feeder is a teat).
+  const n = name.toUpperCase();
+  const feeder = () => store("3924.9000", "Numbers, pieces, units", "Feeding bottle (plastic household/toilet article)");
+  const teat = () => store("4014.9000", "KG", "Rubber teat / nipple");
+  const FEEDER = /FEEDER|FEEDING BOTTLE/;
+  const TEAT = /NIPP?LE|\bTEATS?\b|PACIFIER|SOOTHER/;
+  if (FEEDER.test(n)) return feeder();
+  if (TEAT.test(n)) return teat();
+  if (FEEDER.test(t)) return feeder();
+  if (TEAT.test(t)) return teat();
+  if (/PHENYLE?\b|DISINFECTANT|DETTOL|SAVLON|SANITI[SZ]ER|SURFACE CLEANER/.test(t)) return store("3808.9400", "KG", "Disinfectant");
+  if (/CONDOM/.test(t)) return store("4014.1000", "Numbers, pieces, units", "Sheath contraceptive");
+  if (/GLOVE/.test(t)) return store("4015.1200", "KG", "Medical / examination gloves");
+  if (/DIAPER/.test(t)) return /ADULT/.test(t) ? store("9619.0010", "KG", "Adult diapers") : store("9619.0020", "KG", "Baby diapers");
+  if (/SANITARY|\bPADS?\b|TAMPON|PANTY LINER/.test(t)) return store("9619.0090", "KG", "Sanitary pads / tampons");
+  if (/TISSUE/.test(t)) return store("4818.2000", "KG", "Facial / cleansing tissues");
+  if (/TOOTH ?PASTE/.test(t)) return store("3306.1010", "Numbers, pieces, units", "Toothpaste");
+  if (/TOOTH ?BRUSH/.test(t)) return store("9603.2100", "Numbers, pieces, units", "Toothbrush");
+  if (/MOUTH ?WASH/.test(t)) return store("3306.9000", "Numbers, pieces, units", "Oral hygiene preparation");
+  if (/SHAMPOO/.test(t)) return store("3305.1000", "Numbers, pieces, units", "Shampoo");
+  if (/WIPES/.test(t)) return store("3401.1910", "KG", "Wet / baby wipes");
+  if (/\bSOAP\b/.test(t)) return store("3401.1100", "KG", "Toilet soap");
+  if (/BABY MILK|INFANT FORMULA|FORMULA MILK|CERELAC|LACTOGEN|\bNAN\b|SIMILAC/.test(t)) return store("1901.1000", "KG", "Infant food / formula");
+  if (/COTTON (?:WOOL|ROLL|BALL|BUD)/.test(t)) return store("5601.2100", "KG", "Cotton wool");
+  if (/MINERAL WATER|DRINKING WATER/.test(t)) return store("2201.1010", "Liter", "Mineral water");
+  if (/TALC/.test(t)) return store("3304.9120", "Numbers, pieces, units", "Talcum powder");
+  if (/SUNBLOCK|SUNSCREEN|FAIRNESS|MOISTURI[SZ]|FACE WASH|BEAUTY CREAM|LIP BALM|PETROLEUM JELLY|VASELINE/.test(t)) {
+    return store("3304.9910", "Numbers, pieces, units", "Skin care / cosmetic (non-medicated)");
+  }
+  if (/THERMOMETER/.test(t)) return store("9025.1110", "Numbers, pieces, units", "Clinical thermometer");
+  if (/RAZOR|BLADE/.test(t)) return store(/BLADE/.test(t) ? "8212.2000" : "8212.1000", "Numbers, pieces, units", "Razor / blades");
+  if (/BATTERY|BATTERIES/.test(t)) return store("8506.1000", "Numbers, pieces, units", "Battery");
+  if (/METHYLATED SPIRIT|SURGICAL SPIRIT/.test(t)) return store("2207.2000", "Liter", "Denatured spirit");
   if (/HERBAL|UNANI|AYURVED|\bARQ\b|TINCT/.test(t)) {
     return { hsCode: "3004.9010", saleType: "Goods at standard rate (default)", saleRate: "18", uom: "Packs", sroNo: "", sroItem: "", source: "rules", note: "Herbal / unani preparation" };
   }
@@ -102,7 +141,16 @@ export function suggestFromRules(name: string, description: string): FbrSuggesti
   return { hsCode, uom: "Packs", ...MEDICINE_DEFAULT, source: "rules", note: "Registered medicine (keyword rules)" };
 }
 
-const HS_LIST = FBR_HS_CODES.map((h) => `${h.code}: ${h.description}`).join("\n");
+// The full FBR list has ~7,800 codes; the prompt gets the headings a pharmacy
+// and general store sells (answers outside it are still accepted if FBR-valid).
+export const STORE_HS_PREFIXES = [
+  "0401", "0402", "1704", "1806", "1901", "1905", "2106", "2201", "2202", "2207", "2710.1995",
+  "3002", "3003", "3004", "3005", "3006", "3302.1090", "3303", "3304", "3305", "3306", "3307", "3401", "3402",
+  "3808.94", "3822", "3923.3", "3924", "3926", "4014", "4015", "4818", "5601", "8212", "8506",
+  "9018", "9019", "9020", "9021", "9025.11", "9603.2", "9619",
+];
+export const STORE_HS_CODES = FBR_HS_CODES.filter((h) => STORE_HS_PREFIXES.some((p) => h.code.startsWith(p)));
+const HS_LIST = STORE_HS_CODES.map((h) => `${h.code}: ${h.description}`).join("\n");
 const SALE_TYPE_LIST = FBR_SALE_TYPES.map((t) => `${t.value}: ${t.description}`).join("\n");
 
 const SYSTEM_PROMPT = `You classify products of a retail pharmacy in Pakistan for FBR (Federal Board of Revenue) Digital Invoicing. Given a product name and its description (usually the generic name / active ingredients), choose the FBR fields for that product.
@@ -110,10 +158,11 @@ const SYSTEM_PROMPT = `You classify products of a retail pharmacy in Pakistan fo
 Follow this pharmacy's existing conventions, which the rest of its catalog already uses:
 - Registered human medicines (tablets, capsules, syrups, suspensions, injections, infusions, drops, creams, ointments and other medicated products): the most specific HS code under 30.04; sale type "Exempt goods"; rate 0; SRO schedule "Eighth Schedule Table 1"; SRO item serial "81".
 - Dressings, gauze and sutures (30.05): sale type "Exempt goods"; rate 0; SRO "Eighth Schedule Table 1"; serial "81".
-- Medical devices and disposables (syringes, needles, cannulae, catheters, bags, instruments, orthopaedic appliances; 90.18-90.21), diagnostic kits and reagents (38.22), herbal / unani / ayurvedic preparations (3004.9010), cosmetics and non-drug supplements: sale type "Goods at standard rate (default)"; rate 18; no SRO (empty strings).
+- Medical devices and disposables (syringes, needles, cannulae, catheters, bags, instruments, orthopaedic appliances; 90.18-90.21), diagnostic kits, test strips and reagents (38.22), herbal / unani / ayurvedic preparations (3004.9010), cosmetics and non-drug supplements: sale type "Goods at standard rate (default)"; rate 18; no SRO (empty strings).
+- General store items are not medicines even when sold in a pharmacy - feeding bottles (3924.9000), rubber teats / nipples / pacifiers (4014.9000), disinfectants such as phenyl (3808.9400), soap (3401.x), shampoo (3305.1000), toothpaste (3306.1010), diapers and sanitary pads (9619.x), tissues (4818.x), cotton wool (5601.2100), infant formula (1901.1000), skin creams and lotions without a drug (3304.9910), gloves (4015.x), condoms (4014.1000): sale type "Goods at standard rate (default)"; rate 18; no SRO.
 Only depart from these conventions when the product clearly belongs elsewhere, and say why in "reason".
 
-Pick hsCode only from this list of codes FBR accepts:
+Pick hsCode from this list of codes FBR accepts (other FBR codes are allowed only if none of these fits):
 ${HS_LIST}
 
 Sale types FBR accepts:
@@ -134,19 +183,36 @@ const SuggestionSchema = z.object({
   reason: z.string(),
 });
 
-export async function suggestFromAi(name: string, description: string): Promise<FbrSuggestion> {
+export async function hasClaudeKey(): Promise<boolean> {
+  return !!((await getSetting(AI_KEY_SETTING)) ?? "").trim();
+}
+
+/** Claude client using the key from Settings > AI Assistant. */
+export async function claudeClient(timeoutMs = 60_000): Promise<Anthropic> {
   const apiKey = ((await getSetting(AI_KEY_SETTING)) ?? "").trim();
   if (!apiKey) throw new Error("No Claude API key set in Settings > AI Assistant.");
-
-  const client = new Anthropic({
+  return new Anthropic({
     apiKey,
     // Runs inside the desktop app's webview; requests go through the Tauri
     // HTTP plugin (allow-listed to api.anthropic.com) rather than the browser.
     dangerouslyAllowBrowser: true,
     fetch: tauriFetch as unknown as typeof fetch,
     maxRetries: 1,
-    timeout: 60_000,
+    timeout: timeoutMs,
   });
+}
+
+/** Turns SDK errors into messages a shop user can act on. */
+export function claudeErrorMessage(error: unknown): string {
+  if (error instanceof Anthropic.AuthenticationError) return "Claude API key was rejected. Check it in Settings > AI Assistant.";
+  if (error instanceof Anthropic.RateLimitError) return "Claude API rate limit reached. Try again shortly.";
+  if (error instanceof Anthropic.APIConnectionError) return "Could not reach the Claude API. Check the internet connection.";
+  if (error instanceof Anthropic.APIError) return `Claude API error ${error.status}: ${error.message}`;
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function suggestFromAi(name: string, description: string): Promise<FbrSuggestion> {
+  const client = await claudeClient();
 
   let response;
   try {
@@ -160,11 +226,7 @@ export async function suggestFromAi(name: string, description: string): Promise<
       messages: [{ role: "user", content: `Product name: ${name || "(not given)"}\nDescription: ${description}` }],
     });
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) throw new Error("Claude API key was rejected. Check it in Settings > AI Assistant.");
-    if (error instanceof Anthropic.RateLimitError) throw new Error("Claude API rate limit reached. Try again shortly.");
-    if (error instanceof Anthropic.APIConnectionError) throw new Error("Could not reach the Claude API. Check the internet connection.");
-    if (error instanceof Anthropic.APIError) throw new Error(`Claude API error ${error.status}: ${error.message}`);
-    throw error;
+    throw new Error(claudeErrorMessage(error));
   }
 
   if (response.stop_reason === "refusal") throw new Error("Claude declined to classify this product.");

@@ -760,6 +760,29 @@ fn schema_sql_v20() -> &'static str {
     "#
 }
 
+/// FBR fixes the unit per HS code (KG for rubber teats, disinfectants, soap,
+/// diapers...), so the quantity sent must be in that unit: fbr_qty_factor is
+/// how much of the FBR unit one base unit is (a 500 g pack in KG = 0.5).
+/// Also corrects four non-medicines that were classed as exempt medicines;
+/// each update only applies while the product still has the old value.
+fn schema_sql_v22() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1;
+    UPDATE products SET hs_code = '3822.1900', fbr_sale_type = 'Goods at standard rate (default)', fbr_sale_rate = 18,
+        fbr_uom = 'Numbers, pieces, units', sro_no = '', sro_item_serial_no = ''
+      WHERE name = 'ACON MALARIA' AND hs_code = '3004.9099';
+    UPDATE products SET hs_code = '3822.1900', fbr_sale_type = 'Goods at standard rate (default)', fbr_sale_rate = 18,
+        fbr_uom = 'Numbers, pieces, units', sro_no = '', sro_item_serial_no = ''
+      WHERE name = 'ONCALL EXTRA SUGAR STRIP' AND hs_code = '3004.9099';
+    UPDATE products SET hs_code = '9018.3990', fbr_sale_type = 'Goods at standard rate (default)', fbr_sale_rate = 18,
+        fbr_uom = 'Numbers, pieces, units', sro_no = '', sro_item_serial_no = ''
+      WHERE name = 'IV CANULA 22G' AND hs_code = '3004.9099';
+    UPDATE products SET hs_code = '3924.9000', fbr_sale_type = 'Goods at standard rate (default)', fbr_sale_rate = 18,
+        fbr_uom = 'Numbers, pieces, units', sro_no = '', sro_item_serial_no = ''
+      WHERE name = 'MECHICO FEEDER' AND hs_code = '3004.9099';
+    "#
+}
+
 /// v20 only trimmed spaces, so names with line breaks or repeated spaces were
 /// kept as separate entries. Re-key every name on its whitespace-normalized
 /// form (same rule as normalizeGenericName in the app: any run of
@@ -1048,6 +1071,12 @@ pub fn run() {
             version: 21,
             description: "generic_names_whitespace_normalize",
             sql: schema_sql_v21(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 22,
+            description: "product_fbr_qty_factor_and_non_medicine_fixes",
+            sql: schema_sql_v22(),
             kind: MigrationKind::Up,
         },
     ];

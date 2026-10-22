@@ -21,7 +21,7 @@ export async function submitInvoiceToFbrById(invoiceId: string, settings: FbrSet
     `
     SELECT ii.qty, ii.sale_price, ii.tax_pct, ii.further_tax_pct, ii.discount_rs,
            p.name AS product_name, p.hs_code, p.fbr_sale_type, p.fbr_sale_rate, p.fbr_uom,
-           p.sro_no, p.sro_item_serial_no
+           p.sro_no, p.sro_item_serial_no, p.fbr_qty_factor
     FROM invoice_items ii
     LEFT JOIN products p ON p.id = ii.product_id
     WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL

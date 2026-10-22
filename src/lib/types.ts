@@ -49,6 +49,9 @@ export interface Product extends BaseRow {
   fbr_sale_rate: number;
   fbr_uom: string | null;
   is_narcotic: number;
+  /** FBR quantity per base unit when FBR's UOM for the HS code is a weight or
+   * volume (KG, Liter...): a 500 g pack in KG = 0.5. 1 for Packs / pieces. */
+  fbr_qty_factor: number | null;
   drap_reg_no: string | null;
   /** JSON of DrapMeta (see lib/drap.ts). */
   drap_meta: string | null;

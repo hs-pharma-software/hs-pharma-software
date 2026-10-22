@@ -6,6 +6,7 @@ import { Topbar } from "./Topbar";
 import { PageTransition } from "./PageTransition";
 import { GlobalShortcuts } from "./GlobalShortcuts";
 import { Calculator } from "./Calculator";
+import { AssistantChat } from "@/components/assistant/AssistantChat";
 import { useAuthStore } from "@/store/authStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
 
@@ -20,6 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen flex-col bg-[#f5f5f7]">
       <GlobalShortcuts />
       <Calculator />
+      {currentTenant && !subscriptionLocked && <AssistantChat />}
       <Topbar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />

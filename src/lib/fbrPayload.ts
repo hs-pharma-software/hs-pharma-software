@@ -14,7 +14,13 @@ export interface FbrItemRow {
   fbr_uom: string | null;
   sro_no: string | null;
   sro_item_serial_no: string | null;
+  /** FBR units per base unit (KG per pack etc.); null/0 means 1. */
+  fbr_qty_factor?: number | null;
 }
+
+/** FBR UOMs that count items; anything else (KG, Liter, Gram...) needs the
+ * product's fbr_qty_factor to convert the quantity sold. */
+export const COUNT_UOMS = new Set(["Packs", "Numbers, pieces, units", "Pcs", "NO", "Dozen", "Pair", "SET", "Bag"]);
 
 export interface FbrBuyer {
   name: string | null;
@@ -96,7 +102,7 @@ export function buildFbrPayload(
       productDescription: fbrText(i.product_name),
       rate: saleType.rateLabel(rate),
       uoM: i.fbr_uom!,
-      quantity: round(i.qty, 4),
+      quantity: round(i.qty * (i.fbr_qty_factor || 1), 4),
       totalValues: round(valueExclST + salesTax + furtherTax, 2),
       valueSalesExcludingST: valueExclST,
       fixedNotifiedValueOrRetailPrice: thirdSchedule ? gross : 0,

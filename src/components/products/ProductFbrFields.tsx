@@ -14,6 +14,7 @@ import {
   type FbrSroSchedule,
 } from "@/lib/fbr";
 import { FBR_HS_CODES, FBR_SALE_TYPES, FBR_UOM_LIST, fbrProvinceCode, findSaleType } from "@/lib/fbrData";
+import { COUNT_UOMS } from "@/lib/fbrPayload";
 
 const HS_OPTIONS = FBR_HS_CODES.map((h) => ({ value: h.code, label: h.code, sublabel: h.description }));
 const VALID_HS = new Set(FBR_HS_CODES.map((h) => h.code));
@@ -31,6 +32,10 @@ interface Props {
   setSroNo: (v: string) => void;
   sroItem: string;
   setSroItem: (v: string) => void;
+  qtyFactor: string;
+  setQtyFactor: (v: string) => void;
+  /** Name of the product's base unit, for the quantity-factor label. */
+  baseUnitName: string;
 }
 
 /** Product FBR fields backed by FBR's live reference APIs, so only values
@@ -151,6 +156,22 @@ export function ProductFbrFields(p: Props) {
           </Select>
           {uoms.length > 0 && <span className="text-[11px] text-neutral-400">Allowed by FBR for {p.hsCode}</span>}
         </Field>
+        {p.uom && !COUNT_UOMS.has(p.uom) && (
+          <Field label={`${p.uom} per 1 ${p.baseUnitName || "unit"}`} required>
+            <Input
+              type="number"
+              min="0"
+              step="any"
+              value={p.qtyFactor}
+              onChange={(e) => p.setQtyFactor(e.target.value)}
+              className={Number(p.qtyFactor) === 1 ? "!border-amber-400" : ""}
+            />
+            <span className="text-[11px] leading-snug text-neutral-500">
+              FBR counts this item in {p.uom}. Enter how much one {p.baseUnitName || "unit"} weighs/holds, e.g. a 500 g
+              pack = 0.5 KG. Invoice quantities are converted with it.
+            </span>
+          </Field>
+        )}
         <Field label="SRO Schedule No" required={needsSro}>
           {schedules.length > 0 ? (
             <Select

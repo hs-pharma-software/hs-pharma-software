@@ -57,6 +57,7 @@ export function ProductFormModal({
   const [fbrUom, setFbrUom] = useState(product?.fbr_uom ?? "");
   const [sroNo, setSroNo] = useState(product?.sro_no ?? "");
   const [sroItemSerialNo, setSroItemSerialNo] = useState(product?.sro_item_serial_no ?? "");
+  const [fbrQtyFactor, setFbrQtyFactor] = useState(String(product?.fbr_qty_factor || 1));
 
   const [isNarcotic, setIsNarcotic] = useState(Boolean(product?.is_narcotic));
   const [narcoticTouched, setNarcoticTouched] = useState(isEdit);
@@ -248,6 +249,7 @@ export function ProductFormModal({
         fbr_uom: fbrUom || null,
         sro_no: sroNo || null,
         sro_item_serial_no: sroItemSerialNo || null,
+        fbr_qty_factor: Number(fbrQtyFactor) > 0 ? Number(fbrQtyFactor) : 1,
         is_narcotic: isNarcotic ? 1 : 0,
       };
 
@@ -505,6 +507,9 @@ export function ProductFormModal({
           setSroNo={setSroNo}
           sroItem={sroItemSerialNo}
           setSroItem={setSroItemSerialNo}
+          qtyFactor={fbrQtyFactor}
+          setQtyFactor={setFbrQtyFactor}
+          baseUnitName={baseUnitName}
         />
 
         {isEdit && (
