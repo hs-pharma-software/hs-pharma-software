@@ -159,6 +159,9 @@ const MIGRATIONS = [
   { version: 12, label: 'users.permissions (per-user module access)', statements: [
     `ALTER TABLE users ADD COLUMN permissions TEXT`,
   ]},
+  { version: 13, label: 'invoices.fbr_invoice_no (FBR Digital Invoicing)', statements: [
+    `ALTER TABLE invoices ADD COLUMN fbr_invoice_no TEXT`,
+  ]},
 ];
 
 async function main() {

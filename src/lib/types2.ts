@@ -194,6 +194,7 @@ export interface Invoice extends TenantRow {
    * query and doesn't touch stock until accepted. */
   is_quotation: number;
   quotation_no: number | null;
+  fbr_invoice_no: string | null;
 }
 
 export interface InvoiceItem extends TenantRow {

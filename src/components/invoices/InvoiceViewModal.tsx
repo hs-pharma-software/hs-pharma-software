@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import QRCode from "react-qr-code";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { listItemsForInvoice, invoicesRepo, type InvoiceItemWithProduct } from "@/lib/repo/invoices";
 import { useAuthStore } from "@/store/authStore";
 import { isTauri } from "@/lib/platform";
 import { tenantsRepo } from "@/lib/repo/tenants";
+import { loadFbrSettings, submitInvoiceToFbr, type FbrSettings } from "@/lib/fbr";
 import type { Invoice, Tenant } from "@/lib/types2";
 
 interface InvoiceViewRow {
@@ -30,6 +32,10 @@ export function InvoiceViewModal({
   const [loading, setLoading] = useState(true);
   const [tenantInfo, setTenantInfo] = useState<Tenant | null>(null);
   const [template, setTemplate] = useState<"invoice" | "receipt">("invoice");
+  const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
+  const [fbrInvoiceNo, setFbrInvoiceNo] = useState<string | null>(row.invoice.fbr_invoice_no ?? null);
+  const [fbrSubmitting, setFbrSubmitting] = useState(false);
+  const [fbrError, setFbrError] = useState<string | null>(null);
   const sessionTenant = useAuthStore((s) => s.currentTenant);
 
   useEffect(() => {
@@ -45,7 +51,57 @@ export function InvoiceViewModal({
     if (isTauri() && sessionTenant?.id) {
       void tenantsRepo.get(sessionTenant.id).then(setTenantInfo);
     }
+    if (isTauri()) {
+      void loadFbrSettings().then((s) => { if (s.enabled) setFbrSettings(s); });
+    }
   }, [row.invoice.id, row.invoice.original_invoice_id, sessionTenant?.id]);
+
+  async function handleFbrSubmit() {
+    if (!fbrSettings || items.length === 0) return;
+    setFbrSubmitting(true);
+    setFbrError(null);
+    const result = await submitInvoiceToFbr(
+      {
+        invoiceType: "Sale Invoice",
+        invoiceDate: inv.date,
+        sellerNTNCNIC: fbrSettings.sellerNtn,
+        sellerBusinessName: fbrSettings.sellerName,
+        sellerProvince: fbrSettings.sellerProvince,
+        sellerAddress: fbrSettings.sellerAddress,
+        buyerBusinessName: row.customerName,
+        buyerProvince: fbrSettings.sellerProvince,
+        buyerAddress: "",
+        buyerRegistrationType: "Unregistered",
+        items: items.map((item) => ({
+          hsCode: "0000.0000",
+          productDescription: item.product_name,
+          rate: item.tax_pct > 0 ? `${item.tax_pct}%` : "0%",
+          uoM: "Numbers, pieces, units",
+          quantity: item.qty,
+          totalValues: item.total,
+          valueSalesExcludingST: item.total,
+          fixedNotifiedValueOrRetailPrice: 0,
+          salesTaxApplicable: (item.total * (item.tax_pct ?? 0)) / 100,
+          salesTaxWithheldAtSource: 0,
+          extraTax: 0,
+          furtherTax: item.further_tax_pct > 0 ? (item.total * item.further_tax_pct) / 100 : 0,
+          sroScheduleNo: "",
+          fedPayable: 0,
+          discount: item.discount_rs,
+          saleType: "Goods at standard rate (default)",
+          sroItemSerialNo: "",
+        })),
+      },
+      fbrSettings
+    );
+    setFbrSubmitting(false);
+    if (result.success && result.fbrInvoiceNo) {
+      setFbrInvoiceNo(result.fbrInvoiceNo);
+      await invoicesRepo.update(inv.id, { fbr_invoice_no: result.fbrInvoiceNo });
+    } else {
+      setFbrError(result.error ?? "Unknown error");
+    }
+  }
 
   const inv = row.invoice;
 
@@ -73,11 +129,24 @@ export function InvoiceViewModal({
           </button>
         </div>
         <div className="flex gap-2">
+          {fbrSettings && !fbrInvoiceNo && !inv.is_return && (
+            <Button
+              variant="secondary"
+              disabled={fbrSubmitting}
+              onClick={() => void handleFbrSubmit()}
+              className="border border-[#006633]/30 bg-[#006633]/5 text-[#006633] hover:bg-[#006633]/10"
+            >
+              {fbrSubmitting ? "Submitting…" : "Submit to FBR"}
+            </Button>
+          )}
           <Button onClick={() => window.print()}>Print</Button>
           <Button variant="primary" onClick={onClose}>Close</Button>
         </div>
       </div>
 
+      {fbrError && (
+        <p className="mb-3 rounded-xl bg-rose-50 px-4 py-2.5 text-xs text-rose-700">{fbrError}</p>
+      )}
       {loading ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading...</p>
       ) : (
@@ -242,6 +311,37 @@ export function InvoiceViewModal({
             <p className="mt-3 border-t border-dashed border-neutral-300 pt-2 text-center text-xs text-neutral-400">
               Thank you for your visit!
             </p>
+          )}
+
+          {/* ── FBR Digital Invoicing Footer ── */}
+          {fbrInvoiceNo && (
+            <div className={`mt-4 border-t border-neutral-200 pt-3 ${template === "receipt" ? "text-center" : "flex items-start justify-between gap-6"}`}>
+              {/* Left: FBR badge + invoice number */}
+              <div className={template === "receipt" ? "mb-2 flex flex-col items-center gap-1" : "flex flex-col gap-1"}>
+                <div className="flex items-center gap-2">
+                  {/* FBR Logo badge */}
+                  <span className="inline-flex items-center gap-1 rounded-md bg-[#006633] px-2 py-0.5 text-[9px] font-bold text-white tracking-wide">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    FBR Digital Invoice
+                  </span>
+                </div>
+                <p className="text-[10px] text-neutral-500">
+                  FBR Invoice No: <span className="font-semibold text-neutral-800">{fbrInvoiceNo}</span>
+                </p>
+                <p className="text-[9px] text-neutral-400">Scan QR to verify at FBR portal</p>
+              </div>
+              {/* Right: QR code */}
+              <div className={template === "receipt" ? "mx-auto" : ""}>
+                <QRCode
+                  value={fbrInvoiceNo}
+                  size={template === "receipt" ? 72 : 80}
+                  style={{ height: "auto", maxWidth: "100%", width: template === "receipt" ? 72 : 80 }}
+                  viewBox="0 0 256 256"
+                />
+              </div>
+            </div>
           )}
         </div>
       )}
