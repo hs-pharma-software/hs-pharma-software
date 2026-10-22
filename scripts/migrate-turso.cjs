@@ -188,6 +188,23 @@ const MIGRATIONS = [
       'CODEINE','METHADONE','KETAMINE','OXYCODONE','HYDROCODONE','DEXTROPROPOXYPHENE','EPHEDRINE',
     ].map((k) => `UPPER(name || ' ' || COALESCE(description, '')) LIKE '%${k}%'`).join(' OR ') },
   ]},
+  // Idempotent corrections to values FBR's reference APIs accept.
+  { version: 17, label: 'product FBR data corrections (HS, UOM, sale type, 18%, SRO name)', statements: [
+    `UPDATE products SET hs_code = '3004.9099' WHERE hs_code = '3004.9090'`,
+    `UPDATE products SET hs_code = '3004.5090' WHERE hs_code = '3004.5000'`,
+    `UPDATE products SET hs_code = '9018.3110' WHERE hs_code = '9018.3100'`,
+    `UPDATE products SET hs_code = '9018.3990' WHERE hs_code = '9018.3900'`,
+    `UPDATE products SET hs_code = '9018.9090' WHERE hs_code = '9018.9000'`,
+    `UPDATE products SET fbr_uom = 'Packs' WHERE hs_code LIKE '3004.%' AND COALESCE(fbr_uom, '') NOT IN ('Packs', 'KG')`,
+    `UPDATE products SET fbr_uom = 'KG' WHERE hs_code LIKE '3005.%' AND COALESCE(fbr_uom, '') <> 'KG'`,
+    `UPDATE products SET fbr_uom = 'Numbers, pieces, units' WHERE (hs_code LIKE '9018.%' OR hs_code LIKE '9021.%' OR hs_code LIKE '3822.%') AND fbr_uom IS NULL`,
+    `UPDATE products SET fbr_sale_type = 'Exempt goods' WHERE fbr_sale_type = 'Goods exempt'`,
+    `UPDATE products SET fbr_sale_type = 'Goods at Reduced Rate' WHERE fbr_sale_type = 'Goods at reduced rate'`,
+    `UPDATE products SET fbr_sale_type = 'Goods at zero-rate' WHERE fbr_sale_type = 'Goods at zero rate'`,
+    `UPDATE products SET fbr_sale_rate = 18 WHERE fbr_sale_type = 'Goods at standard rate (default)' AND fbr_sale_rate = 17`,
+    `UPDATE products SET sro_no = '6th Schd Table I' WHERE fbr_sale_type = 'Exempt goods' AND sro_no IN ('6th Schedule', 'Sixth Schedule Table I', '6th Schedule Table I')`,
+    `UPDATE products SET sro_item_serial_no = '' WHERE fbr_sale_type = 'Exempt goods' AND sro_item_serial_no = '1'`,
+  ]},
 ];
 
 async function main() {

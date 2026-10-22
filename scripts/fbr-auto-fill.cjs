@@ -6,7 +6,7 @@
  *   sro_no, sro_item_serial_no
  *
  * Rules (Pakistan FBR / Sales Tax Act 1990):
- *  - Registered medicines          → HS 3004.9090, Exempt, 6th Schedule
+ *  - Registered medicines          → HS 3004.9099, Exempt goods, 6th Schd Table I (item serial must be set)
  *  - Antibiotics                   → HS 3004.2000
  *  - Vitamins / Supplements        → HS 3004.5000
  *  - Hormones / Steroids           → HS 3004.3200
@@ -54,56 +54,56 @@ function classifyProduct(name, description) {
   const combined = N + ' ' + D;
 
   // UOM is almost always "Numbers, pieces, units" for a pharmacy
-  const uom = 'Numbers, pieces, units';
+  const uom = 'Numbers, pieces, units'; // overridden per HS code in main()
 
   // ── Medical devices / equipment (standard rated 17%) ─────────────────────
   if (/SYRINGE|INSULIN SYRING/.test(combined))
-    return { hs: '9018.3100', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9018.3110', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
   if (/CANNULA/.test(combined))
-    return { hs: '9018.3900', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9018.3990', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
   if (/CATHETER|FOLEY/.test(combined))
-    return { hs: '9018.3900', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9018.3990', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
   if (/BREAST PUMP/.test(combined))
-    return { hs: '9018.9000', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9018.9090', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
   if (/SPINAL NEEDLE|LUMBAR PUNCURE|LUMBER PUCTURE/.test(combined))
-    return { hs: '9018.3200', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9018.3200', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
   if (/SLING|BRACE|ORTHOPEDIC|POLISLING|POLYSLING/.test(combined))
-    return { hs: '9021.1000', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9021.1000', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
   if (/URINE.*BAG|DRAINAGE BAG|URINE DRAINAGE/.test(combined))
-    return { hs: '9018.3900', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '9018.3990', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
 
   // ── Diagnostic rapid tests ─────────────────────────────────────────────────
   if (/RAPID TEST|HCV|MALARIA ANTIGEN|TEST CASSETTE|DIAGNOSTIC/.test(combined))
-    return { hs: '3822.1900', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '3822.1900', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
 
   // ── Surgical sutures / dressings (exempt) ─────────────────────────────────
   if (/CATGUT|SUTURE|POLYPROPYLENE|PACRYL|TRULENE|UNILENE|SILK BRAIDED|NYLON SUTURE/.test(combined))
-    return { hs: '3005.9090', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+    return { hs: '3005.9090', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
   if (/DRESSING|BANDAGE|WOUND WASH/.test(combined))
-    return { hs: '3005.1000', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+    return { hs: '3005.9090', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
 
   // ── Herbal / Tinct / Unregistered ─────────────────────────────────────────
   if (/TINCT|HERBAL|ARQ |UNANI/.test(combined))
-    return { hs: '3004.9010', saleType: 'Goods at standard rate (default)', rate: 17, uom, sro: '', sroItem: '' };
+    return { hs: '3004.9010', saleType: 'Goods at standard rate (default)', rate: 18, uom, sro: '', sroItem: '' };
 
   // ── Vitamins / Supplements ────────────────────────────────────────────────
   if (/VITAMIN|ASCORBIC ACID|FOLIC ACID|FOLATE|CALCIUM|VITAMIN C|VITAMIN D|VITAMIN B|IRON|ZINC|SELENIUM|L-ARGININE|OMEGA|FISH OIL/.test(combined))
-    return { hs: '3004.5000', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+    return { hs: '3004.5090', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
 
   // ── Antibiotics ───────────────────────────────────────────────────────────
   if (/AMOXICILLIN|AMOXICLAV|CO-AMOX|CEFTRIAXONE|CEFTRIXONE|CEFIXIME|CEPHRADINE|CIPROFLOXACIN|CIPROFLAXACIN|DOXYCYCLINE|LEVOFLOXACIN|AZITHROMYCIN|CLARITHROMYCIN|METRONIDAZOLE|CLINDAMYCIN|PENICILLIN|OFLOXACIN|MEROPENEM|IMIPENEM|ERTAPENEM|CEFUROXIME/.test(combined))
-    return { hs: '3004.2000', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+    return { hs: '3004.2000', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
 
   // ── Corticosteroids / Steroids ────────────────────────────────────────────
   if (/DEXAMETHASONE|PREDNISOLONE|HYDROCORTISONE|TRIAMCINOLONE|BUDESONIDE|FLUTICASONE|BETAMETHASONE|MOMETASONE|CLOBETASOL/.test(combined))
-    return { hs: '3004.3200', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+    return { hs: '3004.3200', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
 
   // ── Hormones / Endocrine ──────────────────────────────────────────────────
   if (/INSULIN|METFORMIN|SITAGLIPTIN|GLIPIZIDE|GLIBENCLAMIDE|GLICLAZIDE|PIOGLITAZONE|LEVOTHYROXINE|THYROXINE/.test(combined))
-    return { hs: '3004.3900', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+    return { hs: '3004.3900', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
 
-  // ── Default: all other registered medicines → Exempt, HS 3004.9090 ────────
-  return { hs: '3004.9090', saleType: 'Goods exempt', rate: 0, uom, sro: '6th Schedule', sroItem: '' };
+  // ── Default: all other registered medicines → Exempt, HS 3004.9099 ────────
+  return { hs: '3004.9099', saleType: 'Exempt goods', rate: 0, uom, sro: '6th Schd Table I', sroItem: '' };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -123,7 +123,9 @@ async function main() {
     const name = row[1].value ?? '';
     const desc = row[3].value ?? '';
 
-    const { hs, saleType, rate, uom, sro, sroItem } = classifyProduct(name, desc);
+    const { hs, saleType, rate, sro, sroItem } = classifyProduct(name, desc);
+    // FBR HS_UOM: medicines take Packs, dressings/sutures KG, devices pieces.
+    const uom = hs.startsWith('3004.') ? 'Packs' : hs.startsWith('3005.') ? 'KG' : 'Numbers, pieces, units';
 
     try {
       await query(

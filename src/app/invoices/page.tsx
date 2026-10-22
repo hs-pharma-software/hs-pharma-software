@@ -232,8 +232,18 @@ function FbrCell({
   error: string | null;
   onSubmit: () => void;
 }) {
-  const [showError, setShowError] = useState(false);
+  // Fixed position so the table's overflow container can't clip the popup.
+  const [errorAt, setErrorAt] = useState<{ top: number; left: number } | null>(null);
+  const showError = errorAt !== null;
   const valid = !!row.fbr_invoice_no;
+
+  function toggleError(e: React.MouseEvent<HTMLButtonElement>) {
+    if (!error) return;
+    if (errorAt) return setErrorAt(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    const width = 320;
+    setErrorAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) });
+  }
 
   return (
     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -242,7 +252,7 @@ function FbrCell({
         <button
           type="button"
           title={valid ? `FBR: ${row.fbr_invoice_no}` : error ? "Click to see error" : "Not submitted to FBR"}
-          onClick={() => { if (error) setShowError((v) => !v); }}
+          onClick={toggleError}
           className="flex items-center"
         >
           {submitting ? (
@@ -260,12 +270,15 @@ function FbrCell({
 
         {/* Error tooltip */}
         {showError && error && (
-          <div className="absolute left-0 top-6 z-20 w-56 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700 shadow-lg ring-1 ring-rose-200">
-            <p className="font-medium">FBR Error</p>
-            <p className="mt-0.5 leading-snug">{error}</p>
+          <div
+            style={{ top: errorAt.top, left: errorAt.left }}
+            className="fixed z-50 w-80 max-w-[calc(100vw-16px)] whitespace-normal break-words rounded-lg bg-rose-50 p-3 text-left text-xs text-rose-700 shadow-lg ring-1 ring-rose-200"
+          >
+            <p className="font-semibold">FBR Error</p>
+            <p className="mt-1 max-h-60 overflow-y-auto whitespace-pre-line leading-relaxed">{error}</p>
             <button
               type="button"
-              onClick={() => setShowError(false)}
+              onClick={() => setErrorAt(null)}
               className="mt-1.5 text-rose-400 underline hover:text-rose-600"
             >
               Dismiss

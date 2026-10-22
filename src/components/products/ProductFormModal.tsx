@@ -6,14 +6,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
-import { FbrCombobox } from "@/components/ui/FbrCombobox";
-import {
-  FBR_HS_CODES,
-  FBR_SALE_TYPES,
-  FBR_UOM_LIST,
-  FBR_SRO_SCHEDULES,
-  FBR_SRO_ITEMS,
-} from "@/lib/fbrData";
+import { ProductFbrFields } from "@/components/products/ProductFbrFields";
 import { detectNarcotic } from "@/lib/narcotics";
 import { categoriesRepo, subCategoriesRepo } from "@/lib/repo/categories";
 import { uomsRepo } from "@/lib/repo/uoms";
@@ -396,84 +389,20 @@ export function ProductFormModal({
           <div className="mr-2 flex h-5 w-5 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
           <span className="text-sm font-medium text-neutral-700">FBR / Tax Details</span>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="HS Code">
-            <FbrCombobox
-              value={hsCode}
-              onChange={setHsCode}
-              placeholder="e.g. 3004.9090"
-              options={FBR_HS_CODES.map((h) => ({
-                value: h.code,
-                label: h.code,
-                sublabel: h.description,
-              }))}
-            />
-          </Field>
-          <Field label="FBR Sale Type">
-            <FbrCombobox
-              value={fbrSaleType}
-              onChange={(v) => {
-                setFbrSaleType(v);
-                const match = FBR_SALE_TYPES.find((t) => t.value === v);
-                if (match) setFbrSaleRate(String(match.defaultRate));
-              }}
-              placeholder="Select sale type..."
-              options={FBR_SALE_TYPES.map((t) => ({
-                value: t.value,
-                label: t.value,
-                sublabel: t.description,
-              }))}
-            />
-          </Field>
-          <Field label="FBR Sale Rate %">
-            <Input
-              type="number"
-              min="0"
-              step="any"
-              value={fbrSaleRate}
-              onChange={(e) => setFbrSaleRate(e.target.value)}
-            />
-          </Field>
-          <Field label="FBR UOM">
-            <FbrCombobox
-              value={fbrUom}
-              onChange={setFbrUom}
-              placeholder="e.g. Numbers, pieces, units"
-              options={FBR_UOM_LIST.map((u) => ({
-                value: u.value,
-                label: u.value,
-                sublabel: u.description,
-              }))}
-            />
-          </Field>
-          <Field label="SRO Schedule No">
-            <FbrCombobox
-              value={sroNo}
-              onChange={(v) => {
-                setSroNo(v);
-                setSroItemSerialNo(""); // reset item when schedule changes
-              }}
-              placeholder="e.g. Sixth Schedule Table I"
-              options={FBR_SRO_SCHEDULES.map((s) => ({
-                value: s.value,
-                label: s.value,
-                sublabel: s.description,
-              }))}
-            />
-          </Field>
-          <Field label="SRO Item Serial No">
-            <FbrCombobox
-              value={sroItemSerialNo}
-              onChange={setSroItemSerialNo}
-              placeholder="e.g. 1"
-              options={FBR_SRO_ITEMS.filter((i) => !sroNo || i.schedule === sroNo).map((i) => ({
-                value: i.serial,
-                label: `S.No. ${i.serial}`,
-                sublabel: i.description,
-              }))}
-            />
-          </Field>
-        </div>
+        <ProductFbrFields
+          hsCode={hsCode}
+          setHsCode={setHsCode}
+          saleType={fbrSaleType}
+          setSaleType={setFbrSaleType}
+          saleRate={fbrSaleRate}
+          setSaleRate={setFbrSaleRate}
+          uom={fbrUom}
+          setUom={setFbrUom}
+          sroNo={sroNo}
+          setSroNo={setSroNo}
+          sroItem={sroItemSerialNo}
+          setSroItem={setSroItemSerialNo}
+        />
 
         {isEdit && (
           <>

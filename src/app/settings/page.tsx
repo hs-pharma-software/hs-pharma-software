@@ -245,6 +245,7 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   const [name, setName] = useState("");
   const [province, setProvince] = useState("Punjab");
   const [address, setAddress] = useState("");
+  const [retailer, setRetailer] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showSbToken, setShowSbToken] = useState(false);
   const [showProdToken, setShowProdToken] = useState(false);
@@ -260,7 +261,9 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
       getSetting("fbr_seller_name"),
       getSetting("fbr_seller_province"),
       getSetting("fbr_seller_address"),
-    ]).then(([en, ev, sb, prod, n, nm, prov, addr]) => {
+      getSetting("fbr_retailer"),
+    ]).then(([en, ev, sb, prod, n, nm, prov, addr, ret]) => {
+      setRetailer(ret === "true");
       if (en) setEnabled(en);
       if (ev) setEnv(ev);
       if (sb) setSbToken(sb);
@@ -282,6 +285,7 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
       setSetting("fbr_seller_name", name),
       setSetting("fbr_seller_province", province),
       setSetting("fbr_seller_address", address),
+      setSetting("fbr_retailer", retailer ? "true" : "false"),
     ]);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -377,10 +381,25 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
             {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
           </Select>
         </Field>
-        <Field label="Seller Address">
+        <Field label="Seller Address" required>
           <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Business address" />
         </Field>
       </div>
+
+      <label className="mt-3 flex items-start gap-2.5 text-sm text-neutral-700">
+        <input
+          type="checkbox"
+          checked={retailer}
+          onChange={(e) => setRetailer(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-[#006633]"
+        />
+        <span>
+          Registered as <span className="font-medium">retailer</span> in sales tax profile
+          <span className="block text-xs text-neutral-400">
+            Sandbox then uses retail scenarios SN026 / SN027 / SN028 for sales to end consumers instead of SN002 / SN008 / SN005.
+          </span>
+        </span>
+      </label>
 
       {/* Info note */}
       <p className="mt-3 text-xs text-neutral-400">

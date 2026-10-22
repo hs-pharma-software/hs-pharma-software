@@ -112,7 +112,10 @@ export function InvoiceViewModal({
       </div>
 
       {fbrError && (
-        <p className="mb-3 rounded-xl bg-rose-50 px-4 py-2.5 text-xs text-rose-700">{fbrError}</p>
+        <div className="mb-3 whitespace-pre-line break-words rounded-xl bg-rose-50 px-4 py-2.5 text-xs leading-relaxed text-rose-700 ring-1 ring-rose-200">
+          <p className="font-semibold">FBR Error</p>
+          {fbrError}
+        </div>
       )}
       {loading ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading...</p>

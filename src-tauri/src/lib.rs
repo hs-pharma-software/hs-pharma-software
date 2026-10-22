@@ -693,6 +693,30 @@ fn schema_sql_v16() -> &'static str {
     "#
 }
 
+/// Correct product FBR data to values FBR's reference APIs accept: valid HS
+/// codes, UOM allowed per HS code, FBR sale-type names, 18% standard rate and
+/// FBR's SRO schedule name for exempt goods.
+fn schema_sql_v17() -> &'static str {
+    r#"
+    UPDATE products SET hs_code = '3004.9099' WHERE hs_code = '3004.9090';
+    UPDATE products SET hs_code = '3004.5090' WHERE hs_code = '3004.5000';
+    UPDATE products SET hs_code = '9018.3110' WHERE hs_code = '9018.3100';
+    UPDATE products SET hs_code = '9018.3990' WHERE hs_code = '9018.3900';
+    UPDATE products SET hs_code = '9018.9090' WHERE hs_code = '9018.9000';
+    UPDATE products SET fbr_uom = 'Packs' WHERE hs_code LIKE '3004.%' AND COALESCE(fbr_uom, '') NOT IN ('Packs', 'KG');
+    UPDATE products SET fbr_uom = 'KG' WHERE hs_code LIKE '3005.%' AND COALESCE(fbr_uom, '') <> 'KG';
+    UPDATE products SET fbr_uom = 'Numbers, pieces, units'
+      WHERE (hs_code LIKE '9018.%' OR hs_code LIKE '9021.%' OR hs_code LIKE '3822.%') AND fbr_uom IS NULL;
+    UPDATE products SET fbr_sale_type = 'Exempt goods' WHERE fbr_sale_type = 'Goods exempt';
+    UPDATE products SET fbr_sale_type = 'Goods at Reduced Rate' WHERE fbr_sale_type = 'Goods at reduced rate';
+    UPDATE products SET fbr_sale_type = 'Goods at zero-rate' WHERE fbr_sale_type = 'Goods at zero rate';
+    UPDATE products SET fbr_sale_rate = 18 WHERE fbr_sale_type = 'Goods at standard rate (default)' AND fbr_sale_rate = 17;
+    UPDATE products SET sro_no = '6th Schd Table I'
+      WHERE fbr_sale_type = 'Exempt goods' AND sro_no IN ('6th Schedule', 'Sixth Schedule Table I', '6th Schedule Table I');
+    UPDATE products SET sro_item_serial_no = '' WHERE fbr_sale_type = 'Exempt goods' AND sro_item_serial_no = '1';
+    "#
+}
+
 /// Multi-tenant support: a Super Admin creates pharmacy accounts ("tenants"),
 /// each with a login and a subscription plan (which modules they can use, how
 /// many staff logins, an expiry, a monthly invoice cap). `categories` /
@@ -928,6 +952,12 @@ pub fn run() {
             version: 16,
             description: "product_is_narcotic",
             sql: schema_sql_v16(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 17,
+            description: "product_fbr_data_corrections",
+            sql: schema_sql_v17(),
             kind: MigrationKind::Up,
         },
     ];
