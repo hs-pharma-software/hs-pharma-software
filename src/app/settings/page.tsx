@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { isTursoConfigured } from "@/lib/sync/engine";
 import { isCloudinaryConfigured } from "@/lib/cloudinary";
@@ -41,25 +42,39 @@ function ColorSwatch({ label, value, onChange }: { label: string; value: string;
   );
 }
 
-export default function GeneralSettingsPage() {
-  const [gstRate, setGstRate] = useState("0");
-  const [gstSaved, setGstSaved] = useState(false);
+const PRESET_ACCENTS = [
+  { label: "Amber",   value: "#f59e0b" },
+  { label: "Blue",    value: "#3b82f6" },
+  { label: "Emerald", value: "#10b981" },
+  { label: "Rose",    value: "#f43f5e" },
+  { label: "Violet",  value: "#8b5cf6" },
+  { label: "Cyan",    value: "#06b6d4" },
+  { label: "Orange",  value: "#f97316" },
+  { label: "Teal",    value: "#14b8a6" },
+];
 
+const PRESET_SIDEBARS = [
+  { label: "Midnight", from: "#0a0a0a", to: "#171717" },
+  { label: "Navy",     from: "#0f172a", to: "#1e293b" },
+  { label: "Forest",   from: "#052e16", to: "#14532d" },
+  { label: "Plum",     from: "#1e1b2e", to: "#2d2446" },
+  { label: "Maroon",   from: "#1c0a0a", to: "#3b0d0d" },
+  { label: "Steel",    from: "#0f1923", to: "#1e2d3d" },
+];
+
+function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; tauriReady: boolean }) {
   const [theme, setTheme] = useState<AppTheme>(DEFAULT_THEME);
-  const [themeSaved, setThemeSaved] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [fontPreview, setFontPreview] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) return;
-    void getSetting("gst_rate_pct").then((v) => v && setGstRate(v));
     void getSetting("app_theme").then((v) => {
       if (v) {
         try { setTheme({ ...DEFAULT_THEME, ...JSON.parse(v) as AppTheme }); } catch {}
       }
     });
   }, []);
-
-  const tauriReady = useIsTauri();
 
   function updateColor(key: keyof AppTheme, value: string) {
     const next = { ...theme, [key]: value };
@@ -73,66 +88,25 @@ export default function GeneralSettingsPage() {
     applyTheme(next);
   }
 
-  async function saveTheme() {
-    const json = JSON.stringify(theme);
-    await setSetting("app_theme", json);
-    localStorage.setItem("app-theme", json);
-    setThemeSaved(true);
-    setTimeout(() => setThemeSaved(false), 1500);
-  }
-
   function resetTheme() {
     setTheme(DEFAULT_THEME);
     applyTheme(DEFAULT_THEME);
   }
 
-  const PRESET_ACCENTS = [
-    { label: "Amber", value: "#f59e0b" },
-    { label: "Blue", value: "#3b82f6" },
-    { label: "Emerald", value: "#10b981" },
-    { label: "Rose", value: "#f43f5e" },
-    { label: "Violet", value: "#8b5cf6" },
-    { label: "Cyan", value: "#06b6d4" },
-    { label: "Orange", value: "#f97316" },
-    { label: "Teal", value: "#14b8a6" },
-  ];
-
-  const PRESET_SIDEBARS = [
-    { label: "Midnight", from: "#0a0a0a", to: "#171717" },
-    { label: "Navy", from: "#0f172a", to: "#1e293b" },
-    { label: "Forest", from: "#052e16", to: "#14532d" },
-    { label: "Plum", from: "#1e1b2e", to: "#2d2446" },
-    { label: "Maroon", from: "#1c0a0a", to: "#3b0d0d" },
-    { label: "Steel", from: "#0f1923", to: "#1e2d3d" },
-  ];
+  async function saveTheme() {
+    const json = JSON.stringify(theme);
+    await setSetting("app_theme", json);
+    localStorage.setItem("app-theme", json);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }
 
   return (
-    <div className="space-y-4">
-      <PageHeader title="Settings" />
-
-      <div className="flex flex-wrap gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-3">
-        <StatusPill ok={isTursoConfigured()} label="Turso sync" />
-        <StatusPill ok={isCloudinaryConfigured()} label="Cloudinary images" />
-        <StatusPill ok={tauriReady} label="Desktop shell" />
-      </div>
-
-      {/* ── Customization ── */}
-      <div className="rounded-lg border border-neutral-200 bg-white p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-serif text-lg text-neutral-800">Customization</h2>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={resetTheme} className="text-xs text-neutral-400 hover:text-neutral-600 hover:underline">
-              Reset to defaults
-            </button>
-            <Button variant="primary" disabled={!tauriReady} onClick={() => void saveTheme()}>
-              Save Changes
-            </Button>
-            {themeSaved && <span className="text-xs text-emerald-600">Saved ✓</span>}
-          </div>
-        </div>
+    <Modal title="-:Customization:-" onClose={onClose} width="max-w-2xl">
+      <div className="space-y-5">
 
         {/* Accent color */}
-        <div className="mb-5">
+        <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Accent Color</p>
           <div className="flex flex-wrap items-center gap-3">
             {PRESET_ACCENTS.map((p) => (
@@ -154,8 +128,8 @@ export default function GeneralSettingsPage() {
         </div>
 
         {/* Sidebar */}
-        <div className="mb-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Sidebar</p>
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Sidebar Color</p>
           <div className="flex flex-wrap items-center gap-3">
             {PRESET_SIDEBARS.map((p) => (
               <button
@@ -184,7 +158,7 @@ export default function GeneralSettingsPage() {
         </div>
 
         {/* App background + modal overlay */}
-        <div className="mb-5 flex flex-wrap gap-6">
+        <div className="flex flex-wrap gap-6">
           <ColorSwatch label="App Background" value={theme.appBg} onChange={(v) => updateColor("appBg", v)} />
           <ColorSwatch label="Modal Overlay" value={theme.modalOverlay} onChange={(v) => updateColor("modalOverlay", v)} />
         </div>
@@ -236,13 +210,58 @@ export default function GeneralSettingsPage() {
           )}
           {theme.font !== "System Default" && (
             <p className="mt-1 text-xs text-neutral-400">
-              Fonts are loaded from Google Fonts — requires an internet connection.
+              Fonts load from Google Fonts — requires an internet connection.
             </p>
           )}
         </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-between border-t border-neutral-200 pt-4">
+          <button type="button" onClick={resetTheme} className="text-xs text-neutral-400 hover:text-neutral-600 hover:underline">
+            Reset to defaults
+          </button>
+          <div className="flex items-center gap-2">
+            {saved && <span className="text-xs text-emerald-600">Saved ✓</span>}
+            <Button type="button" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" disabled={!tauriReady} onClick={() => void saveTheme()}>
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export default function GeneralSettingsPage() {
+  const [gstRate, setGstRate] = useState("0");
+  const [gstSaved, setGstSaved] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void getSetting("gst_rate_pct").then((v) => v && setGstRate(v));
+  }, []);
+
+  const tauriReady = useIsTauri();
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Settings"
+        actions={
+          <Button variant="primary" onClick={() => setCustomizeOpen(true)}>
+            Customization
+          </Button>
+        }
+      />
+
+      <div className="flex flex-wrap gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-3">
+        <StatusPill ok={isTursoConfigured()} label="Turso sync" />
+        <StatusPill ok={isCloudinaryConfigured()} label="Cloudinary images" />
+        <StatusPill ok={tauriReady} label="Desktop shell" />
       </div>
 
-      {/* ── Other settings ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-5">
           <h2 className="mb-3 font-serif text-lg text-neutral-800">Tax Rate Info</h2>
@@ -277,6 +296,13 @@ export default function GeneralSettingsPage() {
           </p>
         </div>
       </div>
+
+      {customizeOpen && (
+        <CustomizationModal
+          onClose={() => setCustomizeOpen(false)}
+          tauriReady={tauriReady}
+        />
+      )}
     </div>
   );
 }
