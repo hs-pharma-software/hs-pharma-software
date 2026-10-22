@@ -79,8 +79,8 @@ export default function GenerateBarcodePage() {
                 <option value="4 x 2 in">4 x 2 in</option>
               </Select>
             </Field>
-            <Button onClick={() => window.print()}>Preview Barcode</Button>
-            <Button variant="primary" onClick={() => window.print()}>
+            <Button onClick={() => window.print()} disabled={lines.length === 0}>Preview Barcode</Button>
+            <Button variant="primary" onClick={() => window.print()} disabled={lines.length === 0}>
               Generate Barcode
             </Button>
           </>
@@ -94,7 +94,7 @@ export default function GenerateBarcodePage() {
       <DataTable columns={columns} rows={lines.map((l) => ({ ...l, id: l.product.id }))} />
 
       {lines.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2 rounded-xl border border-neutral-200/70 bg-white p-4 shadow-sm">
+        <div className="print-area mt-4 flex flex-wrap gap-2 rounded-xl border border-neutral-200/70 bg-white p-4 shadow-sm">
           {lines.flatMap((l) =>
             Array.from({ length: l.noOfLabel }).map((_, i) => (
               <div

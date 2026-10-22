@@ -43,7 +43,7 @@ export default function StockPage() {
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const sessionTenant = useAuthStore.getState().currentTenant;
+  const sessionTenant = useAuthStore((s) => s.currentTenant);
   const tenantId = sessionTenant?.sourceTenantId ?? sessionTenant?.id ?? null;
   const mrpDiscountPct = sessionTenant?.mrpDiscountPct ?? 0;
 
@@ -131,6 +131,7 @@ export default function StockPage() {
   }
 
   const tauriReady = useIsTauri();
+  const printDate = new Date().toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric" });
 
   return (
     <div>
@@ -176,6 +177,62 @@ export default function StockPage() {
       ) : (
         <DataTable columns={columns} rows={filtered} />
       )}
+
+      {/* ── Print-only stock report ── hidden off-screen on screen; @media print repositions it */}
+      <div className="print-area" style={{ position: "fixed", left: "-9999px", top: "-9999px" }}>
+        <div style={{ padding: "24px", fontFamily: "sans-serif", fontSize: "12px", color: "#111" }}>
+          <h1 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "2px" }}>
+            {sessionTenant?.name ?? "Pharmacy"}
+          </h1>
+          <h2 style={{ fontSize: "14px", fontWeight: "normal", color: "#555", marginBottom: "4px" }}>
+            Stock Details Report
+          </h2>
+          <p style={{ fontSize: "11px", color: "#777", marginBottom: "16px" }}>Printed: {printDate}</p>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid #222", background: "#f5f5f5" }}>
+                {["Barcode","Product","Company","Batch","Expiry","Location","UOM","Qty","Sale Price","Stock Value"].map((h) => (
+                  <th key={h} style={{ padding: "6px 8px", textAlign: h === "Qty" || h === "Sale Price" || h === "Stock Value" ? "right" : "left" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.id} style={{ borderBottom: "1px solid #e5e5e5" }}>
+                  <td style={{ padding: "4px 8px" }}>{r.barcode ?? "—"}</td>
+                  <td style={{ padding: "4px 8px", fontWeight: "600" }}>{r.product_name}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.company_name ?? "—"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.batch_no ?? "—"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.expiry_date ?? "—"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.location ?? "—"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.uom_name ?? "—"}</td>
+                  <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.avail_qty}</td>
+                  <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.sale_price > 0 ? r.sale_price.toFixed(2) : "—"}</td>
+                  <td style={{ padding: "4px 8px", textAlign: "right" }}>
+                    {r.sale_price > 0 ? (r.avail_qty * r.sale_price).toFixed(2) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: "2px solid #222", fontWeight: "bold", background: "#f5f5f5" }}>
+                <td colSpan={7} style={{ padding: "6px 8px" }}>
+                  Total — {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+                </td>
+                <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                  {filtered.reduce((s, r) => s + r.avail_qty, 0)}
+                </td>
+                <td />
+                <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                  Rs {totalStockValue.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
 
       {modalOpen && (
         <Modal title="-:Add Stock:-" onClose={() => setModalOpen(false)} width="max-w-lg">
