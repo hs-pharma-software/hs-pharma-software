@@ -12,6 +12,7 @@ import { getSetting, setSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
 import { FBR_PROVINCES } from "@/lib/fbrData";
 import { AI_KEY_SETTING } from "@/lib/fbrAutofill";
+import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -483,14 +484,8 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
 }
 
 export default function GeneralSettingsPage() {
-  const [gstRate, setGstRate] = useState("0");
-  const [gstSaved, setGstSaved] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
-
-  useEffect(() => {
-    if (!isTauri()) return;
-    void getSetting("gst_rate_pct").then((v) => v && setGstRate(v));
-  }, []);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const tauriReady = useIsTauri();
 
@@ -511,45 +506,25 @@ export default function GeneralSettingsPage() {
         <StatusPill ok={tauriReady} label="Desktop shell" />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
-          <h2 className="mb-3 font-serif text-lg text-neutral-800">Tax Rate Info</h2>
-          <div className="flex items-end gap-2">
-            <div className="w-40">
-              <Field label="GST Rate %">
-                <Input type="number" min="0" step="any" value={gstRate} onChange={(e) => setGstRate(e.target.value)} />
-              </Field>
-            </div>
-            <Button
-              variant="primary"
-              disabled={!tauriReady}
-              onClick={async () => {
-                await setSetting("gst_rate_pct", gstRate);
-                setGstSaved(true);
-                setTimeout(() => setGstSaved(false), 1500);
-              }}
-            >
-              Save Changes
-            </Button>
-            {gstSaved && <span className="text-xs text-emerald-600">Saved</span>}
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] text-sm text-neutral-600">
-          <h2 className="mb-2 font-serif text-lg text-neutral-800">Connecting Turso &amp; Cloudinary</h2>
-          <p>
-            Set <code>NEXT_PUBLIC_TURSO_DATABASE_URL</code>, <code>NEXT_PUBLIC_TURSO_AUTH_TOKEN</code>,{" "}
-            <code>NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME</code> and{" "}
-            <code>NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET</code> in <code>.env.local</code>, then restart{" "}
-            <code>npm run tauri dev</code>. See the README for step-by-step setup.
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+        <div>
+          <h2 className="font-serif text-lg text-neutral-800">Print Templates</h2>
+          <p className="text-sm text-neutral-500">
+            Design the A4, A5 and thermal invoice layouts: drag sections into place, set alignment and size, and add your
+            pharmacy logo.
           </p>
         </div>
+        <Button variant="primary" disabled={!tauriReady} onClick={() => setTemplatesOpen(true)}>
+          Templates
+        </Button>
       </div>
 
       {/* FBR Digital Invoicing */}
       <FbrSettingsCard tauriReady={tauriReady} />
 
       <AiSettingsCard tauriReady={tauriReady} />
+
+      {templatesOpen && <PrintTemplatesModal onClose={() => setTemplatesOpen(false)} />}
 
       {customizeOpen && (
         <CustomizationModal

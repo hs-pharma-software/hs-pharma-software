@@ -1,0 +1,372 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { AlignCenter, AlignLeft, AlignRight, Eye, EyeOff, GripVertical, ImagePlus, Trash2 } from "lucide-react";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePrintLayout";
+import {
+  BLOCK_LABELS,
+  DEFAULT_TEMPLATES,
+  PAPERS,
+  loadLogo,
+  loadTemplate,
+  resizeLogo,
+  saveLogo,
+  saveTemplate,
+  type Align,
+  type BlockId,
+  type BlockSize,
+  type PaperSize,
+  type PrintTemplate,
+} from "@/lib/printTemplates";
+import { useAuthStore } from "@/store/authStore";
+import { tenantsRepo } from "@/lib/repo/tenants";
+import { loadFbrSettings } from "@/lib/fbr";
+import { isTauri } from "@/lib/platform";
+
+function sampleData(business: PrintData["business"], logo: string | null): PrintData {
+  return {
+    business,
+    logo,
+    title: "INVOICE",
+    number: "#1024",
+    returnOf: null,
+    date: new Date().toISOString().slice(0, 10),
+    payment: "Cash",
+    invoiceType: "Retail",
+    salesman: "Ali",
+    customer: { name: "Walk-in Customer", phone: "0300 1234567", ntn: null, address: null },
+    items: [
+      { id: "1", name: "Panadol 500mg Tablet", batch: "PN2401", qty: "20 Tab", bonus: null, price: 2.5, discountPct: 0, total: 50 },
+      { id: "2", name: "Augmentin 625mg Tablet", batch: "AG1187", qty: "6 Tab", bonus: null, price: 48, discountPct: 5, total: 273.6 },
+      { id: "3", name: "Mechico Feeder 250ml", batch: null, qty: "1", bonus: "1", price: 350, discountPct: 0, total: 350 },
+    ],
+    totals: { total: 673.6, charges: 0, discount: 3.6, payable: 670, paid: 700, balance: -30 },
+    note: "Keep medicines away from children.",
+    fbrInvoiceNo: "1234567DI1700000000000",
+  };
+}
+
+/** Print template editor: one tab per paper size, drag blocks to reorder
+ * (in the list or directly on the preview), click a block to style it. */
+export function PrintTemplatesModal({ onClose }: { onClose: () => void }) {
+  const [paper, setPaper] = useState<PaperSize>("a4");
+  const [templates, setTemplates] = useState<Partial<Record<PaperSize, PrintTemplate>>>({});
+  const [dirty, setDirty] = useState<Set<PaperSize>>(new Set());
+  const [logo, setLogo] = useState<string | null>(null);
+  const [business, setBusiness] = useState<PrintData["business"]>({ name: "Your Pharmacy", address: null, phone: null, ntn: null });
+  const [selected, setSelected] = useState<BlockId | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const dragId = useRef<BlockId | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const sessionTenant = useAuthStore((s) => s.currentTenant);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void Promise.all(PAPERS.map((p) => loadTemplate(p.id))).then((list) =>
+      setTemplates(Object.fromEntries(list.map((t) => [t.paper, t])))
+    );
+    void loadLogo().then(setLogo);
+    void (async () => {
+      const [tenant, fbr] = await Promise.all([
+        sessionTenant?.id ? tenantsRepo.get(sessionTenant.id) : Promise.resolve(null),
+        loadFbrSettings(),
+      ]);
+      setBusiness({
+        name: tenant?.name ?? sessionTenant?.name ?? "Your Pharmacy",
+        address: tenant?.address ?? null,
+        phone: tenant?.phone ?? null,
+        ntn: fbr.sellerNtn || null,
+      });
+    })();
+  }, [sessionTenant?.id, sessionTenant?.name]);
+
+  const tpl = templates[paper];
+
+  function update(fn: (t: PrintTemplate) => PrintTemplate) {
+    if (!tpl) return;
+    setTemplates((prev) => ({ ...prev, [paper]: fn(structuredClone(tpl)) }));
+    setDirty((prev) => new Set(prev).add(paper));
+    setMessage(null);
+  }
+
+  function moveBlock(from: BlockId, to: BlockId) {
+    if (from === to) return;
+    update((t) => {
+      const i = t.blocks.findIndex((x) => x.id === from);
+      const j = t.blocks.findIndex((x) => x.id === to);
+      const [blk] = t.blocks.splice(i, 1);
+      t.blocks.splice(j, 0, blk);
+      return t;
+    });
+  }
+
+  function setBlock(id: BlockId, patch: Partial<{ visible: boolean; align: Align; size: BlockSize }>) {
+    update((t) => ({ ...t, blocks: t.blocks.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  }
+
+  async function handleLogo(file: File | undefined) {
+    if (!file) return;
+    try {
+      const data = await resizeLogo(file);
+      await saveLogo(data);
+      setLogo(data);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      for (const p of dirty) {
+        const t = templates[p];
+        if (t) await saveTemplate(t);
+      }
+      setDirty(new Set());
+      setMessage("Templates saved.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleClose() {
+    if (dirty.size > 0 && !window.confirm("You have unsaved template changes. Close anyway?")) return;
+    onClose();
+  }
+
+  const sel = tpl?.blocks.find((x) => x.id === selected) ?? null;
+  const alignBtn = (a: Align, Icon: typeof AlignLeft) => (
+    <button
+      key={a}
+      type="button"
+      title={`Align ${a}`}
+      onClick={() => sel && setBlock(sel.id, { align: a })}
+      className={`rounded-md p-1.5 ${sel?.align === a ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100"}`}
+    >
+      <Icon size={14} />
+    </button>
+  );
+
+  return (
+    <Modal title="Print Templates" onClose={handleClose} width="max-w-6xl">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5 text-xs">
+          {PAPERS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                setPaper(p.id);
+                setSelected(null);
+              }}
+              className={`rounded-md px-3 py-1 font-medium transition-colors ${paper === p.id ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+            >
+              {p.label}
+              {dirty.has(p.id) ? " •" : ""}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          {message && <span className="text-xs text-emerald-700">{message}</span>}
+          <Button
+            onClick={() => {
+              if (window.confirm(`Reset the ${PAPERS.find((p) => p.id === paper)!.label} template to the default layout?`))
+                update(() => structuredClone(DEFAULT_TEMPLATES[paper]));
+            }}
+          >
+            Reset to Default
+          </Button>
+          <Button variant="primary" disabled={saving || dirty.size === 0} onClick={() => void handleSave()}>
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+        </div>
+      </div>
+
+      {!tpl ? (
+        <p className="py-10 text-center text-sm text-neutral-400">
+          {isTauri() ? "Loading..." : "Run inside the desktop app to edit print templates."}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
+          {/* ── Controls ── */}
+          <div className="space-y-4 text-sm">
+            <div className="rounded-xl border border-neutral-200 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Pharmacy logo</p>
+              <div className="flex items-center gap-3">
+                <div className="flex h-14 w-24 items-center justify-center overflow-hidden rounded-lg bg-neutral-50 ring-1 ring-neutral-200">
+                  {logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logo} alt="Logo" className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-neutral-400">No logo</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Button onClick={() => fileRef.current?.click()}>
+                    <ImagePlus size={14} className="mr-1 inline" /> {logo ? "Change" : "Upload"}
+                  </Button>
+                  {logo && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await saveLogo(null);
+                        setLogo(null);
+                      }}
+                      className="flex items-center gap-1 text-xs text-rose-600 hover:underline"
+                    >
+                      <Trash2 size={12} /> Remove
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    void handleLogo(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-neutral-400">Shared by all three templates.</p>
+            </div>
+
+            <div className="rounded-xl border border-neutral-200 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Sections (drag to reorder)</p>
+              <div className="space-y-1">
+                {tpl.blocks.map((blk) => (
+                  <div
+                    key={blk.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      dragId.current = blk.id;
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (dragId.current) moveBlock(dragId.current, blk.id);
+                      dragId.current = null;
+                    }}
+                    onClick={() => setSelected(blk.id)}
+                    className={`flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 ${selected === blk.id ? "bg-[#006633]/10 ring-1 ring-[#006633]/30" : "hover:bg-neutral-50"}`}
+                  >
+                    <GripVertical size={14} className="shrink-0 text-neutral-400" />
+                    <span className={`flex-1 truncate ${blk.visible ? "text-neutral-800" : "text-neutral-400 line-through"}`}>
+                      {BLOCK_LABELS[blk.id]}
+                    </span>
+                    <button
+                      type="button"
+                      title={blk.visible ? "Hide" : "Show"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setBlock(blk.id, { visible: !blk.visible });
+                      }}
+                      className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                    >
+                      {blk.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {sel && (
+              <div className="rounded-xl border border-[#006633]/30 bg-[#006633]/[0.03] p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#006633]">{BLOCK_LABELS[sel.id]}</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-0.5">
+                    {alignBtn("left", AlignLeft)}
+                    {alignBtn("center", AlignCenter)}
+                    {alignBtn("right", AlignRight)}
+                  </div>
+                  <div className="flex gap-0.5 rounded-md bg-white p-0.5 ring-1 ring-neutral-200 text-xs">
+                    {(["sm", "md", "lg"] as BlockSize[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setBlock(sel.id, { size: s })}
+                        className={`rounded px-2 py-0.5 ${sel.size === s ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100"}`}
+                      >
+                        {s === "sm" ? "Small" : s === "md" ? "Normal" : "Large"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {sel.id === "logo" && (
+                  <div className="mt-3">
+                    <Field label={`Logo height (${tpl.logoHeight}px)`}>
+                      <input
+                        type="range"
+                        min={24}
+                        max={140}
+                        value={tpl.logoHeight}
+                        onChange={(e) => update((t) => ({ ...t, logoHeight: Number(e.target.value) }))}
+                        className="w-full accent-[#006633]"
+                      />
+                    </Field>
+                  </div>
+                )}
+                {sel.id === "thanks" && (
+                  <div className="mt-3">
+                    <Field label="Message">
+                      <Input value={tpl.thanksText} onChange={(e) => update((t) => ({ ...t, thanksText: e.target.value }))} />
+                    </Field>
+                  </div>
+                )}
+                {sel.id === "items" && (
+                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-700">
+                    {(["batch", "bonus", "discount"] as const).map((c) => (
+                      <label key={c} className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          checked={tpl.columns[c]}
+                          onChange={(e) => update((t) => ({ ...t, columns: { ...t.columns, [c]: e.target.checked } }))}
+                          className="accent-[#006633]"
+                        />
+                        Show {c === "batch" ? "Batch" : c === "bonus" ? "Bonus" : "Discount"}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {!sel && <p className="text-xs text-neutral-400">Click a section in the list or on the preview to change its alignment and size.</p>}
+          </div>
+
+          {/* ── Live preview ── */}
+          <div className="overflow-x-auto rounded-xl bg-neutral-100 p-4">
+            <div
+              className="mx-auto bg-white shadow-md"
+              style={{
+                width: `${PAPERS.find((p) => p.id === paper)!.widthMm}mm`,
+                padding: `${PAPERS.find((p) => p.id === paper)!.marginMm}mm`,
+              }}
+            >
+              <InvoicePrintLayout
+                template={tpl}
+                data={sampleData(business, logo)}
+                editor={{
+                  selected,
+                  onSelect: setSelected,
+                  onDragStart: (id) => (dragId.current = id),
+                  onDropOn: (id) => {
+                    if (dragId.current) moveBlock(dragId.current, id);
+                    dragId.current = null;
+                  },
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
