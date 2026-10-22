@@ -28,6 +28,7 @@ export default function InvoicesPage() {
   const [viewing, setViewing] = useState<{ invoice: Invoice; customerName: string; salesmanName: string | null } | null>(
     null
   );
+  const [printing, setPrinting] = useState<typeof viewing>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
@@ -91,9 +92,12 @@ export default function InvoicesPage() {
     }
   }
 
+  // Straight to the printer with the default template; no view dialog.
   async function printInvoice(row: InvoiceListRow) {
-    await openView(row);
-    setTimeout(() => window.print(), 150);
+    if (printing) return;
+    const full = await invoicesRepo.get(row.id);
+    if (!full) return;
+    setPrinting({ invoice: full, customerName: row.customer_name, salesmanName: row.salesman_name });
   }
 
   async function handleFbrSubmit(row: InvoiceListRow) {
@@ -161,8 +165,9 @@ export default function InvoicesPage() {
           <button
             type="button"
             title="Print"
+            disabled={!!printing}
             onClick={(e) => { e.stopPropagation(); void printInvoice(r); }}
-            className="hover:text-amber-700"
+            className="hover:text-amber-700 disabled:opacity-40"
           >
             <Printer size={16} />
           </button>
@@ -210,6 +215,8 @@ export default function InvoicesPage() {
         <DataTable columns={columns} rows={rows} onRowClick={(r) => void openView(r)} />
       )}
 
+
+      {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setPrinting(null)} />}
 
       {viewing && (
         <InvoiceViewModal

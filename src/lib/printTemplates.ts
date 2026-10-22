@@ -83,7 +83,7 @@ export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
 
 const KEY = (p: PaperSize) => `print_template_${p}`;
 export const LOGO_KEY = "print_logo";
-const LAST_PAPER_KEY = "print_last_paper";
+const DEFAULT_PAPER_KEY = "print_default_paper";
 
 /** Saved template merged over the default, so blocks added in later versions
  * still appear (at the end) in older saved templates. */
@@ -114,21 +114,14 @@ export async function saveLogo(dataUrl: string | null): Promise<void> {
   await setSetting(LOGO_KEY, dataUrl ?? "");
 }
 
-export function lastPaper(): PaperSize {
-  try {
-    const v = localStorage.getItem(LAST_PAPER_KEY);
-    return v === "a5" || v === "thermal" ? v : "a4";
-  } catch {
-    return "a4";
-  }
+/** Paper used when an invoice is printed (Settings > Print Templates). */
+export async function loadDefaultPaper(): Promise<PaperSize> {
+  const v = await getSetting(DEFAULT_PAPER_KEY);
+  return v === "a5" || v === "thermal" ? v : "a4";
 }
 
-export function rememberPaper(p: PaperSize) {
-  try {
-    localStorage.setItem(LAST_PAPER_KEY, p);
-  } catch {
-    // storage unavailable: just don't remember
-  }
+export async function saveDefaultPaper(p: PaperSize): Promise<void> {
+  await setSetting(DEFAULT_PAPER_KEY, p);
 }
 
 /** Shrinks an uploaded logo so it stays small in settings/sync (max 600x300). */

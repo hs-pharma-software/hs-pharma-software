@@ -29,3 +29,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-http = "2"
 tauri-plugin-os = "2"
 tauri-plugin-updater = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows = "0.62"

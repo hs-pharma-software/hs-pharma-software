@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -13,6 +13,15 @@ import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/th
 import { FBR_PROVINCES } from "@/lib/fbrData";
 import { AI_KEY_SETTING } from "@/lib/fbrAutofill";
 import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
+import {
+  PAPERS,
+  loadDefaultPaper,
+  loadLogo,
+  resizeLogo,
+  saveDefaultPaper,
+  saveLogo,
+  type PaperSize,
+} from "@/lib/printTemplates";
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -483,6 +492,121 @@ function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   );
 }
 
+function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolean; onOpenTemplates: () => void }) {
+  const [logo, setLogo] = useState<string | null>(null);
+  const [paper, setPaper] = useState<PaperSize>("a4");
+  const [message, setMessage] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void loadLogo().then(setLogo);
+    void loadDefaultPaper().then(setPaper);
+  }, []);
+
+  function flash(text: string) {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 1800);
+  }
+
+  async function handleLogo(file: File | undefined) {
+    if (!file) return;
+    try {
+      const data = await resizeLogo(file);
+      await saveLogo(data);
+      setLogo(data);
+      flash("Logo saved");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-serif text-lg text-neutral-800">Print Templates</h2>
+          <p className="text-sm text-neutral-500">
+            Your logo prints at the top of invoices and shows on the Dashboard next to the pharmacy name.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {message && <span className="text-xs text-emerald-600">{message}</span>}
+          <Button variant="primary" disabled={!tauriReady} onClick={onOpenTemplates}>
+            Templates
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-neutral-600">Pharmacy Logo</p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-16 w-32 items-center justify-center overflow-hidden rounded-lg bg-neutral-50 ring-1 ring-neutral-200">
+              {logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logo} alt="Logo" className="max-h-full max-w-full object-contain" />
+              ) : (
+                <span className="text-[11px] text-neutral-400">No logo</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Button disabled={!tauriReady} onClick={() => fileRef.current?.click()}>
+                {logo ? "Change Logo" : "Upload Logo"}
+              </Button>
+              {logo && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await saveLogo(null);
+                    setLogo(null);
+                    flash("Logo removed");
+                  }}
+                  className="text-left text-xs text-rose-600 hover:underline"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                void handleLogo(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="max-w-xs">
+          <Field label="Default Print Template">
+            <Select
+              value={paper}
+              disabled={!tauriReady}
+              onChange={async (e) => {
+                const p = e.target.value as PaperSize;
+                setPaper(p);
+                await saveDefaultPaper(p);
+                flash("Default template saved");
+              }}
+            >
+              {PAPERS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <p className="mt-1 text-[11px] text-neutral-400">The Print button sends invoices straight to the default printer.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GeneralSettingsPage() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -506,18 +630,8 @@ export default function GeneralSettingsPage() {
         <StatusPill ok={tauriReady} label="Desktop shell" />
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
-        <div>
-          <h2 className="font-serif text-lg text-neutral-800">Print Templates</h2>
-          <p className="text-sm text-neutral-500">
-            Design the A4, A5 and thermal invoice layouts: drag sections into place, set alignment and size, and add your
-            pharmacy logo.
-          </p>
-        </div>
-        <Button variant="primary" disabled={!tauriReady} onClick={() => setTemplatesOpen(true)}>
-          Templates
-        </Button>
-      </div>
+      {/* Remount after the editor closes: the logo may have changed there. */}
+      <PrintSettingsCard key={String(templatesOpen)} tauriReady={tauriReady} onOpenTemplates={() => setTemplatesOpen(true)} />
 
       {/* FBR Digital Invoicing */}
       <FbrSettingsCard tauriReady={tauriReady} />

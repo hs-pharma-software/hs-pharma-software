@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { listItemsForInvoice, invoicesRepo, type InvoiceItemWithProduct } from "@/lib/repo/invoices";
@@ -15,13 +15,12 @@ import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePr
 import {
   DEFAULT_TEMPLATES,
   PAPERS,
-  lastPaper,
+  loadDefaultPaper,
   loadLogo,
   loadTemplate,
-  rememberPaper,
-  type PaperSize,
   type PrintTemplate,
 } from "@/lib/printTemplates";
+import { printDirect } from "@/lib/print";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -29,56 +28,77 @@ interface InvoiceViewRow {
   salesmanName: string | null;
 }
 
-/** Read-only invoice detail + print. The printable area is isolated by id
- * so `window.print()` (wired to the Print button) only outputs this content
- * \u2014 see the `@media print` rule in globals.css scoped to #invoice-print-area. */
+/** Invoice detail + print, using the default print template from Settings.
+ * Only `.print-area` is visible in print CSS (globals.css). With `autoPrint`
+ * nothing is shown: the invoice goes straight to the printer, then closes. */
 export function InvoiceViewModal({
   row,
   onClose,
+  autoPrint = false,
 }: {
   row: InvoiceViewRow;
   onClose: () => void;
+  autoPrint?: boolean;
 }) {
   const [items, setItems] = useState<InvoiceItemWithProduct[]>([]);
   const [originalInvoiceNo, setOriginalInvoiceNo] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [tenantInfo, setTenantInfo] = useState<Tenant | null>(null);
-  const [paper, setPaper] = useState<PaperSize>(lastPaper);
-  const [templates, setTemplates] = useState<Partial<Record<PaperSize, PrintTemplate>>>({});
+  const [template, setTemplate] = useState<PrintTemplate | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
   const [sellerNtn, setSellerNtn] = useState<string | null>(null);
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
   const [fbrInvoiceNo, setFbrInvoiceNo] = useState<string | null>(row.invoice.fbr_invoice_no ?? null);
   const [fbrSubmitting, setFbrSubmitting] = useState(false);
   const [fbrError, setFbrError] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const autoPrinted = useRef(false);
   const sessionTenant = useAuthStore((s) => s.currentTenant);
 
   useEffect(() => {
-    void listItemsForInvoice(row.invoice.id).then((rows) => {
-      setItems(rows);
-      setLoading(false);
-    });
-    if (row.invoice.original_invoice_id) {
-      void invoicesRepo.get(row.invoice.original_invoice_id).then((orig) => {
-        setOriginalInvoiceNo(orig?.invoice_no ?? null);
-      });
-    }
-    if (isTauri() && sessionTenant?.id) {
-      void tenantsRepo.get(sessionTenant.id).then(setTenantInfo);
-    }
-    if (isTauri()) {
-      void loadFbrSettings().then((s) => {
-        if (s.enabled) setFbrSettings(s);
-        setSellerNtn(s.sellerNtn || null);
-      });
-      void Promise.all(PAPERS.map((p) => loadTemplate(p.id))).then((list) =>
-        setTemplates(Object.fromEntries(list.map((t) => [t.paper, t])))
-      );
-      void loadLogo().then(setLogo);
-    } else {
-      setTemplates({ ...DEFAULT_TEMPLATES });
-    }
+    const tauri = isTauri();
+    void Promise.all([
+      listItemsForInvoice(row.invoice.id).then(setItems),
+      row.invoice.original_invoice_id
+        ? invoicesRepo.get(row.invoice.original_invoice_id).then((orig) => setOriginalInvoiceNo(orig?.invoice_no ?? null))
+        : null,
+      tauri && sessionTenant?.id ? tenantsRepo.get(sessionTenant.id).then(setTenantInfo) : null,
+      tauri
+        ? loadFbrSettings().then((s) => {
+            if (s.enabled) setFbrSettings(s);
+            setSellerNtn(s.sellerNtn || null);
+          })
+        : null,
+      tauri ? loadDefaultPaper().then(loadTemplate).then(setTemplate) : setTemplate(structuredClone(DEFAULT_TEMPLATES.a4)),
+      tauri ? loadLogo().then(setLogo) : null,
+    ]).finally(() => setLoading(false));
   }, [row.invoice.id, row.invoice.original_invoice_id, sessionTenant?.id]);
+
+  async function handlePrint() {
+    if (!template) return;
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      await printDirect(template.paper, areaRef.current);
+    } catch (e) {
+      setPrintError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  // Direct print from the list: print once everything has rendered, then close.
+  useEffect(() => {
+    if (!autoPrint || loading || !template || autoPrinted.current) return;
+    autoPrinted.current = true;
+    requestAnimationFrame(() => {
+      void printDirect(template.paper, areaRef.current)
+        .catch((e) => window.alert(e instanceof Error ? e.message : String(e)))
+        .finally(onClose);
+    });
+  }, [autoPrint, loading, template, onClose]);
 
   const canFbr = useCan("invoice.fbr_submit");
 
@@ -97,7 +117,6 @@ export function InvoiceViewModal({
   }
 
   const inv = row.invoice;
-  const template = templates[paper];
 
   const fmtQty = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(2));
   const printData: PrintData = {
@@ -108,7 +127,7 @@ export function InvoiceViewModal({
       ntn: sellerNtn,
     },
     logo,
-    title: inv.is_return ? "RETURN" : paper === "thermal" ? "RECEIPT" : "INVOICE",
+    title: inv.is_return ? "RETURN" : template?.paper === "thermal" ? "RECEIPT" : "INVOICE",
     number: `#${inv.invoice_no ?? "-"}`,
     returnOf: inv.is_return && originalInvoiceNo ? `#${originalInvoiceNo}` : null,
     date: inv.date,
@@ -151,28 +170,29 @@ export function InvoiceViewModal({
     fbrInvoiceNo,
   };
 
+  const printArea =
+    template && !loading ? (
+      <div ref={areaRef} id="invoice-print-area" className="print-area mx-auto w-fit bg-white p-3 print:p-0">
+        <InvoicePrintLayout template={template} data={printData} />
+      </div>
+    ) : null;
+
+  // Direct print: render off-screen (still visible to print CSS) instead of the modal.
+  if (autoPrint) {
+    return <div className="pointer-events-none fixed inset-0 -z-10 opacity-0 print:z-auto print:opacity-100">{printArea}</div>;
+  }
+
   return (
     <Modal
-      title={`${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "\u2014"}`}
+      title={`${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "—"}`}
       onClose={onClose}
       width="max-w-3xl"
     >
       <div className="flex items-center justify-between pb-3">
-        <div className="flex gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5 text-xs">
-          {PAPERS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                setPaper(p.id);
-                rememberPaper(p.id);
-              }}
-              className={`rounded-md px-3 py-1 font-medium transition-colors ${paper === p.id ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <p className="text-xs text-neutral-500">
+          {template ? `Prints on ${PAPERS.find((p) => p.id === template.paper)!.label}` : ""}
+          <span className="text-neutral-400"> (change in Settings &gt; Print Templates)</span>
+        </p>
         <div className="flex gap-2">
           {fbrSettings && !fbrInvoiceNo && !inv.is_return && canFbr && (
             <Button
@@ -184,25 +204,23 @@ export function InvoiceViewModal({
               {fbrSubmitting ? "Submitting…" : "Submit to FBR"}
             </Button>
           )}
-          <Button onClick={() => window.print()}>Print</Button>
+          <Button disabled={!template || printing} onClick={() => void handlePrint()}>
+            {printing ? "Printing…" : "Print"}
+          </Button>
           <Button variant="primary" onClick={onClose}>Close</Button>
         </div>
       </div>
 
-      {fbrError && (
+      {(fbrError || printError) && (
         <div className="mb-3 whitespace-pre-line break-words rounded-xl bg-rose-50 px-4 py-2.5 text-xs leading-relaxed text-rose-700 ring-1 ring-rose-200">
-          <p className="font-semibold">FBR Error</p>
-          {fbrError}
+          <p className="font-semibold">{fbrError ? "FBR Error" : "Print Error"}</p>
+          {fbrError ?? printError}
         </div>
       )}
-      {loading || !template ? (
+      {!printArea ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-          <div id="invoice-print-area" className="print-area mx-auto w-fit bg-white p-3">
-            <InvoicePrintLayout template={template} data={printData} />
-          </div>
-        </div>
+        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-neutral-50 p-3">{printArea}</div>
       )}
     </Modal>
   );

@@ -1,5 +1,7 @@
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+mod print;
+
 // Full local schema for the offline-first pharmacy app.
 //
 // Design notes:
@@ -1132,6 +1134,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![print::print_silent])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

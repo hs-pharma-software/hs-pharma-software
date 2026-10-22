@@ -22,6 +22,7 @@ import {
   type InventoryUnitRow,
 } from "@/lib/repo/dashboard";
 import { getTotalPartyBalance } from "@/lib/repo/ledger";
+import { loadLogo } from "@/lib/printTemplates";
 
 interface DashboardStats {
   customers: number;
@@ -208,16 +209,28 @@ export default function DashboardPage() {
   const now = new Date();
   const dateLabel = now.toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const sessionTenant = useAuthStore((s) => s.currentTenant);
+  const [logo, setLogo] = useState<string | null>(null);
+  useEffect(() => {
+    if (tauriReady) void loadLogo().then(setLogo);
+  }, [tauriReady]);
 
   return (
     <div className="space-y-5 pb-8">
       {/* ── Header ── */}
       <div className="flex items-end justify-between">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-widest text-neutral-400">{dateLabel}</p>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-neutral-900">
-            {sessionTenant?.name ?? "Dashboard"}
-          </h1>
+        <div className="flex items-center gap-4">
+          {logo && (
+            <div className="flex h-14 max-w-[9rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logo} alt="" className="max-h-full max-w-full object-contain" />
+            </div>
+          )}
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-widest text-neutral-400">{dateLabel}</p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-neutral-900">
+              {sessionTenant?.name ?? "Dashboard"}
+            </h1>
+          </div>
         </div>
         {!tauriReady && (
           <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
