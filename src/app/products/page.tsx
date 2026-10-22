@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -16,6 +16,7 @@ export default function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   async function reload() {
     if (!isTauri()) {
@@ -44,6 +45,13 @@ export default function ProductsPage() {
     );
   });
 
+  async function openEdit(id: string) {
+    const product = await productsRepo.get(id);
+    setEditingProduct(product);
+    setEditingId(id);
+    setModalOpen(true);
+  }
+
   const columns: Column<ProductListRow>[] = [
     {
       header: "FBR",
@@ -52,11 +60,7 @@ export default function ProductsPage() {
         return (
           <div className="flex items-center justify-center">
             <div
-              title={
-                hasFbr
-                  ? `HS: ${r.hs_code} | ${r.fbr_sale_type}`
-                  : "FBR data incomplete — click to edit"
-              }
+              title={hasFbr ? `HS: ${r.hs_code} | ${r.fbr_sale_type}` : "FBR data incomplete — click to edit"}
               className={`h-2.5 w-2.5 rounded-full ${hasFbr ? "bg-emerald-500" : "bg-rose-500"}`}
             />
           </div>
@@ -82,15 +86,6 @@ export default function ProductsPage() {
     { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "—") },
     { header: "HS Code", render: (r) => r.hs_code ?? "—" },
   ];
-
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-
-  async function openEdit(id: string) {
-    const product = await productsRepo.get(id);
-    setEditingProduct(product);
-    setEditingId(id);
-    setModalOpen(true);
-  }
 
   const tauriReady = useIsTauri();
 
@@ -151,4 +146,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-
