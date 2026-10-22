@@ -3,6 +3,14 @@
 :root {
   --background: #f4f4f5;
   --foreground: #171717;
+
+  /* Themeable design tokens — overridden at runtime by ThemeProvider */
+  --accent: #f59e0b;
+  --sidebar-from: #0a0a0a;
+  --sidebar-to: #171717;
+  --app-bg: #f4f4f5;
+  --modal-overlay: #171717;
+  /* --font-body is only set when a custom font is chosen */
 }
 
 @theme inline {
@@ -30,11 +38,24 @@
 }
 
 body {
-  background: var(--background);
+  background: var(--app-bg, var(--background));
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-body, var(--font-sans), Arial, Helvetica, sans-serif);
   -webkit-font-smoothing: antialiased;
 }
+
+/* Primary button — uses the --accent CSS variable so theming works */
+.btn-primary-theme {
+  background: linear-gradient(to bottom, var(--accent), color-mix(in srgb, var(--accent) 80%, black));
+  color: white;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.btn-primary-theme:hover:not(:disabled) {
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 115%, white), var(--accent));
+}
+/* Sidebar active bar and text inherit --accent */
+.sidebar-active-text { color: var(--accent); }
+.sidebar-active-bg   { background-color: var(--accent); color: #0f172a; }
 
 @keyframes shimmer {
   0% {

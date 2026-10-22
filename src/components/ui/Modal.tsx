@@ -24,7 +24,8 @@ export function Modal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: "color-mix(in srgb, var(--modal-overlay) 40%, transparent)" }}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 12 }}

@@ -51,7 +51,10 @@ export function Sidebar() {
   const [openLabel, setOpenLabel] = useState<string | null>(activeTop?.label ?? null);
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col overflow-y-auto bg-gradient-to-b from-neutral-950 to-neutral-900 text-sm text-neutral-200">
+    <aside
+      className="flex h-full w-64 shrink-0 flex-col overflow-y-auto text-sm text-neutral-200"
+      style={{ background: "linear-gradient(to bottom, var(--sidebar-from), var(--sidebar-to))" }}
+    >
       <nav className="flex-1 py-1">
         {visibleNav.map((item) => {
           const isOpen = openLabel === item.label;
@@ -70,12 +73,13 @@ export function Sidebar() {
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-active-bar"
-                      className="absolute inset-y-1 left-0 w-[3px] rounded-r-full bg-amber-400"
+                      className="absolute inset-y-1 left-0 w-[3px] rounded-r-full"
+                      style={{ background: "var(--accent)" }}
                       transition={{ type: "spring", stiffness: 500, damping: 40 }}
                     />
                   )}
-                  <Icon size={17} className={`shrink-0 ${isActive ? "text-amber-400" : ""}`} />
-                  <span className={`flex-1 ${isActive ? "text-amber-400" : ""}`}>{item.label}</span>
+                  <Icon size={17} className="shrink-0" style={isActive ? { color: "var(--accent)" } : {}} />
+                  <span className="flex-1" style={isActive ? { color: "var(--accent)" } : {}}>{item.label}</span>
                   <motion.span
                     animate={{ rotate: isOpen ? 90 : 0 }}
                     transition={{ type: "spring", stiffness: 400, damping: 28 }}
@@ -94,7 +98,8 @@ export function Sidebar() {
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-active-bar"
-                      className="absolute inset-y-1 left-0 w-[3px] rounded-r-full bg-amber-400"
+                      className="absolute inset-y-1 left-0 w-[3px] rounded-r-full"
+                      style={{ background: "var(--accent)" }}
                       transition={{ type: "spring", stiffness: 500, damping: 40 }}
                     />
                   )}
@@ -121,9 +126,10 @@ export function Sidebar() {
                             href={child.href}
                             className={`relative block px-11 py-2 transition-all duration-150 hover:pl-12 hover:text-white ${
                               childActive
-                                ? "bg-amber-400 font-semibold text-neutral-950 hover:bg-amber-400 hover:pl-11"
+                                ? "font-semibold hover:pl-11"
                                 : "text-neutral-300 hover:bg-white/[0.06]"
                             }`}
+                          style={childActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
                           >
                             {child.label}
                           </Link>

@@ -4,6 +4,7 @@ import "./globals.css";
 import { RoleShell } from "@/components/layout/RoleShell";
 import { SyncProvider } from "@/components/sync/SyncProvider";
 import { AuthGate } from "@/components/auth/AuthGate";
+import { ThemeProvider } from "@/components/layout/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,11 +28,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <AuthGate>
-          <SyncProvider>
-            <RoleShell>{children}</RoleShell>
-          </SyncProvider>
-        </AuthGate>
+        <ThemeProvider>
+          <AuthGate>
+            <SyncProvider>
+              <RoleShell>{children}</RoleShell>
+            </SyncProvider>
+          </AuthGate>
+        </ThemeProvider>
       </body>
     </html>
   );

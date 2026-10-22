@@ -4,8 +4,7 @@ import { motion, type HTMLMotionProps } from "motion/react";
 type Variant = "primary" | "secondary" | "danger" | "ghost";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary:
-    "bg-gradient-to-b from-amber-500 to-amber-600 text-white shadow-sm shadow-amber-600/30 hover:from-amber-400 hover:to-amber-600",
+  primary: "btn-primary-theme",
   secondary:
     "bg-white text-neutral-700 border border-neutral-200 shadow-sm hover:bg-neutral-50 hover:border-neutral-300",
   danger:
