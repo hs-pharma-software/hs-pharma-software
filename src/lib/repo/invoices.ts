@@ -22,6 +22,7 @@ export interface InvoiceListRow {
   paid: number;
   balance: number;
   original_invoice_no: number | null;
+  fbr_invoice_no: string | null;
 }
 
 export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorized?: boolean } = {}): Promise<InvoiceListRow[]> {
@@ -32,7 +33,8 @@ export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorize
            COALESCE(c.name, 'Walk-in') AS customer_name,
            sm.name AS salesman_name,
            i.total, i.payable, i.paid, i.balance,
-           orig.invoice_no AS original_invoice_no
+           orig.invoice_no AS original_invoice_no,
+           i.fbr_invoice_no
     FROM invoices i
     LEFT JOIN customers c ON c.id = i.customer_id
     LEFT JOIN salesmen sm ON sm.id = i.salesman_id

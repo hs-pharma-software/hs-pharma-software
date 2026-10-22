@@ -1,7 +1,7 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
-import { Eye, Pencil, Trash2, Printer } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -9,12 +9,14 @@ import { InvoiceFormModal } from "@/components/invoices/InvoiceFormModal";
 import { InvoiceViewModal } from "@/components/invoices/InvoiceViewModal";
 import {
   listInvoicesForGrid,
+  listItemsForInvoice,
   invoicesRepo,
   deleteInvoiceWithStockRestore,
   type InvoiceListRow,
 } from "@/lib/repo/invoices";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAppStore } from "@/store/appStore";
+import { loadFbrSettings, submitInvoiceToFbr, type FbrSettings } from "@/lib/fbr";
 import type { Invoice } from "@/lib/types2";
 
 export default function InvoicesPage() {
@@ -25,6 +27,10 @@ export default function InvoicesPage() {
     null
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
+  const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
+  // Per-row error tooltip state
+  const [fbrErrors, setFbrErrors] = useState<Record<string, string>>({});
 
   const pendingAction = useAppStore((s) => s.pendingAction);
   const setPendingAction = useAppStore((s) => s.setPendingAction);
@@ -36,9 +42,11 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     void reload();
+    if (isTauri()) {
+      void loadFbrSettings().then((s) => { if (s.enabled) setFbrSettings(s); });
+    }
   }, []);
 
-  // Ctrl+N (see GlobalShortcuts.tsx) lands here as a store flag.
   useEffect(() => {
     if (pendingAction === "new-invoice") {
       setEditingInvoice(null);
@@ -62,7 +70,7 @@ export default function InvoicesPage() {
 
   async function handleDelete(row: InvoiceListRow) {
     const reason = window.prompt(`Delete invoice #${row.invoice_no ?? ""}? This restores its stock. Reason:`);
-    if (reason === null) return; // cancelled
+    if (reason === null) return;
     setDeletingId(row.id);
     try {
       await deleteInvoiceWithStockRestore(row.id, reason || undefined);
@@ -74,18 +82,84 @@ export default function InvoicesPage() {
 
   async function printInvoice(row: InvoiceListRow) {
     await openView(row);
-    // Give the view modal a tick to render #invoice-print-area before printing.
     setTimeout(() => window.print(), 150);
   }
 
+  async function handleFbrSubmit(row: InvoiceListRow) {
+    if (!fbrSettings || submittingIds.has(row.id)) return;
+
+    setSubmittingIds((prev) => new Set(prev).add(row.id));
+    setFbrErrors((prev) => { const n = { ...prev }; delete n[row.id]; return n; });
+
+    const items = await listItemsForInvoice(row.id);
+
+    const result = await submitInvoiceToFbr(
+      {
+        invoiceType: "Sale Invoice",
+        invoiceDate: row.date,
+        sellerNTNCNIC: fbrSettings.sellerNtn,
+        sellerBusinessName: fbrSettings.sellerName,
+        sellerProvince: fbrSettings.sellerProvince,
+        sellerAddress: fbrSettings.sellerAddress,
+        buyerBusinessName: row.customer_name,
+        buyerProvince: fbrSettings.sellerProvince,
+        buyerAddress: "",
+        buyerRegistrationType: "Unregistered",
+        items: items.map((item) => ({
+          hsCode: "0000.0000",
+          productDescription: item.product_name,
+          rate: item.tax_pct > 0 ? `${item.tax_pct}%` : "0%",
+          uoM: "Numbers, pieces, units",
+          quantity: item.qty,
+          totalValues: item.total,
+          valueSalesExcludingST: item.total,
+          fixedNotifiedValueOrRetailPrice: 0,
+          salesTaxApplicable: (item.total * (item.tax_pct ?? 0)) / 100,
+          salesTaxWithheldAtSource: 0,
+          extraTax: 0,
+          furtherTax: item.further_tax_pct > 0 ? (item.total * item.further_tax_pct) / 100 : 0,
+          sroScheduleNo: "",
+          fedPayable: 0,
+          discount: item.discount_rs,
+          saleType: "Goods at standard rate (default)",
+          sroItemSerialNo: "",
+        })),
+      },
+      fbrSettings
+    );
+
+    setSubmittingIds((prev) => { const n = new Set(prev); n.delete(row.id); return n; });
+
+    if (result.success && result.fbrInvoiceNo) {
+      await invoicesRepo.update(row.id, { fbr_invoice_no: result.fbrInvoiceNo });
+      // Optimistically update this row in state
+      setRows((prev) =>
+        prev.map((r) => r.id === row.id ? { ...r, fbr_invoice_no: result.fbrInvoiceNo } : r)
+      );
+    } else {
+      setFbrErrors((prev) => ({ ...prev, [row.id]: result.error ?? "FBR submission failed" }));
+    }
+  }
+
   const columns: Column<InvoiceListRow>[] = [
-    { header: "Bill #", render: (r) => r.invoice_no ?? "\u2014" },
+    { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
     { header: "Date", render: (r) => r.date },
-    { header: "Salesman", render: (r) => r.salesman_name ?? "\u2014" },
+    { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
     { header: "Customer", render: (r) => r.customer_name },
     { header: "Total Bill", render: (r) => r.total.toFixed(2) },
     { header: "Paid", render: (r) => r.paid.toFixed(2) },
     { header: "Balance", render: (r) => r.balance.toFixed(2) },
+    ...(fbrSettings ? [{
+      header: "FBR",
+      render: (r: InvoiceListRow) => (
+        <FbrCell
+          row={r}
+          submitting={submittingIds.has(r.id)}
+          error={fbrErrors[r.id] ?? null}
+          onSubmit={() => void handleFbrSubmit(r)}
+        />
+      ),
+    }] : []),
     {
       header: "Actions",
       render: (r) => (
@@ -93,10 +167,7 @@ export default function InvoicesPage() {
           <button
             type="button"
             title="View"
-            onClick={(e) => {
-              e.stopPropagation();
-              void openView(r);
-            }}
+            onClick={(e) => { e.stopPropagation(); void openView(r); }}
             className="hover:text-amber-700"
           >
             <Eye size={16} />
@@ -104,10 +175,7 @@ export default function InvoicesPage() {
           <button
             type="button"
             title="Edit"
-            onClick={(e) => {
-              e.stopPropagation();
-              void openEdit(r);
-            }}
+            onClick={(e) => { e.stopPropagation(); void openEdit(r); }}
             className="hover:text-amber-700"
           >
             <Pencil size={16} />
@@ -115,10 +183,7 @@ export default function InvoicesPage() {
           <button
             type="button"
             title="Print"
-            onClick={(e) => {
-              e.stopPropagation();
-              void printInvoice(r);
-            }}
+            onClick={(e) => { e.stopPropagation(); void printInvoice(r); }}
             className="hover:text-amber-700"
           >
             <Printer size={16} />
@@ -127,10 +192,7 @@ export default function InvoicesPage() {
             type="button"
             title="Delete"
             disabled={deletingId === r.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleDelete(r);
-            }}
+            onClick={(e) => { e.stopPropagation(); void handleDelete(r); }}
             className="hover:text-rose-600 disabled:opacity-40"
           >
             <Trash2 size={16} />
@@ -182,7 +244,85 @@ export default function InvoicesPage() {
         />
       )}
 
-      {viewing && <InvoiceViewModal row={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <InvoiceViewModal
+          row={viewing}
+          onClose={() => {
+            setViewing(null);
+            void reload(); // refresh in case FBR was submitted from view modal
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── FBR status cell ────────────────────────────────────────────────────────
+function FbrCell({
+  row,
+  submitting,
+  error,
+  onSubmit,
+}: {
+  row: InvoiceListRow;
+  submitting: boolean;
+  error: string | null;
+  onSubmit: () => void;
+}) {
+  const [showError, setShowError] = useState(false);
+  const valid = !!row.fbr_invoice_no;
+
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      {/* Validation circle */}
+      <div className="relative">
+        <button
+          type="button"
+          title={valid ? `FBR: ${row.fbr_invoice_no}` : error ? "Click to see error" : "Not submitted to FBR"}
+          onClick={() => { if (error) setShowError((v) => !v); }}
+          className="flex items-center"
+        >
+          {submitting ? (
+            <svg className="h-4 w-4 animate-spin text-amber-500" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4" strokeDashoffset="10" strokeLinecap="round" />
+            </svg>
+          ) : valid ? (
+            <CheckCircle2 size={16} className="text-emerald-500" />
+          ) : error ? (
+            <XCircle size={16} className="text-rose-500" />
+          ) : (
+            <XCircle size={16} className="text-neutral-300" />
+          )}
+        </button>
+
+        {/* Error tooltip */}
+        {showError && error && (
+          <div className="absolute left-0 top-6 z-20 w-56 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700 shadow-lg ring-1 ring-rose-200">
+            <p className="font-medium">FBR Error</p>
+            <p className="mt-0.5 leading-snug">{error}</p>
+            <button
+              type="button"
+              onClick={() => setShowError(false)}
+              className="mt-1.5 text-rose-400 underline hover:text-rose-600"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Submit button — only when not yet submitted */}
+      {!valid && (
+        <button
+          type="button"
+          title="Submit to FBR"
+          disabled={submitting}
+          onClick={onSubmit}
+          className="flex h-6 w-6 items-center justify-center rounded-md bg-[#006633]/10 text-[#006633] transition hover:bg-[#006633]/20 disabled:opacity-40"
+        >
+          <Send size={12} />
+        </button>
+      )}
     </div>
   );
 }
