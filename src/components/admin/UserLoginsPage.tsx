@@ -14,6 +14,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { NAV } from "@/config/nav";
 import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions";
+import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import type { Tenant, UserAccount } from "@/lib/types2";
 
 /** Lists login accounts. `scope: "all"` (Super Admin, at /admin/users) shows
@@ -88,20 +89,51 @@ export function UserLoginsPage({
     setDeniedState((d) => (d.includes(key) ? d.filter((k) => k !== key) : [...d, key]));
   }
 
+  /** NAV items that are relevant to the tenant whose user is being edited. */
+  function visibleNavForUser(u: UserAccount | null) {
+    if (!u) return NAV;
+    const tenant = u.tenant_id == null
+      ? null
+      : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
+    const bt = businessType(tenant?.businessType ?? null);
+    const typeId = bt.id;
+    return NAV.filter((item) => {
+      if (item.onlyFor) return item.onlyFor.includes(typeId);
+      return moduleAllowedForType(typeId, item.moduleKey);
+    });
+  }
+
   function toggleModule(key: string) {
+    const visibleKeys = visibleNavForUser(editingPerms).map((n) => n.moduleKey);
     if (permsState === null) {
-      setPermsState(NAV.map((n) => n.moduleKey).filter((k) => k !== key));
+      setPermsState(visibleKeys.filter((k) => k !== key));
     } else if (permsState.includes(key)) {
       setPermsState(permsState.filter((k) => k !== key));
     } else {
       const updated = [...permsState, key];
-      if (updated.length === NAV.length) setPermsState(null);
+      if (updated.length >= visibleKeys.length) setPermsState(null);
       else setPermsState(updated);
     }
   }
 
   function isChecked(key: string) {
     return permsState === null || permsState.includes(key);
+  }
+
+  /** Action groups visible for the tenant whose user is being edited. */
+  function visibleActionGroups(u: UserAccount | null): Array<"Invoices" | "Purchases" | "Restaurant"> {
+    if (!u) return ["Invoices", "Purchases"];
+    const tenant = u.tenant_id == null
+      ? null
+      : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
+    const bt = businessType(tenant?.businessType ?? null);
+    const typeId = bt.id;
+    return (["Invoices", "Purchases", "Restaurant"] as const).filter((group) => {
+      if (group === "Restaurant") return typeId === "restaurant";
+      if (group === "Invoices") return moduleAllowedForType(typeId, "invoices");
+      if (group === "Purchases") return moduleAllowedForType(typeId, "purchase");
+      return true;
+    });
   }
 
   async function savePermissions() {
@@ -256,100 +288,107 @@ export function UserLoginsPage({
         </Modal>
       )}
 
-      {editingPerms && (
-        <Modal
-          title={`Permissions \u2014 ${editingPerms.username}`}
-          onClose={() => setEditingPerms(null)}
-          width="max-w-lg"
-        >
-          <div className="flex flex-col gap-3">
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                  Module Access
-                </span>
-                <div className="flex gap-2 text-xs">
-                  <button type="button" onClick={() => setPermsState(null)} className="text-amber-600 hover:underline">
-                    Allow All
-                  </button>
-                  <span className="text-neutral-300">|</span>
-                  <button type="button" onClick={() => setPermsState([])} className="text-rose-600 hover:underline">
-                    Block All
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {NAV.map((item) => (
-                  <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
-                    <input
-                      type="checkbox"
-                      checked={isChecked(item.moduleKey)}
-                      onChange={() => toggleModule(item.moduleKey)}
-                      className="accent-amber-500"
-                    />
-                    <span className="text-xs text-neutral-700">{item.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Actions</span>
-                <div className="flex gap-2 text-xs">
-                  <button type="button" onClick={() => setDeniedState([])} className="text-amber-600 hover:underline">
-                    Allow All
-                  </button>
-                  <span className="text-neutral-300">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setDeniedState(ACTION_PERMISSIONS.map((a) => a.key))}
-                    className="text-rose-600 hover:underline"
-                  >
-                    Block All
-                  </button>
-                </div>
-              </div>
-              {(["Invoices", "Purchases", "Restaurant"] as const).map((group) => (
-                <div key={group} className="mb-1.5 last:mb-0">
-                  <p className="mb-1 text-[11px] font-medium text-neutral-500">{group}</p>
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                    {ACTION_PERMISSIONS.filter((a) => a.group === group).map((a) => (
-                      <label key={a.key} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
-                        <input
-                          type="checkbox"
-                          checked={!deniedState.includes(a.key)}
-                          onChange={() => toggleAction(a.key)}
-                          className="accent-amber-500"
-                        />
-                        <span className="text-xs text-neutral-700">{a.label}</span>
-                      </label>
-                    ))}
+      {editingPerms && (() => {
+        const visibleNav = visibleNavForUser(editingPerms);
+        const actionGroups = visibleActionGroups(editingPerms);
+        const visibleActions = ACTION_PERMISSIONS.filter((a) => actionGroups.includes(a.group as never));
+        return (
+          <Modal
+            title={`Permissions \u2014 ${editingPerms.username}`}
+            onClose={() => setEditingPerms(null)}
+            width="max-w-lg"
+          >
+            <div className="flex flex-col gap-3">
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    Module Access
+                  </span>
+                  <div className="flex gap-2 text-xs">
+                    <button type="button" onClick={() => setPermsState(null)} className="text-amber-600 hover:underline">
+                      Allow All
+                    </button>
+                    <span className="text-neutral-300">|</span>
+                    <button type="button" onClick={() => setPermsState([])} className="text-rose-600 hover:underline">
+                      Block All
+                    </button>
                   </div>
                 </div>
-              ))}
-              <p className="mt-2 text-[11px] text-neutral-400">
-                Unticked actions are hidden for this login. Changes apply on their next screen change.
+                <div className="grid grid-cols-3 gap-1.5">
+                  {visibleNav.map((item) => (
+                    <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
+                      <input
+                        type="checkbox"
+                        checked={isChecked(item.moduleKey)}
+                        onChange={() => toggleModule(item.moduleKey)}
+                        className="accent-amber-500"
+                      />
+                      <span className="text-xs text-neutral-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              {actionGroups.length > 0 && (
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Actions</span>
+                    <div className="flex gap-2 text-xs">
+                      <button type="button" onClick={() => setDeniedState([])} className="text-amber-600 hover:underline">
+                        Allow All
+                      </button>
+                      <span className="text-neutral-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setDeniedState(visibleActions.map((a) => a.key))}
+                        className="text-rose-600 hover:underline"
+                      >
+                        Block All
+                      </button>
+                    </div>
+                  </div>
+                  {actionGroups.map((group) => (
+                    <div key={group} className="mb-1.5 last:mb-0">
+                      <p className="mb-1 text-[11px] font-medium text-neutral-500">{group}</p>
+                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                        {ACTION_PERMISSIONS.filter((a) => a.group === group).map((a) => (
+                          <label key={a.key} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
+                            <input
+                              type="checkbox"
+                              checked={!deniedState.includes(a.key)}
+                              onChange={() => toggleAction(a.key)}
+                              className="accent-amber-500"
+                            />
+                            <span className="text-xs text-neutral-700">{a.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="mt-2 text-[11px] text-neutral-400">
+                    Unticked actions are hidden for this login. Changes apply on their next screen change.
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-neutral-400">
+                {permsState === null
+                  ? "Full access \u2014 all modules are allowed."
+                  : permsState.length === 0
+                  ? "No access \u2014 all modules are blocked."
+                  : `${permsState.length} of ${visibleNav.length} modules allowed.`}
+                {deniedState.length > 0 && ` ${deniedState.length} action(s) restricted.`}
               </p>
+              <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+                <Button type="button" onClick={() => setEditingPerms(null)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={() => void savePermissions()} disabled={permsSaving}>
+                  {permsSaving ? "Saving..." : "Save"}
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-neutral-400">
-              {permsState === null
-                ? "Full access \u2014 all modules are allowed."
-                : permsState.length === 0
-                ? "No access \u2014 all modules are blocked."
-                : `${permsState.length} of ${NAV.length} modules allowed.`}
-              {deniedState.length > 0 && ` ${deniedState.length} action(s) restricted.`}
-            </p>
-            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
-              <Button type="button" onClick={() => setEditingPerms(null)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={() => void savePermissions()} disabled={permsSaving}>
-                {permsSaving ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
