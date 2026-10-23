@@ -96,7 +96,7 @@ export async function createSharedProduct(data: Partial<Product>): Promise<Produ
   const keys = Object.keys(record);
   await dbExecute(
     `INSERT INTO products (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`,
-    keys.map((k) => (record as Record<string, unknown>)[k] ?? null)
+    keys.map((k) => (record as unknown as Record<string, unknown>)[k] ?? null)
   );
   await recordOutbox("products", id, "insert", record as unknown as Record<string, unknown>);
   return record;
