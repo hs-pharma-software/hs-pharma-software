@@ -374,7 +374,7 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     id: "restaurant",
     label: "Restaurant",
     family: "retail",
-    status: "planned",
+    status: "ready",
     purpose: "Food service selling menu items (dine-in, takeaway, delivery) made from ingredients.",
     workflow: ["Open table / order", "Add items + modifiers", "KOT to kitchen", "Running bill", "Bill + service charge", "Payment", "Close table"],
     capabilities: c("Core", "Optional", "Not Required", "Core", "Optional", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required"),
@@ -405,8 +405,10 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     validations: ["KOT void needs reason + permission", "Recipe units convertible to stock units"],
     mvp: ["Menu items", "Takeaway billing", "Thermal receipt", "FBR DI / provincial tax"],
     advanced: ["Tables + KOT", "Recipes + ingredient deduction", "Delivery riders", "Kitchen display"],
-    defaultModules: m("purchase", "stock", "suppliers", "staff"),
-    planned: ["Menu items & modifiers", "Tables & KOT", "Recipes & ingredient deduction", "Provincial restaurant tax"],
+    // Restaurant sections follow the business type (config/nav.ts onlyFor);
+    // pharmacy stock/purchase screens are not needed.
+    defaultModules: ["dashboard", "customers", "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings"],
+    planned: ["Multi-branch menus and pricing", "Reservations", "Kitchen display screen per station (separate device)"],
   },
   {
     id: "electronics_solar",

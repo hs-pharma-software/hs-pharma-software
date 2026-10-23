@@ -19,6 +19,12 @@ import {
   BarChart3,
   Wrench,
   Settings,
+  UtensilsCrossed,
+  ChefHat,
+  BookOpen,
+  Carrot,
+  LineChart,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export interface NavChild {
@@ -34,6 +40,8 @@ export interface NavItem {
    * src/lib/moduleAccess.ts and src/components/layout/Sidebar.tsx. */
   moduleKey: string;
   children?: NavChild[];
+  /** Only shown to these business types (config/businessTypes.ts ids). */
+  onlyFor?: string[];
 }
 
 export const NAV: NavItem[] = [
@@ -179,6 +187,55 @@ export const NAV: NavItem[] = [
       { label: "Financial Closing", href: "/utilities/financial-closing" },
       { label: "View Financial Closing", href: "/utilities/financial-closing/history" },
       { label: "Audit Detail", href: "/utilities/audit" },
+    ],
+  },
+  // ── Restaurant (shown only to Restaurant tenants) ──
+  {
+    label: "Restaurant POS",
+    href: "/restaurant",
+    icon: UtensilsCrossed,
+    moduleKey: "restaurant_pos",
+    onlyFor: ["restaurant"],
+    children: [
+      { label: "Tables & Orders", href: "/restaurant" },
+      { label: "Invoices & Refunds", href: "/restaurant/orders" },
+      { label: "Table Setup", href: "/restaurant/tables" },
+    ],
+  },
+  { label: "Kitchen", href: "/restaurant/kitchen", icon: ChefHat, moduleKey: "restaurant_kitchen", onlyFor: ["restaurant"] },
+  {
+    label: "Menu",
+    href: "/restaurant/menu",
+    icon: BookOpen,
+    moduleKey: "restaurant_menu",
+    onlyFor: ["restaurant"],
+    children: [
+      { label: "Categories & Dishes", href: "/restaurant/menu" },
+      { label: "Deals & Combos", href: "/restaurant/deals" },
+      { label: "Offers & Promotions", href: "/restaurant/offers" },
+    ],
+  },
+  { label: "Ingredients", href: "/restaurant/inventory", icon: Carrot, moduleKey: "restaurant_inventory", onlyFor: ["restaurant"] },
+  {
+    label: "Restaurant Reports",
+    href: "/restaurant/reports",
+    icon: LineChart,
+    moduleKey: "restaurant_reports",
+    onlyFor: ["restaurant"],
+    children: [
+      { label: "Sales Reports", href: "/restaurant/reports" },
+      { label: "Audit Log", href: "/restaurant/audit" },
+    ],
+  },
+  {
+    label: "Restaurant Settings",
+    href: "/restaurant/settings",
+    icon: SlidersHorizontal,
+    moduleKey: "restaurant_settings",
+    onlyFor: ["restaurant"],
+    children: [
+      { label: "Billing & Tax", href: "/restaurant/settings" },
+      { label: "PRA e-Invoicing", href: "/restaurant/pra" },
     ],
   },
   {

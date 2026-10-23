@@ -7,6 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { NAV } from "@/config/nav";
 import { useAuthStore } from "@/store/authStore";
+import { businessType } from "@/config/businessTypes";
 
 /** Strips trailing slashes so routes compare consistently regardless of
  * Next's `trailingSlash: true` static-export setting. */
@@ -39,8 +40,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const allowedModules = useAuthStore((s) => s.currentTenant?.allowedModules ?? null);
   const userPermissions = useAuthStore((s) => s.currentUser?.permissions ?? null);
+  const typeId = useAuthStore((s) => businessType(s.currentTenant?.businessType).id);
   const visibleNav = NAV.filter((item) => {
-    if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) return false;
+    // Business-type sections (e.g. Restaurant) follow the tenant type, not the plan.
+    if (item.onlyFor) {
+      if (!item.onlyFor.includes(typeId)) return false;
+    } else if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) return false;
     if (userPermissions !== null && !userPermissions.includes(item.moduleKey)) return false;
     return true;
   });

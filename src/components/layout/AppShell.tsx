@@ -13,6 +13,7 @@ import { AssistantChat } from "@/components/assistant/AssistantChat";
 import { FormTabsHost } from "./FormTabsHost";
 import { useAuthStore } from "@/store/authStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
+import { PraBackground } from "@/components/restaurant/PraBackground";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -32,6 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Calculator />
       {currentTenant && !subscriptionLocked && <AssistantChat />}
       {currentTenant && !subscriptionLocked && <FormTabsHost />}
+      {currentTenant && !subscriptionLocked && <PraBackground />}
       <Topbar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />

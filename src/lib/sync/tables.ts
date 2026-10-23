@@ -43,6 +43,20 @@ export const SYNCABLE_TABLES = [
   "product_suppliers",
   "financial_closings",
   "purchase_drafts",
+  // Restaurant module (all tenant-scoped).
+  "rest_categories",
+  "rest_menu_items",
+  "rest_tables",
+  "rest_orders",
+  "rest_order_items",
+  "rest_kots",
+  "rest_deals",
+  "rest_offers",
+  "rest_ingredients",
+  "rest_recipe_lines",
+  "rest_stock_moves",
+  "rest_pra_submissions",
+  "rest_audit",
 ] as const;
 
 /** Tables private to one pharmacy tenant \u2014 `pullChanges()` in
@@ -83,6 +97,19 @@ export const TENANT_SCOPED_TABLES: string[] = [
   "product_suppliers",
   "financial_closings",
   "purchase_drafts",
+  "rest_categories",
+  "rest_menu_items",
+  "rest_tables",
+  "rest_orders",
+  "rest_order_items",
+  "rest_kots",
+  "rest_deals",
+  "rest_offers",
+  "rest_ingredients",
+  "rest_recipe_lines",
+  "rest_stock_moves",
+  "rest_pra_submissions",
+  "rest_audit",
 ];
 
 // `delete_history` and `backups` are intentionally excluded: they're

@@ -8,6 +8,12 @@ export const ACTION_PERMISSIONS = [
   { key: "invoice.fbr_submit", label: "Submit invoices to FBR", group: "Invoices" },
   { key: "purchase.edit", label: "Edit purchases", group: "Purchases" },
   { key: "purchase.delete", label: "Delete purchases", group: "Purchases" },
+  { key: "rest.order", label: "Take orders and payments", group: "Restaurant" },
+  { key: "rest.discount", label: "Give manual discounts", group: "Restaurant" },
+  { key: "rest.void", label: "Cancel sent dishes / orders", group: "Restaurant" },
+  { key: "rest.refund", label: "Refund invoices", group: "Restaurant" },
+  { key: "rest.menu", label: "Edit menu, deals, offers, tables, stock", group: "Restaurant" },
+  { key: "rest.settings", label: "Tax and PRA settings", group: "Restaurant" },
 ] as const;
 
 export type ActionKey = (typeof ACTION_PERMISSIONS)[number]["key"];

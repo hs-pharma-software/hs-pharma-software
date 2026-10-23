@@ -309,7 +309,7 @@ export function UserLoginsPage({
                   </button>
                 </div>
               </div>
-              {(["Invoices", "Purchases"] as const).map((group) => (
+              {(["Invoices", "Purchases", "Restaurant"] as const).map((group) => (
                 <div key={group} className="mb-1.5 last:mb-0">
                   <p className="mb-1 text-[11px] font-medium text-neutral-500">{group}</p>
                   <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">

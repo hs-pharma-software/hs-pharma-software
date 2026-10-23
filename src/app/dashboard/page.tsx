@@ -23,6 +23,8 @@ import {
 } from "@/lib/repo/dashboard";
 import { getTotalPartyBalance } from "@/lib/repo/ledger";
 import { loadLogo } from "@/lib/printTemplates";
+import { businessType } from "@/config/businessTypes";
+import { RestaurantDashboard } from "@/components/restaurant/RestaurantDashboard";
 
 interface DashboardStats {
   customers: number;
@@ -165,7 +167,14 @@ function ExpiryBadge({ dateStr }: { dateStr: string }) {
 }
 
 /* ══════════════════════════════════════════════ Page ══════════════════════════════════════════════ */
+/** Restaurant tenants get their own dashboard; everyone else the general one. */
 export default function DashboardPage() {
+  const tenant = useAuthStore((s) => s.currentTenant);
+  if (tenant && businessType(tenant.businessType).id === "restaurant") return <RestaurantDashboard name={tenant.name} />;
+  return <GeneralDashboard />;
+}
+
+function GeneralDashboard() {
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
   const [today, setToday] = useState<TodaySummary>(EMPTY_TODAY);
   const [lowStock, setLowStock] = useState<LowStockRow[]>([]);

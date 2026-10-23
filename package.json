@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "eslint",
     "tauri": "tauri",
-    "migrate:turso": "node scripts/migrate-turso.cjs"
+    "migrate:turso": "node scripts/migrate-turso.cjs",
+    "test": "node --import ./tests/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test \"tests/**/*.test.ts\"",
+    "test:pra-live": "cross-env PRA_LIVE=1 npm test"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

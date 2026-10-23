@@ -45,6 +45,14 @@ async function exec(sql) {
 const normWs = (col) =>
   `TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${col}, char(13), ' '), char(10), ' '), char(9), ' '), char(160), ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '))`;
 
+/** SQL statements of schema_sql_v<N>() in src-tauri/src/lib.rs. */
+function rustSchemaStatements(n) {
+  const rs = fs.readFileSync(require('path').join(__dirname, '..', 'src-tauri', 'src', 'lib.rs'), 'utf8');
+  const m = new RegExp(`fn schema_sql_v${n}\\(\\)[^{]*\\{\\s*r#"([\\s\\S]*?)"#`).exec(rs);
+  if (!m) throw new Error(`schema_sql_v${n} not found in lib.rs`);
+  return m[1].split(';').map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
 const MIGRATIONS = [
   // v1 — base schema (all CREATE TABLE IF NOT EXISTS, safe to re-run)
   { version: 1, label: 'Base schema', statements: [
@@ -230,6 +238,10 @@ const MIGRATIONS = [
     `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("name")} AS n FROM generic_names WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
     `DELETE FROM generic_names WHERE id <> 'gn-' || lower(hex(UPPER(${normWs("name")})))`,
   ]},
+  { version: 27, label: 'restaurant order line discount/tax/refunded', statements: rustSchemaStatements(27) },
+  // Same SQL as schema_sql_v26() in src-tauri/src/lib.rs (read from there, so
+  // the two can't drift). local_secrets is device-only and never goes to Turso.
+  { version: 26, label: 'restaurant module tables', statements: rustSchemaStatements(26).filter((s) => !/local_secrets/.test(s)) },
   { version: 25, label: 'tenant controls (type, sections, actions, FBR, print templates)', statements: [
     `ALTER TABLE tenants ADD COLUMN business_type TEXT`,
     `ALTER TABLE tenants ADD COLUMN allowed_modules TEXT`,

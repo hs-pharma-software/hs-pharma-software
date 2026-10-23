@@ -827,6 +827,141 @@ fn schema_sql_v25() -> &'static str {
     "#
 }
 
+/// Restaurant module. Every table is private to one tenant (tenant_id on
+/// every row, every query filters by it). Menu items live here, NOT in the
+/// shared `products` catalog, so a restaurant never sees another business's
+/// products. `local_secrets` is device-only (never synced): PRA tokens.
+fn schema_sql_v26() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS rest_categories (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
+        sort_order INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1, avail_from TEXT, avail_to TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_categories_tenant ON rest_categories (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS rest_menu_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, category_id TEXT, code TEXT NOT NULL, name TEXT NOT NULL,
+        description TEXT, price REAL NOT NULL DEFAULT 0, takeaway_price REAL, variants TEXT, modifiers TEXT,
+        station TEXT, prep_minutes INTEGER, tax_exempt INTEGER DEFAULT 0, is_available INTEGER DEFAULT 1,
+        image TEXT, sort_order INTEGER DEFAULT 0, cost REAL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_menu_items_tenant ON rest_menu_items (tenant_id, category_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_menu_items_code ON rest_menu_items (tenant_id, code) WHERE deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS rest_tables (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, area TEXT, capacity INTEGER DEFAULT 4,
+        sort_order INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1, status TEXT NOT NULL DEFAULT 'available',
+        current_order_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_tables_tenant ON rest_tables (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS rest_orders (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_no INTEGER NOT NULL, order_type TEXT NOT NULL,
+        table_id TEXT, status TEXT NOT NULL DEFAULT 'open', customer_name TEXT, customer_phone TEXT, guests INTEGER,
+        cashier_id TEXT, cashier_name TEXT, offers TEXT, coupon TEXT,
+        gross REAL DEFAULT 0, discount REAL DEFAULT 0, service_charge REAL DEFAULT 0, tax REAL DEFAULT 0,
+        tax_rate REAL DEFAULT 0, total REAL DEFAULT 0, paid REAL DEFAULT 0, payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        payments TEXT, invoice_no INTEGER, invoiced_at TEXT, refund_of TEXT, cancel_reason TEXT, notes TEXT,
+        opened_at TEXT, closed_at TEXT, pra_status TEXT NOT NULL DEFAULT 'not_required', pra_invoice_no TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_orders_tenant ON rest_orders (tenant_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_orders_no ON rest_orders (tenant_id, order_no);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_orders_invoice ON rest_orders (tenant_id, invoice_no) WHERE invoice_no IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS rest_order_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_id TEXT NOT NULL, menu_item_id TEXT, deal_id TEXT,
+        parent_item_id TEXT, code TEXT, name TEXT NOT NULL, category_id TEXT, variant TEXT, modifiers TEXT,
+        qty REAL NOT NULL DEFAULT 1, unit_price REAL NOT NULL DEFAULT 0, line_total REAL NOT NULL DEFAULT 0,
+        tax_exempt INTEGER DEFAULT 0, notes TEXT, station TEXT, kitchen_status TEXT NOT NULL DEFAULT 'new',
+        kot_no INTEGER, sent_at TEXT, cancel_reason TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_order_items_order ON rest_order_items (tenant_id, order_id);
+    CREATE INDEX IF NOT EXISTS idx_rest_order_items_kitchen ON rest_order_items (tenant_id, kitchen_status);
+
+    CREATE TABLE IF NOT EXISTS rest_kots (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_id TEXT NOT NULL, kot_no INTEGER NOT NULL, station TEXT,
+        item_ids TEXT, printed_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_kots_order ON rest_kots (tenant_id, order_id);
+
+    CREATE TABLE IF NOT EXISTS rest_deals (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
+        image TEXT, price REAL NOT NULL DEFAULT 0, items TEXT NOT NULL, start_date TEXT, end_date TEXT, days TEXT,
+        start_time TEXT, end_time TEXT, max_redemptions INTEGER, redemptions INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_deals_code ON rest_deals (tenant_id, code) WHERE deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS rest_offers (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL,
+        value REAL DEFAULT 0, buy_qty INTEGER, get_qty INTEGER, applies_to TEXT NOT NULL DEFAULT 'order', target_ids TEXT,
+        min_order REAL, min_qty REAL, max_discount REAL, start_date TEXT, end_date TEXT, days TEXT, start_time TEXT,
+        end_time TEXT, usage_limit INTEGER, used_count INTEGER DEFAULT 0, coupon_code TEXT, stackable INTEGER DEFAULT 0,
+        exclude_discounted INTEGER DEFAULT 1, is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_offers_code ON rest_offers (tenant_id, code) WHERE deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS rest_ingredients (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, unit TEXT NOT NULL, purchase_unit TEXT,
+        purchase_factor REAL DEFAULT 1, stock REAL NOT NULL DEFAULT 0, cost REAL DEFAULT 0, reorder_level REAL DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_ingredients_tenant ON rest_ingredients (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS rest_recipe_lines (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, menu_item_id TEXT NOT NULL, ingredient_id TEXT NOT NULL,
+        qty REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_recipe_item ON rest_recipe_lines (tenant_id, menu_item_id);
+
+    CREATE TABLE IF NOT EXISTS rest_stock_moves (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, ingredient_id TEXT NOT NULL, qty REAL NOT NULL, reason TEXT NOT NULL,
+        ref_id TEXT, note TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_stock_moves_tenant ON rest_stock_moves (tenant_id, ingredient_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_stock_moves_ref ON rest_stock_moves (tenant_id, ingredient_id, reason, ref_id);
+
+    CREATE TABLE IF NOT EXISTS rest_pra_submissions (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_id TEXT NOT NULL, usin TEXT NOT NULL, invoice_type INTEGER NOT NULL,
+        ref_usin TEXT, status TEXT NOT NULL, attempts INTEGER DEFAULT 0, pra_invoice_no TEXT, response_code TEXT,
+        response_text TEXT, payload TEXT, last_error TEXT, submitted_at TEXT, lock_until TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_pra_usin ON rest_pra_submissions (tenant_id, usin, invoice_type);
+
+    CREATE TABLE IF NOT EXISTS rest_audit (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT, user_name TEXT, action TEXT NOT NULL,
+        record_type TEXT, record_id TEXT, detail TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rest_audit_tenant ON rest_audit (tenant_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS local_secrets (
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    "#
+}
+
+/// Per-line billed discount and tax (fixed at payment, used for refunds and
+/// PRA line values) and the refunded flag.
+fn schema_sql_v27() -> &'static str {
+    r#"
+    ALTER TABLE rest_order_items ADD COLUMN line_discount REAL DEFAULT 0;
+    ALTER TABLE rest_order_items ADD COLUMN line_tax REAL DEFAULT 0;
+    ALTER TABLE rest_order_items ADD COLUMN refunded INTEGER DEFAULT 0;
+    "#
+}
+
 /// v20 only trimmed spaces, so names with line breaks or repeated spaces were
 /// kept as separate entries. Re-key every name on its whitespace-normalized
 /// form (same rule as normalizeGenericName in the app: any run of
@@ -1139,6 +1274,18 @@ pub fn run() {
             version: 25,
             description: "tenant_controls",
             sql: schema_sql_v25(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 26,
+            description: "restaurant_module",
+            sql: schema_sql_v26(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 27,
+            description: "restaurant_line_amounts",
+            sql: schema_sql_v27(),
             kind: MigrationKind::Up,
         },
     ];
