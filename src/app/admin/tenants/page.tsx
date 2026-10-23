@@ -5,6 +5,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { TenantFormModal } from "@/components/admin/TenantFormModal";
+import { TenantDetailPanel } from "@/components/admin/TenantDetailPanel";
+import { UserLoginsPage } from "@/components/admin/UserLoginsPage";
+import { Modal } from "@/components/ui/Modal";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { subscriptionPlansRepo } from "@/lib/repo/subscriptionPlans";
 import { isTauri, useIsTauri } from "@/lib/platform";
@@ -22,6 +25,8 @@ export default function TenantsPage() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Tenant | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detail = tenants.find((t) => t.id === detailId) ?? null;
 
   async function reload() {
     if (!isTauri()) return;
@@ -54,7 +59,22 @@ export default function TenantsPage() {
   }
 
   const columns: Column<Tenant>[] = [
-    { header: "Name", render: (t) => <span className="font-medium">{t.name}</span> },
+    {
+      header: "Name",
+      render: (t) => (
+        <button
+          type="button"
+          title="Open tenant detail"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDetailId(t.id);
+          }}
+          className="font-medium text-neutral-900 underline-offset-2 hover:text-amber-700 hover:underline"
+        >
+          {t.name}
+        </button>
+      ),
+    },
     { header: "Owner", render: (t) => t.owner_name ?? "\u2014" },
     { header: "Phone", render: (t) => t.phone ?? "\u2014" },
     { header: "Plan", render: (t) => planName(t.subscription_plan_id) },
@@ -133,6 +153,24 @@ export default function TenantsPage() {
             setModalOpen(true);
           }}
         />
+      )}
+
+      {detail && (
+        <Modal title="Tenant Detail" onClose={() => setDetailId(null)} width="max-w-5xl">
+          <TenantDetailPanel
+            key={detail.id}
+            tenant={detail}
+            plans={plans}
+            onSaved={() => void reload()}
+            onEdit={() => {
+              setEditing(detail);
+              setModalOpen(true);
+            }}
+          />
+          <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.06]">
+            <UserLoginsPage scope="all" embedded tenantFilter={detail.id} />
+          </div>
+        </Modal>
       )}
 
       {modalOpen && (

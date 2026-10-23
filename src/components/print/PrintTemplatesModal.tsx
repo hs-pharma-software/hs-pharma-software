@@ -23,7 +23,7 @@ import {
 } from "@/lib/printTemplates";
 import { useAuthStore } from "@/store/authStore";
 import { tenantsRepo } from "@/lib/repo/tenants";
-import { loadFbrSettings } from "@/lib/fbr";
+import { getSetting } from "@/lib/repo/settings";
 import { isTauri } from "@/lib/platform";
 
 function sampleData(business: PrintData["business"], logo: string | null): PrintData {
@@ -50,8 +50,9 @@ function sampleData(business: PrintData["business"], logo: string | null): Print
 }
 
 /** Print template editor: one tab per paper size, drag blocks to reorder
- * (in the list or directly on the preview), click a block to style it. */
-export function PrintTemplatesModal({ onClose }: { onClose: () => void }) {
+ * (in the list or directly on the preview), click a block to style it.
+ * `tenantId` edits another pharmacy's templates (Super Admin). */
+export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void; tenantId?: string }) {
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [templates, setTemplates] = useState<Partial<Record<PaperSize, PrintTemplate>>>({});
   const [dirty, setDirty] = useState<Set<PaperSize>>(new Set());
@@ -66,23 +67,24 @@ export function PrintTemplatesModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (!isTauri()) return;
-    void Promise.all(PAPERS.map((p) => loadTemplate(p.id))).then((list) =>
+    void Promise.all(PAPERS.map((p) => loadTemplate(p.id, tenantId))).then((list) =>
       setTemplates(Object.fromEntries(list.map((t) => [t.paper, t])))
     );
-    void loadLogo().then(setLogo);
+    void loadLogo(tenantId).then(setLogo);
     void (async () => {
-      const [tenant, fbr] = await Promise.all([
-        sessionTenant?.id ? tenantsRepo.get(sessionTenant.id) : Promise.resolve(null),
-        loadFbrSettings(),
+      const id = tenantId ?? sessionTenant?.id;
+      const [tenant, ntn] = await Promise.all([
+        id ? tenantsRepo.get(id) : Promise.resolve(null),
+        getSetting("fbr_seller_ntn", tenantId),
       ]);
       setBusiness({
         name: tenant?.name ?? sessionTenant?.name ?? "Your Pharmacy",
         address: tenant?.address ?? null,
         phone: tenant?.phone ?? null,
-        ntn: fbr.sellerNtn || null,
+        ntn: (ntn ?? "").replace(/[s-]/g, "") || null,
       });
     })();
-  }, [sessionTenant?.id, sessionTenant?.name]);
+  }, [tenantId, sessionTenant?.id, sessionTenant?.name]);
 
   const tpl = templates[paper];
 
@@ -112,7 +114,7 @@ export function PrintTemplatesModal({ onClose }: { onClose: () => void }) {
     if (!file) return;
     try {
       const data = await resizeLogo(file);
-      await saveLogo(data);
+      await saveLogo(data, tenantId);
       setLogo(data);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -124,7 +126,7 @@ export function PrintTemplatesModal({ onClose }: { onClose: () => void }) {
     try {
       for (const p of dirty) {
         const t = templates[p];
-        if (t) await saveTemplate(t);
+        if (t) await saveTemplate(t, tenantId);
       }
       setDirty(new Set());
       setMessage("Templates saved.");
@@ -215,7 +217,7 @@ export function PrintTemplatesModal({ onClose }: { onClose: () => void }) {
                     <button
                       type="button"
                       onClick={async () => {
-                        await saveLogo(null);
+                        await saveLogo(null, tenantId);
                         setLogo(null);
                       }}
                       className="flex items-center gap-1 text-xs text-rose-600 hover:underline"

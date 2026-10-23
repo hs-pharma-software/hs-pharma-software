@@ -813,6 +813,20 @@ fn schema_sql_v24() -> &'static str {
     "#
 }
 
+/// Per-tenant controls set by the Super Admin: business type, accessible
+/// sections (NULL = the plan's modules), actions denied to every login of the
+/// tenant, whether FBR Digital Invoicing is allowed, and whether the tenant
+/// may edit its print templates.
+fn schema_sql_v25() -> &'static str {
+    r#"
+    ALTER TABLE tenants ADD COLUMN business_type TEXT;
+    ALTER TABLE tenants ADD COLUMN allowed_modules TEXT;
+    ALTER TABLE tenants ADD COLUMN denied_actions TEXT;
+    ALTER TABLE tenants ADD COLUMN fbr_allowed INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE tenants ADD COLUMN print_templates_editable INTEGER NOT NULL DEFAULT 1;
+    "#
+}
+
 /// v20 only trimmed spaces, so names with line breaks or repeated spaces were
 /// kept as separate entries. Re-key every name on its whitespace-normalized
 /// form (same rule as normalizeGenericName in the app: any run of
@@ -1119,6 +1133,12 @@ pub fn run() {
             version: 24,
             description: "purchase_drafts",
             sql: schema_sql_v24(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 25,
+            description: "tenant_controls",
+            sql: schema_sql_v25(),
             kind: MigrationKind::Up,
         },
     ];

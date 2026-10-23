@@ -32,6 +32,11 @@ export interface SessionTenant {
   mrpDiscountPct: number;
   /** When set, stock is read from this tenant instead of the dealer's own */
   sourceTenantId: string | null;
+  /** Super Admin controls. Optional so sessions saved before they existed
+   * still load (missing = allowed). */
+  deniedActions?: string[];
+  fbrAllowed?: boolean;
+  printTemplatesEditable?: boolean;
 }
 
 interface AuthState {

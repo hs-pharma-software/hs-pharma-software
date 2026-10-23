@@ -4,6 +4,7 @@
  */
 
 import { getSetting } from "./repo/settings";
+import { useAuthStore } from "../store/authStore";
 
 const GW = "https://gw.fbr.gov.pk";
 const POST_URL = { sandbox: `${GW}/di_data/v1/di/postinvoicedata_sb`, production: `${GW}/di_data/v1/di/postinvoicedata` };
@@ -35,7 +36,8 @@ export async function loadFbrSettings(): Promise<FbrSettings> {
     getSetting("fbr_retailer"),
   ]);
   return {
-    enabled: enabled === "true",
+    // The Super Admin can switch FBR off for a pharmacy (tenant detail).
+    enabled: enabled === "true" && useAuthStore.getState().currentTenant?.fbrAllowed !== false,
     environment: env === "production" ? "production" : "sandbox",
     sandboxToken: (sbToken ?? "").trim(),
     productionToken: (prodToken ?? "").trim(),

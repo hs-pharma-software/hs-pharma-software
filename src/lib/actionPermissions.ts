@@ -12,12 +12,16 @@ export const ACTION_PERMISSIONS = [
 
 export type ActionKey = (typeof ACTION_PERMISSIONS)[number]["key"];
 
-export const NO_PERMISSION_MESSAGE = "You don't have permission for this action. Ask the owner to allow it in User Logins > Permissions.";
+export const NO_PERMISSION_MESSAGE = "You don't have permission for this action. Ask the owner (or the administrator) to allow it.";
 
-/** Owners and the Super Admin can do everything; staff unless denied. */
+/** The Super Admin can do everything. Owners and staff can't do what the
+ * Super Admin turned off for their pharmacy; staff also not what the owner
+ * denied them. */
 export function can(action: ActionKey): boolean {
-  const user = useAuthStore.getState().currentUser;
+  const { currentUser: user, currentTenant } = useAuthStore.getState();
   if (!user) return false;
+  if (user.role === "super_admin") return true;
+  if ((currentTenant?.deniedActions ?? []).includes(action)) return false;
   if (user.role !== "staff") return true;
   return !(user.deniedActions ?? []).includes(action);
 }
@@ -25,7 +29,10 @@ export function can(action: ActionKey): boolean {
 export function useCan(action: ActionKey): boolean {
   const role = useAuthStore((s) => s.currentUser?.role);
   const denied = useAuthStore((s) => s.currentUser?.deniedActions);
+  const tenantDenied = useAuthStore((s) => s.currentTenant?.deniedActions);
   if (!role) return false;
+  if (role === "super_admin") return true;
+  if ((tenantDenied ?? []).includes(action)) return false;
   if (role !== "staff") return true;
   return !(denied ?? []).includes(action);
 }

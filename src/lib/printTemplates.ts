@@ -87,9 +87,9 @@ const DEFAULT_PAPER_KEY = "print_default_paper";
 
 /** Saved template merged over the default, so blocks added in later versions
  * still appear (at the end) in older saved templates. */
-export async function loadTemplate(paper: PaperSize): Promise<PrintTemplate> {
+export async function loadTemplate(paper: PaperSize, tenantId?: string): Promise<PrintTemplate> {
   const def = DEFAULT_TEMPLATES[paper];
-  const raw = await getSetting(KEY(paper));
+  const raw = await getSetting(KEY(paper), tenantId);
   if (!raw) return structuredClone(def);
   try {
     const saved = JSON.parse(raw) as Partial<PrintTemplate>;
@@ -102,26 +102,27 @@ export async function loadTemplate(paper: PaperSize): Promise<PrintTemplate> {
   }
 }
 
-export async function saveTemplate(t: PrintTemplate): Promise<void> {
-  await setSetting(KEY(t.paper), JSON.stringify(t));
+export async function saveTemplate(t: PrintTemplate, tenantId?: string): Promise<void> {
+  await setSetting(KEY(t.paper), JSON.stringify(t), tenantId);
 }
 
-export async function loadLogo(): Promise<string | null> {
-  return (await getSetting(LOGO_KEY)) || null;
+export async function loadLogo(tenantId?: string): Promise<string | null> {
+  return (await getSetting(LOGO_KEY, tenantId)) || null;
 }
 
-export async function saveLogo(dataUrl: string | null): Promise<void> {
-  await setSetting(LOGO_KEY, dataUrl ?? "");
+export async function saveLogo(dataUrl: string | null, tenantId?: string): Promise<void> {
+  await setSetting(LOGO_KEY, dataUrl ?? "", tenantId);
 }
 
-/** Paper used when an invoice is printed (Settings > Print Templates). */
-export async function loadDefaultPaper(): Promise<PaperSize> {
-  const v = await getSetting(DEFAULT_PAPER_KEY);
+/** Paper used when an invoice is printed (Settings > Print Templates).
+ * All loaders/savers here take an optional tenantId for the Super Admin. */
+export async function loadDefaultPaper(tenantId?: string): Promise<PaperSize> {
+  const v = await getSetting(DEFAULT_PAPER_KEY, tenantId);
   return v === "a5" || v === "thermal" ? v : "a4";
 }
 
-export async function saveDefaultPaper(p: PaperSize): Promise<void> {
-  await setSetting(DEFAULT_PAPER_KEY, p);
+export async function saveDefaultPaper(p: PaperSize, tenantId?: string): Promise<void> {
+  await setSetting(DEFAULT_PAPER_KEY, p, tenantId);
 }
 
 /** Shrinks an uploaded logo so it stays small in settings/sync (max 600x300). */

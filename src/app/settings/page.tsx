@@ -12,6 +12,7 @@ import { getSetting, setSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
 import { FBR_PROVINCES } from "@/lib/fbrData";
 import { DEFAULT_GEMINI_MODEL, GEMINI_KEY_SETTING, GEMINI_MODELS, GEMINI_MODEL_SETTING, testGemini } from "@/lib/gemini";
+import { useAuthStore } from "@/store/authStore";
 import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
 import {
   PAPERS,
@@ -533,6 +534,9 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [message, setMessage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // The Super Admin can fix a pharmacy's templates (Users > tenant detail).
+  const locked = useAuthStore((s) => s.currentTenant?.printTemplatesEditable === false);
+  const canEdit = tauriReady && !locked;
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -565,10 +569,13 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
           <p className="text-sm text-neutral-500">
             Your logo prints at the top of invoices and shows on the Dashboard next to the pharmacy name.
           </p>
+          {locked && (
+            <p className="mt-1 text-xs font-medium text-amber-700">Print templates are fixed by the administrator.</p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {message && <span className="text-xs text-emerald-600">{message}</span>}
-          <Button variant="primary" disabled={!tauriReady} onClick={onOpenTemplates}>
+          <Button variant="primary" disabled={!canEdit} onClick={onOpenTemplates}>
             Templates
           </Button>
         </div>
@@ -587,10 +594,10 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
               )}
             </div>
             <div className="flex flex-col gap-1">
-              <Button disabled={!tauriReady} onClick={() => fileRef.current?.click()}>
+              <Button disabled={!canEdit} onClick={() => fileRef.current?.click()}>
                 {logo ? "Change Logo" : "Upload Logo"}
               </Button>
-              {logo && (
+              {logo && canEdit && (
                 <button
                   type="button"
                   onClick={async () => {
@@ -621,7 +628,7 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
           <Field label="Default Print Template">
             <Select
               value={paper}
-              disabled={!tauriReady}
+              disabled={!canEdit}
               onChange={async (e) => {
                 const p = e.target.value as PaperSize;
                 setPaper(p);
@@ -646,6 +653,7 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
 export default function GeneralSettingsPage() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const fbrAllowed = useAuthStore((s) => s.currentTenant?.fbrAllowed !== false);
 
   const tauriReady = useIsTauri();
 
@@ -670,7 +678,14 @@ export default function GeneralSettingsPage() {
       <PrintSettingsCard key={String(templatesOpen)} tauriReady={tauriReady} onOpenTemplates={() => setTemplatesOpen(true)} />
 
       {/* FBR Digital Invoicing */}
-      <FbrSettingsCard tauriReady={tauriReady} />
+      {fbrAllowed ? (
+        <FbrSettingsCard tauriReady={tauriReady} />
+      ) : (
+        <div className="rounded-2xl bg-white p-5 text-sm text-neutral-500 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">FBR Digital Invoicing</h2>
+          <p className="mt-1">FBR Digital Invoicing is not enabled for your pharmacy. Contact the administrator to turn it on.</p>
+        </div>
+      )}
 
       <AiSettingsCard tauriReady={tauriReady} />
 

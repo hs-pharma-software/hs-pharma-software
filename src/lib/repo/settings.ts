@@ -8,19 +8,20 @@ import { useAuthStore } from "../../store/authStore";
  * the key instead, so no schema change was needed. Falls back to the bare
  * key when no tenant is logged in (shouldn't normally happen outside the
  * Super Admin, who has no use for these settings). */
-function scopedKey(key: string): string {
-  const tenantId = useAuthStore.getState().currentTenant?.id;
+function scopedKey(key: string, tenantId = useAuthStore.getState().currentTenant?.id): string {
   return tenantId ? `${tenantId}::${key}` : key;
 }
 
-export async function getSetting(key: string): Promise<string | null> {
-  const rows = await dbSelect<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, [scopedKey(key)]);
+/** `tenantId` reads another pharmacy's setting (Super Admin screens);
+ * omitted, the logged-in tenant's. */
+export async function getSetting(key: string, tenantId?: string): Promise<string | null> {
+  const rows = await dbSelect<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, [scopedKey(key, tenantId)]);
   return rows[0]?.value ?? null;
 }
 
-export async function setSetting(key: string, value: string): Promise<void> {
+export async function setSetting(key: string, value: string, tenantId?: string): Promise<void> {
   const ts = nowIso();
-  const fullKey = scopedKey(key);
+  const fullKey = scopedKey(key, tenantId);
   await dbExecute(
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,

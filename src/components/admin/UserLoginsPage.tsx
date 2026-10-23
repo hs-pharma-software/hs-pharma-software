@@ -21,7 +21,18 @@ import type { Tenant, UserAccount } from "@/lib/types2";
  * any tenant. `scope: "own"` (a tenant owner, at /settings/logins) is
  * pre-scoped to their own tenant and can only add staff seats, capped by
  * their plan's max_staff_logins. */
-export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
+export function UserLoginsPage({
+  scope,
+  tenantFilter,
+  embedded = false,
+}: {
+  scope: "all" | "own";
+  /** Super Admin only: a tenant id shows that pharmacy's logins (owner
+   * first), null shows only Super Admin logins, undefined shows everyone. */
+  tenantFilter?: string | null;
+  /** Rendered inside another page: smaller heading, no page title. */
+  embedded?: boolean;
+}) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const currentTenant = useAuthStore((s) => s.currentTenant);
   const [users, setUsers] = useState<UserAccount[]>([]);
@@ -37,15 +48,23 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
   async function reload() {
     if (!isTauri()) return;
     const tenantId = scope === "own" ? currentTenant?.id ?? null : null;
-    const [u, t] = await Promise.all([listUsersForTenant(tenantId), scope === "all" ? tenantsRepo.list() : Promise.resolve([])]);
-    setUsers(u);
+    const [u, t] = await Promise.all([
+      listUsersForTenant(typeof tenantFilter === "string" ? tenantFilter : tenantId),
+      scope === "all" ? tenantsRepo.list() : Promise.resolve([]),
+    ]);
+    const rank = { super_admin: 0, owner: 1, staff: 2 } as const;
+    setUsers(
+      (tenantFilter === null ? u.filter((x) => x.tenant_id === null) : u).sort(
+        (a, b) => rank[a.role] - rank[b.role] || a.username.localeCompare(b.username)
+      )
+    );
     setTenants(t);
   }
 
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTenant?.id]);
+  }, [currentTenant?.id, tenantFilter]);
 
   const tenantName = (id: string | null) =>
     id === null ? "\u2014 (Super Admin)" : tenants.find((t) => t.id === id)?.name ?? "\u2014";
@@ -100,8 +119,20 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
   const columns: Column<UserAccount>[] = [
     { header: "Username", render: (u) => <span className="font-medium">{u.username}</span> },
     { header: "Name", render: (u) => u.display_name ?? "\u2014" },
-    { header: "Role", render: (u) => u.role },
-    ...(scope === "all" ? [{ header: "Tenant", render: (u: UserAccount) => tenantName(u.tenant_id) }] : []),
+    {
+      header: "Role",
+      render: (u) =>
+        u.role === "owner" ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Owner (main)</span>
+        ) : u.role === "staff" ? (
+          <span className="text-neutral-600">Sub user</span>
+        ) : (
+          u.role
+        ),
+    },
+    ...(scope === "all" && tenantFilter === undefined
+      ? [{ header: "Tenant", render: (u: UserAccount) => tenantName(u.tenant_id) }]
+      : []),
     {
       header: "Status",
       render: (u) => (
@@ -142,17 +173,34 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
 
   return (
     <div>
-      <PageHeader
-        title={scope === "all" ? "Users" : "User Logins"}
-        actions={
-          <>
-            <Button variant="primary" onClick={() => setModalOpen(true)} disabled={capReached}>
-              Add
-            </Button>
+      {embedded ? (
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">
+            {tenantFilter === null ? "Super Admin Logins" : "Users"}
+            <span className="ml-2 text-xs font-normal text-neutral-400">{users.length} login(s)</span>
+          </h2>
+          <div className="flex gap-2">
+            {tenantFilter !== null && (
+              <Button variant="primary" onClick={() => setModalOpen(true)}>
+                Add User
+              </Button>
+            )}
             <Button onClick={() => void reload()}>Refresh</Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      ) : (
+        <PageHeader
+          title={scope === "all" ? "Users" : "User Logins"}
+          actions={
+            <>
+              <Button variant="primary" onClick={() => setModalOpen(true)} disabled={capReached}>
+                Add
+              </Button>
+              <Button onClick={() => void reload()}>Refresh</Button>
+            </>
+          }
+        />
+      )}
 
       {capReached && (
         <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -172,7 +220,7 @@ export function UserLoginsPage({ scope }: { scope: "all" | "own" }) {
         <UserFormModal
           scope={scope}
           tenants={tenants}
-          fixedTenantId={scope === "own" ? currentTenant?.id : undefined}
+          fixedTenantId={scope === "own" ? currentTenant?.id : typeof tenantFilter === "string" ? tenantFilter : undefined}
           onClose={() => setModalOpen(false)}
           onSaved={() => {
             setModalOpen(false);

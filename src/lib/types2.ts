@@ -273,6 +273,14 @@ export interface Tenant extends BaseRow {
   subscription_expires_at: string | null;
   is_active: number;
   mrp_discount_pct: number;
+  /** Set by the Super Admin (Users > tenant detail). */
+  business_type?: string | null;
+  /** JSON array of module keys; NULL = the plan's allowed modules. */
+  allowed_modules?: string | null;
+  /** JSON array of action keys denied to every login of this tenant. */
+  denied_actions?: string | null;
+  fbr_allowed?: number;
+  print_templates_editable?: number;
 }
 
 export interface UserAccount extends BaseRow {
