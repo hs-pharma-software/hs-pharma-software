@@ -14,6 +14,7 @@ import {
   getTopSellingProducts,
   getTodaySummary,
   getInventoryByUnitType,
+  countProducts,
   type LowStockRow,
   type ExpiringBatchRow,
   type RecentInvoiceRow,
@@ -197,7 +198,7 @@ function GeneralDashboard() {
           await Promise.all([
             count("customers", true),
             count("suppliers", true),
-            count("products"),
+            countProducts(),
             getTotalPartyBalance("customer"),
             getTotalPartyBalance("supplier"),
             getTodaySummary(),
