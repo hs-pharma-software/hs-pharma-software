@@ -5,6 +5,9 @@ export interface Category extends TenantRow {
   flat_discount_pct: number;
   description: string | null;
   image_url: string | null;
+  /** 'pharma' | 'general_store' \u2014 row is part of the shared catalog visible
+   * to multiple tenants; NULL = tenant-private or quarantined. */
+  catalog_group: string | null;
 }
 
 export interface SubCategory extends TenantRow {
@@ -16,6 +19,8 @@ export interface SubCategory extends TenantRow {
   default_secondary_unit_id: string | null;
   description: string | null;
   image_url: string | null;
+  /** 'pharma' | 'general_store' \u2014 shared catalog; NULL = tenant-private. */
+  catalog_group: string | null;
 }
 
 export interface Uom extends TenantRow {
@@ -55,6 +60,13 @@ export interface Product extends TenantRow {
   drap_reg_no: string | null;
   /** JSON of DrapMeta (see lib/drap.ts). */
   drap_meta: string | null;
+  /** 'pharma' | 'general_store' — product is part of the shared master
+   * catalog (tenant_id = NULL); NULL = tenant-private product. */
+  catalog_group: string | null;
+  /** 'pharma' | 'general_store' — top-level product classification used by
+   * pharmacy-type tenants to separate pharmaceutical items from general store
+   * goods. NULL for non-pharmacy tenants' products. */
+  product_classification: string | null;
 }
 
 export interface ProductBatch extends TenantRow {

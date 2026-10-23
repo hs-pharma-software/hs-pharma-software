@@ -2,6 +2,7 @@
 import { newId, nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
 import { useAuthStore } from "../../store/authStore";
+import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../catalogAccess";
 
 export interface BaseRow {
   id: string;
@@ -95,14 +96,30 @@ export function createRepo<T extends BaseRow>(table: string) {
   };
 }
 
-/** Throws unless every non-empty id belongs to the logged-in tenant, so a
- * record can never point at another tenant's product, category or unit
- * (whatever id a screen or a tampered request supplies). */
+/** Catalog tables whose rows may be shared across pharmacy-family tenants. */
+const SHARED_CATALOG_TABLES = new Set(["products", "categories", "sub_categories", "uoms"]);
+
+/** Throws unless every non-empty id belongs to the logged-in tenant OR is a
+ * shared catalog row accessible to the tenant's business type.
+ *
+ * Pharmacy-family tenants (retail_pharmacy, medical_store, hospital_pharmacy)
+ * may reference shared catalog products/categories/sub_categories/uoms
+ * (rows where tenant_id IS NULL and catalog_group IS NOT NULL). All other
+ * tenants may only reference their own rows. */
 export async function assertOwnedRefs(refs: [table: string, id: string | null | undefined, label: string][]): Promise<void> {
   const tenantId = requireCurrentTenantId();
+  const bType = useAuthStore.getState().currentTenant?.businessType;
+  const sharedGroups = sharedCatalogGroupsFor(bType);
+
   for (const [table, id, label] of refs) {
     if (!id) continue;
-    const rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+    let rows: { id: string }[];
+    if (sharedGroups.length && SHARED_CATALOG_TABLES.has(table)) {
+      const { clause, params } = sharedCatalogWhereClause(tenantId, sharedGroups);
+      rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND ${clause}`, [id, ...params]);
+    } else {
+      rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+    }
     if (!rows.length) throw new Error(`${label} not found in this business.`);
   }
 }

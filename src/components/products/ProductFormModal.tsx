@@ -11,9 +11,11 @@ import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductFbrFields } from "@/components/products/ProductFbrFields";
 import { detectNarcotic } from "@/lib/narcotics";
-import { categoriesRepo, subCategoriesRepo } from "@/lib/repo/categories";
-import { uomsRepo } from "@/lib/repo/uoms";
-import { productsRepo, productBatchesRepo, priceListRepo, getCurrentRates } from "@/lib/repo/products";
+import { categoriesRepo, subCategoriesRepo, listCategoriesWithShared, listSubCategoriesWithShared } from "@/lib/repo/categories";
+import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
+import { productsRepo, productBatchesRepo, priceListRepo, getCurrentRates, createSharedProduct, searchSharedCatalog } from "@/lib/repo/products";
+import { isPharmacyFamilyType } from "@/lib/catalogAccess";
+import { useAuthStore } from "@/store/authStore";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Category, SubCategory, Uom, Product } from "@/lib/types";
 
@@ -29,12 +31,24 @@ export function ProductFormModal({
   onSaved: () => void;
 }) {
   const isEdit = Boolean(product);
+  const { currentTenant } = useAuthStore.getState();
+  const isPharmacyTenant = isPharmacyFamilyType(currentTenant?.businessType);
+  const isGeneralStoreTenant = currentTenant?.businessType === "general_store";
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [uoms, setUoms] = useState<Uom[]>([]);
   const [quickAdd, setQuickAdd] = useState<QuickAddTarget>(null);
   const [saving, setSaving] = useState(false);
+
+  // Product classification (pharmacy tenants only): 'pharma' | 'general_store'
+  // Pre-populate from existing product or derive from tenant type.
+  const [productClassification, setProductClassification] = useState<"pharma" | "general_store">(
+    (product?.product_classification as "pharma" | "general_store") ??
+      (isGeneralStoreTenant ? "general_store" : "pharma")
+  );
+  const [catalogDuplicateSearch, setCatalogDuplicateSearch] = useState("");
+  const [catalogDuplicates, setCatalogDuplicates] = useState<Product[]>([]);
 
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
   const [name, setName] = useState(product?.name ?? "");
@@ -149,7 +163,7 @@ export function ProductFormModal({
   const [currentRatesUnit, setCurrentRatesUnit] = useState<"base" | "secondary">("base");
 
   async function reloadLookups() {
-    const [cats, uomList] = await Promise.all([categoriesRepo.list(), uomsRepo.list()]);
+    const [cats, uomList] = await Promise.all([listCategoriesWithShared(), listUomsWithShared()]);
     setCategories(cats);
     setUoms(uomList);
   }
@@ -179,9 +193,7 @@ export function ProductFormModal({
       setSubCategories([]);
       return;
     }
-    void subCategoriesRepo
-      .list({ where: "category_id = ?", params: [categoryId] })
-      .then(setSubCategories);
+    void listSubCategoriesWithShared(categoryId).then(setSubCategories);
   }, [categoryId]);
 
   // Auto-fill Secondary Unit from the chosen sub category's default (e.g.
@@ -229,6 +241,14 @@ export function ProductFormModal({
     if (!name.trim() || !baseUnitId) return;
     setSaving(true);
     try {
+      // Determine if this product should go into the shared catalog.
+      // Pharmacy-family and general-store tenants use the shared catalog;
+      // all others create tenant-private products.
+      const catalogGroup =
+        isPharmacyTenant ? productClassification :
+        isGeneralStoreTenant ? "general_store" :
+        null;
+
       const payload = {
         barcode: barcode || null,
         name: name.trim(),
@@ -251,6 +271,8 @@ export function ProductFormModal({
         sro_item_serial_no: sroItemSerialNo || null,
         fbr_qty_factor: Number(fbrQtyFactor) > 0 ? Number(fbrQtyFactor) : 1,
         is_narcotic: isNarcotic ? 1 : 0,
+        catalog_group: catalogGroup,
+        product_classification: catalogGroup,
       };
 
       if (isEdit && product) {
@@ -276,7 +298,12 @@ export function ProductFormModal({
         const finalWholesalePrice = isSecondary ? (Number(wholesalePrice) || 0) * packingNum : Number(wholesalePrice) || 0;
         const finalMrp = isSecondary ? (Number(mrp) || 0) * packingNum : Number(mrp) || 0;
 
-        const created = await productsRepo.create(payload);
+        // Shared catalog products (pharmacy/general-store) use createSharedProduct
+        // to bypass tenant_id stamping; all others use the normal repo.
+        const created = catalogGroup
+          ? await createSharedProduct(payload)
+          : await productsRepo.create(payload);
+
         if (finalQty > 0) {
           await productBatchesRepo.create({
             product_id: created.id,
@@ -307,6 +334,86 @@ export function ProductFormModal({
   return (
     <Modal title={isEdit ? "Edit Product" : "Add Product"} onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+
+        {/* Product classification — shown only for pharmacy tenants (create mode).
+            General-store tenants are auto-classified; other tenants create
+            tenant-private products with no catalog_group. */}
+        {(isPharmacyTenant || isGeneralStoreTenant) && !isEdit && (
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-neutral-800">Product Classification</span>
+              {(isPharmacyTenant || isGeneralStoreTenant) && (
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                  Added to shared catalog
+                </span>
+              )}
+            </div>
+            {isPharmacyTenant ? (
+              <div className="flex gap-2">
+                {(["pharma", "general_store"] as const).map((cls) => (
+                  <button
+                    key={cls}
+                    type="button"
+                    onClick={() => {
+                      setProductClassification(cls);
+                      // Reset duplicate search on classification change
+                      setCatalogDuplicateSearch("");
+                      setCatalogDuplicates([]);
+                    }}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      productClassification === cls
+                        ? "border-sky-500 bg-sky-50 text-sky-700"
+                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+                    }`}
+                  >
+                    {cls === "pharma" ? "Pharma" : "General Store"}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-600">
+                General Store — auto-applied for all products in this business.
+              </p>
+            )}
+            {/* Duplicate check search for shared catalog products */}
+            {isPharmacyTenant && (
+              <div className="mt-3">
+                <label className="mb-1 block text-xs font-medium text-neutral-600">
+                  Check for existing {productClassification === "pharma" ? "pharma" : "general store"} master product
+                </label>
+                <input
+                  type="text"
+                  placeholder="Search shared catalog before adding a new one..."
+                  value={catalogDuplicateSearch}
+                  onChange={async (e) => {
+                    setCatalogDuplicateSearch(e.target.value);
+                    if (e.target.value.trim().length >= 2) {
+                      const results = await searchSharedCatalog(e.target.value, productClassification);
+                      setCatalogDuplicates(results);
+                    } else {
+                      setCatalogDuplicates([]);
+                    }
+                  }}
+                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-200"
+                />
+                {catalogDuplicates.length > 0 && (
+                  <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 p-2">
+                    <p className="mb-1 text-xs font-medium text-amber-700">
+                      {catalogDuplicates.length} similar product{catalogDuplicates.length > 1 ? "s" : ""} already in shared catalog:
+                    </p>
+                    {catalogDuplicates.map((p) => (
+                      <div key={p.id} className="text-xs text-amber-800">
+                        • {p.name}{p.company_name ? ` (${p.company_name})` : ""}
+                      </div>
+                    ))}
+                    <p className="mt-1 text-xs text-amber-600">Review before creating a duplicate.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Barcode">
             <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} />

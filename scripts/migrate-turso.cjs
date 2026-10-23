@@ -257,6 +257,18 @@ const MIGRATIONS = [
   { version: 23, label: 'users.denied_actions (staff action permissions)', statements: [
     `ALTER TABLE users ADD COLUMN denied_actions TEXT`,
   ]},
+  // v31 — shared pharma / general-store catalog
+  { version: 31, label: 'shared catalog: catalog_group + product_classification columns', statements: [
+    `ALTER TABLE products ADD COLUMN catalog_group TEXT`,
+    `ALTER TABLE products ADD COLUMN product_classification TEXT`,
+    `ALTER TABLE categories ADD COLUMN catalog_group TEXT`,
+    `ALTER TABLE sub_categories ADD COLUMN catalog_group TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_products_catalog_group ON products (catalog_group) WHERE catalog_group IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_products_classification ON products (product_classification, tenant_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_categories_catalog_group ON categories (catalog_group) WHERE catalog_group IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_sub_categories_catalog_group ON sub_categories (catalog_group) WHERE catalog_group IS NOT NULL`,
+  ] },
+
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(

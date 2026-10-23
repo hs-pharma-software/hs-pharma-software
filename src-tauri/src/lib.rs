@@ -1048,6 +1048,35 @@ fn schema_sql_v28() -> &'static str {
     "#
 }
 
+/// Shared pharmacy / general-store product catalog (v31).
+/// Adds catalog_group and product_classification columns so products can be
+/// shared across pharmacy-family tenants (retail_pharmacy, medical_store,
+/// hospital_pharmacy) while each tenant still maintains its own stock,
+/// batches, pricing and transactions.
+///
+/// catalog_group values:
+///   'pharma'        — shared pharma master; visible to retail_pharmacy,
+///                     medical_store, hospital_pharmacy
+///   'general_store' — shared general-store master; visible to the above
+///                     plus general_store tenants
+///   NULL            — tenant-private (electric, solar, restaurant, etc.)
+///                     or quarantined (tenant_id also NULL)
+///
+/// product_classification mirrors catalog_group for products that a
+/// pharmacy tenant explicitly tagged as Pharma or General Store.
+fn schema_sql_v31() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN catalog_group TEXT;
+    ALTER TABLE products ADD COLUMN product_classification TEXT;
+    ALTER TABLE categories ADD COLUMN catalog_group TEXT;
+    ALTER TABLE sub_categories ADD COLUMN catalog_group TEXT;
+    CREATE INDEX IF NOT EXISTS idx_products_catalog_group ON products (catalog_group) WHERE catalog_group IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_products_classification ON products (product_classification, tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_categories_catalog_group ON categories (catalog_group) WHERE catalog_group IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_sub_categories_catalog_group ON sub_categories (catalog_group) WHERE catalog_group IS NOT NULL
+    "#
+}
+
 /// Tenant ownership for the catalog that used to be shared by every tenant
 /// (products, categories, sub categories, units, generic names). Additive
 /// only: existing rows keep tenant_id NULL here, which no tenant query
@@ -1598,6 +1627,12 @@ pub fn run() {
             version: 30,
             description: "distributor_module",
             sql: schema_sql_v30(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 31,
+            description: "shared_catalog_groups",
+            sql: schema_sql_v31(),
             kind: MigrationKind::Up,
         },
     ];

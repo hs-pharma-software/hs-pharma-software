@@ -1,8 +1,30 @@
 import { createTenantRepo, requireCurrentTenantId } from "./base";
+import { dbSelect } from "../db";
+import { sharedCatalogGroupsFor } from "../catalogAccess";
+import { useAuthStore } from "../../store/authStore";
 import type { Uom } from "../types";
 
 /** Units belong to one tenant (v29). */
 export const uomsRepo = createTenantRepo<Uom>("uoms");
+
+/** Returns tenant's own UOMs plus shared catalog UOMs for pharmacy-family
+ * tenants. Used in the product form dropdowns. */
+export async function listUomsWithShared(): Promise<Uom[]> {
+  const tenantId = requireCurrentTenantId();
+  const bType = useAuthStore.getState().currentTenant?.businessType;
+  const sharedGroups = sharedCatalogGroupsFor(bType);
+  if (sharedGroups.length) {
+    const placeholders = sharedGroups.map(() => "?").join(", ");
+    return dbSelect<Uom>(
+      `SELECT * FROM uoms
+       WHERE deleted_at IS NULL
+         AND (tenant_id = ? OR (tenant_id IS NULL AND catalog_group IS NOT NULL))
+       ORDER BY name ASC`,
+      [tenantId]
+    );
+  }
+  return uomsRepo.list({ orderBy: "name ASC" });
+}
 
 /** Common units for a tenant whose list is empty (explicit, per tenant). */
 export const STARTER_UOMS = ["PCS", "Pack", "Strip", "Box", "Bottle", "Tube", "Sachet", "Vial", "Ampoule", "KG", "Gram", "Litre", "ML", "Dozen", "Carton"];
