@@ -9,6 +9,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { BUSINESS_TYPES, businessType } from "@/config/businessTypes";
 import {
+  bulkAssignByClassification,
   catalogCountsByType,
   deleteUnownedProduct,
   giveProductsToTenant,
@@ -39,6 +40,7 @@ export default function AdminCatalogReviewPage() {
   const [tenantFilter, setTenantFilter] = useState(""); // for tenant tabs
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [giving, setGiving] = useState<"move" | "copy" | null>(null);
+  const [assigning, setAssigning] = useState(false);
   const [tenantId, setTenantId] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -130,6 +132,26 @@ export default function AdminCatalogReviewPage() {
             <>
               <Button disabled={!picked.size} onClick={() => setGiving("move")}>Move to tenant</Button>
               <Button disabled={!picked.size} onClick={() => setGiving("copy")}>Copy to tenant</Button>
+              <Button
+                variant="primary"
+                disabled={assigning}
+                onClick={async () => {
+                  if (!confirm("Copy all unowned products to matching tenant types?\n\n• pharma products → Retail Pharmacy, Medical Store, Hospital Pharmacy\n• general_store products → General Store\n\nThis is safe to run more than once.")) return;
+                  setAssigning(true);
+                  try {
+                    const { assigned, skipped } = await bulkAssignByClassification();
+                    setMsg({ ok: true, text: `Bulk assign complete — ${assigned} product copies created, ${skipped} products skipped (no matching tenants).` });
+                    void loadTab("unowned");
+                    void loadCounts();
+                  } catch (e) {
+                    setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+                  } finally {
+                    setAssigning(false);
+                  }
+                }}
+              >
+                {assigning ? "Assigning…" : "Bulk Assign to Tenants"}
+              </Button>
               <Button onClick={() => { void loadTab("unowned"); void loadCounts(); }}>Refresh</Button>
             </>
           ) : (

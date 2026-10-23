@@ -139,3 +139,45 @@ export async function deleteUnownedProduct(id: string): Promise<void> {
   await dbExecute(`UPDATE products SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id IS NULL`, [ts, ts, id]);
   await recordOutbox("products", id, "delete", null);
 }
+
+/** Copy all unowned products to tenants of matching business types, based on
+ *  the product's catalog_group field.  pharma → retail_pharmacy + medical_store +
+ *  hospital_pharmacy; general_store → general_store.  Uses INSERT OR IGNORE so
+ *  it is safe to run more than once. */
+export async function bulkAssignByClassification(): Promise<{ assigned: number; skipped: number }> {
+  requireSuperAdmin();
+
+  const groupToTypes: Record<string, string[]> = {
+    pharma: ["retail_pharmacy", "medical_store", "hospital_pharmacy"],
+    general_store: ["general_store"],
+  };
+
+  const products = await dbSelect<{ id: string; catalog_group: string | null; product_classification: string | null }>(
+    `SELECT id, catalog_group, product_classification FROM products WHERE tenant_id IS NULL AND deleted_at IS NULL`
+  );
+
+  const tenants = await dbSelect<{ id: string; business_type: string }>(
+    `SELECT id, COALESCE(NULLIF(TRIM(business_type),''), 'retail_pharmacy') AS business_type
+     FROM tenants WHERE deleted_at IS NULL`
+  );
+
+  const byType: Record<string, string[]> = {};
+  for (const t of tenants) {
+    (byType[t.business_type] ??= []).push(t.id);
+  }
+
+  let assigned = 0;
+  let skipped = 0;
+
+  for (const p of products) {
+    const group = p.catalog_group ?? p.product_classification ?? "";
+    const types = groupToTypes[group] ?? [];
+    const tenantIds = types.flatMap((type) => byType[type] ?? []);
+    if (!tenantIds.length) { skipped++; continue; }
+    for (const tenantId of tenantIds) {
+      assigned += await giveProductsToTenant([p.id], tenantId, "copy");
+    }
+  }
+
+  return { assigned, skipped };
+}
