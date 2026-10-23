@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
@@ -471,6 +471,7 @@ function GeneralDashboard() {
   const [topProducts, setTopProducts] = useState<TopProductRow[]>([]);
   const [unitBreakdown, setUnitBreakdown] = useState<InventoryUnitRow[]>([]);
   const tauriReady = useIsTauri();
+  const { openNew } = useFormTabs();
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -514,7 +515,7 @@ function GeneralDashboard() {
   return (
     <div className="space-y-5 pb-8">
       {/* ── Header ── */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex items-center gap-4">
           {logo && (
             <div className="flex h-14 max-w-[9rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
@@ -529,11 +530,31 @@ function GeneralDashboard() {
             </h1>
           </div>
         </div>
-        {!tauriReady && (
-          <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
-            Browser preview {"\u2014"} no live data
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {!tauriReady && (
+            <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+              Browser preview {"\u2014"} no live data
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => openNew("invoice")}
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition active:scale-95"
+            style={{ background: "linear-gradient(135deg,#059669,#10b981)" }}
+          >
+            <FileText size={16} />
+            New Invoice
+          </button>
+          <button
+            type="button"
+            onClick={() => canOpenKind("purchase") && openNew("purchase")}
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition active:scale-95"
+            style={{ background: "linear-gradient(135deg,#2563eb,#3b82f6)" }}
+          >
+            <ShoppingCart size={16} />
+            New Purchase
+          </button>
+        </div>
       </div>
 
       {/* ── KPI row 1: Today's financials ── */}
