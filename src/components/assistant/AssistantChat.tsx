@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Sparkles, X, Send, RotateCcw } from "lucide-react";
-import type { BetaMessageParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
+import type { GeminiContent } from "@/lib/gemini";
 import { askAssistant } from "@/lib/assistant";
-import { hasClaudeKey } from "@/lib/fbrAutofill";
+import { hasAiKey } from "@/lib/gemini";
 import { useIsTauri } from "@/lib/platform";
 
 interface ChatLine {
@@ -26,7 +26,7 @@ export function AssistantChat() {
   const [open, setOpen] = useState(false);
   const [keySet, setKeySet] = useState<boolean | null>(null);
   const [lines, setLines] = useState<ChatLine[]>([]);
-  const [transcript, setTranscript] = useState<BetaMessageParam[]>([]);
+  const [transcript, setTranscript] = useState<GeminiContent[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -34,7 +34,7 @@ export function AssistantChat() {
 
   useEffect(() => {
     if (open) {
-      void hasClaudeKey().then(setKeySet);
+      void hasAiKey().then(setKeySet);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
@@ -92,7 +92,7 @@ export function AssistantChat() {
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {keySet === false && (
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-                Add your Claude API key in{" "}
+                Add your free Gemini API key in{" "}
                 <Link href="/settings" className="font-medium underline" onClick={() => setOpen(false)}>
                   Settings &gt; AI Assistant
                 </Link>{" "}

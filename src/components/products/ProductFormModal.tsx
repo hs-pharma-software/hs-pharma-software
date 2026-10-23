@@ -471,7 +471,7 @@ export function ProductFormModal({
                 {autofill.suggestion.source === "catalog"
                   ? "Filled from your catalog"
                   : autofill.suggestion.source === "ai"
-                    ? "Filled by AI (Claude)"
+                    ? "Filled by AI (Gemini)"
                     : "Filled by built-in rules"}
                 :
               </span>{" "}

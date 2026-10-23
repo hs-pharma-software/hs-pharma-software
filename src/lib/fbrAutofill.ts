@@ -1,8 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { z } from "zod";
-import { getSetting } from "./repo/settings";
+import { geminiGenerate, type GeminiSchema } from "./gemini";
 import { activeToken, fetchFbrHsUoms, loadFbrSettings } from "./fbr";
 import { FBR_HS_CODES, FBR_SALE_TYPES, findSaleType } from "./fbrData";
 
@@ -32,8 +28,6 @@ export interface CatalogProduct {
   sro_item_serial_no: string | null;
 }
 
-export const AI_KEY_SETTING = "ai_anthropic_api_key";
-const MODEL = "claude-opus-5-5";
 const VALID_HS = new Set(FBR_HS_CODES.map((h) => h.code));
 const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim().toUpperCase();
 
@@ -170,77 +164,53 @@ ${SALE_TYPE_LIST}
 
 Prefer a specific code that matches the active ingredient or form (for example 3004.2000 for non-penicillin antibiotics, 3004.1090 for penicillin-family antibiotics, 3004.3200 for corticosteroids, 3004.3100 for insulin, 3004.5090 for vitamin products, 3004.9092 for paracetamol, 3004.9091 for medicinal cough syrups, 3004.9050 for eye drops, 3004.9060 for medicinal ointments) and use 3004.9099 for other medicines. Keep "reason" to one short sentence.`;
 
-// hsCode / saleType are plain strings: the SDK's Zod helper turns enums into
-// a description hint rather than a hard constraint, so a value outside FBR's
-// lists would fail parsing and lose the whole answer. They are validated
-// against FBR's lists in suggestFbrDetails instead.
-const SuggestionSchema = z.object({
-  hsCode: z.string(),
-  saleType: z.string(),
-  saleRatePercent: z.number(),
-  sroScheduleNo: z.string(),
-  sroItemSerialNo: z.string(),
-  reason: z.string(),
-});
+// hsCode / saleType are plain strings rather than enums: they are validated
+// against FBR's lists in suggestFbrDetails, so an off-list value is corrected
+// instead of losing the whole answer.
+const SUGGESTION_SCHEMA: GeminiSchema = {
+  type: "OBJECT",
+  properties: {
+    hsCode: { type: "STRING", description: "FBR HS code, form 1234.5678" },
+    saleType: { type: "STRING", description: "Exact FBR sale type name" },
+    saleRatePercent: { type: "NUMBER" },
+    sroScheduleNo: { type: "STRING", description: "Empty string when no SRO applies" },
+    sroItemSerialNo: { type: "STRING", description: "Empty string when no SRO applies" },
+    reason: { type: "STRING", description: "One short sentence" },
+  },
+  required: ["hsCode", "saleType", "saleRatePercent", "sroScheduleNo", "sroItemSerialNo", "reason"],
+};
 
-export async function hasClaudeKey(): Promise<boolean> {
-  return !!((await getSetting(AI_KEY_SETTING)) ?? "").trim();
-}
-
-/** Claude client using the key from Settings > AI Assistant. */
-export async function claudeClient(timeoutMs = 60_000): Promise<Anthropic> {
-  const apiKey = ((await getSetting(AI_KEY_SETTING)) ?? "").trim();
-  if (!apiKey) throw new Error("No Claude API key set in Settings > AI Assistant.");
-  return new Anthropic({
-    apiKey,
-    // Runs inside the desktop app's webview; requests go through the Tauri
-    // HTTP plugin (allow-listed to api.anthropic.com) rather than the browser.
-    dangerouslyAllowBrowser: true,
-    fetch: tauriFetch as unknown as typeof fetch,
-    maxRetries: 1,
-    timeout: timeoutMs,
-  });
-}
-
-/** Turns SDK errors into messages a shop user can act on. */
-export function claudeErrorMessage(error: unknown): string {
-  if (error instanceof Anthropic.AuthenticationError) return "Claude API key was rejected. Check it in Settings > AI Assistant.";
-  if (error instanceof Anthropic.RateLimitError) return "Claude API rate limit reached. Try again shortly.";
-  if (error instanceof Anthropic.APIConnectionError) return "Could not reach the Claude API. Check the internet connection.";
-  if (error instanceof Anthropic.APIError) return `Claude API error ${error.status}: ${error.message}`;
-  return error instanceof Error ? error.message : String(error);
+interface AiSuggestion {
+  hsCode: string;
+  saleType: string;
+  saleRatePercent: number;
+  sroScheduleNo: string;
+  sroItemSerialNo: string;
+  reason: string;
 }
 
 export async function suggestFromAi(name: string, description: string): Promise<FbrSuggestion> {
-  const client = await claudeClient();
-
-  let response;
+  const r = await geminiGenerate({
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: "user", parts: [{ text: `Product name: ${name || "(not given)"}\nDescription: ${description}` }] }],
+    generationConfig: { responseMimeType: "application/json", responseSchema: SUGGESTION_SCHEMA, temperature: 0.2 },
+  });
+  let out: AiSuggestion;
   try {
-    response = await client.beta.messages.parse({
-      model: MODEL,
-      max_tokens: 4096,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "low", format: betaZodOutputFormat(SuggestionSchema) },
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: `Product name: ${name || "(not given)"}\nDescription: ${description}` }],
-    });
-  } catch (error) {
-    throw new Error(claudeErrorMessage(error));
+    out = JSON.parse(r.text) as AiSuggestion;
+  } catch {
+    throw new Error(r.finishReason === "SAFETY" ? "Gemini declined to classify this product." : "Gemini returned no usable classification.");
   }
-
-  if (response.stop_reason === "refusal") throw new Error("Claude declined to classify this product.");
-  const out = response.parsed_output;
-  if (!out) throw new Error("Claude returned no usable classification.");
+  if (typeof out.hsCode !== "string" || typeof out.saleType !== "string") throw new Error("Gemini returned no usable classification.");
   return {
-    hsCode: out.hsCode,
-    saleType: out.saleType,
-    saleRate: String(out.saleRatePercent),
+    hsCode: out.hsCode.trim(),
+    saleType: out.saleType.trim(),
+    saleRate: String(Number(out.saleRatePercent) || 0),
     uom: "",
-    sroNo: out.sroScheduleNo,
-    sroItem: out.sroItemSerialNo,
+    sroNo: out.sroScheduleNo ?? "",
+    sroItem: out.sroItemSerialNo ?? "",
     source: "ai",
-    note: out.reason,
+    note: out.reason ?? "",
   };
 }
 
@@ -279,7 +249,7 @@ export async function finalizeSuggestion(s: FbrSuggestion): Promise<FbrSuggestio
   return { ...s, saleType: saleType.value, saleRate: String(saleRate), uom, sroNo, sroItem };
 }
 
-/** Catalog first (same generic already classified), then Claude, then rules. */
+/** Catalog first (same generic already classified), then Gemini, then rules. */
 export async function suggestFbrDetails(
   name: string,
   description: string,

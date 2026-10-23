@@ -11,7 +11,7 @@ import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
 import { FBR_PROVINCES } from "@/lib/fbrData";
-import { AI_KEY_SETTING } from "@/lib/fbrAutofill";
+import { DEFAULT_GEMINI_MODEL, GEMINI_KEY_SETTING, GEMINI_MODELS, GEMINI_MODEL_SETTING, testGemini } from "@/lib/gemini";
 import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
 import {
   PAPERS,
@@ -249,18 +249,36 @@ const PROVINCES = FBR_PROVINCES.map((p) => p.label);
 
 function AiSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState(DEFAULT_GEMINI_MODEL);
   const [show, setShow] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) return;
-    void getSetting(AI_KEY_SETTING).then((k) => setApiKey(k ?? ""));
+    void getSetting(GEMINI_KEY_SETTING).then((k) => setApiKey(k ?? ""));
+    void getSetting(GEMINI_MODEL_SETTING).then((m) => m && GEMINI_MODELS.some((x) => x.id === m) && setModel(m));
   }, []);
 
   async function save() {
-    await setSetting(AI_KEY_SETTING, apiKey.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    await setSetting(GEMINI_KEY_SETTING, apiKey.trim());
+    await setSetting(GEMINI_MODEL_SETTING, model);
+    setStatus({ ok: true, text: "Saved ✓" });
+    setTimeout(() => setStatus(null), 2000);
+  }
+
+  async function test() {
+    setTesting(true);
+    setStatus(null);
+    try {
+      await save();
+      await testGemini();
+      setStatus({ ok: true, text: "Connected to Gemini ✓" });
+    } catch (e) {
+      setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTesting(false);
+    }
   }
 
   return (
@@ -271,7 +289,7 @@ function AiSettingsCard({ tauriReady }: { tauriReady: boolean }) {
         </div>
         <div>
           <h2 className="text-base font-semibold tracking-tight text-neutral-900">AI Assistant</h2>
-          <p className="text-xs text-neutral-400">Claude fills a product&apos;s FBR details from its description</p>
+          <p className="text-xs text-neutral-400">Google Gemini (free API) powers the chatbot and fills products&apos; FBR details</p>
         </div>
         <span
           className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${apiKey.trim() ? "bg-emerald-100 text-emerald-800" : "bg-neutral-100 text-neutral-500"}`}
@@ -280,28 +298,46 @@ function AiSettingsCard({ tauriReady }: { tauriReady: boolean }) {
           {apiKey.trim() ? "Key set" : "No key"}
         </span>
       </div>
-      <Field label="Claude API Key">
-        <div className="flex gap-2">
-          <Input
-            type={show ? "text" : "password"}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-            autoComplete="off"
-          />
-          <button type="button" onClick={() => setShow((v) => !v)} className="shrink-0 px-2 text-xs text-neutral-500 hover:text-neutral-800">
-            {show ? "Hide" : "Show"}
-          </button>
-        </div>
-      </Field>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Field label="Gemini API Key">
+          <div className="flex gap-2">
+            <Input
+              type={show ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="AIza..."
+              autoComplete="off"
+            />
+            <button type="button" onClick={() => setShow((v) => !v)} className="shrink-0 px-2 text-xs text-neutral-500 hover:text-neutral-800">
+              {show ? "Hide" : "Show"}
+            </button>
+          </div>
+        </Field>
+        <Field label="Model">
+          <Select value={model} onChange={(e) => setModel(e.target.value)}>
+            {GEMINI_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
       <p className="mt-3 text-xs leading-relaxed text-neutral-400">
-        Used when a product&apos;s description is new to your catalog. If another product already has the same
-        description, its FBR details are copied instead, with no AI call. Without a key, built-in rules are used.
-        Results are always checked against FBR&apos;s code lists and stay editable. The key is stored with your settings
-        and synced like the FBR tokens.
+        Get a free key at <span className="font-medium text-neutral-600">aistudio.google.com/apikey</span> (sign in with a
+        Google account, then &quot;Create API key&quot;). The free tier has per-minute and daily limits; if you hit them, choose
+        Flash-Lite. The key is used by the AI chatbot (bottom-right) and when a product&apos;s description is new to your
+        catalog. If another product already has the same description, its FBR details are copied with no AI call; without a
+        key, built-in rules are used. Results are always checked against FBR&apos;s code lists and stay editable. The key is
+        stored with your settings and synced like the FBR tokens.
       </p>
       <div className="mt-4 flex items-center justify-end gap-3">
-        {saved && <span className="text-xs text-emerald-600">Saved {"✓"}</span>}
+        {status && (
+          <span className={`text-xs ${status.ok ? "text-emerald-600" : "text-rose-600"}`}>{status.text}</span>
+        )}
+        <Button disabled={!tauriReady || testing || !apiKey.trim()} onClick={() => void test()}>
+          {testing ? "Testing…" : "Test Connection"}
+        </Button>
         <Button variant="primary" disabled={!tauriReady} onClick={() => void save()}>
           Save Changes
         </Button>

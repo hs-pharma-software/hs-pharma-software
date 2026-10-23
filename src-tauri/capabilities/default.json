@@ -23,7 +23,8 @@
         { "url": "https://*.turso.io/*" },
         { "url": "https://api.cloudinary.com/*" },
         { "url": "https://eapp.dra.gov.pk/*" },
-        { "url": "https://api.anthropic.com/*" }
+        { "url": "https://api.anthropic.com/*" },
+        { "url": "https://generativelanguage.googleapis.com/*" }
       ]
     },
     "os:default"

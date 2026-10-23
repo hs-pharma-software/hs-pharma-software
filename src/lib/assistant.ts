@@ -1,13 +1,10 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import type { BetaMessageParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import { z } from "zod";
 import { dbSelect } from "./db";
 import { activeToken, fetchFbrHsUoms, fetchFbrRates, loadFbrSettings } from "./fbr";
 import { FBR_HS_CODES, FBR_SALE_TYPES, fbrProvinceCode, findSaleType } from "./fbrData";
-import { STORE_HS_PREFIXES, claudeClient, claudeErrorMessage } from "./fbrAutofill";
+import { STORE_HS_PREFIXES } from "./fbrAutofill";
+import { geminiGenerate, type GeminiContent, type GeminiSchema } from "./gemini";
 import { fetchDrapRecords, searchDrapBrands, searchDrapGenerics } from "./drapClient";
 
-const MODEL = "claude-opus-5-5";
 const VALID_HS = new Map(FBR_HS_CODES.map((h) => [h.code, h.description]));
 
 const SYSTEM_PROMPT = `You are the assistant built into a retail pharmacy's point-of-sale system in Pakistan. Pharmacy staff ask you about:
@@ -36,17 +33,32 @@ function terms(q: string) {
   return q.toUpperCase().split(/[\s,;/]+/).filter((t) => t.length > 0);
 }
 
+interface Tool {
+  name: string;
+  description: string;
+  parameters: GeminiSchema;
+  run: (args: Record<string, string>) => Promise<string>;
+}
+
+const tool = (t: Tool) => t;
+const str = (description: string): GeminiSchema => ({ type: "STRING", description });
+const obj = (properties: Record<string, GeminiSchema>): GeminiSchema => ({
+  type: "OBJECT",
+  properties,
+  required: Object.keys(properties),
+});
+
 async function fbrContext() {
   const s = await loadFbrSettings();
   return { token: activeToken(s), provinceCode: fbrProvinceCode(s.sellerProvince) };
 }
 
-const searchHsCodes = betaZodTool({
+const searchHsCodes = tool({
   name: "search_hs_codes",
   description:
     "Search FBR's official list of HS codes accepted by Digital Invoicing (about 7,800 codes) by code prefix or words in the description. Returns up to 25 matches, pharmacy and general-store headings first.",
-  inputSchema: z.object({
-    query: z.string().describe("Code prefix such as '3004.90' or '4014', or description words such as 'teats rubber' or 'disinfectant'"),
+  parameters: obj({
+    query: str("Code prefix such as '3004.90' or '4014', or description words such as 'teats rubber' or 'disinfectant'"),
   }),
   run: async ({ query }) => {
     const q = query.trim();
@@ -62,10 +74,10 @@ const searchHsCodes = betaZodTool({
   },
 });
 
-const fbrAllowedUoms = betaZodTool({
+const fbrAllowedUoms = tool({
   name: "fbr_allowed_uoms",
   description: "Get the units of measure FBR allows on an invoice for an HS code (FBR reference API HS_UOM).",
-  inputSchema: z.object({ hs_code: z.string().describe("HS code in the form 1234.5678") }),
+  parameters: obj({ hs_code: str("HS code in the form 1234.5678") }),
   run: async ({ hs_code }) => {
     const code = hs_code.trim();
     if (!VALID_HS.has(code)) return `${code} is not in FBR's HS code list.`;
@@ -80,10 +92,10 @@ const fbrAllowedUoms = betaZodTool({
   },
 });
 
-const fbrSaleTypeRates = betaZodTool({
+const fbrSaleTypeRates = tool({
   name: "fbr_sale_type_rates",
   description: "Get the tax rates FBR currently accepts for a sale type, for the pharmacy's province.",
-  inputSchema: z.object({ sale_type: z.enum(FBR_SALE_TYPES.map((t) => t.value) as [string, ...string[]]) }),
+  parameters: obj({ sale_type: { type: "STRING", description: "Exact FBR sale type", enum: FBR_SALE_TYPES.map((t) => t.value) } }),
   run: async ({ sale_type }) => {
     const st = findSaleType(sale_type);
     if (!st) return `Unknown sale type "${sale_type}".`;
@@ -98,11 +110,11 @@ const fbrSaleTypeRates = betaZodTool({
   },
 });
 
-const searchCatalog = betaZodTool({
+const searchCatalog = tool({
   name: "search_catalog",
   description:
     "Search this pharmacy's product catalog by product name, generic name (description) or company. Returns each product's FBR fields and narcotic flag.",
-  inputSchema: z.object({ query: z.string().describe("Words from the product name, generic name or company") }),
+  parameters: obj({ query: str("Words from the product name, generic name or company") }),
   run: async ({ query }) => {
     const words = terms(query).slice(0, 5);
     if (words.length === 0) return "Give a product, generic or company name.";
@@ -127,13 +139,13 @@ const searchCatalog = betaZodTool({
   },
 });
 
-const drapLookup = betaZodTool({
+const drapLookup = tool({
   name: "drap_lookup",
   description:
     "Look up medicines in DRAP's Registered Drugs Index (Pakistan) by brand or generic name: registration number and status, composition and strength, dosage form, manufacturer, authorization holder.",
-  inputSchema: z.object({
-    query: z.string().describe("Brand or generic name, at least 3 characters"),
-    by: z.enum(["brand", "generic"]),
+  parameters: obj({
+    query: str("Brand or generic name, at least 3 characters"),
+    by: { type: "STRING", description: "Search by brand or generic name", enum: ["brand", "generic"] },
   }),
   run: async ({ query, by }) => {
     if (query.trim().length < 3) return "DRAP needs at least 3 characters.";
@@ -157,49 +169,52 @@ const drapLookup = betaZodTool({
 export const ASSISTANT_TOOLS = [searchHsCodes, fbrAllowedUoms, fbrSaleTypeRates, searchCatalog, drapLookup];
 
 export interface AssistantTurn {
-  /** Full API transcript (append-only: thinking blocks must be passed back unchanged). */
-  transcript: BetaMessageParam[];
+  /** Full Gemini conversation. Model turns are kept exactly as returned
+   * (their parts carry thought signatures Gemini needs back). */
+  transcript: GeminiContent[];
   reply: string;
 }
 
-export async function askAssistant(transcript: BetaMessageParam[], question: string): Promise<AssistantTurn> {
-  let client;
-  try {
-    client = await claudeClient(120_000);
-  } catch (e) {
-    throw new Error(claudeErrorMessage(e));
-  }
-  const runner = client.beta.messages.toolRunner({
-    model: MODEL,
-    max_tokens: 16000,
-    max_iterations: 8,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "medium" },
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    tools: ASSISTANT_TOOLS,
-    messages: [...transcript, { role: "user", content: question }],
-  });
+const MAX_TOOL_ROUNDS = 8;
+const TOOLS = [{ functionDeclarations: ASSISTANT_TOOLS.map(({ name, description, parameters }) => ({ name, description, parameters })) }];
 
-  let final;
-  try {
-    final = await runner;
-  } catch (e) {
-    throw new Error(claudeErrorMessage(e));
+export async function askAssistant(transcript: GeminiContent[], question: string): Promise<AssistantTurn> {
+  const contents: GeminiContent[] = [...transcript, { role: "user", parts: [{ text: question }] }];
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const r = await geminiGenerate(
+      { systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents, tools: TOOLS, generationConfig: { maxOutputTokens: 8192 } },
+      120_000
+    );
+    contents.push(r.content);
+    if (r.functionCalls.length === 0) {
+      const reply =
+        r.text ||
+        (r.finishReason === "MAX_TOKENS"
+          ? "The answer was cut off. Please ask a narrower question."
+          : r.finishReason === "SAFETY"
+            ? "Sorry, I can't help with that request."
+            : "I couldn't produce an answer. Please rephrase the question.");
+      return { transcript: contents, reply };
+    }
+    // Run every requested tool and answer all calls in one user turn.
+    const results = await Promise.all(
+      r.functionCalls.map(async (call) => {
+        const t = ASSISTANT_TOOLS.find((x) => x.name === call.name);
+        const args = Object.fromEntries(Object.entries(call.args ?? {}).map(([k, v]) => [k, String(v ?? "")]));
+        let result: string;
+        try {
+          result = t ? await t.run(args) : `Unknown tool "${call.name}".`;
+        } catch (e) {
+          result = `Tool failed: ${e instanceof Error ? e.message : String(e)}`;
+        }
+        return { functionResponse: { ...(call.id ? { id: call.id } : {}), name: call.name, response: { result } } };
+      })
+    );
+    contents.push({ role: "user", parts: results });
   }
-  const nextTranscript = [...runner.params.messages];
-  if (final.stop_reason === "refusal") {
-    return { transcript: nextTranscript, reply: "Sorry, I can't help with that request." };
-  }
-  const text = final.content
-    .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-  const reply =
-    text ||
-    (final.stop_reason === "max_tokens"
-      ? "The answer was cut off. Please ask a narrower question."
-      : "I couldn't finish that answer (too many lookups). Please try a more specific question.");
-  return { transcript: nextTranscript, reply };
+  // Unfinished tool round: drop this exchange so the next question starts clean.
+  return {
+    transcript,
+    reply: "I couldn't finish that answer (too many lookups). Please try a more specific question.",
+  };
 }
