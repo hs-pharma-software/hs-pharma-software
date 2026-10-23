@@ -27,6 +27,7 @@ import { businessType } from "@/config/businessTypes";
 import { RestaurantDashboard } from "@/components/restaurant/RestaurantDashboard";
 import { ElectricDashboard } from "@/components/electric/ElectricDashboard";
 import { ELECTRIC_TYPE } from "@/lib/electric";
+import { DistDashboard } from "@/components/dist/DistDashboard";
 
 interface DashboardStats {
   customers: number;
@@ -174,6 +175,7 @@ export default function DashboardPage() {
   const tenant = useAuthStore((s) => s.currentTenant);
   if (tenant && businessType(tenant.businessType).id === "restaurant") return <RestaurantDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === ELECTRIC_TYPE) return <ElectricDashboard name={tenant.name} />;
+  if (tenant && businessType(tenant.businessType).id === "distributor") return <DistDashboard name={tenant.name} />;
   return <GeneralDashboard />;
 }
 

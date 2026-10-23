@@ -33,7 +33,7 @@
     "opener:default",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://wa.me/*" }, { "url": "mailto:*" }]
+      "allow": [{ "url": "https://wa.me/*" }, { "url": "mailto:*" }, { "url": "https://www.google.com/maps/*" }]
     },
     {
       "identifier": "opener:allow-open-path",

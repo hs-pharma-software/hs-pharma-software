@@ -31,6 +31,10 @@ import {
   Carrot,
   LineChart,
   SlidersHorizontal,
+  Building2,
+  MapPin,
+  Navigation,
+  ShieldCheck,
 } from "lucide-react";
 
 export interface NavChild {
@@ -202,6 +206,68 @@ export const NAV: NavItem[] = [
       { label: "Financial Closing", href: "/utilities/financial-closing" },
       { label: "View Financial Closing", href: "/utilities/financial-closing/history" },
       { label: "Audit Detail", href: "/utilities/audit" },
+    ],
+  },
+  // ── Wholesaler / Distributor (shown only to that type) ──
+  { label: "Field Panel", href: "/dist/field", icon: Navigation, moduleKey: "dist_field", onlyFor: ["distributor"] },
+  { label: "Companies", href: "/dist/companies", icon: Building2, moduleKey: "dist_companies", onlyFor: ["distributor"] },
+  {
+    label: "Products",
+    href: "/dist/catalog",
+    icon: Boxes,
+    moduleKey: "dist_catalog",
+    onlyFor: ["distributor"],
+    children: [
+      { label: "Products", href: "/dist/catalog" },
+      { label: "Categories", href: "/dist/categories" },
+    ],
+  },
+  {
+    label: "Customers",
+    href: "/dist/customers",
+    icon: Users,
+    moduleKey: "dist_customers",
+    onlyFor: ["distributor"],
+    children: [
+      { label: "Customers", href: "/dist/customers" },
+      { label: "Customer Map", href: "/dist/customer-map" },
+    ],
+  },
+  {
+    label: "Salesmen",
+    href: "/dist/salesmen",
+    icon: MapPin,
+    moduleKey: "dist_salesmen",
+    onlyFor: ["distributor"],
+    children: [
+      { label: "Salesmen & Targets", href: "/dist/salesmen" },
+      { label: "Live Salesman Map", href: "/dist/live-map" },
+    ],
+  },
+  { label: "Bookings", href: "/dist/bookings", icon: ClipboardList, moduleKey: "dist_bookings", onlyFor: ["distributor"] },
+  {
+    label: "Sales",
+    href: "/dist/invoices",
+    icon: Receipt,
+    moduleKey: "dist_sales",
+    onlyFor: ["distributor"],
+    children: [
+      { label: "Invoices & Returns", href: "/dist/invoices" },
+      { label: "Receivables & Payables", href: "/dist/ledger" },
+    ],
+  },
+  { label: "Purchases", href: "/dist/purchases", icon: Truck, moduleKey: "dist_purchases", onlyFor: ["distributor"] },
+  { label: "Reports", href: "/dist/reports", icon: FileBarChart, moduleKey: "dist_reports", onlyFor: ["distributor"] },
+  {
+    label: "Distributor Settings",
+    href: "/dist/settings",
+    icon: ShieldCheck,
+    moduleKey: "dist_settings",
+    onlyFor: ["distributor"],
+    children: [
+      { label: "Type, Tax & Rules", href: "/dist/settings" },
+      { label: "User Permissions", href: "/dist/permissions" },
+      { label: "Audit Log", href: "/dist/audit" },
     ],
   },
   // ── Electric / Electronics / Solar store (shown only to that type) ──

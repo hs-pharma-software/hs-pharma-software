@@ -237,6 +237,7 @@ const MIGRATIONS = [
     `CREATE TABLE IF NOT EXISTS generic_names (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
   ]},
   { version: 29, label: 'catalog tenant ownership (columns, indexes, ownership log)', statements: rustSchemaStatements(29) },
+  { version: 30, label: 'wholesaler / distributor module tables', statements: rustSchemaStatements(30) },
   { version: 28, label: 'electric store module tables', statements: rustSchemaStatements(28).filter((s) => !/local_assets/.test(s)) },
   { version: 27, label: 'restaurant order line discount/tax/refunded', statements: rustSchemaStatements(27) },
   // Same SQL as schema_sql_v26() in src-tauri/src/lib.rs (read from there, so

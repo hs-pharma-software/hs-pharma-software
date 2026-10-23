@@ -1077,6 +1077,175 @@ fn schema_sql_v29() -> &'static str {
     "#
 }
 
+/// Wholesaler / Distributor module (Pharma or General mode per tenant):
+/// own companies, categories, catalog and customers (with geotag, NTN/ATL and
+/// CDSL fields), salesmen with targets and location sharing, bookings,
+/// invoices / purchases / returns with withholding-tax snapshots, payments,
+/// stock, per-user permissions and an audit log. Every row is tenant-owned;
+/// codes and numbers are unique per tenant.
+fn schema_sql_v30() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS dist_config (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, mode TEXT NOT NULL CHECK (mode IN ('pharma','general')),
+        settings TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_config_tenant ON dist_config (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS dist_companies (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, logo TEXT,
+        contact_person TEXT, phone TEXT, email TEXT, address TEXT, description TEXT, representative TEXT,
+        supplier_id TEXT, is_active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_companies_code ON dist_companies (tenant_id, code) WHERE deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS dist_categories (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, sort_order INTEGER DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_categories_tenant ON dist_categories (tenant_id, sort_order);
+
+    CREATE TABLE IF NOT EXISTS dist_products (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, company_id TEXT NOT NULL, category_id TEXT,
+        code TEXT NOT NULL, barcode TEXT, name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'pcs', pack_size REAL DEFAULT 1,
+        generic_name TEXT, strength TEXT, dosage_form TEXT, drap_reg_no TEXT, brand TEXT, size TEXT,
+        trade_price REAL NOT NULL DEFAULT 0, retail_price REAL, cost REAL NOT NULL DEFAULT 0, avg_cost REAL NOT NULL DEFAULT 0,
+        min_price REAL, sales_tax_rate REAL NOT NULL DEFAULT 0, stock REAL NOT NULL DEFAULT 0, reorder_level REAL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_products_code ON dist_products (tenant_id, code) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_dist_products_company ON dist_products (tenant_id, company_id);
+    CREATE INDEX IF NOT EXISTS idx_dist_products_barcode ON dist_products (tenant_id, barcode);
+
+    CREATE TABLE IF NOT EXISTS dist_customers (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, business_name TEXT NOT NULL, owner_name TEXT,
+        ntn TEXT, cnic TEXT, mobile TEXT, phone2 TEXT, email TEXT, address TEXT, territory TEXT, salesman_id TEXT,
+        tax_class TEXT NOT NULL DEFAULT 'retailer', status TEXT NOT NULL DEFAULT 'active',
+        lat REAL, lng REAL, location_accuracy REAL, located_at TEXT, location_source TEXT, located_by TEXT,
+        cdsl_no TEXT, cdsl_expiry TEXT, cdsl_status TEXT, cdsl_verified_at TEXT, cdsl_verified_by TEXT,
+        atl_status TEXT NOT NULL DEFAULT 'unverified', atl_checked_at TEXT, atl_source TEXT, atl_check_id TEXT,
+        credit_limit REAL, opening_balance REAL DEFAULT 0, notes TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_customers_code ON dist_customers (tenant_id, code);
+    CREATE INDEX IF NOT EXISTS idx_dist_customers_salesman ON dist_customers (tenant_id, salesman_id);
+
+    CREATE TABLE IF NOT EXISTS dist_tax_checks (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, customer_id TEXT NOT NULL, identifier TEXT NOT NULL,
+        result TEXT NOT NULL, source TEXT NOT NULL, reference TEXT, checked_by TEXT, checked_at TEXT NOT NULL, note TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_tax_checks_customer ON dist_tax_checks (tenant_id, customer_id, checked_at);
+
+    CREATE TABLE IF NOT EXISTS dist_salesmen (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT, code TEXT NOT NULL, name TEXT NOT NULL, mobile TEXT,
+        territory TEXT, company_ids TEXT, monthly_target REAL DEFAULT 0, employment TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_salesmen_code ON dist_salesmen (tenant_id, code) WHERE deleted_at IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_salesmen_user ON dist_salesmen (tenant_id, user_id) WHERE user_id IS NOT NULL AND deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS dist_targets (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, salesman_id TEXT NOT NULL, month TEXT NOT NULL, amount REAL NOT NULL,
+        set_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_targets ON dist_targets (tenant_id, salesman_id, month);
+
+    CREATE TABLE IF NOT EXISTS dist_loc_sessions (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, salesman_id TEXT NOT NULL, status TEXT NOT NULL,
+        started_at TEXT NOT NULL, stopped_at TEXT, stop_reason TEXT, last_point_at TEXT, user_agent TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_loc_sessions ON dist_loc_sessions (tenant_id, salesman_id, status);
+
+    CREATE TABLE IF NOT EXISTS dist_loc_points (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, salesman_id TEXT NOT NULL,
+        lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL, device_at TEXT, recorded_at TEXT NOT NULL, flag TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_loc_points ON dist_loc_points (tenant_id, salesman_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS dist_bookings (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, booking_no INTEGER NOT NULL, client_ref TEXT,
+        salesman_id TEXT, customer_id TEXT NOT NULL, company_id TEXT, status TEXT NOT NULL, date TEXT NOT NULL,
+        gross REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0, sales_tax REAL NOT NULL DEFAULT 0, total REAL NOT NULL DEFAULT 0,
+        notes TEXT, loc_point_id TEXT, loc_lat REAL, loc_lng REAL, loc_accuracy REAL, loc_recorded_at TEXT,
+        submitted_at TEXT, decided_by TEXT, decided_at TEXT, decision_note TEXT, invoice_id TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_bookings_no ON dist_bookings (tenant_id, booking_no);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_bookings_ref ON dist_bookings (tenant_id, client_ref) WHERE client_ref IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_dist_bookings_salesman ON dist_bookings (tenant_id, salesman_id, date);
+
+    CREATE TABLE IF NOT EXISTS dist_booking_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, booking_id TEXT NOT NULL, product_id TEXT NOT NULL,
+        code TEXT, name TEXT NOT NULL, unit TEXT, qty REAL NOT NULL, price REAL NOT NULL, discount REAL NOT NULL DEFAULT 0,
+        sales_tax_rate REAL NOT NULL DEFAULT 0, sales_tax REAL NOT NULL DEFAULT 0, line_total REAL NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_booking_items ON dist_booking_items (tenant_id, booking_id);
+
+    CREATE TABLE IF NOT EXISTS dist_booking_events (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, booking_id TEXT NOT NULL, from_status TEXT, to_status TEXT NOT NULL,
+        user_id TEXT, user_name TEXT, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_booking_events ON dist_booking_events (tenant_id, booking_id);
+
+    CREATE TABLE IF NOT EXISTS dist_docs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_type TEXT NOT NULL, doc_no INTEGER NOT NULL, date TEXT NOT NULL,
+        party_type TEXT NOT NULL, party_id TEXT NOT NULL, party_name TEXT, party_ntn TEXT, party_cnic TEXT, party_address TEXT,
+        salesman_id TEXT, booking_id TEXT, ref_doc_id TEXT, supplier_invoice_no TEXT, description TEXT,
+        gross REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0, sales_tax REAL NOT NULL DEFAULT 0,
+        wht_section TEXT, wht_status TEXT, wht_rate REAL NOT NULL DEFAULT 0, wht_base REAL NOT NULL DEFAULT 0, wht_amount REAL NOT NULL DEFAULT 0,
+        wht_overridden INTEGER NOT NULL DEFAULT 0, tax_snapshot TEXT,
+        total REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, balance REAL NOT NULL DEFAULT 0, cost_total REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'final', created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_docs_no ON dist_docs (tenant_id, doc_type, doc_no);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_docs_booking ON dist_docs (tenant_id, booking_id) WHERE booking_id IS NOT NULL AND doc_type = 'sale';
+    CREATE INDEX IF NOT EXISTS idx_dist_docs_party ON dist_docs (tenant_id, party_type, party_id);
+    CREATE INDEX IF NOT EXISTS idx_dist_docs_date ON dist_docs (tenant_id, doc_type, date);
+
+    CREATE TABLE IF NOT EXISTS dist_doc_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_id TEXT NOT NULL, product_id TEXT NOT NULL, ref_item_id TEXT,
+        code TEXT, name TEXT NOT NULL, unit TEXT, company_id TEXT, category_id TEXT, batch_no TEXT, expiry TEXT,
+        qty REAL NOT NULL, price REAL NOT NULL, discount REAL NOT NULL DEFAULT 0, sales_tax_rate REAL NOT NULL DEFAULT 0,
+        sales_tax REAL NOT NULL DEFAULT 0, line_total REAL NOT NULL, cost REAL NOT NULL DEFAULT 0, returned_qty REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_doc_items ON dist_doc_items (tenant_id, doc_id);
+
+    CREATE TABLE IF NOT EXISTS dist_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, party_type TEXT NOT NULL, party_id TEXT NOT NULL, doc_id TEXT,
+        amount REAL NOT NULL, method TEXT NOT NULL, date TEXT NOT NULL, reference TEXT, note TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_payments_party ON dist_payments (tenant_id, party_type, party_id);
+
+    CREATE TABLE IF NOT EXISTS dist_stock_moves (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, qty REAL NOT NULL, reason TEXT NOT NULL,
+        doc_id TEXT, doc_item_id TEXT, unit_cost REAL, note TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_stock_moves_line ON dist_stock_moves (tenant_id, doc_item_id, reason) WHERE doc_item_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_dist_stock_moves_product ON dist_stock_moves (tenant_id, product_id);
+
+    CREATE TABLE IF NOT EXISTS dist_user_perms (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, perms TEXT NOT NULL, editable_customer_fields TEXT,
+        updated_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_user_perms ON dist_user_perms (tenant_id, user_id);
+
+    CREATE TABLE IF NOT EXISTS dist_audit (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT, user_name TEXT, action TEXT NOT NULL,
+        record_type TEXT, record_id TEXT, field TEXT, old_value TEXT, new_value TEXT, reason TEXT, detail TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_audit ON dist_audit (tenant_id, created_at);
+    "#
+}
+
 /// Per-line billed discount and tax (fixed at payment, used for refunds and
 /// PRA line values) and the refunded flag.
 fn schema_sql_v27() -> &'static str {
@@ -1423,6 +1592,12 @@ pub fn run() {
             version: 29,
             description: "catalog_tenant_ownership",
             sql: schema_sql_v29(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 30,
+            description: "distributor_module",
+            sql: schema_sql_v30(),
             kind: MigrationKind::Up,
         },
     ];
