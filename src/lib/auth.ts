@@ -3,6 +3,8 @@ import { tenantsRepo } from "./repo/tenants";
 import { subscriptionPlansRepo, parseAllowedModules } from "./repo/subscriptionPlans";
 import { useAuthStore, type SessionTenant, type SessionUser } from "../store/authStore";
 import { parseDeniedActions } from "./actionPermissions";
+import { isTauriShell } from "./platform";
+import { isTursoConfigured, pullAuthData } from "./sync/engine";
 import type { SubscriptionPlan, Tenant, UserAccount, UserRole } from "./types2";
 
 /** Client-side password hashing (SHA-256, salted). There is no backend
@@ -98,14 +100,27 @@ export function tenantAllowedModules(tenant: Pick<Tenant, "allowed_modules">, pl
 /** Verifies credentials and returns the session to store. Throws
  * `AuthError` with a user-facing message on any failure. */
 export async function login(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
-  const record = await findUserByUsername(username.trim());
+  let record = await checkCredentials(username, password);
+  // Not matched locally: the login (or a password reset) may have been made
+  // on another computer. Fetch the latest accounts from Turso and retry once.
+  if (!record && isTauriShell() && isTursoConfigured()) {
+    try {
+      await pullAuthData();
+      record = await checkCredentials(username, password);
+    } catch {
+      // offline: keep the local answer
+    }
+  }
   if (!record) throw new AuthError("Incorrect username or password.");
   if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
-
-  const hash = await hashPassword(password, record.password_salt);
-  if (hash !== record.password_hash) throw new AuthError("Incorrect username or password.");
-
   return buildSession(record);
+}
+
+async function checkCredentials(username: string, password: string): Promise<UserAccount | null> {
+  const record = await findUserByUsername(username.trim());
+  if (!record) return null;
+  const hash = await hashPassword(password, record.password_salt);
+  return hash === record.password_hash ? record : null;
 }
 
 /** Creates a new login account. Used by: first-run Setup (Super Admin +

@@ -38,16 +38,34 @@ jobs:
           echo "VERSION=$v" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
+      # The app's cloud database settings are baked in at build time (Next.js
+      # NEXT_PUBLIC_*). Without them the installed app can't sync, so no
+      # account can sign in on a new computer: refuse to publish such a build.
+      - name: Check cloud database secrets
+        env:
+          TURSO_URL: ${{ secrets.NEXT_PUBLIC_TURSO_DATABASE_URL }}
+          TURSO_TOKEN: ${{ secrets.NEXT_PUBLIC_TURSO_AUTH_TOKEN }}
+        run: |
+          if (-not $env:TURSO_URL -or -not $env:TURSO_TOKEN) {
+            Write-Error "Repository secrets NEXT_PUBLIC_TURSO_DATABASE_URL and NEXT_PUBLIC_TURSO_AUTH_TOKEN must be set (Settings > Secrets and variables > Actions)."
+            exit 1
+          }
+        shell: pwsh
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
+          NEXT_PUBLIC_TURSO_DATABASE_URL: ${{ secrets.NEXT_PUBLIC_TURSO_DATABASE_URL }}
+          NEXT_PUBLIC_TURSO_AUTH_TOKEN: ${{ secrets.NEXT_PUBLIC_TURSO_AUTH_TOKEN }}
+          NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${{ secrets.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME }}
+          NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET: ${{ secrets.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v${{ steps.ver.outputs.VERSION }}
-          releaseName: 'eSales Pharmacy v${{ steps.ver.outputs.VERSION }}'
-          releaseBody: 'New version of eSales Pharmacy. The desktop app will update automatically.'
+          releaseName: 'Billora v${{ steps.ver.outputs.VERSION }}'
+          releaseBody: 'New version of Billora. The desktop app will update automatically.'
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
