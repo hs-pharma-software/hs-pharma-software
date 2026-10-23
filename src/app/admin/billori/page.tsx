@@ -5,11 +5,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { isTauri, useIsTauri } from "@/lib/platform";
-import { getGlobalSetting, setGlobalSetting } from "@/lib/repo/settings";
-import { BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL, testGemini } from "@/lib/gemini";
+import { getGlobalSetting, setGlobalSetting, getSetting } from "@/lib/repo/settings";
+import {
+  BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING,
+  GEMINI_MODELS, DEFAULT_GEMINI_MODEL, testGemini,
+} from "@/lib/gemini";
 import { tenantsRepo } from "@/lib/repo/tenants";
-import { getSetting } from "@/lib/repo/settings";
-import { BILLORI_ENABLED_SETTING } from "@/lib/gemini";
 
 export default function BilloriAdminPage() {
   const [apiKey, setApiKey] = useState("");
