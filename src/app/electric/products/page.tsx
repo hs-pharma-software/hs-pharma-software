@@ -47,7 +47,7 @@ function Products() {
                 exportCsv(
                   `products-${new Date().toISOString().slice(0,10)}.csv`,
                   ["SKU","Name","Category","Type","Brand","Model","Unit","Price","Stock"],
-                  data.map((p) => [p.sku, pick(t.lang, p.name, p.name_ur), pick(t.lang, p.category_name ?? "", p.category_name_ur), p.product_type, p.brand, p.model, p.unit, p.sale_price, p.stock])
+                  data.map((p) => [p.sku, pick(t.lang, p.name, p.name_ur), pick(t.lang, p.category_name ?? "", p.category_name_ur), p.product_type, p.brand, p.model, p.unit, p.price, p.stock])
                 );
               }}
             >
