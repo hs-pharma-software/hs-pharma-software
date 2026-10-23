@@ -96,7 +96,6 @@ export const NAV: NavItem[] = [
       { label: "UOM Details", href: "/products/uom" },
       { label: "Categories Details", href: "/products/categories" },
       { label: "Assign To Supplier", href: "/products/assign-supplier" },
-      { label: "DRAP Import", href: "/products/drap-import" },
     ],
   },
   { label: "Stock", href: "/stock", icon: Boxes, moduleKey: "stock" },
