@@ -71,7 +71,7 @@ export async function listNarcoticInvoices(): Promise<NarcoticInvoiceRow[]> {
            i.payable AS total
     FROM invoices i
     JOIN invoice_items ii ON ii.invoice_id = i.id AND ii.deleted_at IS NULL
-    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id AND p.is_narcotic = 1
+    JOIN products p ON p.id = ii.product_id AND (p.tenant_id = ii.tenant_id OR p.tenant_id IS NULL) AND p.is_narcotic = 1
     LEFT JOIN customers c ON c.id = i.customer_id
     LEFT JOIN salesmen sm ON sm.id = i.salesman_id
     WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0
