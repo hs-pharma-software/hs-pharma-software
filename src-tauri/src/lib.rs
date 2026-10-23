@@ -1077,6 +1077,34 @@ fn schema_sql_v31() -> &'static str {
     "#
 }
 
+/// Backfill catalog_group for unowned products (v32).
+/// v31 added the catalog_group column but did not populate it — that was done
+/// via a separate Turso migration script that never ran on local SQLite.
+/// All pre-existing unowned products (tenant_id IS NULL) are pharma products
+/// quarantined by v29; they default to 'pharma' unless product_classification
+/// says otherwise.  Unowned categories and sub_categories share the same rule.
+fn schema_sql_v32() -> &'static str {
+    r#"
+    UPDATE products
+       SET catalog_group = COALESCE(product_classification, 'pharma')
+     WHERE tenant_id IS NULL
+       AND deleted_at IS NULL
+       AND catalog_group IS NULL;
+
+    UPDATE categories
+       SET catalog_group = 'pharma'
+     WHERE tenant_id IS NULL
+       AND deleted_at IS NULL
+       AND catalog_group IS NULL;
+
+    UPDATE sub_categories
+       SET catalog_group = 'pharma'
+     WHERE tenant_id IS NULL
+       AND deleted_at IS NULL
+       AND catalog_group IS NULL
+    "#
+}
+
 /// Tenant ownership for the catalog that used to be shared by every tenant
 /// (products, categories, sub categories, units, generic names). Additive
 /// only: existing rows keep tenant_id NULL here, which no tenant query
@@ -1633,6 +1661,12 @@ pub fn run() {
             version: 31,
             description: "shared_catalog_groups",
             sql: schema_sql_v31(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 32,
+            description: "backfill_catalog_group",
+            sql: schema_sql_v32(),
             kind: MigrationKind::Up,
         },
     ];

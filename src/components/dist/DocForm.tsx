@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { dist, errorText } from "@/lib/dist";
-import { suppliersRepo } from "@/lib/repo/suppliers";
 import type { DistProduct } from "@/lib/dist/store";
 import { Err, money, useLoad, type DistCtx } from "./ui";
 
@@ -137,9 +136,8 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
 }
 
 export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => void; onSaved: (id: string) => void }) {
-  const suppliers = useLoad(() => suppliersRepo.list({ orderBy: "name ASC" }), []);
+  const companies = useLoad(() => dist.listCompanies({ includeInactive: false }), []);
   const [supplierId, setSupplierId] = useState("");
-  const [newSupplier, setNewSupplier] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [paid, setPaid] = useState("");
@@ -150,18 +148,12 @@ export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () 
   return (
     <Modal title="New purchase" onClose={onClose} width="max-w-4xl">
       <div className="space-y-3 text-sm">
-        <div className="grid gap-2 md:grid-cols-3">
-          <Field label="Supplier" required>
+        <div className="grid gap-2 md:grid-cols-2">
+          <Field label="Company (supplier)" required>
             <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Select…</option>
-              {(suppliers.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="">Select company…</option>
+              {(companies.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ""}</option>)}
             </Select>
-          </Field>
-          <Field label="or add supplier">
-            <div className="flex gap-1">
-              <Input value={newSupplier} onChange={(e) => setNewSupplier(e.target.value)} placeholder="Supplier name" />
-              <Button onClick={async () => { if (!newSupplier.trim()) return; const s = await suppliersRepo.create({ name: newSupplier.trim(), opening_balance: 0, balance_type: "payable" } as never); setNewSupplier(""); await suppliers.reload(); setSupplierId(s.id); }}><Plus size={14} /></Button>
-            </div>
           </Field>
           <Field label="Supplier invoice #"><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} /></Field>
         </div>

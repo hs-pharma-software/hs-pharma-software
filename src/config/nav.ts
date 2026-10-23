@@ -210,7 +210,6 @@ export const NAV: NavItem[] = [
     ],
   },
   // ── Wholesaler / Distributor (shown only to that type) ──
-  { label: "Field Panel", href: "/dist/field", icon: Navigation, moduleKey: "dist_field", onlyFor: ["distributor"] },
   { label: "Companies", href: "/dist/companies", icon: Building2, moduleKey: "dist_companies", onlyFor: ["distributor"] },
   {
     label: "Products",
@@ -259,6 +258,7 @@ export const NAV: NavItem[] = [
   },
   { label: "Purchases", href: "/dist/purchases", icon: Truck, moduleKey: "dist_purchases", onlyFor: ["distributor"] },
   { label: "Reports", href: "/dist/reports", icon: FileBarChart, moduleKey: "dist_reports", onlyFor: ["distributor"] },
+  { label: "Field Panel", href: "/dist/field", icon: Navigation, moduleKey: "dist_field", onlyFor: ["distributor"] },
   {
     label: "Distributor Settings",
     href: "/dist/settings",

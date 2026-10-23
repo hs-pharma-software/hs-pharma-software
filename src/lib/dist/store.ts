@@ -1252,7 +1252,14 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
     },
     async createPurchase(input: { supplierId: string; supplierInvoiceNo?: string | null; date?: string; lines: PurchaseLineIn[]; billDiscount?: number; payments?: PaymentIn[]; description?: string | null }) {
       await need("purchases.create");
-      const sup = await owned<{ id: string; name: string; ntn?: string | null; address: string | null }>("suppliers", input.supplierId, "Supplier");
+      // Distributors use dist_companies as supplier principals; fall back to the
+      // generic suppliers table so existing records remain accessible.
+      const [company] = await db.select<{ id: string; name: string; address: string | null }>(
+        `SELECT id, name, address FROM dist_companies WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+        [input.supplierId, tenant()]
+      );
+      const sup: { id: string; name: string; ntn?: string | null; address: string | null } =
+        company ?? (await owned<{ id: string; name: string; ntn?: string | null; address: string | null }>("suppliers", input.supplierId, "Supplier"));
       if (!input.lines?.length) throw new DistError("INVALID", "Add at least one product.");
       const prepared = [];
       for (const l of input.lines) {
