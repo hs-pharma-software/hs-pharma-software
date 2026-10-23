@@ -8,6 +8,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ProductFormModal } from "@/components/products/ProductFormModal";
 import { listProductsForGrid, productsRepo, type ProductListRow } from "@/lib/repo/products";
 import { isTauri, useIsTauri } from "@/lib/platform";
+import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import type { Product } from "@/lib/types";
 
 export default function ProductsPage() {
@@ -104,6 +105,31 @@ export default function ProductsPage() {
               }}
             >
               Add
+            </Button>
+            <Button
+              onClick={() => {
+                const PROD_HEADERS = ["Barcode","Product Name","Company","Category","Sub Category","UOM","Avail Qty","Sale Price","HS Code"];
+                exportCsv(
+                  `products-${new Date().toISOString().slice(0,10)}.csv`,
+                  PROD_HEADERS,
+                  filtered.map((r) => [r.barcode, r.name, r.company_name, r.category_name, r.sub_category_name, r.base_unit_name, r.avail_qty, r.sale_price, r.hs_code])
+                );
+              }}
+            >
+              Export CSV
+            </Button>
+            <Button
+              onClick={() => {
+                const headers = ["Name*","Barcode","Company","Category","Sub Category","UOM*","Sale Price","Wholesale Price","MRP","HS Code","Generic Name","Packing (units per box)"];
+                const sample = [
+                  ["PARACETAMOL 500MG TAB","5000168002658","GSK","Analgesics","Tablets","Tablet","5.00","4.50","5.50","3004.9090","Paracetamol","10"],
+                  ["AMOXICILLIN 250MG CAP","5000168007553","Pharmatec","Antibiotics","Capsules","Capsule","15.00","13.50","16.00","3004.2090","Amoxicillin","14"],
+                  ["(* = required)","","","","","","","","","","",""],
+                ];
+                downloadCsv("products-import-sample.csv", buildCsv(headers, sample));
+              }}
+            >
+              Sample File
             </Button>
             <Button onClick={() => void reload()}>Refresh</Button>
           </>

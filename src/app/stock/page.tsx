@@ -11,6 +11,7 @@ import { dbSelect } from "@/lib/db";
 import { searchProductsByNameOrBarcode } from "@/lib/repo/products";
 import { addStockToBatch, receiveStock } from "@/lib/repo/stock";
 import { businessType } from "@/config/businessTypes";
+import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import { PackagePlus } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import type { Product } from "@/lib/types";
@@ -214,6 +215,31 @@ export default function StockPage() {
               }}
             >
               Add
+            </Button>
+            <Button
+              onClick={() => {
+                const STOCK_CSV_HEADERS = ["Barcode","Product Name","Company","Batch No","Expiry Date","Location","UOM","Avail Qty","Sale Price","Purchase Price"];
+                exportCsv(
+                  `stock-${new Date().toISOString().slice(0,10)}.csv`,
+                  STOCK_CSV_HEADERS,
+                  filtered.map((r) => [r.barcode, r.product_name, r.company_name, r.batch_no, r.expiry_date, r.location, r.uom_name, r.avail_qty, r.sale_price, r.purchase_price])
+                );
+              }}
+            >
+              Export CSV
+            </Button>
+            <Button
+              onClick={() => {
+                const headers = ["Barcode","Product Name","Company","Batch No","Expiry Date (YYYY-MM-DD)","Location","UOM","Quantity","Purchase Price Per Unit"];
+                const sample = [
+                  ["5000168002658","PARACETAMOL 500MG TAB","GSK","B-001","2026-12-31","Shelf A","Tablet","100","45.00"],
+                  ["5000168007553","AMOXICILLIN 250MG CAP","Pharmatec","B-002","2027-06-30","Shelf B","Capsule","50","120.00"],
+                  ["","(leave blank if no barcode)","","(optional)","(optional)","(optional)","","",""],
+                ];
+                downloadCsv("stock-import-sample.csv", buildCsv(headers, sample));
+              }}
+            >
+              Sample File
             </Button>
             <Button onClick={() => window.print()}>Print Report</Button>
             <Button onClick={() => void reload()}>Refresh</Button>

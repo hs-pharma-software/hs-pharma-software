@@ -10,6 +10,7 @@ import { electric, errorText } from "@/lib/electric";
 import { SERIAL_DEFAULT, SPEC_FIELDS, cleanSerials, type ProductType } from "@/lib/electric/engine";
 import { DEFAULT_UNITS, ES_SETTINGS, type EsProduct } from "@/lib/electric/store";
 import { Err, EsGuard, Id, PageTitle, Txt, money, useLoad } from "@/components/electric/ui";
+import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 
 const TYPES: ProductType[] = ["general", "electrical", "cable", "solar_panel", "inverter", "battery", "electronics"];
 
@@ -36,9 +37,36 @@ function Products() {
       <PageTitle
         title={t("p.title")}
         actions={
-          <Button variant="primary" onClick={() => setEditing("new")}>
-            <Plus size={14} /> {t("p.add")}
-          </Button>
+          <>
+            <Button variant="primary" onClick={() => setEditing("new")}>
+              <Plus size={14} /> {t("p.add")}
+            </Button>
+            <Button
+              onClick={() => {
+                const data = list.data ?? [];
+                exportCsv(
+                  `products-${new Date().toISOString().slice(0,10)}.csv`,
+                  ["SKU","Name","Category","Type","Brand","Model","Unit","Price","Stock"],
+                  data.map((p) => [p.sku, pick(t.lang, p.name, p.name_ur), pick(t.lang, p.category_name ?? "", p.category_name_ur), p.product_type, p.brand, p.model, p.unit, p.sale_price, p.stock])
+                );
+              }}
+            >
+              Export CSV
+            </Button>
+            <Button
+              onClick={() => {
+                const headers = ["SKU","Name (English)*","Name (Urdu)","Category","Type*","Brand","Model","Unit*","Cost Price","Sale Price","Min Stock Level"];
+                const sample = [
+                  ["ELEC-001","LED Bulb 18W","ایل ای ڈی بلب","Lighting","electrical","Philips","PH-18W","Piece","85.00","120.00","10"],
+                  ["SOL-001","Solar Panel 150W","سولر پینل","Solar","solar_panel","Longi","LR4-150","Panel","15000.00","18000.00","2"],
+                  ["","(* = required)","","","general/electrical/cable/solar_panel/inverter/battery/electronics","","","","","",""],
+                ];
+                downloadCsv("products-import-sample.csv", buildCsv(headers, sample));
+              }}
+            >
+              Sample File
+            </Button>
+          </>
         }
       />
       <div className="flex flex-wrap items-end gap-2">

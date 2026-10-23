@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { pick, useT } from "@/lib/i18n";
@@ -28,7 +29,36 @@ function Stock() {
   const value = (products.data ?? []).reduce((s, p) => s + Math.max(0, p.stock) * p.avg_cost, 0);
   return (
     <div className="space-y-4">
-      <PageTitle title={t("st.title")} />
+      <div className="flex items-center justify-between">
+        <PageTitle title={t("st.title")} />
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => {
+              const data = products.data ?? [];
+              exportCsv(
+                `stock-${new Date().toISOString().slice(0,10)}.csv`,
+                ["SKU","Product Name","Stock","Unit","Avg Cost","Stock Value"],
+                data.map((p) => [p.sku, pick(t.lang, p.name, p.name_ur), p.stock, p.unit, p.avg_cost.toFixed(2), (Math.max(0, p.stock) * p.avg_cost).toFixed(2)])
+              );
+            }}
+          >
+            Export CSV
+          </Button>
+          <Button
+            onClick={() => {
+              const headers = ["SKU","Product Name","Stock Adjustment","Unit","Note / Reason"];
+              const sample = [
+                ["ELEC-001","LED Bulb 18W","50","Piece","Opening stock"],
+                ["SOL-002","Solar Panel 150W","10","Panel","Received from supplier"],
+                ["","(use negative for returns/loss)","","",""],
+              ];
+              downloadCsv("stock-import-sample.csv", buildCsv(headers, sample));
+            }}
+          >
+            Sample File
+          </Button>
+        </div>
+      </div>
       <div className="grid gap-3 md:grid-cols-3">
         <Stat label={t("nav.products")} value={String(products.data?.length ?? 0)} />
         <Stat label={t("d.inventoryValue")} value={money(value)} />
