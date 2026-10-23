@@ -131,8 +131,9 @@ export default function StockPage() {
       header: "Avail Qty",
       render: (r) => {
         const packing = r.packing || 1;
-        if (r.secondary_unit_id && packing > 1) {
-          return <span className="font-semibold">{r.avail_qty * packing} <span className="font-normal text-neutral-500">{r.secondary_unit_name ?? ""}</span></span>;
+        const isFractional = !!r.secondary_unit_id && packing > 1 && Math.abs(r.avail_qty - Math.round(r.avail_qty)) > 0.001;
+        if (isFractional) {
+          return <span className="font-semibold">{Math.round(r.avail_qty * packing)} <span className="font-normal text-neutral-500">{r.secondary_unit_name ?? ""}</span></span>;
         }
         return <span className="font-semibold">{r.avail_qty} <span className="font-normal text-neutral-500">{r.uom_name ?? ""}</span></span>;
       },
@@ -166,9 +167,9 @@ export default function StockPage() {
     }] : []),
   ];
 
-  // Quantities are entered in the unit the Avail Qty column shows.
-  const topUpPacking = topUp?.secondary_unit_id && (topUp.packing || 1) > 1 ? topUp.packing : 1;
-  const topUpUnit = topUpPacking > 1 ? topUp?.secondary_unit_name ?? "" : topUp?.uom_name ?? "";
+  // Stock top-up adds new batches (like a purchase) — always enter in base units (packs).
+  const topUpPacking = 1;
+  const topUpUnit = topUp?.uom_name ?? "";
 
   async function saveTopUp() {
     if (!topUp) return;
@@ -302,8 +303,8 @@ export default function StockPage() {
                   <td style={{ padding: "4px 8px" }}>{r.location ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.uom_name ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px", textAlign: "right" }}>
-                    {r.secondary_unit_id && (r.packing || 1) > 1
-                      ? `${r.avail_qty * (r.packing || 1)} ${r.secondary_unit_name ?? ""}`
+                    {r.secondary_unit_id && (r.packing || 1) > 1 && Math.abs(r.avail_qty - Math.round(r.avail_qty)) > 0.001
+                      ? `${Math.round(r.avail_qty * (r.packing || 1))} ${r.secondary_unit_name ?? ""}`
                       : `${r.avail_qty} ${r.uom_name ?? ""}`}
                   </td>
                   <td style={{ padding: "4px 8px", textAlign: "right" }}>{r.sale_price > 0 ? r.sale_price.toFixed(2) : "\u2014"}</td>

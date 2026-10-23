@@ -300,10 +300,14 @@ export function InvoiceFormModal({
         batch,
         qty: 1,
         bonusQty: 0,
-        salePrice: price?.salePrice ?? batch.purchase_price,
         taxPct: p.gst_rate_pct ?? 0,
         discountPct,
-        unit: "base",
+        ...(() => {
+          const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
+          const pk = p.packing || 1;
+          const rawPrice = price?.salePrice ?? batch.purchase_price;
+          return { salePrice: defaultUnit === "secondary" ? rawPrice / pk : rawPrice, unit: defaultUnit };
+        })(),
       },
     ]);
   }

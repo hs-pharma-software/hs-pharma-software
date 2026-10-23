@@ -165,9 +165,10 @@ export function InvoiceViewModal({
     items: items.map((item) => {
       const packing = item.packing || 1;
       const hasSecondary = !!item.secondary_unit_id && packing > 1;
-      const unit = hasSecondary && item.secondary_unit_name ? ` ${item.secondary_unit_name}` : "";
-      const qty = hasSecondary ? item.qty * packing : item.qty;
-      const bonus = hasSecondary ? item.bonus_qty * packing : item.bonus_qty;
+      const isFractional = hasSecondary && Math.abs(item.qty - Math.round(item.qty)) > 0.001;
+      const unit = isFractional && item.secondary_unit_name ? ` ${item.secondary_unit_name}` : "";
+      const qty = isFractional ? item.qty * packing : item.qty;
+      const bonus = isFractional ? item.bonus_qty * packing : item.bonus_qty;
       return {
         id: item.id,
         name: item.product_name,
@@ -175,7 +176,7 @@ export function InvoiceViewModal({
         batch: item.batch_no ?? null,
         qty: `${fmtQty(qty)}${unit}`,
         bonus: bonus > 0 ? `${fmtQty(bonus)}${unit}` : null,
-        price: hasSecondary ? item.sale_price / packing : item.sale_price,
+        price: isFractional ? item.sale_price / packing : item.sale_price,
         discountPct: item.discount_pct,
         taxPct: item.tax_pct || 0,
         taxRs: item.tax_rs || 0,

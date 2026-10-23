@@ -91,10 +91,14 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
         product: p,
         batch: batches[0] ?? null,
         qty: 1,
-        salePrice: price?.salePrice ?? batches[0]?.purchase_price ?? 0,
         taxPct: p.gst_rate_pct ?? 0,
         discountPct: 0,
-        unit: "base",
+        ...(() => {
+          const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
+          const pk = p.packing || 1;
+          const rawPrice = price?.salePrice ?? batches[0]?.purchase_price ?? 0;
+          return { salePrice: defaultUnit === "secondary" ? rawPrice / pk : rawPrice, unit: defaultUnit };
+        })(),
       },
     ]);
   }
