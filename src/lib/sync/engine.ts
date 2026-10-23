@@ -1,7 +1,7 @@
 ﻿import { createClient, type Client } from "@libsql/client/web";
 import { dbExecute, dbSelect } from "../db";
 import { nowIso } from "../id";
-import { SYNCABLE_TABLES, TENANT_SCOPED_TABLES } from "./tables";
+import { CATALOG_TABLES, SYNCABLE_TABLES, TENANT_SCOPED_TABLES } from "./tables";
 import { useAuthStore } from "../../store/authStore";
 
 export class TursoNotConfiguredError extends Error {
@@ -33,9 +33,22 @@ type OutboxRow = {
   id: string;
   table_name: string;
   row_id: string;
-  op: "insert" | "update" | "delete";
+  op: "insert" | "insert_if_absent" | "update" | "delete";
   payload: string | null;
 };
+
+/** Whether this session may write `row` (null for deletes) of `table`:
+ * tenant users only their own tenant's rows; the Super Admin only catalog
+ * rows (review and hand-over of unowned catalog rows). A refused entry stays
+ * in the outbox and is reported as an error. */
+export function mayPush(table: string, op: OutboxRow["op"], row: Record<string, unknown> | null, session: { tenantId: string | null; superAdmin: boolean }): boolean {
+  const scoped = TENANT_SCOPED_TABLES.includes(table);
+  if (session.superAdmin) return !scoped || CATALOG_TABLES.includes(table);
+  if (!scoped || op === "delete") return session.tenantId != null || !scoped;
+  // Catalog entries queued before v29 carry no tenant_id and leave ownership untouched.
+  if (!row || !("tenant_id" in row)) return CATALOG_TABLES.includes(table);
+  return session.tenantId != null && row.tenant_id === session.tenantId;
+}
 
 /** Push every un-synced local write to Turso, oldest first. Uses
  * INSERT ... ON CONFLICT DO UPDATE so replaying an insert for a row that
@@ -48,24 +61,36 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
   );
   let pushed = 0;
   let errors = 0;
+  const auth = useAuthStore.getState();
+  const session = { tenantId: auth.currentTenant?.id ?? null, superAdmin: auth.currentUser?.role === "super_admin" };
 
   for (const entry of pending) {
     try {
+      const record = entry.op === "delete" ? null : (JSON.parse(entry.payload ?? "{}") as Record<string, unknown>);
+      if (!mayPush(entry.table_name, entry.op, record, session)) {
+        console.error(`[sync] refused to push ${entry.table_name}/${entry.row_id}: not this session's tenant`);
+        errors++;
+        continue;
+      }
+      const scoped = TENANT_SCOPED_TABLES.includes(entry.table_name);
       if (entry.op === "delete") {
         const ts = nowIso();
-        await remote.execute({
-          sql: `UPDATE ${entry.table_name} SET deleted_at = ?, updated_at = ? WHERE id = ?`,
-          args: [ts, ts, entry.row_id],
-        });
+        // A delete only ever reaches this session's own rows remotely.
+        await remote.execute(
+          !scoped
+            ? { sql: `UPDATE ${entry.table_name} SET deleted_at = ?, updated_at = ? WHERE id = ?`, args: [ts, ts, entry.row_id] }
+            : session.superAdmin
+              ? { sql: `UPDATE ${entry.table_name} SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id IS NULL`, args: [ts, ts, entry.row_id] }
+              : { sql: `UPDATE ${entry.table_name} SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, args: [ts, ts, entry.row_id, session.tenantId] }
+        );
       } else {
-        const record = JSON.parse(entry.payload ?? "{}") as Record<string, unknown>;
-        const keys = Object.keys(record);
+        const keys = Object.keys(record!);
         const updates = keys.filter((k) => k !== "id").map((k) => `${k} = excluded.${k}`).join(", ");
         await remote.execute({
           sql: `INSERT INTO ${entry.table_name} (${keys.join(", ")})
                 VALUES (${keys.map(() => "?").join(", ")})
-                ON CONFLICT(id) DO UPDATE SET ${updates}`,
-          args: keys.map((k) => record[k] as never),
+                ON CONFLICT(id) DO ${entry.op === "insert_if_absent" ? "NOTHING" : `UPDATE SET ${updates}`}`,
+          args: keys.map((k) => record![k] as never),
         });
       }
       await dbExecute(`UPDATE sync_outbox SET synced_at = ? WHERE id = ?`, [nowIso(), entry.id]);
@@ -86,13 +111,13 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
 /** Pulls one batch (up to 500 rows) of a table changed since its cursor.
  * `tenantId` filters tenant-scoped tables. Returns the rows applied and
  * whether a full batch came back (more may be waiting). */
-async function pullTable(remote: Client, table: string, tenantId: string | null): Promise<{ applied: number; more: boolean }> {
-  const isTenantScoped = (TENANT_SCOPED_TABLES as readonly string[]).includes(table);
+async function pullTable(remote: Client, table: string, tenantId: string | null, unownedOnly = false): Promise<{ applied: number; more: boolean }> {
+  const isTenantScoped = (TENANT_SCOPED_TABLES as readonly string[]).includes(table) && !unownedOnly;
   // Tenant-scoped tables get their own pull cursor per tenant, so
   // switching which tenant is logged in on one device (testing, a shared
   // machine) doesn't skip re-pulling data the previous session already
   // advanced the cursor past.
-  const cursorKey = isTenantScoped ? `last_pull_${table}_${tenantId}` : `last_pull_${table}`;
+  const cursorKey = unownedOnly ? `last_pull_${table}_unowned` : isTenantScoped ? `last_pull_${table}_${tenantId}` : `last_pull_${table}`;
   const cursorRows = await dbSelect<{ value: string }>(`SELECT value FROM sync_meta WHERE key = ?`, [cursorKey]);
   const cursor = cursorRows[0]?.value ?? "1970-01-01T00:00:00.000Z";
 
@@ -103,7 +128,7 @@ async function pullTable(remote: Client, table: string, tenantId: string | null)
           args: [tenantId as string, cursor],
         }
       : {
-          sql: `SELECT * FROM ${table} WHERE updated_at > ? ORDER BY updated_at ASC LIMIT 500`,
+          sql: `SELECT * FROM ${table} WHERE ${unownedOnly ? "tenant_id IS NULL AND " : ""}updated_at > ? ORDER BY updated_at ASC LIMIT 500`,
           args: [cursor],
         }
   );
@@ -158,7 +183,12 @@ export async function pullChanges(): Promise<{ pulled: number }> {
     // The Super Admin has no tenant and no business seeing any tenant's
     // private stock/pricing/sales — skip these tables for that session
     // entirely rather than pulling everyone's data down.
-    if (isTenantScoped && isSuperAdmin) continue;
+    // Except the catalog's unowned rows (quarantine / templates), which only
+    // the Super Admin reviews and hands over to tenants.
+    if (isTenantScoped && isSuperAdmin) {
+      if (CATALOG_TABLES.includes(table)) pulled += (await pullTable(remote, table, null, true)).applied;
+      continue;
+    }
     // Not logged in yet, or a tenant user with no tenant resolved somehow —
     // nothing safe to pull for tenant-scoped tables.
     if (isTenantScoped && !tenantId) continue;

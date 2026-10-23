@@ -7,7 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { NAV } from "@/config/nav";
 import { useAuthStore } from "@/store/authStore";
-import { businessType } from "@/config/businessTypes";
+import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import { translate, useLang } from "@/lib/i18n";
 
 /** Strips trailing slashes so routes compare consistently regardless of
@@ -48,7 +48,12 @@ export function Sidebar() {
     // Business-type sections (e.g. Restaurant) follow the tenant type, not the plan.
     if (item.onlyFor) {
       if (!item.onlyFor.includes(typeId)) return false;
-    } else if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) return false;
+    } else {
+      // Shared sections a business type never uses (the pharmacy catalog for
+      // restaurants) stay hidden whatever the plan lists.
+      if (!moduleAllowedForType(typeId, item.moduleKey)) return false;
+      if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) return false;
+    }
     if (userPermissions !== null && !userPermissions.includes(item.moduleKey)) return false;
     return true;
   });

@@ -1,15 +1,39 @@
 ﻿import { dbSelect } from "../db";
-import { createRepo, createTenantRepo } from "./base";
+import { assertOwnedRefs, createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { Product, ProductBatch, PriceListEntry } from "../types";
 
-/** The medicine catalog itself is shared across every tenant \u2014 adding a
- * product here makes it visible to everyone, including the Super Admin, so
- * this stays on the plain (non-tenant-scoped) factory. Stock and pricing
- * below are each tenant's own private data. */
-export const productsRepo = createRepo<Product>("products");
-export const productBatchesRepo = createTenantRepo<ProductBatch>("product_batches");
-export const priceListRepo = createTenantRepo<PriceListEntry>("price_list");
+/** Products belong to one tenant (v29; before that the catalog was shared by
+ * every tenant). A restaurant, a shop and a pharmacy each only see, search,
+ * edit or sell their own. Writes also check that the chosen category, sub
+ * category and units are this tenant's own. */
+const productsBase = createTenantRepo<Product>("products");
+const productRefs = (d: Partial<Product>) =>
+  assertOwnedRefs([
+    ["categories", d.category_id, "Category"],
+    ["sub_categories", d.sub_category_id, "Sub category"],
+    ["uoms", d.base_unit_id, "Base unit"],
+    ["uoms", d.secondary_unit_id, "Secondary unit"],
+  ]);
+export const productsRepo = {
+  ...productsBase,
+  async create(data: Partial<Product>) {
+    await productRefs(data);
+    return productsBase.create(data);
+  },
+  async update(id: string, data: Partial<Product>) {
+    await productRefs(data);
+    return productsBase.update(id, data);
+  },
+};
+
+/** Throws unless every product id belongs to the logged-in tenant (invoice,
+ * order, purchase and audit lines call this before saving). */
+export async function assertOwnProducts(ids: (string | null | undefined)[]): Promise<void> {
+  await assertOwnedRefs([...new Set(ids.filter(Boolean))].map((id) => ["products", id, "Product"] as [string, string, string]));
+}
+export const productBatchesRepo = createTenantRepo<ProductBatch>("product_batches", { refs: LINE_REFS });
+export const priceListRepo = createTenantRepo<PriceListEntry>("price_list", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
@@ -37,7 +61,7 @@ export interface ProductListRow {
  * stock + current sale price, matching the reference app's Product Detail
  * grid (`Barcode | Product Name | Company | ... | UOM | Avail Qty`).
  * `avail_qty`/`sale_price` are scoped to the logged-in tenant's own stock and
- * pricing \u2014 the product row itself (name/category/etc.) is shared. */
+ * pricing, and only the tenant's own products are listed. */
 export async function listProductsForGrid(): Promise<ProductListRow[]> {
   const tenantId = currentTenantId();
   return dbSelect<ProductListRow>(
@@ -66,14 +90,14 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
         ORDER BY pl.created_at DESC LIMIT 1
       ) AS sale_price
     FROM products p
-    LEFT JOIN categories c ON c.id = p.category_id
-    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
-    LEFT JOIN uoms u ON u.id = p.base_unit_id
-    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
-    WHERE p.deleted_at IS NULL
+    LEFT JOIN categories c ON c.id = p.category_id AND c.tenant_id = p.tenant_id
+    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id AND sc.tenant_id = p.tenant_id
+    LEFT JOIN uoms u ON u.id = p.base_unit_id AND u.tenant_id = p.tenant_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND su.tenant_id = p.tenant_id
+    WHERE p.deleted_at IS NULL AND p.tenant_id = ?
     ORDER BY p.created_at DESC
   `,
-    [tenantId, tenantId]
+    [tenantId, tenantId, tenantId]
   );
 }
 
@@ -101,7 +125,7 @@ export interface CurrentRates {
  * edit form \u2014 previously those rates were only ever entered once, at
  * creation, with no way to see or change them afterwards short of going to
  * Purchase or Price List separately. Scoped to the logged-in tenant's own
- * batch/price history for this (possibly shared) product. */
+ * batch/price history for its own product. */
 export async function getCurrentRates(productId: string): Promise<CurrentRates> {
   const [batches, price] = await Promise.all([
     dbSelect<{ id: string; batch_no: string | null; purchase_price: number }>(
@@ -121,12 +145,11 @@ export async function getCurrentRates(productId: string): Promise<CurrentRates> 
   };
 }
 
-/** Only touches the shared `products` table \u2014 no tenant filter needed, every
- * tenant (and the Super Admin) searches the same catalog. */
+/** Searches the logged-in tenant's own products only. */
 export async function searchProductsByNameOrBarcode(term: string): Promise<Product[]> {
   const like = `%${term}%`;
   return dbSelect<Product>(
-    `SELECT * FROM products WHERE deleted_at IS NULL AND (name LIKE ? OR barcode LIKE ?) ORDER BY name ASC LIMIT 25`,
-    [like, like]
+    `SELECT * FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND (name LIKE ? OR barcode LIKE ?) ORDER BY name ASC LIMIT 25`,
+    [currentTenantId(), like, like]
   );
 }

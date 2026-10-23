@@ -2,7 +2,9 @@
 import { newId, nowIso } from "../id";
 import { isTauriShell as isTauri } from "../platform";
 
-export type SyncOp = "insert" | "update" | "delete";
+/** `insert_if_absent` never overwrites a row that already exists remotely
+ * (used when the Super Admin copies a catalog row into a tenant). */
+export type SyncOp = "insert" | "insert_if_absent" | "update" | "delete";
 
 /** Every local write on the desktop is mirrored into `sync_outbox` so the
  * sync engine can replay it against Turso when online.

@@ -42,7 +42,7 @@ export default function PriceListPage() {
         `
         SELECT pl.id, p.barcode, p.name AS product_name, pl.batch_no, pl.sale_price, pl.wholesale_price, pl.mrp, pl.comment
         FROM price_list pl
-        JOIN products p ON p.id = pl.product_id
+        JOIN products p ON p.id = pl.product_id AND p.tenant_id = pl.tenant_id
         WHERE pl.deleted_at IS NULL AND pl.tenant_id = ?
         ORDER BY pl.created_at DESC
       `,

@@ -115,3 +115,10 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
 
   markSaved: (kind) => set((s) => ({ savedTick: { ...s.savedTick, [kind]: s.savedTick[kind] + 1 } })),
 }));
+
+// Open invoice / purchase forms hold the previous tenant's products and
+// parties: close them all whenever the signed-in tenant changes (switch,
+// logout), so nothing from one business is shown or saved under another.
+useAuthStore.subscribe((s, prev) => {
+  if (s.currentTenant?.id !== prev.currentTenant?.id) useFormTabs.setState({ tabs: [], activeId: null, minimized: false });
+});

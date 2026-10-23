@@ -1,10 +1,12 @@
-import { createRepo, type BaseRow } from "./base";
+import { dbSelect } from "../db";
+import { createTenantRepo, requireCurrentTenantId, type TenantRow } from "./base";
 
-export interface GenericName extends BaseRow {
+export interface GenericName extends TenantRow {
   name: string;
 }
 
-export const genericNamesRepo = createRepo<GenericName>("generic_names");
+/** Each tenant keeps its own Description suggestion list (v29). */
+export const genericNamesRepo = createTenantRepo<GenericName>("generic_names");
 
 export function normalizeGenericName(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -13,12 +15,12 @@ export function normalizeGenericName(s: string): string {
 const key = (s: string) => normalizeGenericName(s).toUpperCase();
 const letters = (s: string) => key(s).replace(/[^A-Z0-9]/g, "");
 
-/** Same id on every device and in Turso for the same name (matches the
- * migration's 'gn-' || lower(hex(UPPER(TRIM(name))))), so two devices adding
- * the same name can never create two rows. */
-export function genericNameId(name: string): string {
+/** Same id on every device and in Turso for the same name within one
+ * tenant, so two devices adding the same name can never create two rows.
+ * (Rows from before v29 keep their old 'gn-<hex>' ids.) */
+export function genericNameId(name: string, tenantId: string): string {
   const bytes = new TextEncoder().encode(key(name));
-  return "gn-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return "gn-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") + "~" + tenantId;
 }
 
 export async function listGenericNames(): Promise<string[]> {
@@ -75,12 +77,14 @@ export async function addGenericName(name: string, current: string[]): Promise<s
   if (!clean) throw new Error("Description is empty.");
   const existing = findExact(current, clean);
   if (existing) return existing;
-  const id = genericNameId(clean);
-  const stored = await genericNamesRepo.get(id);
+  const tenantId = requireCurrentTenantId();
+  // Any row of this tenant with the same name (also a deleted one, or one
+  // from before v29 with an older id) is reused.
+  const stored = (await dbSelect<GenericName>(`SELECT * FROM generic_names WHERE tenant_id = ? AND UPPER(TRIM(name)) = ? LIMIT 1`, [tenantId, key(clean)]))[0];
   if (stored) {
-    if (stored.deleted_at) await genericNamesRepo.update(id, { deleted_at: null } as Partial<GenericName>);
+    if (stored.deleted_at) await genericNamesRepo.update(stored.id, { deleted_at: null } as Partial<GenericName>);
     return normalizeGenericName(stored.name);
   }
-  await genericNamesRepo.create({ id, name: clean });
+  await genericNamesRepo.create({ id: genericNameId(clean, tenantId), name: clean });
   return clean;
 }

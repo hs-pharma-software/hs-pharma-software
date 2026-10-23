@@ -2,13 +2,13 @@
  * for foreign keys on first push (parents before children). Keep this in
  * sync with the schema in `src-tauri/src/lib.rs` and `db/schema.sql`. */
 export const SYNCABLE_TABLES = [
-  // Global/shared \u2014 every tenant (and the Super Admin) sees the same rows,
-  // so these always sync fully, unfiltered by tenant.
+  // Catalog: owned by one tenant each since v29 (see CATALOG_TABLES).
   "categories",
   "sub_categories",
   "uoms",
   "products",
   "generic_names",
+  // Global/shared \u2014 every tenant (and the Super Admin) sees the same rows.
   "subscription_plans",
   "tenants",
   "users",
@@ -78,7 +78,14 @@ export const SYNCABLE_TABLES = [
  * like the global tables \u2014 a tenant's settings rows sync unfiltered, which
  * is an accepted minor gap since settings hold app configuration, not
  * customer/financial data. */
+/** The product catalog. Until v29 it was one list shared by every tenant
+ * (the cause of restaurants and shops seeing pharmacy medicines); now each
+ * row belongs to one tenant. Rows with no tenant are quarantined/templates:
+ * only the Super Admin pulls them, to review and hand them over. */
+export const CATALOG_TABLES: string[] = ["categories", "sub_categories", "uoms", "products", "generic_names"];
+
 export const TENANT_SCOPED_TABLES: string[] = [
+  ...CATALOG_TABLES,
   "product_batches",
   "price_list",
   "customers",

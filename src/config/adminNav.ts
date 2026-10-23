@@ -13,5 +13,5 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "Types", href: "/admin/types", icon: Shapes },
   { label: "Subscription Plans", href: "/admin/plans", icon: Layers },
   { label: "Users", href: "/admin/users", icon: Users },
-  { label: "Medicine Database", href: "/admin/products", icon: Pill },
+  { label: "Catalog Review", href: "/admin/products", icon: Pill },
 ];

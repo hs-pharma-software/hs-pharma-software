@@ -30,13 +30,13 @@ export async function getLowStockProducts(limit = 8): Promise<LowStockRow[]> {
              COALESCE((SELECT SUM(qty) FROM product_batches WHERE product_id = p.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS avail_qty,
              p.max_stock_qty
       FROM products p
-      WHERE p.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL AND p.tenant_id = ?
     )
     WHERE avail_qty <= COALESCE(max_stock_qty * 0.2, 10)
     ORDER BY avail_qty ASC
     LIMIT ?
   `,
-    [tenantId, limit]
+    [tenantId, tenantId, limit]
   );
 }
 
@@ -53,7 +53,7 @@ export async function getExpiringSoonBatches(days = 180, limit = 12): Promise<Ex
     `
     SELECT pb.id, p.name AS product_name, pb.batch_no, pb.expiry_date, pb.qty
     FROM product_batches pb
-    JOIN products p ON p.id = pb.product_id
+    JOIN products p ON p.id = pb.product_id AND p.tenant_id = pb.tenant_id
     WHERE pb.deleted_at IS NULL AND pb.tenant_id = ? AND pb.qty > 0 AND pb.expiry_date IS NOT NULL
       AND date(pb.expiry_date) <= date('now', '+' || ? || ' days')
     ORDER BY pb.expiry_date ASC
@@ -105,7 +105,7 @@ export async function getTopSellingProducts(limit = 5): Promise<TopProductRow[]>
            SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id
+    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0
     GROUP BY p.id
     HAVING sales > 0
@@ -133,16 +133,16 @@ export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
       COUNT(DISTINCT p.id) AS product_count,
       COALESCE(SUM(pb.qty), 0) AS total_qty
     FROM products p
-    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
-    LEFT JOIN uoms u  ON u.id  = p.base_unit_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND su.tenant_id = p.tenant_id
+    LEFT JOIN uoms u  ON u.id  = p.base_unit_id AND u.tenant_id = p.tenant_id
     LEFT JOIN product_batches pb
            ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL AND p.tenant_id = ?
     GROUP BY COALESCE(su.name, u.name, 'Other')
     ORDER BY product_count DESC
     LIMIT 8
   `,
-    [currentTenantId()]
+    [currentTenantId(), currentTenantId()]
   );
 }
 

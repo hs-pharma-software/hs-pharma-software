@@ -6,6 +6,9 @@ import path from "node:path";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 const EXT = [".ts", ".tsx", "/index.ts", "/index.tsx"];
+// The app's database client is replaced by an in-memory SQLite shim in tests.
+const DB_MODULE = path.join(SRC, "lib", "db.ts");
+const DB_SHIM = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "shims", "db.ts");
 
 export async function resolve(specifier, context, next) {
   let base = null;
@@ -17,7 +20,7 @@ export async function resolve(specifier, context, next) {
     for (const ext of ["", ...EXT]) {
       const file = base + ext;
       if (ext === "" && !path.extname(file)) continue;
-      if (existsSync(file)) return next(pathToFileURL(file).href, context);
+      if (existsSync(file)) return next(pathToFileURL(file === DB_MODULE ? DB_SHIM : file).href, context);
     }
   }
   return next(specifier, context);

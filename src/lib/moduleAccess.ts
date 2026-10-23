@@ -1,6 +1,6 @@
 ﻿import { useAuthStore } from "../store/authStore";
 import { NAV } from "../config/nav";
-import { businessType } from "../config/businessTypes";
+import { businessType, moduleAllowedForType } from "../config/businessTypes";
 
 /** Maps a pathname like "/invoices/returns" back to its top-level module key
  * ("invoices") by matching the longest NAV href that's a prefix of it. */
@@ -27,5 +27,6 @@ export function hasModuleAccess(moduleKey: string | null): boolean {
   if (moduleKey !== "dashboard" && currentUser?.role === "staff" && currentUser.permissions && !currentUser.permissions.includes(moduleKey)) return false;
   const item = NAV.find((n) => n.moduleKey === moduleKey);
   if (item?.onlyFor) return item.onlyFor.includes(businessType(currentTenant.businessType).id);
+  if (!moduleAllowedForType(currentTenant.businessType, moduleKey)) return false;
   return currentTenant.allowedModules.includes(moduleKey);
 }

@@ -75,21 +75,21 @@ export default function StockPage() {
                COALESCE(pl.mrp, 0) AS mrp,
                COALESCE(pl.sale_price, 0) AS sale_price
         FROM product_batches pb
-        JOIN products p ON p.id = pb.product_id
-        LEFT JOIN categories c ON c.id = p.category_id
-        LEFT JOIN uoms u ON u.id = p.base_unit_id
-        LEFT JOIN uoms su ON su.id = p.secondary_unit_id
+        JOIN products p ON p.id = pb.product_id AND p.tenant_id = pb.tenant_id
+        LEFT JOIN categories c ON c.id = p.category_id AND c.tenant_id = p.tenant_id
+        LEFT JOIN uoms u ON u.id = p.base_unit_id AND u.tenant_id = p.tenant_id
+        LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND su.tenant_id = p.tenant_id
         LEFT JOIN (
           SELECT product_id, sale_price, mrp
           FROM price_list
-          WHERE deleted_at IS NULL
+          WHERE deleted_at IS NULL AND tenant_id = ?
           GROUP BY product_id
           HAVING MAX(created_at)
         ) pl ON pl.product_id = p.id
         WHERE pb.deleted_at IS NULL AND pb.tenant_id = ? AND pb.qty > 0
         ORDER BY p.name ASC
       `,
-        [tenantId]
+        [tenantId, tenantId]
       )
     );
   }

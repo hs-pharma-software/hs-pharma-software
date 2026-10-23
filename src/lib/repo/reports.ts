@@ -132,9 +132,9 @@ async function groupedProfitLoss(
       SUM(${sign} * (ii.sale_price - ii.purchase_price) * ii.qty) AS profit
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id
-    LEFT JOIN categories cat ON cat.id = p.category_id
-    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
+    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
+    LEFT JOIN categories cat ON cat.id = p.category_id AND cat.tenant_id = p.tenant_id
+    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id AND sc.tenant_id = p.tenant_id
     LEFT JOIN customers cu ON cu.id = i.customer_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY ${groupExpr}
@@ -166,7 +166,7 @@ export async function getProductWiseSales(fromDate: string, toDate: string): Pro
            SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id
+    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY p.id
     ORDER BY sales DESC
@@ -189,8 +189,8 @@ export async function getCategoryWiseSales(fromDate: string, toDate: string): Pr
            SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id
-    LEFT JOIN categories cat ON cat.id = p.category_id
+    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
+    LEFT JOIN categories cat ON cat.id = p.category_id AND cat.tenant_id = p.tenant_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY id
     ORDER BY sales DESC
@@ -258,7 +258,7 @@ export async function getBonusAndDiscountReport(fromDate: string, toDate: string
       SUM(ii.discount_rs) AS discount_rs
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id
+    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY p.id
     HAVING bonus_qty > 0 OR discount_rs > 0

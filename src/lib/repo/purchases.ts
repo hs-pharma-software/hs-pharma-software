@@ -1,11 +1,11 @@
 ﻿import { dbSelect } from "../db";
-import { createTenantRepo } from "./base";
+import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { deductStock, listAvailableBatches } from "./stock";
 import type { Purchase, PurchaseItem } from "../types2";
 
 export const purchasesRepo = createTenantRepo<Purchase>("purchases");
-export const purchaseItemsRepo = createTenantRepo<PurchaseItem>("purchase_items");
+export const purchaseItemsRepo = createTenantRepo<PurchaseItem>("purchase_items", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
@@ -82,7 +82,7 @@ export async function listItemsForPurchase(purchaseId: string): Promise<Purchase
     `
     SELECT pi.*, p.name AS product_name, p.barcode
     FROM purchase_items pi
-    LEFT JOIN products p ON p.id = pi.product_id
+    LEFT JOIN products p ON p.id = pi.product_id AND p.tenant_id = pi.tenant_id
     WHERE pi.purchase_id = ? AND pi.tenant_id = ? AND pi.deleted_at IS NULL
   `,
     [purchaseId, currentTenantId()]

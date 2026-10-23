@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { dbSelect } from "@/lib/db";
+import { useAuthStore } from "@/store/authStore";
 import { productsRepo } from "@/lib/repo/products";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { Field, Input } from "@/components/ui/Field";
@@ -30,10 +31,10 @@ export default function OnlineStorePage() {
       await dbSelect<StoreProductRow>(`
         SELECT p.id, p.barcode, p.name, p.company_name, c.name AS category_name, p.online_store_status
         FROM products p
-        LEFT JOIN categories c ON c.id = p.category_id
-        WHERE p.deleted_at IS NULL
+        LEFT JOIN categories c ON c.id = p.category_id AND c.tenant_id = p.tenant_id
+        WHERE p.deleted_at IS NULL AND p.tenant_id = ?
         ORDER BY p.name ASC
-      `)
+      `, [useAuthStore.getState().currentTenant?.id ?? null])
     );
     setStoreUrl((await getSetting("online_store_url")) ?? "");
   }

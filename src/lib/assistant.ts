@@ -1,4 +1,5 @@
 import { dbSelect } from "./db";
+import { useAuthStore } from "../store/authStore";
 import { activeToken, fetchFbrHsUoms, fetchFbrRates, loadFbrSettings } from "./fbr";
 import { FBR_HS_CODES, FBR_SALE_TYPES, fbrProvinceCode, findSaleType } from "./fbrData";
 import { STORE_HS_PREFIXES } from "./fbrAutofill";
@@ -122,8 +123,8 @@ const searchCatalog = tool({
     const rows = await dbSelect<Record<string, unknown>>(
       `SELECT name, description, company_name, hs_code, fbr_sale_type, fbr_sale_rate, fbr_uom, fbr_qty_factor,
               sro_no, sro_item_serial_no, is_narcotic
-       FROM products WHERE deleted_at IS NULL AND ${where} ORDER BY name LIMIT 15`,
-      words.flatMap((w) => [`%${w}%`, `%${w}%`, `%${w}%`])
+       FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND ${where} ORDER BY name LIMIT 15`,
+      [useAuthStore.getState().currentTenant?.id ?? null, ...words.flatMap((w) => [`%${w}%`, `%${w}%`, `%${w}%`])]
     );
     if (rows.length === 0) return `No catalog product matches "${query}".`;
     return rows

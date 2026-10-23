@@ -80,7 +80,17 @@ export interface BusinessTypeDef {
   defaultModules: string[];
   /** Type-specific modules not built yet. */
   planned: string[];
+  /** Shared sections that never apply to this type (blocked even when a
+   * plan or an admin lists them), e.g. the pharmacy catalog for restaurants. */
+  excludedModules?: string[];
 }
+
+/** Shared screens built on the pharmacy product catalog. Business types with
+ * their own catalog (restaurant menu, electric store) never use them. */
+export const PHARMACY_CATALOG_MODULES = ["invoices", "quotation", "order", "purchase", "products", "stock", "salesman", "reports"];
+
+/** Whether a business type may use a shared (non type-specific) section. */
+export const moduleAllowedForType = (typeId: string | null | undefined, moduleKey: string) => !businessType(typeId).excludedModules?.includes(moduleKey);
 
 export const FAMILY_LABELS: Record<Family, { label: string; blurb: string }> = {
   pharmacy: {
@@ -408,6 +418,7 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     // Restaurant sections follow the business type (config/nav.ts onlyFor);
     // pharmacy stock/purchase screens are not needed.
     defaultModules: ["dashboard", "customers", "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings"],
+    excludedModules: PHARMACY_CATALOG_MODULES,
     planned: ["Multi-branch menus and pricing", "Reservations", "Kitchen display screen per station (separate device)"],
   },
   {
@@ -458,6 +469,7 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     // Own catalog, sales, purchases, stock and parties come from the store
     // module (config/nav.ts onlyFor); pharmacy product/stock screens are not used.
     defaultModules: ["dashboard", "cash_register", "banks", "expenses", "staff", "utilities", "settings"],
+    excludedModules: PHARMACY_CATALOG_MODULES,
     planned: ["Installation / service items", "Repair job cards", "Instalment plans", "Branch-wise stock"],
   },
   {

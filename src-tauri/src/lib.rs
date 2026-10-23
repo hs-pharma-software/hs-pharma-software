@@ -1048,6 +1048,35 @@ fn schema_sql_v28() -> &'static str {
     "#
 }
 
+/// Tenant ownership for the catalog that used to be shared by every tenant
+/// (products, categories, sub categories, units, generic names). Additive
+/// only: existing rows keep tenant_id NULL here, which no tenant query
+/// returns (quarantine). Ownership of existing rows is assigned by the audited
+/// catalog-ownership migration against Turso and arrives through sync.
+/// Generic names become unique per tenant instead of globally.
+fn schema_sql_v29() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN tenant_id TEXT;
+    ALTER TABLE categories ADD COLUMN tenant_id TEXT;
+    ALTER TABLE sub_categories ADD COLUMN tenant_id TEXT;
+    ALTER TABLE uoms ADD COLUMN tenant_id TEXT;
+    ALTER TABLE generic_names ADD COLUMN tenant_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_products_tenant ON products (tenant_id, name);
+    CREATE INDEX IF NOT EXISTS idx_products_tenant_barcode ON products (tenant_id, barcode);
+    CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories (tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_sub_categories_tenant ON sub_categories (tenant_id, category_id);
+    CREATE INDEX IF NOT EXISTS idx_uoms_tenant ON uoms (tenant_id);
+    DROP INDEX IF EXISTS ux_generic_names_name;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_generic_names_tenant_name ON generic_names (COALESCE(tenant_id, ''), UPPER(TRIM(name)));
+    CREATE TABLE IF NOT EXISTS catalog_ownership_log (
+        id TEXT PRIMARY KEY, run_id TEXT NOT NULL, table_name TEXT NOT NULL, row_id TEXT NOT NULL,
+        action TEXT NOT NULL, tenant_id TEXT, source_id TEXT, column_name TEXT, old_value TEXT, new_value TEXT,
+        reason TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_catalog_ownership_log_run ON catalog_ownership_log (run_id);
+    "#
+}
+
 /// Per-line billed discount and tax (fixed at payment, used for refunds and
 /// PRA line values) and the refunded flag.
 fn schema_sql_v27() -> &'static str {
@@ -1388,6 +1417,12 @@ pub fn run() {
             version: 28,
             description: "electric_store_module",
             sql: schema_sql_v28(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 29,
+            description: "catalog_tenant_ownership",
+            sql: schema_sql_v29(),
             kind: MigrationKind::Up,
         },
     ];

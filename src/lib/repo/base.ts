@@ -10,14 +10,14 @@ export interface BaseRow {
   deleted_at?: string | null;
 }
 
-/** Base shape for every table that's private to one pharmacy tenant (as
- * opposed to the shared medicine catalog \u2014 categories/sub_categories/uoms/
- * products \u2014 which stays plain `BaseRow` with no `tenant_id`). */
+/** Base shape for every table that's private to one tenant \u2014 since v29 that
+ * includes the catalog (products, categories, sub categories, units,
+ * generic names), which used to be shared by every tenant. */
 export interface TenantRow extends BaseRow {
   tenant_id: string;
 }
 
-function requireCurrentTenantId(): string {
+export function requireCurrentTenantId(): string {
   const tenantId = useAuthStore.getState().currentTenant?.id;
   if (!tenantId) {
     throw new Error("No tenant is logged in \u2014 this action requires a tenant session.");
@@ -95,12 +95,32 @@ export function createRepo<T extends BaseRow>(table: string) {
   };
 }
 
+/** Throws unless every non-empty id belongs to the logged-in tenant, so a
+ * record can never point at another tenant's product, category or unit
+ * (whatever id a screen or a tampered request supplies). */
+export async function assertOwnedRefs(refs: [table: string, id: string | null | undefined, label: string][]): Promise<void> {
+  const tenantId = requireCurrentTenantId();
+  for (const [table, id, label] of refs) {
+    if (!id) continue;
+    const rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
+    if (!rows.length) throw new Error(`${label} not found in this business.`);
+  }
+}
+
 /** Same generic CRUD factory as `createRepo`, but for tables private to one
  * pharmacy tenant: every `list` is filtered to the logged-in tenant, `create`
  * auto-stamps `tenant_id` if the caller didn't already set it, and
  * `get`/`update`/`remove` re-check `tenant_id` in their `WHERE` clause as a
  * defense-in-depth measure so an id lookup can never cross tenants. */
-export function createTenantRepo<T extends TenantRow>(table: string) {
+/** Catalog columns line tables carry; `refs` checks them on every write. */
+export const LINE_REFS: [column: string, table: string, label: string][] = [
+  ["product_id", "products", "Product"],
+  ["uom_id", "uoms", "Unit"],
+];
+
+export function createTenantRepo<T extends TenantRow>(table: string, opts: { refs?: [column: string, table: string, label: string][] } = {}) {
+  const checkRefs = (data: Partial<T>) =>
+    opts.refs ? assertOwnedRefs(opts.refs.map(([col, t, label]) => [t, (data as Record<string, string | null | undefined>)[col], label])) : Promise.resolve();
   async function get(id: string): Promise<T | null> {
     const rows = await dbSelect<T>(`SELECT * FROM ${table} WHERE id = ? AND tenant_id = ?`, [
       id,
@@ -126,7 +146,10 @@ export function createTenantRepo<T extends TenantRow>(table: string) {
     async create(data: Partial<T>): Promise<T> {
       const id = (data.id as string) ?? newId();
       const ts = nowIso();
-      const tenantId = (data.tenant_id as string) ?? requireCurrentTenantId();
+      // Always the session's tenant: a caller-supplied tenant_id must match it.
+      const tenantId = requireCurrentTenantId();
+      if (data.tenant_id && data.tenant_id !== tenantId) throw new Error("This record belongs to another business.");
+      await checkRefs(data);
       const record = { ...data, id, tenant_id: tenantId, created_at: ts, updated_at: ts, deleted_at: null } as T;
       const keys = Object.keys(record);
       await dbExecute(
@@ -138,6 +161,7 @@ export function createTenantRepo<T extends TenantRow>(table: string) {
     },
 
     async update(id: string, data: Partial<T>): Promise<T | null> {
+      await checkRefs(data);
       const ts = nowIso();
       const patch = { ...data, updated_at: ts };
       delete (patch as Partial<T>).id;

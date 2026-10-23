@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
-import { uomsRepo } from "@/lib/repo/uoms";
+import { seedStarterUoms, uomsRepo } from "@/lib/repo/uoms";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { Uom } from "@/lib/types";
 
@@ -38,6 +38,9 @@ export default function UomPage() {
             <Button variant="primary" onClick={() => setAdding(true)}>
               Add
             </Button>
+            {uoms.length === 0 && (
+              <Button onClick={() => void seedStarterUoms().then(reload)}>Add common units</Button>
+            )}
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
         }

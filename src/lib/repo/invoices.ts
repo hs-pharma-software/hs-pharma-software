@@ -1,11 +1,11 @@
 ﻿import { dbSelect } from "../db";
-import { createTenantRepo } from "./base";
+import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { receiveStock, deductStock, listAvailableBatches } from "./stock";
 import type { Invoice, InvoiceItem } from "../types2";
 
 export const invoicesRepo = createTenantRepo<Invoice>("invoices");
-export const invoiceItemsRepo = createTenantRepo<InvoiceItem>("invoice_items");
+export const invoiceItemsRepo = createTenantRepo<InvoiceItem>("invoice_items", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
@@ -71,7 +71,7 @@ export async function listNarcoticInvoices(): Promise<NarcoticInvoiceRow[]> {
            i.payable AS total
     FROM invoices i
     JOIN invoice_items ii ON ii.invoice_id = i.id AND ii.deleted_at IS NULL
-    JOIN products p ON p.id = ii.product_id AND p.is_narcotic = 1
+    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id AND p.is_narcotic = 1
     LEFT JOIN customers c ON c.id = i.customer_id
     LEFT JOIN salesmen sm ON sm.id = i.salesman_id
     WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0
@@ -277,8 +277,8 @@ export async function listItemsForInvoice(invoiceId: string): Promise<InvoiceIte
            p.secondary_unit_id,
            su.name AS secondary_unit_name
     FROM invoice_items ii
-    LEFT JOIN products p ON p.id = ii.product_id
-    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
+    LEFT JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND su.tenant_id = p.tenant_id
     WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL
   `,
     [invoiceId, currentTenantId()]

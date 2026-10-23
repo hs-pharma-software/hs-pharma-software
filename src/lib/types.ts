@@ -1,13 +1,13 @@
 ﻿import type { BaseRow, TenantRow } from "./repo/base";
 
-export interface Category extends BaseRow {
+export interface Category extends TenantRow {
   name: string;
   flat_discount_pct: number;
   description: string | null;
   image_url: string | null;
 }
 
-export interface SubCategory extends BaseRow {
+export interface SubCategory extends TenantRow {
   category_id: string;
   name: string;
   flat_discount_pct: number;
@@ -18,12 +18,12 @@ export interface SubCategory extends BaseRow {
   image_url: string | null;
 }
 
-export interface Uom extends BaseRow {
+export interface Uom extends TenantRow {
   name: string;
   description: string | null;
 }
 
-export interface Product extends BaseRow {
+export interface Product extends TenantRow {
   barcode: string | null;
   name: string;
   company_name: string | null;

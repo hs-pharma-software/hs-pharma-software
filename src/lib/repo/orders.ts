@@ -1,10 +1,10 @@
 ﻿import { dbSelect } from "../db";
-import { createTenantRepo } from "./base";
+import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { OrderRow, OrderItem } from "../types2";
 
 export const ordersRepo = createTenantRepo<OrderRow>("orders");
-export const orderItemsRepo = createTenantRepo<OrderItem>("order_items");
+export const orderItemsRepo = createTenantRepo<OrderItem>("order_items", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
@@ -46,7 +46,7 @@ export interface LowStockOrderRow {
 /** Same low-stock threshold as the Dashboard widget (20% of max_stock_qty,
  * or a flat 10-unit fallback when a product never got one configured) \u2014 kept
  * here too so the Order screen can drive "add to purchase" straight off it.
- * `avail_qty` is this tenant's own stock of an otherwise-shared product. */
+ * Only this tenant's own products, with its own stock. */
 export async function getLowStockForOrder(limit = 100): Promise<LowStockOrderRow[]> {
   const tenantId = currentTenantId();
   return dbSelect<LowStockOrderRow>(
@@ -56,13 +56,13 @@ export async function getLowStockForOrder(limit = 100): Promise<LowStockOrderRow
              COALESCE((SELECT SUM(qty) FROM product_batches WHERE product_id = p.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS avail_qty,
              p.max_stock_qty
       FROM products p
-      WHERE p.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL AND p.tenant_id = ?
     )
     WHERE avail_qty <= COALESCE(max_stock_qty * 0.2, 10)
     ORDER BY avail_qty ASC
     LIMIT ?
   `,
-    [tenantId, limit]
+    [tenantId, tenantId, limit]
   );
 }
 
@@ -71,8 +71,8 @@ export async function listItemsForOrder(orderId: string) {
     `
     SELECT oi.*, p.name AS product_name, p.barcode, u.name AS uom_name
     FROM order_items oi
-    LEFT JOIN products p ON p.id = oi.product_id
-    LEFT JOIN uoms u ON u.id = oi.uom_id
+    LEFT JOIN products p ON p.id = oi.product_id AND p.tenant_id = oi.tenant_id
+    LEFT JOIN uoms u ON u.id = oi.uom_id AND u.tenant_id = oi.tenant_id
     WHERE oi.order_id = ? AND oi.tenant_id = ? AND oi.deleted_at IS NULL
   `,
     [orderId, currentTenantId()]

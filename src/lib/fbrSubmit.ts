@@ -23,7 +23,7 @@ export async function submitInvoiceToFbrById(invoiceId: string, settings: FbrSet
            p.name AS product_name, p.hs_code, p.fbr_sale_type, p.fbr_sale_rate, p.fbr_uom,
            p.sro_no, p.sro_item_serial_no, p.fbr_qty_factor
     FROM invoice_items ii
-    LEFT JOIN products p ON p.id = ii.product_id
+    LEFT JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
     WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL
   `,
     [invoiceId, useAuthStore.getState().currentTenant?.id ?? null]

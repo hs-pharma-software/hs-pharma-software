@@ -229,15 +229,14 @@ const MIGRATIONS = [
   // This script re-runs every statement, so the seed uses the same
   // whitespace normalization as v21 / normalizeGenericName() and stays a no-op
   // for names already present.
-  { version: 20, label: 'generic_names (Description suggestion list, seeded from products)', statements: [
+  // v20/v21 seeded one GLOBAL generic-name list and deleted rows not keyed
+  // by the global id. Since v29 generic names belong to tenants (per-tenant
+  // ids), so replaying those would re-create global rows and delete tenant
+  // copies. They were applied long ago; only the table creation is kept.
+  { version: 20, label: 'generic_names table', statements: [
     `CREATE TABLE IF NOT EXISTS generic_names (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT)`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS ux_generic_names_name ON generic_names (UPPER(TRIM(name)))`,
-    `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("description")} AS n FROM products WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
   ]},
-  { version: 21, label: 'generic_names whitespace normalization (idempotent)', statements: [
-    `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("name")} AS n FROM generic_names WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
-    `DELETE FROM generic_names WHERE id <> 'gn-' || lower(hex(UPPER(${normWs("name")})))`,
-  ]},
+  { version: 29, label: 'catalog tenant ownership (columns, indexes, ownership log)', statements: rustSchemaStatements(29) },
   { version: 28, label: 'electric store module tables', statements: rustSchemaStatements(28).filter((s) => !/local_assets/.test(s)) },
   { version: 27, label: 'restaurant order line discount/tax/refunded', statements: rustSchemaStatements(27) },
   // Same SQL as schema_sql_v26() in src-tauri/src/lib.rs (read from there, so
