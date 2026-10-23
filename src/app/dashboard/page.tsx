@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { dbSelect } from "@/lib/db";
@@ -14,6 +14,7 @@ import {
   getTopSellingProducts,
   getTodaySummary,
   getInventoryByUnitType,
+  getInventoryByCategory,
   countProducts,
   type LowStockRow,
   type ExpiringBatchRow,
@@ -21,6 +22,7 @@ import {
   type TopProductRow,
   type TodaySummary,
   type InventoryUnitRow,
+  type InventoryCategoryRow,
 } from "@/lib/repo/dashboard";
 import { getTotalPartyBalance } from "@/lib/repo/ledger";
 import { loadLogo } from "@/lib/printTemplates";
@@ -29,6 +31,8 @@ import { RestaurantDashboard } from "@/components/restaurant/RestaurantDashboard
 import { ElectricDashboard } from "@/components/electric/ElectricDashboard";
 import { ELECTRIC_TYPE } from "@/lib/electric";
 import { DistDashboard } from "@/components/dist/DistDashboard";
+import { useFormTabs, canOpenKind } from "@/store/formTabsStore";
+import { FileText, ShoppingCart } from "lucide-react";
 
 interface DashboardStats {
   customers: number;
@@ -177,9 +181,287 @@ export default function DashboardPage() {
   if (tenant && businessType(tenant.businessType).id === "restaurant") return <RestaurantDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === ELECTRIC_TYPE) return <ElectricDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "distributor") return <DistDashboard name={tenant.name} />;
+  if (tenant && businessType(tenant.businessType).id === "general_store") return <GeneralStoreDashboard />;
   return <GeneralDashboard />;
 }
 
+/* ── Category bar chart ── */
+function CategoryChart({ data }: { data: InventoryCategoryRow[] }) {
+  const max = Math.max(...data.map((r) => r.product_count), 1);
+  if (data.length === 0) {
+    return <div className="flex h-36 items-center justify-center text-xs text-neutral-400">No categories yet</div>;
+  }
+  return (
+    <div className="space-y-2.5">
+      {data.map((row, i) => (
+        <div key={row.category}>
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="truncate font-medium text-neutral-700 max-w-[140px]">{row.category}</span>
+            <span className="ml-2 shrink-0 text-neutral-500">{row.product_count} items</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${(row.product_count / max) * 100}%` }}
+              transition={{ delay: i * 0.05, duration: 0.45 }}
+              className="h-full rounded-full"
+              style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Quick action button ── */
+function QuickAction({
+  icon: Icon, label, sub, color, onClick,
+}: {
+  icon: React.ElementType; label: string; sub: string; color: string; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex flex-1 items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] transition-all hover:shadow-md hover:ring-2 active:scale-[0.98]"
+      style={{ "--qa-color": color } as React.CSSProperties}
+    >
+      <div
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105"
+        style={{ background: `${color}18`, color }}
+      >
+        <Icon size={22} />
+      </div>
+      <div className="text-left">
+        <p className="text-sm font-semibold text-neutral-900">{label}</p>
+        <p className="text-[11px] text-neutral-400">{sub}</p>
+      </div>
+      <span className="ml-auto text-lg font-light text-neutral-300 transition-colors group-hover:text-neutral-400">+</span>
+    </button>
+  );
+}
+
+/* ══════════════════════════════════════ General Store Dashboard ══════════════════════════════════════ */
+function GeneralStoreDashboard() {
+  const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
+  const [today, setToday] = useState<TodaySummary>(EMPTY_TODAY);
+  const [lowStock, setLowStock] = useState<LowStockRow[]>([]);
+  const [recentInvoices, setRecentInvoices] = useState<RecentInvoiceRow[]>([]);
+  const [topProducts, setTopProducts] = useState<TopProductRow[]>([]);
+  const [categories, setCategories] = useState<InventoryCategoryRow[]>([]);
+  const tauriReady = useIsTauri();
+  const { openNew } = useFormTabs();
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    (async () => {
+      try {
+        const [customers, suppliers, products, customerReceivable, supplierPayable, todaySummary, low, recent, top, cats] =
+          await Promise.all([
+            count("customers", true),
+            count("suppliers", true),
+            countProducts(),
+            getTotalPartyBalance("customer"),
+            getTotalPartyBalance("supplier"),
+            getTodaySummary(),
+            getLowStockProducts(8),
+            getRecentInvoices(6),
+            getTopSellingProducts(5),
+            getInventoryByCategory(),
+          ]);
+        setStats({ customers, suppliers, products, customerReceivable, supplierPayable });
+        setToday(todaySummary);
+        setLowStock(low);
+        setRecentInvoices(recent);
+        setTopProducts(top);
+        setCategories(cats);
+      } catch (err) {
+        console.error("dashboard load failed", err);
+      }
+    })();
+  }, []);
+
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const sessionTenant = useAuthStore((s) => s.currentTenant);
+  const [logo, setLogo] = useState<string | null>(null);
+  useEffect(() => {
+    if (tauriReady) void loadLogo().then(setLogo);
+  }, [tauriReady]);
+
+  return (
+    <div className="space-y-5 pb-8">
+
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex items-center gap-4">
+          {logo && (
+            <div className="flex h-14 max-w-[9rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logo} alt="" className="max-h-full max-w-full object-contain" />
+            </div>
+          )}
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-widest text-neutral-400">{dateLabel}</p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-neutral-900">
+              {sessionTenant?.name ?? "Dashboard"}
+            </h1>
+          </div>
+        </div>
+        {!tauriReady && (
+          <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+            Browser preview — no live data
+          </span>
+        )}
+      </div>
+
+      {/* ── Quick Actions ── */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <QuickAction
+          icon={FileText}
+          label="New Invoice"
+          sub="Ctrl + N  ·  Create a sale"
+          color="#10b981"
+          onClick={() => openNew("invoice")}
+        />
+        <QuickAction
+          icon={ShoppingCart}
+          label="New Purchase"
+          sub="Record stock purchase"
+          color="#3b82f6"
+          onClick={() => canOpenKind("purchase") && openNew("purchase")}
+        />
+      </div>
+
+      {/* ── KPI row 1: Today ── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard label="Today's Sales"  value={today.sales}        money delay={0}    accent="#10b981" />
+        <KpiCard label="Invoices Today" value={today.invoiceCount}       delay={0.04} />
+        <KpiCard label="Cash In"        value={today.cashIn}       money delay={0.08} accent="#3b82f6" />
+        <KpiCard label="Cash Out"       value={today.cashOut}      money delay={0.12} accent="#f43f5e" />
+      </div>
+
+      {/* ── KPI row 2: Balances ── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard label="Receivable" value={stats.customerReceivable} money delay={0.16} accent="#8b5cf6" />
+        <KpiCard label="Payable"    value={stats.supplierPayable}    money delay={0.20} accent="#f97316" />
+        <KpiCard label="Products"   value={stats.products}                 delay={0.24} />
+        <KpiCard label="Expenses"   value={today.expenses}          money delay={0.28} accent="#f43f5e" />
+      </div>
+
+      {/* ── Main 3-col ── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+
+        {/* Category breakdown */}
+        <Card
+          title="Stock by Category"
+          badge={categories.reduce((s, r) => s + r.product_count, 0)}
+          href="/products"
+        >
+          <CategoryChart data={categories} />
+        </Card>
+
+        {/* Low stock */}
+        <Card title="Low Stock Alert" badge={lowStock.length} href="/stock">
+          {lowStock.length === 0 ? (
+            <p className="py-4 text-center text-xs text-neutral-400">All products sufficiently stocked.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-neutral-50">
+              {lowStock.map((p) => (
+                <div key={p.id} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                  <p className="truncate text-xs font-medium text-neutral-800">{p.name}</p>
+                  <span className="ml-3 shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                    {p.avail_qty} left
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Top selling */}
+        <Card title="Top Selling Products" href="/reports/product-sales">
+          {topProducts.length === 0 ? (
+            <p className="py-4 text-center text-xs text-neutral-400">No sales data yet.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {topProducts.map((p, i) => {
+                const maxSales = topProducts[0]?.sales ?? 1;
+                const pct = (p.sales / maxSales) * 100;
+                return (
+                  <div key={p.id}>
+                    <div className="mb-1 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-neutral-300">#{i + 1}</span>
+                        <span className="truncate max-w-[150px] text-xs font-medium text-neutral-800">{p.name}</span>
+                      </div>
+                      <span className="text-xs text-neutral-500">{p.qty} sold</span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ delay: 0.3 + i * 0.07, duration: 0.5 }}
+                        className="h-full rounded-full"
+                        style={{ background: "var(--accent)" }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* ── Recent Invoices ── */}
+      <Card title="Recent Invoices" href="/invoices">
+        {recentInvoices.length === 0 ? (
+          <p className="py-4 text-center text-xs text-neutral-400">No invoices yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {recentInvoices.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center justify-between rounded-xl border border-neutral-100 px-3 py-2.5"
+              >
+                <div>
+                  <p className="text-xs font-semibold text-neutral-800">#{inv.invoice_no} · {inv.customer_name}</p>
+                  <p className="text-[10px] text-neutral-400">{inv.date}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-semibold text-neutral-900">Rs {inv.total.toLocaleString()}</p>
+                  {inv.balance > 0 && (
+                    <p className="text-[10px] text-rose-500">Due Rs {inv.balance.toLocaleString()}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* ── Footer counts ── */}
+      <div className="grid grid-cols-3 gap-3">
+        <Link href="/customers" className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] hover:shadow-md transition-shadow">
+          <span className="text-xs font-medium text-neutral-500">Customers</span>
+          <span className="text-sm font-bold text-neutral-900">{stats.customers}</span>
+        </Link>
+        <Link href="/suppliers" className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] hover:shadow-md transition-shadow">
+          <span className="text-xs font-medium text-neutral-500">Suppliers</span>
+          <span className="text-sm font-bold text-neutral-900">{stats.suppliers}</span>
+        </Link>
+        <Link href="/products" className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] hover:shadow-md transition-shadow">
+          <span className="text-xs font-medium text-neutral-500">Products</span>
+          <span className="text-sm font-bold text-neutral-900">{stats.products}</span>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════════ */
 function GeneralDashboard() {
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS);
   const [today, setToday] = useState<TodaySummary>(EMPTY_TODAY);

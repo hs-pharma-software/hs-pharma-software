@@ -151,6 +151,36 @@ export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
   );
 }
 
+export interface InventoryCategoryRow {
+  category: string;
+  product_count: number;
+  total_qty: number;
+}
+
+/** Groups available stock by product category — suited to general-store tenants. */
+export async function getInventoryByCategory(): Promise<InventoryCategoryRow[]> {
+  const tenantId = currentTenantId();
+  return dbSelect<InventoryCategoryRow>(
+    `
+    SELECT
+      COALESCE(c.name, 'Uncategorized') AS category,
+      COUNT(DISTINCT p.id) AS product_count,
+      COALESCE(SUM(pb.qty), 0) AS total_qty
+    FROM products p
+    LEFT JOIN categories c ON c.id = p.category_id
+                          AND (c.tenant_id = ? OR c.tenant_id IS NULL)
+    LEFT JOIN product_batches pb
+           ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL
+      AND (p.tenant_id = ? OR (p.tenant_id IS NULL AND p.catalog_group IS NOT NULL))
+    GROUP BY COALESCE(c.name, 'Uncategorized')
+    ORDER BY product_count DESC
+    LIMIT 8
+  `,
+    [tenantId, tenantId, tenantId]
+  );
+}
+
 /** Counts products visible to the current tenant: own rows + shared catalog. */
 export async function countProducts(): Promise<number> {
   const tenantId = currentTenantId();
