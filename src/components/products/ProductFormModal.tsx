@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -19,6 +19,72 @@ import { useAuthStore } from "@/store/authStore";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Category, SubCategory, Uom, Product } from "@/lib/types";
 
+function UomCombobox({
+  value,
+  onChange,
+  uoms,
+  required,
+  placeholder,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  uoms: Uom[];
+  required?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const selected = uoms.find((u) => u.id === value);
+  const displayText = open ? search : (selected?.name ?? "");
+
+  const filtered = uoms.filter((u) =>
+    !search || u.name.toLowerCase().includes(search.toLowerCase())
+  ).slice(0, 30);
+
+  function pick(u: Uom) {
+    onChange(u.id);
+    setSearch("");
+    setOpen(false);
+  }
+
+  return (
+    <div ref={boxRef} className="relative">
+      <input
+        value={displayText}
+        placeholder={placeholder ?? "Search unit..."}
+        required={required}
+        autoComplete="off"
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => { setSearch(""); setOpen(true); }}
+        onBlur={() =>
+          setTimeout(() => {
+            if (!boxRef.current?.contains(document.activeElement)) setOpen(false);
+          }, 150)
+        }
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-black/[0.06]"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.10)]">
+          <ul className="max-h-48 overflow-y-auto py-1">
+            {filtered.map((u) => (
+              <li
+                key={u.id}
+                onMouseDown={(e) => { e.preventDefault(); pick(u); }}
+                className={`cursor-pointer px-3 py-1.5 text-sm hover:bg-neutral-50 ${u.id === value ? "font-medium text-[#006633]" : "text-neutral-800"}`}
+              >
+                {u.name}
+                {u.description ? <span className="ml-1 text-xs text-neutral-400">{u.description}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 type QuickAddTarget = "category" | "subCategory" | "baseUnit" | "secondaryUnit" | null;
 
 export function ProductFormModal({
@@ -462,14 +528,7 @@ export function ProductFormModal({
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Base Unit" required>
-                <Select value={baseUnitId} onChange={(e) => setBaseUnitId(e.target.value)} required>
-                  <option value="">Select...</option>
-                  {uoms.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </Select>
+                <UomCombobox value={baseUnitId} onChange={setBaseUnitId} uoms={uoms} required placeholder="Search base unit..." />
               </Field>
             </div>
             <Button type="button" onClick={() => setQuickAdd("baseUnit")}>
@@ -484,14 +543,7 @@ export function ProductFormModal({
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Secondary Unit">
-                <Select value={secondaryUnitId} onChange={(e) => setSecondaryUnitId(e.target.value)}>
-                  <option value="">Select...</option>
-                  {uoms.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </Select>
+                <UomCombobox value={secondaryUnitId} onChange={setSecondaryUnitId} uoms={uoms} placeholder="Search secondary unit..." />
               </Field>
             </div>
             <Button type="button" onClick={() => setQuickAdd("secondaryUnit")}>
