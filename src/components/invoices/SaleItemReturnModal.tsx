@@ -68,6 +68,14 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
     setLines([]);
   }
 
+  function returnAll() {
+    setLines((prev) => prev.map((l) => ({ ...l, returnQty: l.remaining })));
+  }
+
+  function clearAll() {
+    setLines((prev) => prev.map((l) => ({ ...l, returnQty: 0 })));
+  }
+
   const activeLines = lines.filter((l) => l.returnQty > 0);
   const total = activeLines.reduce((s, l) => s + l.item.sale_price * l.returnQty, 0);
 
@@ -162,6 +170,28 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
 
         {selected && !loadingLines && (
           <>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-neutral-500">
+                {lines.filter((l) => l.remaining > 0).length} returnable item(s)
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                >
+                  Clear All
+                </button>
+                <button
+                  type="button"
+                  onClick={returnAll}
+                  className="rounded-full px-3 py-1 text-xs font-semibold text-white"
+                  style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)" }}
+                >
+                  Full Invoice Return
+                </button>
+              </div>
+            </div>
             <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
               <table className="w-full min-w-max text-sm">
                 <thead>
