@@ -46,6 +46,20 @@ export async function receiveStock(input: {
   });
 }
 
+/** Manually adds quantity (base units) to one existing batch of the
+ * logged-in tenant. A purchase price, when given, replaces the batch's. */
+export async function addStockToBatch(batchId: string, qty: number, purchasePrice?: number): Promise<void> {
+  if (!(qty > 0)) throw new Error("Enter a quantity greater than 0.");
+  const batch = await productBatchesRepo.get(batchId);
+  if (!batch || (batch as ProductBatch & { tenant_id?: string }).tenant_id !== currentTenantId()) {
+    throw new Error("This stock row belongs to another account.");
+  }
+  await productBatchesRepo.update(batchId, {
+    qty: batch.qty + qty,
+    ...(purchasePrice && purchasePrice > 0 ? { purchase_price: purchasePrice } : {}),
+  });
+}
+
 /** Deducts sold/returned-out stock from a specific batch. Throws if the
  * batch doesn't have enough available quantity. Used by Invoice creation. */
 export async function deductStock(batchId: string, qty: number): Promise<void> {

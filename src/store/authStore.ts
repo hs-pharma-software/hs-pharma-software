@@ -35,6 +35,8 @@ export interface SessionTenant {
   /** Super Admin controls. Optional so sessions saved before they existed
    * still load (missing = allowed). */
   deniedActions?: string[];
+  /** Business type id (config/businessTypes.ts), e.g. "contractor". */
+  businessType?: string | null;
   fbrAllowed?: boolean;
   printTemplatesEditable?: boolean;
 }

@@ -9,7 +9,9 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { dbSelect } from "@/lib/db";
 import { searchProductsByNameOrBarcode } from "@/lib/repo/products";
-import { receiveStock } from "@/lib/repo/stock";
+import { addStockToBatch, receiveStock } from "@/lib/repo/stock";
+import { businessType } from "@/config/businessTypes";
+import { PackagePlus } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import type { Product } from "@/lib/types";
 
@@ -29,6 +31,7 @@ interface StockRow {
   expiry_date: string | null;
   mrp: number;
   sale_price: number;
+  purchase_price: number;
 }
 
 export default function StockPage() {
@@ -49,6 +52,14 @@ export default function StockPage() {
   const sessionTenant = useAuthStore((s) => s.currentTenant);
   const tenantId = sessionTenant?.sourceTenantId ?? sessionTenant?.id ?? null;
   const mrpDiscountPct = sessionTenant?.mrpDiscountPct ?? 0;
+  // Contractors top up stock by hand per item; not for stock viewed from
+  // another account (dealer portal).
+  const canTopUp =
+    businessType(sessionTenant?.businessType).id === "contractor" && !sessionTenant?.sourceTenantId;
+  const [topUp, setTopUp] = useState<StockRow | null>(null);
+  const [topUpQty, setTopUpQty] = useState("");
+  const [topUpPrice, setTopUpPrice] = useState("");
+  const [topUpError, setTopUpError] = useState<string | null>(null);
 
   async function reload() {
     if (!isTauri()) return;
@@ -60,7 +71,7 @@ export default function StockPage() {
                p.secondary_unit_id, su.name AS secondary_unit_name,
                COALESCE(p.packing, 1) AS packing,
                pb.qty AS avail_qty,
-               pb.batch_no, pb.expiry_date,
+               pb.batch_no, pb.expiry_date, COALESCE(pb.purchase_price, 0) AS purchase_price,
                COALESCE(pl.mrp, 0) AS mrp,
                COALESCE(pl.sale_price, 0) AS sale_price
         FROM product_batches pb
@@ -133,7 +144,47 @@ export default function StockPage() {
         ? <span className="font-bold text-emerald-700">{(r.mrp * discountFactor).toFixed(2)}</span>
         : "\u2014",
     }] : []),
+    ...(canTopUp ? [{
+      header: "Actions",
+      render: (r: StockRow) => (
+        <button
+          type="button"
+          title="Add stock to this item"
+          onClick={(e) => {
+            e.stopPropagation();
+            setTopUp(r);
+            setTopUpQty("");
+            setTopUpPrice(r.purchase_price > 0 ? String(r.purchase_price) : "");
+            setTopUpError(null);
+          }}
+          className="rounded-full p-1.5 text-neutral-500 hover:bg-emerald-50 hover:text-emerald-700"
+        >
+          <PackagePlus size={16} />
+        </button>
+      ),
+    }] : []),
   ];
+
+  // Quantities are entered in the unit the Avail Qty column shows.
+  const topUpPacking = topUp?.secondary_unit_id && (topUp.packing || 1) > 1 ? topUp.packing : 1;
+  const topUpUnit = topUpPacking > 1 ? topUp?.secondary_unit_name ?? "" : topUp?.uom_name ?? "";
+
+  async function saveTopUp() {
+    if (!topUp) return;
+    const qty = Number(topUpQty);
+    if (!(qty > 0)) return setTopUpError("Enter a quantity greater than 0.");
+    setSaving(true);
+    setTopUpError(null);
+    try {
+      await addStockToBatch(topUp.id, qty / topUpPacking, Number(topUpPrice) || undefined);
+      setTopUp(null);
+      void reload();
+    } catch (e) {
+      setTopUpError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function resetForm() {
     setProductQuery("");
@@ -253,6 +304,41 @@ export default function StockPage() {
           </table>
         </div>
       </div>
+
+      {topUp && (
+        <Modal title="Add Stock" onClose={() => setTopUp(null)} width="max-w-sm">
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveTopUp();
+            }}
+          >
+            <div className="rounded-lg bg-neutral-50 px-3 py-2 text-sm">
+              <p className="font-medium text-neutral-800">{topUp.product_name}</p>
+              <p className="text-xs text-neutral-500">
+                In stock: {topUp.avail_qty * topUpPacking} {topUpUnit}
+                {topUp.batch_no ? ` · Batch ${topUp.batch_no}` : ""}
+              </p>
+            </div>
+            <Field label={`Quantity to add${topUpUnit ? ` (${topUpUnit})` : ""}`} required>
+              <Input type="number" min="0" step="any" value={topUpQty} onChange={(e) => setTopUpQty(e.target.value)} autoFocus required />
+            </Field>
+            <Field label="Purchase price / item (optional)">
+              <Input type="number" min="0" step="any" value={topUpPrice} onChange={(e) => setTopUpPrice(e.target.value)} />
+            </Field>
+            {topUpError && <p className="text-sm text-rose-600">{topUpError}</p>}
+            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+              <Button type="button" onClick={() => setTopUp(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saving}>
+                {saving ? "Saving..." : "Add Stock"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {modalOpen && (
         <Modal title="Add Stock" onClose={() => setModalOpen(false)} width="max-w-lg">

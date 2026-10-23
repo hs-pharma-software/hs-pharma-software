@@ -79,6 +79,7 @@ async function buildSessionTenant(tenant: Tenant): Promise<SessionTenant> {
     mrpDiscountPct: tenant.mrp_discount_pct ?? 0,
     sourceTenantId: (tenant as Tenant & { source_tenant_id?: string | null }).source_tenant_id ?? null,
     deniedActions: parseDeniedActions(tenant.denied_actions),
+    businessType: tenant.business_type ?? null,
     fbrAllowed: tenant.fbr_allowed !== 0,
     printTemplatesEditable: tenant.print_templates_editable !== 0,
   };
