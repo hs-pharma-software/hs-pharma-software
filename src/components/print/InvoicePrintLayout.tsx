@@ -54,6 +54,8 @@ export interface EditorHooks {
 const BASE_PX: Record<PrintTemplate["paper"], number> = { a4: 13, a5: 11, thermal: 11 };
 const SIZE_SCALE = { sm: 0.85, md: 1, lg: 1.35 };
 const money = (n: number) => n.toFixed(2);
+/** Bundled in public/ so it prints offline. */
+const FBR_LOGO_SRC = "/fbr-digital-invoicing.png";
 
 /** How each design draws the page. Colours come from the template theme. */
 interface Skin {
@@ -500,30 +502,57 @@ export function InvoicePrintLayout({
             <span style={label}>Note:</span> {data.note}
           </div>
         ) : null;
-      case "fbr":
-        return data.fbrInvoiceNo ? (
+      case "fbr": {
+        if (!data.fbrInvoiceNo) return null;
+        // FBR Digital Invoicing logo and the invoice QR, same size, side by side.
+        const size = thermal ? 64 : template.paper === "a5" ? 72 : 84;
+        const logo = (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={FBR_LOGO_SRC} alt="FBR Digital Invoicing" width={size} height={size} style={{ display: "block", borderRadius: 6 }} />
+        );
+        const qr = (
+          <div style={{ background: "#fff", padding: 3, borderRadius: 4, lineHeight: 0 }}>
+            <QRCode value={data.fbrInvoiceNo} size={size - 6} style={{ width: size - 6, height: size - 6 }} viewBox="0 0 256 256" />
+          </div>
+        );
+        const text = (
+          <div style={{ textAlign: thermal || blk.align === "center" ? "center" : "left", minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: colored ? P : "#006633" }}>FBR Digital Invoice</div>
+            <div style={{ marginTop: 2, wordBreak: "break-all" }}>
+              FBR Invoice No: <b>{data.fbrInvoiceNo}</b>
+            </div>
+            <div style={{ fontSize: "0.8em", color: "#666" }}>Scan the QR code to verify this invoice on the FBR portal</div>
+          </div>
+        );
+        const panel: CSSProperties = colored ? { border: `1px solid ${tint(P, 0.25)}`, borderRadius: 8, padding: 8 } : {};
+        if (thermal || blk.align === "center") {
+          return (
+            <div style={{ ...font(blk), ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                {logo}
+                {qr}
+              </div>
+              {text}
+            </div>
+          );
+        }
+        return (
           <div
             style={{
-              display: "flex",
-              flexDirection: thermal || blk.align === "center" ? "column" : "row",
-              alignItems: blk.align === "center" || thermal ? "center" : "flex-start",
-              justifyContent: blk.align === "right" ? "flex-end" : "space-between",
-              gap: 8,
               ...font(blk),
+              ...panel,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexDirection: blk.align === "right" ? "row-reverse" : "row",
             }}
           >
-            <div style={{ textAlign: thermal || blk.align === "center" ? "center" : "left" }}>
-              <span style={{ background: "#006633", color: "#fff", fontWeight: 700, fontSize: "0.75em", padding: "1px 6px", borderRadius: 4 }}>
-                FBR Digital Invoice
-              </span>
-              <div style={{ marginTop: 2 }}>
-                FBR Invoice No: <b>{data.fbrInvoiceNo}</b>
-              </div>
-              <div style={{ fontSize: "0.8em", color: "#666" }}>Scan QR to verify at FBR portal</div>
-            </div>
-            <QRCode value={data.fbrInvoiceNo} size={thermal ? 72 : 80} style={{ width: thermal ? 72 : 80, height: "auto" }} viewBox="0 0 256 256" />
+            {logo}
+            <div style={{ flex: 1 }}>{text}</div>
+            {qr}
           </div>
-        ) : null;
+        );
+      }
       case "thanks":
         return template.thanksText ? (
           <div

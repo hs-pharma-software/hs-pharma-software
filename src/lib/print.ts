@@ -10,6 +10,18 @@ const PX_PER_MM = 96 / 25.4;
  * silently. `area` is measured so thermal rolls get an exact page length. */
 export async function printDirect(paper: PaperSize, area?: HTMLElement | null): Promise<void> {
   const p = PAPERS.find((x) => x.id === paper)!;
+  // Logos (pharmacy, FBR) must be loaded or they print blank.
+  if (area) {
+    await Promise.all(
+      Array.from(area.querySelectorAll("img"))
+        .filter((img) => !img.complete)
+        .map((img) => new Promise<void>((done) => {
+          img.addEventListener("load", () => done(), { once: true });
+          img.addEventListener("error", () => done(), { once: true });
+          setTimeout(done, 3000);
+        }))
+    );
+  }
   if (!isTauri()) {
     window.print();
     return;
