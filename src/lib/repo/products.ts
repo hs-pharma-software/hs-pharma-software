@@ -150,17 +150,10 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
   const tenantId = currentTenantId();
   const sharedGroups = sharedCatalogGroupsFor(currentBusinessType());
 
-  // Category/UOM joins: match on tenant_id matching the product's tenant_id,
-  // OR a shared catalog match when both are NULL (shared product + shared ref).
-  const joinCondition = sharedGroups.length
-    ? "(c.tenant_id = p.tenant_id OR (c.tenant_id IS NULL AND p.tenant_id IS NULL AND c.catalog_group IS NOT NULL))"
-    : "c.tenant_id = p.tenant_id";
-  const scJoinCondition = sharedGroups.length
-    ? "(sc.tenant_id = p.tenant_id OR (sc.tenant_id IS NULL AND p.tenant_id IS NULL AND sc.catalog_group IS NOT NULL))"
-    : "sc.tenant_id = p.tenant_id";
-  // UOMs are identified by UUID — join on ID alone, regardless of tenant.
-  // A pharmacy may create a tenant-specific UOM and assign it to a shared
-  // catalog product, so a tenant-scoped join condition silently drops the name.
+  // Category, sub_category and UOM joins: IDs are globally unique UUIDs so
+  // joining on ID alone is always correct — tenant/catalog_group conditions
+  // would silently drop names when a tenant-specific ref is assigned to a
+  // shared catalog product.
 
   let productWhere: string;
   let productParams: (string | null)[];
@@ -201,8 +194,8 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
         ORDER BY pl.created_at DESC LIMIT 1
       ) AS sale_price
     FROM products p
-    LEFT JOIN categories c ON c.id = p.category_id AND (${joinCondition})
-    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id AND (${scJoinCondition})
+    LEFT JOIN categories c ON c.id = p.category_id
+    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
     LEFT JOIN uoms u ON u.id = p.base_unit_id
     LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE ${productWhere}

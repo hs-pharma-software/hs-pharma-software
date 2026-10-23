@@ -1,4 +1,4 @@
-import { createTenantRepo, requireCurrentTenantId } from "./base";
+﻿import { createTenantRepo, requireCurrentTenantId } from "./base";
 import { dbSelect } from "../db";
 import { sharedCatalogGroupsFor } from "../catalogAccess";
 import { useAuthStore } from "../../store/authStore";
@@ -14,11 +14,12 @@ export async function listUomsWithShared(): Promise<Uom[]> {
   const bType = useAuthStore.getState().currentTenant?.businessType;
   const sharedGroups = sharedCatalogGroupsFor(bType);
   if (sharedGroups.length) {
-    const placeholders = sharedGroups.map(() => "?").join(", ");
+    // UOMs have no catalog_group column — shared UOMs are simply those with
+    // tenant_id IS NULL (globally visible to any tenant using the shared catalog).
     return dbSelect<Uom>(
       `SELECT * FROM uoms
        WHERE deleted_at IS NULL
-         AND (tenant_id = ? OR (tenant_id IS NULL AND catalog_group IS NOT NULL))
+         AND (tenant_id = ? OR tenant_id IS NULL)
        ORDER BY name ASC`,
       [tenantId]
     );
