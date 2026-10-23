@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import "@fontsource/noto-nastaliq-urdu/400.css";
+import "@fontsource/noto-nastaliq-urdu/700.css";
 import "./globals.css";
 import { RoleShell } from "@/components/layout/RoleShell";
 import { SyncProvider } from "@/components/sync/SyncProvider";

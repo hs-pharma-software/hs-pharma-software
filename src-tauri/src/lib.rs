@@ -952,6 +952,102 @@ fn schema_sql_v26() -> &'static str {
     "#
 }
 
+/// Electric / Electronics / Solar store module. Tenant-owned catalog (not the
+/// shared pharmacy `products` table), serial-numbered units, documents
+/// (sales, purchases, quotations, returns) with frozen line snapshots,
+/// signed stock movements in base units, party payments, warranty claims.
+/// `local_assets` is device-only (never synced): the uploaded Urdu font.
+fn schema_sql_v28() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS es_categories (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, name_ur TEXT, grp TEXT,
+        sort_order INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_categories_tenant ON es_categories (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS es_products (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, category_id TEXT, product_type TEXT NOT NULL DEFAULT 'general',
+        sku TEXT NOT NULL, barcode TEXT, name TEXT NOT NULL, name_ur TEXT, description TEXT, description_ur TEXT,
+        brand TEXT, manufacturer TEXT, model TEXT, unit TEXT NOT NULL DEFAULT 'pcs', purchase_unit TEXT,
+        purchase_factor REAL NOT NULL DEFAULT 1, cost REAL DEFAULT 0, avg_cost REAL DEFAULT 0, price REAL DEFAULT 0,
+        wholesale_price REAL, min_price REAL, tax_rate REAL DEFAULT 0, supplier_id TEXT, reorder_level REAL DEFAULT 0,
+        location TEXT, image TEXT, is_active INTEGER DEFAULT 1, serial_tracked INTEGER DEFAULT 0,
+        warranty_mfr_months INTEGER, warranty_seller_months INTEGER, specs TEXT, notes TEXT, stock REAL NOT NULL DEFAULT 0,
+        hs_code TEXT, fbr_sale_type TEXT, fbr_sale_rate REAL, fbr_uom TEXT, sro_no TEXT, sro_item_serial_no TEXT,
+        fbr_qty_factor REAL DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_products_tenant ON es_products (tenant_id, category_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_es_products_sku ON es_products (tenant_id, sku) WHERE deleted_at IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_es_products_barcode ON es_products (tenant_id, barcode) WHERE barcode IS NOT NULL AND deleted_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS es_serials (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, serial TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'in_stock', purchase_doc_id TEXT, sale_doc_id TEXT, customer_id TEXT, customer_name TEXT,
+        warranty_start TEXT, warranty_end TEXT, seller_warranty_end TEXT, supplier_ref TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_es_serials ON es_serials (tenant_id, product_id, serial);
+    CREATE INDEX IF NOT EXISTS idx_es_serials_status ON es_serials (tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS es_docs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_type TEXT NOT NULL, doc_no INTEGER NOT NULL, date TEXT NOT NULL,
+        party_type TEXT, party_id TEXT, party_name TEXT, party_phone TEXT, party_address TEXT, lang TEXT,
+        gross REAL DEFAULT 0, discount REAL DEFAULT 0, tax REAL DEFAULT 0, total REAL DEFAULT 0, paid REAL DEFAULT 0,
+        balance REAL DEFAULT 0, cost_total REAL DEFAULT 0, payments TEXT, status TEXT NOT NULL DEFAULT 'final',
+        ref_doc_id TEXT, supplier_invoice_no TEXT, notes TEXT, valid_until TEXT, fbr_status TEXT, fbr_invoice_no TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_es_docs_no ON es_docs (tenant_id, doc_type, doc_no);
+    CREATE INDEX IF NOT EXISTS idx_es_docs_date ON es_docs (tenant_id, doc_type, date);
+
+    CREATE TABLE IF NOT EXISTS es_doc_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_id TEXT NOT NULL, product_id TEXT, ref_item_id TEXT,
+        sku TEXT, name TEXT NOT NULL, name_ur TEXT, model TEXT, unit TEXT, unit_factor REAL NOT NULL DEFAULT 1,
+        qty REAL NOT NULL, base_qty REAL NOT NULL, price REAL NOT NULL DEFAULT 0, discount REAL DEFAULT 0,
+        tax_rate REAL DEFAULT 0, tax REAL DEFAULT 0, line_total REAL NOT NULL DEFAULT 0, cost REAL DEFAULT 0,
+        serials TEXT, warranty_months INTEGER, warranty_end TEXT, returned_qty REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_doc_items_doc ON es_doc_items (tenant_id, doc_id);
+
+    CREATE TABLE IF NOT EXISTS es_stock_moves (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, qty REAL NOT NULL, reason TEXT NOT NULL,
+        doc_id TEXT, doc_item_id TEXT, unit_cost REAL, note TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_stock_moves_product ON es_stock_moves (tenant_id, product_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_es_stock_moves_line ON es_stock_moves (tenant_id, doc_item_id, reason) WHERE doc_item_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS es_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, party_type TEXT NOT NULL, party_id TEXT, doc_id TEXT,
+        amount REAL NOT NULL, method TEXT NOT NULL, date TEXT NOT NULL, note TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_payments_party ON es_payments (tenant_id, party_type, party_id);
+
+    CREATE TABLE IF NOT EXISTS es_warranty_claims (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, serial_id TEXT, product_id TEXT, customer_id TEXT, customer_name TEXT,
+        issue TEXT, status TEXT NOT NULL DEFAULT 'open', resolution TEXT, opened_at TEXT, closed_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_claims_tenant ON es_warranty_claims (tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS es_audit (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT, user_name TEXT, action TEXT NOT NULL,
+        record_type TEXT, record_id TEXT, detail TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_es_audit_tenant ON es_audit (tenant_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS local_assets (
+        key TEXT PRIMARY KEY, mime TEXT, data TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    "#
+}
+
 /// Per-line billed discount and tax (fixed at payment, used for refunds and
 /// PRA line values) and the refunded flag.
 fn schema_sql_v27() -> &'static str {
@@ -1288,6 +1384,12 @@ pub fn run() {
             sql: schema_sql_v27(),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 28,
+            description: "electric_store_module",
+            sql: schema_sql_v28(),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -1300,8 +1402,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![print::print_silent])
+        .invoke_handler(tauri::generate_handler![print::print_silent, print::print_to_pdf])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

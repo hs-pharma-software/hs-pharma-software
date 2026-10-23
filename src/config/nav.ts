@@ -19,6 +19,12 @@ import {
   BarChart3,
   Wrench,
   Settings,
+  Zap,
+  ShoppingBag,
+  Warehouse,
+  ContactRound,
+  FileBarChart,
+  Cog,
   UtensilsCrossed,
   ChefHat,
   BookOpen,
@@ -30,6 +36,8 @@ import {
 export interface NavChild {
   label: string;
   href: string;
+  /** i18n key (lib/i18n/dict.ts) for translated menus. */
+  labelKey?: string;
 }
 
 export interface NavItem {
@@ -42,10 +50,12 @@ export interface NavItem {
   children?: NavChild[];
   /** Only shown to these business types (config/businessTypes.ts ids). */
   onlyFor?: string[];
+  /** i18n key (lib/i18n/dict.ts) for translated menus. */
+  labelKey?: string;
 }
 
 export const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, moduleKey: "dashboard" },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, moduleKey: "dashboard", labelKey: "nav.dashboard" },
   {
     label: "Invoices",
     href: "/invoices",
@@ -111,6 +121,7 @@ export const NAV: NavItem[] = [
   },
   {
     label: "Staff",
+    labelKey: "nav.staff",
     href: "/staff",
     icon: UserCog,
     moduleKey: "staff",
@@ -120,9 +131,10 @@ export const NAV: NavItem[] = [
       { label: "Attendance Detail", href: "/staff/attendance" },
     ],
   },
-  { label: "Cash Register", href: "/cash-register", icon: Wallet, moduleKey: "cash_register" },
+  { label: "Cash Register", href: "/cash-register", icon: Wallet, moduleKey: "cash_register", labelKey: "nav.cash" },
   {
     label: "Banks",
+    labelKey: "nav.banks",
     href: "/banks",
     icon: Landmark,
     moduleKey: "banks",
@@ -134,6 +146,7 @@ export const NAV: NavItem[] = [
   },
   {
     label: "Expenses",
+    labelKey: "nav.expenses",
     href: "/expenses",
     icon: Receipt,
     moduleKey: "expenses",
@@ -145,6 +158,7 @@ export const NAV: NavItem[] = [
   },
   {
     label: "Other Revenue",
+    labelKey: "nav.otherRevenue",
     href: "/other-revenue",
     icon: HandCoins,
     moduleKey: "other_revenue",
@@ -177,6 +191,7 @@ export const NAV: NavItem[] = [
   },
   {
     label: "Utilities",
+    labelKey: "nav.utilities",
     href: "/utilities",
     icon: Wrench,
     moduleKey: "utilities",
@@ -189,6 +204,60 @@ export const NAV: NavItem[] = [
       { label: "Audit Detail", href: "/utilities/audit" },
     ],
   },
+  // ── Electric / Electronics / Solar store (shown only to that type) ──
+  {
+    label: "Products",
+    labelKey: "nav.products",
+    href: "/electric/products",
+    icon: Zap,
+    moduleKey: "es_products",
+    onlyFor: ["electronics_solar"],
+    children: [
+      { label: "Product List", labelKey: "nav.productList", href: "/electric/products" },
+      { label: "Product Categories", labelKey: "nav.categories", href: "/electric/categories" },
+    ],
+  },
+  {
+    label: "Sales",
+    labelKey: "nav.sales",
+    href: "/electric/sales",
+    icon: ShoppingBag,
+    moduleKey: "es_sales",
+    onlyFor: ["electronics_solar"],
+    children: [
+      { label: "New Sales Invoice", labelKey: "nav.newSale", href: "/electric/sales/new" },
+      { label: "Sales Invoices", labelKey: "nav.salesList", href: "/electric/sales" },
+      { label: "Quotations", labelKey: "nav.quotations", href: "/electric/quotations" },
+      { label: "Returns", labelKey: "nav.returns", href: "/electric/returns" },
+    ],
+  },
+  {
+    label: "Purchases",
+    labelKey: "nav.purchases",
+    href: "/electric/purchases",
+    icon: ShoppingCart,
+    moduleKey: "es_purchases",
+    onlyFor: ["electronics_solar"],
+    children: [
+      { label: "New Purchase", labelKey: "nav.newPurchase", href: "/electric/purchases/new" },
+      { label: "Purchase Invoices", labelKey: "nav.purchaseList", href: "/electric/purchases" },
+    ],
+  },
+  {
+    label: "Inventory",
+    labelKey: "nav.inventory",
+    href: "/electric/stock",
+    icon: Warehouse,
+    moduleKey: "es_inventory",
+    onlyFor: ["electronics_solar"],
+    children: [
+      { label: "Stock & Movements", labelKey: "nav.stock", href: "/electric/stock" },
+      { label: "Serial Numbers & Warranty", labelKey: "nav.warranty", href: "/electric/warranty" },
+    ],
+  },
+  { label: "Customers & Suppliers", labelKey: "nav.parties", href: "/electric/parties", icon: ContactRound, moduleKey: "es_parties", onlyFor: ["electronics_solar"] },
+  { label: "Reports", labelKey: "nav.reports", href: "/electric/reports", icon: FileBarChart, moduleKey: "es_reports", onlyFor: ["electronics_solar"] },
+  { label: "Store Settings", labelKey: "nav.settings", href: "/electric/settings", icon: Cog, moduleKey: "es_settings", onlyFor: ["electronics_solar"] },
   // ── Restaurant (shown only to Restaurant tenants) ──
   {
     label: "Restaurant POS",
@@ -240,6 +309,7 @@ export const NAV: NavItem[] = [
   },
   {
     label: "Settings",
+    labelKey: "nav.appSettings",
     href: "/settings",
     icon: Settings,
     moduleKey: "settings",

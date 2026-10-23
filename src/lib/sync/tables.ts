@@ -57,6 +57,16 @@ export const SYNCABLE_TABLES = [
   "rest_stock_moves",
   "rest_pra_submissions",
   "rest_audit",
+  // Electric / Electronics / Solar store (all tenant-scoped).
+  "es_categories",
+  "es_products",
+  "es_serials",
+  "es_docs",
+  "es_doc_items",
+  "es_stock_moves",
+  "es_payments",
+  "es_warranty_claims",
+  "es_audit",
 ] as const;
 
 /** Tables private to one pharmacy tenant \u2014 `pullChanges()` in
@@ -110,6 +120,15 @@ export const TENANT_SCOPED_TABLES: string[] = [
   "rest_stock_moves",
   "rest_pra_submissions",
   "rest_audit",
+  "es_categories",
+  "es_products",
+  "es_serials",
+  "es_docs",
+  "es_doc_items",
+  "es_stock_moves",
+  "es_payments",
+  "es_warranty_claims",
+  "es_audit",
 ];
 
 // `delete_history` and `backups` are intentionally excluded: they're

@@ -29,6 +29,16 @@
         { "url": "http://localhost:8524/*" }
       ]
     },
-    "os:default"
+    "os:default",
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://wa.me/*" }, { "url": "mailto:*" }]
+    },
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**/*.pdf" }]
+    },
+    "opener:allow-reveal-item-in-dir"
   ]
 }

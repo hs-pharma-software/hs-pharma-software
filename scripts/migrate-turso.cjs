@@ -238,6 +238,7 @@ const MIGRATIONS = [
     `INSERT OR IGNORE INTO generic_names (id, name, created_at, updated_at) SELECT 'gn-' || lower(hex(UPPER(n))), MIN(n), '2026-10-23T00:00:00.000Z', '2026-10-23T00:00:00.000Z' FROM (SELECT ${normWs("name")} AS n FROM generic_names WHERE deleted_at IS NULL) WHERE n <> '' GROUP BY UPPER(n)`,
     `DELETE FROM generic_names WHERE id <> 'gn-' || lower(hex(UPPER(${normWs("name")})))`,
   ]},
+  { version: 28, label: 'electric store module tables', statements: rustSchemaStatements(28).filter((s) => !/local_assets/.test(s)) },
   { version: 27, label: 'restaurant order line discount/tax/refunded', statements: rustSchemaStatements(27) },
   // Same SQL as schema_sql_v26() in src-tauri/src/lib.rs (read from there, so
   // the two can't drift). local_secrets is device-only and never goes to Turso.

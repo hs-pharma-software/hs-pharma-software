@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { NAV } from "@/config/nav";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
+import { translate, useLang } from "@/lib/i18n";
 
 /** Strips trailing slashes so routes compare consistently regardless of
  * Next's `trailingSlash: true` static-export setting. */
@@ -41,6 +42,8 @@ export function Sidebar() {
   const allowedModules = useAuthStore((s) => s.currentTenant?.allowedModules ?? null);
   const userPermissions = useAuthStore((s) => s.currentUser?.permissions ?? null);
   const typeId = useAuthStore((s) => businessType(s.currentTenant?.businessType).id);
+  const lang = useLang((s) => s.lang);
+  const label = (x: { label: string; labelKey?: string }) => (x.labelKey ? translate(x.labelKey, lang) : x.label);
   const visibleNav = NAV.filter((item) => {
     // Business-type sections (e.g. Restaurant) follow the tenant type, not the plan.
     if (item.onlyFor) {
@@ -73,22 +76,22 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => setOpenLabel(isOpen ? null : item.label)}
-                  className="relative flex w-full items-center gap-3 px-4 py-2.5 text-left font-medium text-neutral-200 transition-colors hover:bg-white/[0.06]"
+                  className="relative flex w-full items-center gap-3 px-4 py-2.5 text-start font-medium text-neutral-200 transition-colors hover:bg-white/[0.06]"
                 >
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-active-bar"
-                      className="absolute inset-y-1 left-0 w-[3px] rounded-r-full"
+                      className="absolute inset-y-1 start-0 w-[3px] rounded-e-full"
                       style={{ background: "var(--accent)" }}
                       transition={{ type: "spring", stiffness: 500, damping: 40 }}
                     />
                   )}
                   <Icon size={17} className="shrink-0" style={isActive ? { color: "var(--accent)" } : {}} />
-                  <span className="flex-1" style={isActive ? { color: "var(--accent)" } : {}}>{item.label}</span>
+                  <span className="flex-1" style={isActive ? { color: "var(--accent)" } : {}}>{label(item)}</span>
                   <motion.span
                     animate={{ rotate: isOpen ? 90 : 0 }}
                     transition={{ type: "spring", stiffness: 400, damping: 28 }}
-                    className="shrink-0"
+                    className="shrink-0 rtl:-scale-x-100"
                   >
                     <ChevronRight size={15} />
                   </motion.span>
@@ -103,13 +106,13 @@ export function Sidebar() {
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-active-bar"
-                      className="absolute inset-y-1 left-0 w-[3px] rounded-r-full"
+                      className="absolute inset-y-1 start-0 w-[3px] rounded-e-full"
                       style={{ background: "var(--accent)" }}
                       transition={{ type: "spring", stiffness: 500, damping: 40 }}
                     />
                   )}
                   <Icon size={17} className="shrink-0" />
-                  <span>{item.label}</span>
+                  <span>{label(item)}</span>
                 </Link>
               )}
 
@@ -129,14 +132,14 @@ export function Sidebar() {
                           <Link
                             key={child.href}
                             href={child.href}
-                            className={`relative block px-11 py-2 transition-all duration-150 hover:pl-12 hover:text-white ${
+                            className={`relative block px-11 py-2 transition-all duration-150 hover:ps-12 hover:text-white ${
                               childActive
-                                ? "font-semibold hover:pl-11"
+                                ? "font-semibold hover:ps-11"
                                 : "text-neutral-300 hover:bg-white/[0.06]"
                             }`}
                           style={childActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
                           >
-                            {child.label}
+                            {label(child)}
                           </Link>
                         );
                       })}

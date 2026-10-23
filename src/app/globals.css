@@ -102,3 +102,32 @@ body {
     border: none !important;
   }
 }
+
+/* ── Urdu (Electric / Electronics / Solar store) ────────────────────────
+   "Jameel Noori Nastaleeq" is registered at runtime from the store's own
+   licensed font file (Store Settings > Urdu font); until then the bundled,
+   OFL-licensed "Noto Nastaliq Urdu" is used. */
+:root {
+  --font-urdu: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", Arial, sans-serif;
+}
+html[lang="ur"] body {
+  font-family: var(--font-urdu);
+  line-height: 1.9;
+}
+.font-urdu {
+  font-family: var(--font-urdu);
+  line-height: 2;
+}
+/* Codes, serials, phone numbers, model numbers: always left-to-right, in a
+   Latin face, even inside Urdu text. */
+.ltr-id {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  line-height: 1.35;
+}
+html[lang="ur"] input,
+html[lang="ur"] select,
+html[lang="ur"] textarea {
+  font-family: var(--font-urdu);
+}

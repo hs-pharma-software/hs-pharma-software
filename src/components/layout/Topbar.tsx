@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LanguageToggle } from "@/components/electric/LanguageSync";
 import Image from "next/image";
 import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -37,6 +38,7 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <LanguageToggle />
         <div className="relative">
           <motion.button
             type="button"

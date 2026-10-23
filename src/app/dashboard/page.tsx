@@ -25,6 +25,8 @@ import { getTotalPartyBalance } from "@/lib/repo/ledger";
 import { loadLogo } from "@/lib/printTemplates";
 import { businessType } from "@/config/businessTypes";
 import { RestaurantDashboard } from "@/components/restaurant/RestaurantDashboard";
+import { ElectricDashboard } from "@/components/electric/ElectricDashboard";
+import { ELECTRIC_TYPE } from "@/lib/electric";
 
 interface DashboardStats {
   customers: number;
@@ -167,10 +169,11 @@ function ExpiryBadge({ dateStr }: { dateStr: string }) {
 }
 
 /* ══════════════════════════════════════════════ Page ══════════════════════════════════════════════ */
-/** Restaurant tenants get their own dashboard; everyone else the general one. */
+/** Restaurant and electric/solar store tenants get their own dashboards; everyone else the general one. */
 export default function DashboardPage() {
   const tenant = useAuthStore((s) => s.currentTenant);
   if (tenant && businessType(tenant.businessType).id === "restaurant") return <RestaurantDashboard name={tenant.name} />;
+  if (tenant && businessType(tenant.businessType).id === ELECTRIC_TYPE) return <ElectricDashboard name={tenant.name} />;
   return <GeneralDashboard />;
 }
 

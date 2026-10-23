@@ -414,7 +414,7 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     id: "electronics_solar",
     label: "Electric / Electronics / Solar Store",
     family: "retail",
-    status: "partial",
+    status: "ready",
     purpose: "Electrical goods, electronics and solar equipment with serial numbers, warranties, technical specs and installation services.",
     workflow: ["Purchase with serials", "Quotation (solar system)", "Advance", "Invoice with serials", "Installation job", "Warranty card", "Warranty claim / repair"],
     capabilities: c("Core", "Not Required", "Core", "Not Required", "Core", "Not Required", "Not Required", "Not Required", "Not Required", "Optional", "Not Required"),
@@ -455,8 +455,10 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     validations: ["Serial scanned for serial-tracked lines", "Serial not already sold"],
     mvp: ["Products with specs", "Quotation", "Invoice", "Installation as line", "FBR DI"],
     advanced: ["Serial & warranty tracking", "Repair job cards", "Instalment plans", "Solar system packages"],
-    defaultModules: m("quotation", "order", "purchase", "stock", "suppliers", "staff", "tasks"),
-    planned: ["Serial numbers & warranty", "Service items", "Repair job cards"],
+    // Own catalog, sales, purchases, stock and parties come from the store
+    // module (config/nav.ts onlyFor); pharmacy product/stock screens are not used.
+    defaultModules: ["dashboard", "cash_register", "banks", "expenses", "staff", "utilities", "settings"],
+    planned: ["Installation / service items", "Repair job cards", "Instalment plans", "Branch-wise stock"],
   },
   {
     id: "hospital",

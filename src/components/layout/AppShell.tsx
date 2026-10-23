@@ -14,6 +14,7 @@ import { FormTabsHost } from "./FormTabsHost";
 import { useAuthStore } from "@/store/authStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
 import { PraBackground } from "@/components/restaurant/PraBackground";
+import { LanguageSync } from "@/components/electric/LanguageSync";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -34,6 +35,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {currentTenant && !subscriptionLocked && <AssistantChat />}
       {currentTenant && !subscriptionLocked && <FormTabsHost />}
       {currentTenant && !subscriptionLocked && <PraBackground />}
+      <LanguageSync />
       <Topbar />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
