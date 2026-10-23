@@ -5,6 +5,7 @@
 
 import { getSetting } from "./repo/settings";
 import { useAuthStore } from "../store/authStore";
+import { normalizeNtn } from "./fbrData";
 
 const GW = "https://gw.fbr.gov.pk";
 const POST_URL = { sandbox: `${GW}/di_data/v1/di/postinvoicedata_sb`, production: `${GW}/di_data/v1/di/postinvoicedata` };
@@ -41,7 +42,7 @@ export async function loadFbrSettings(): Promise<FbrSettings> {
     environment: env === "production" ? "production" : "sandbox",
     sandboxToken: (sbToken ?? "").trim(),
     productionToken: (prodToken ?? "").trim(),
-    sellerNtn: (ntn ?? "").replace(/[\s-]/g, ""),
+    sellerNtn: normalizeNtn(ntn),
     sellerName: name ?? "",
     sellerProvince: province || "Punjab",
     sellerAddress: address ?? "",

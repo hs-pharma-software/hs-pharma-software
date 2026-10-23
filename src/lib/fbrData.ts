@@ -34,9 +34,25 @@ export function fbrProvinceCode(label: string | null | undefined): number {
   return findProvince(label)?.code ?? 7;
 }
 
+/** Strips spaces and dashes; upper-cases the legacy letter prefix. */
+export function normalizeNtn(value: string | null | undefined): string {
+  return (value ?? "").replace(/[\s-]/g, "").toUpperCase();
+}
+
+/** NTN: 7 characters. Older NTNs start with a letter (e.g. A723533, which
+ * FBR's Get_Reg_Type reports as Registered), so the first may be A-Z.
+ * CNIC: 13 digits. */
+const NTN_RE = /^[A-Z0-9]\d{6}$/;
+
+export function isValidSellerNtn(value: string): boolean {
+  const v = normalizeNtn(value);
+  return NTN_RE.test(v) || /^\d{13}$/.test(v);
+}
+
+/** Buyers may also be identified by a 9-digit registration number. */
 export function isValidNtnOrCnic(value: string): boolean {
-  const digits = value.replace(/[\s-]/g, "");
-  return /^\d{7}$/.test(digits) || /^\d{9}$/.test(digits) || /^\d{13}$/.test(digits);
+  const v = normalizeNtn(value);
+  return NTN_RE.test(v) || /^\d{9}$/.test(v) || /^\d{13}$/.test(v);
 }
 
 export function isValidPkMobile(value: string): boolean {

@@ -1,5 +1,5 @@
 import type { FbrInvoiceItem, FbrInvoicePayload, FbrSettings } from "./fbr";
-import { FBR_HS_CODES, findSaleType, isValidNtnOrCnic, toFbrProvince } from "./fbrData";
+import { FBR_HS_CODES, findSaleType, isValidNtnOrCnic, isValidSellerNtn, normalizeNtn, toFbrProvince } from "./fbrData";
 
 export interface FbrItemRow {
   qty: number;
@@ -51,13 +51,15 @@ export function buildFbrPayload(
   settings: FbrSettings,
   allowedUoms: Map<string, string[]> = new Map()
 ): { payload: FbrInvoicePayload } | { error: string } {
-  const buyerNtn = (buyer.ntnCnic ?? "").replace(/[\s-]/g, "");
+  const buyerNtn = normalizeNtn(buyer.ntnCnic);
   const buyerProvince = toFbrProvince(buyer.province || settings.sellerProvince);
 
-  if (!/^\d{7}$|^\d{13}$/.test(settings.sellerNtn)) return { error: "Seller NTN in Settings > FBR must be 7 digits (or CNIC 13 digits)." };
+  if (!isValidSellerNtn(settings.sellerNtn)) {
+    return { error: "Seller NTN in Settings > FBR must be a 7-character NTN (e.g. 1234567 or A123456) or a 13-digit CNIC." };
+  }
   if (!settings.sellerAddress.trim()) return { error: "Seller address is missing in Settings > FBR." };
   if (buyer.registered && !buyerNtn) return { error: "A registered buyer needs an NTN/CNIC on the invoice." };
-  if (buyerNtn && !isValidNtnOrCnic(buyerNtn)) return { error: "Buyer NTN must be 7 or 9 digits, or CNIC 13 digits." };
+  if (buyerNtn && !isValidNtnOrCnic(buyerNtn)) return { error: "Buyer NTN must be 7 characters (e.g. 1234567 or A123456) or 9 digits, or CNIC 13 digits." };
   if (items.length === 0) return { error: "Invoice has no line items." };
 
   const problems: string[] = [];
@@ -122,7 +124,7 @@ export function buildFbrPayload(
     payload: {
       invoiceType: "Sale Invoice",
       invoiceDate,
-      sellerNTNCNIC: settings.sellerNtn,
+      sellerNTNCNIC: normalizeNtn(settings.sellerNtn),
       sellerBusinessName: fbrText(settings.sellerName),
       sellerProvince: toFbrProvince(settings.sellerProvince),
       sellerAddress: fbrText(settings.sellerAddress),

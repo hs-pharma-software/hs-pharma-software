@@ -31,7 +31,7 @@ import {
   fromBaseUnitQty,
 } from "@/lib/uom";
 import { loadFbrSettings } from "@/lib/fbr";
-import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile } from "@/lib/fbrData";
+import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "@/lib/fbrData";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
 
@@ -373,7 +373,7 @@ export function InvoiceFormModal({
       customer_id: customerId || null,
       customer_name: customerName.trim() || null,
       customer_phone: customerPhone.trim() || null,
-      buyer_ntn_cnic: buyerNtn.replace(/[\s-]/g, "") || null,
+      buyer_ntn_cnic: normalizeNtn(buyerNtn) || null,
       buyer_province: buyerProvince || null,
       buyer_address: buyerAddress.trim() || null,
       buyer_registration_type: buyerRegType,
@@ -567,7 +567,7 @@ export function InvoiceFormModal({
               <Input
                 value={buyerNtn}
                 onChange={(e) => setBuyerNtn(e.target.value)}
-                placeholder="NTN (7 digits) or CNIC (13 digits)"
+                placeholder="NTN (e.g. 1234567 or A123456) or CNIC (13 digits)"
               />
             </Field>
             <Field label="Buyer Province" required={fbrEnabled}>
