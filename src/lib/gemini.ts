@@ -1,4 +1,3 @@
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { getSetting, getGlobalSetting } from "./repo/settings";
 
 export const GEMINI_KEY_SETTING = "ai_gemini_api_key";
@@ -106,19 +105,34 @@ function errorMessage(status: number, body: string): string {
   return `Gemini API error ${status}: ${msg.slice(0, 300)}`;
 }
 
-/** One generateContent call, through the Tauri HTTP plugin (allow-listed). */
+/** Use Tauri HTTP plugin when inside the desktop shell; native fetch otherwise. */
+async function httpPost(url: string, apiKey: string, body: string, signal: AbortSignal): Promise<{ ok: boolean; status: number; text(): Promise<string> }> {
+  const opts = {
+    method: "POST" as const,
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body,
+    signal,
+  };
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch(url, opts);
+  }
+  return fetch(url, opts);
+}
+
+/** One generateContent call — works in both Tauri desktop and browser preview. */
 export async function geminiGenerate(req: GeminiRequest, timeoutMs = 60_000, modelOverride?: string): Promise<GeminiResult> {
   const { apiKey, model } = await geminiConfig();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let res: Response;
+  let res: { ok: boolean; status: number; text(): Promise<string> };
   try {
-    res = await tauriFetch(`${BASE}/${modelOverride ?? model}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify(req),
-      signal: controller.signal,
-    });
+    res = await httpPost(
+      `${BASE}/${modelOverride ?? model}:generateContent`,
+      apiKey,
+      JSON.stringify(req),
+      controller.signal,
+    );
   } catch (e) {
     if (controller.signal.aborted) throw new Error("Gemini took too long to answer. Try again.");
     throw new Error(`Could not reach Gemini. Check the internet connection. (${e instanceof Error ? e.message : String(e)})`);
