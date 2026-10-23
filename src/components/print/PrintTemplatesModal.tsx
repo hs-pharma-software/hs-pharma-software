@@ -84,6 +84,8 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
         address: tenant?.address ?? null,
         phone: tenant?.phone ?? null,
         ntn: (ntn ?? "").replace(/[s-]/g, "") || null,
+        stn: null,
+        pra: null,
       });
     })();
   }, [tenantId, sessionTenant?.id, sessionTenant?.name]);
