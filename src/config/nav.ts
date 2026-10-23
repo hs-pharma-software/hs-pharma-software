@@ -40,6 +40,8 @@ import {
 export interface NavChild {
   label: string;
   href: string;
+  /** Only shown to these business types. */
+  onlyFor?: string[];
   /** i18n key (lib/i18n/dict.ts) for translated menus. */
   labelKey?: string;
 }
@@ -108,7 +110,7 @@ export const NAV: NavItem[] = [
       { label: "Customer Detail", href: "/customers" },
       { label: "Accounts Receivable", href: "/customers/receivable" },
       { label: "Outstanding", href: "/customers/outstanding" },
-      { label: "Narcotics", href: "/customers/narcotics" },
+      { label: "Narcotics", href: "/customers/narcotics", onlyFor: ["retail_pharmacy", "medical_store", "distributor"] },
     ],
   },
   {

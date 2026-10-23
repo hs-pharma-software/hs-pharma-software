@@ -131,7 +131,7 @@ export function Sidebar() {
                     className="overflow-hidden bg-black/30"
                   >
                     <div className="pb-1">
-                      {item.children.map((child) => {
+                      {item.children.filter((child) => !child.onlyFor || child.onlyFor.includes(typeId)).map((child) => {
                         const childActive = child.href === activeHref;
                         return (
                           <Link
