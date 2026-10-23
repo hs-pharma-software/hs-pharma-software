@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/authStore";
 import { isTauri } from "@/lib/platform";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
+import { getSetting } from "@/lib/repo/settings";
 import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice, Tenant } from "@/lib/types2";
@@ -47,6 +48,7 @@ export function InvoiceViewModal({
   const [template, setTemplate] = useState<PrintTemplate | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
   const [sellerNtn, setSellerNtn] = useState<string | null>(null);
+  const [companyProfile, setCompanyProfile] = useState<{ ntn: string | null; stn: string | null; contact: string | null; address: string | null; pra: string | null }>({ ntn: null, stn: null, contact: null, address: null, pra: null });
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
   const [fbrInvoiceNo, setFbrInvoiceNo] = useState<string | null>(row.invoice.fbr_invoice_no ?? null);
   const [fbrSubmitting, setFbrSubmitting] = useState(false);
@@ -73,6 +75,23 @@ export function InvoiceViewModal({
         : null,
       tauri ? loadDefaultPaper().then(loadTemplate).then(setTemplate) : setTemplate(structuredClone(DEFAULT_TEMPLATES.a4)),
       tauri ? loadLogo().then(setLogo) : null,
+      tauri
+        ? Promise.all([
+            getSetting("company_ntn"),
+            getSetting("company_stn"),
+            getSetting("company_contact"),
+            getSetting("company_address"),
+            getSetting("company_pra"),
+          ]).then(([ntn, stn, contact, address, pra]) =>
+            setCompanyProfile({
+              ntn: ntn || null,
+              stn: stn || null,
+              contact: contact || null,
+              address: address || null,
+              pra: pra || null,
+            })
+          )
+        : null,
     ]).finally(() => setLoading(false));
   }, [row.invoice.id, row.invoice.original_invoice_id, sessionTenant?.id]);
 
@@ -122,9 +141,11 @@ export function InvoiceViewModal({
   const printData: PrintData = {
     business: {
       name: tenantInfo?.name ?? sessionTenant?.name ?? "Pharmacy",
-      address: tenantInfo?.address ?? null,
-      phone: tenantInfo?.phone ?? null,
-      ntn: sellerNtn,
+      address: companyProfile.address || tenantInfo?.address || null,
+      phone: companyProfile.contact || tenantInfo?.phone || null,
+      ntn: companyProfile.ntn || sellerNtn,
+      stn: companyProfile.stn,
+      pra: companyProfile.pra,
     },
     logo,
     title: inv.is_return ? "RETURN" : template?.paper === "thermal" ? "RECEIPT" : "INVOICE",

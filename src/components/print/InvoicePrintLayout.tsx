@@ -26,7 +26,7 @@ export interface PrintItem {
 }
 
 export interface PrintData {
-  business: { name: string; address: string | null; phone: string | null; ntn: string | null };
+  business: { name: string; address: string | null; phone: string | null; ntn: string | null; stn: string | null; pra: string | null };
   logo: string | null;
   /** "INVOICE", "RECEIPT", "RETURN"... */
   title: string;
@@ -255,6 +255,8 @@ export function InvoicePrintLayout({
         {data.business.address && <div style={sub}>{data.business.address}</div>}
         {data.business.phone && <div style={sub}>Ph: {data.business.phone}</div>}
         {data.business.ntn && <div style={sub}>NTN: {data.business.ntn}</div>}
+        {data.business.stn && <div style={sub}>STN: {data.business.stn}</div>}
+        {data.business.pra && <div style={sub}>PRA: {data.business.pra}</div>}
       </div>
     );
   }

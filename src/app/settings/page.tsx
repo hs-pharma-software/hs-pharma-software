@@ -248,6 +248,88 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
 
 const PROVINCES = FBR_PROVINCES.map((p) => p.label);
 
+function CompanyProfileCard({ tauriReady }: { tauriReady: boolean }) {
+  const tenantName = useAuthStore((s) => s.currentTenant?.name ?? "");
+  const [ntn, setNtn] = useState("");
+  const [stn, setStn] = useState("");
+  const [contact, setContact] = useState("");
+  const [address, setAddress] = useState("");
+  const [pra, setPra] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void Promise.all([
+      getSetting("company_ntn"),
+      getSetting("company_stn"),
+      getSetting("company_contact"),
+      getSetting("company_address"),
+      getSetting("company_pra"),
+    ]).then(([n, s, c, a, p]) => {
+      if (n) setNtn(n);
+      if (s) setStn(s);
+      if (c) setContact(c);
+      if (a) setAddress(a);
+      if (p) setPra(p);
+    });
+  }, []);
+
+  async function save() {
+    await Promise.all([
+      setSetting("company_ntn", ntn.trim()),
+      setSetting("company_stn", stn.trim()),
+      setSetting("company_contact", contact.trim()),
+      setSetting("company_address", address.trim()),
+      setSetting("company_pra", pra.trim()),
+    ]);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-700 text-[10px] font-bold tracking-tight text-white shadow-sm">
+          CO
+        </div>
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">Company Profile</h2>
+          <p className="text-xs text-neutral-400">Shown at the top of every printed invoice</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Company Name">
+          <Input value={tenantName} readOnly className="bg-neutral-50 text-neutral-500 cursor-not-allowed" />
+        </Field>
+        <Field label="Contact No">
+          <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. 0300-1234567" />
+        </Field>
+        <Field label="NTN No">
+          <Input value={ntn} onChange={(e) => setNtn(e.target.value)} placeholder="7-digit NTN" />
+        </Field>
+        <Field label="STN No">
+          <Input value={stn} onChange={(e) => setStn(e.target.value)} placeholder="Sales Tax Number" />
+        </Field>
+        <Field label="PRA No">
+          <Input value={pra} onChange={(e) => setPra(e.target.value)} placeholder="Punjab Revenue Authority No (if applicable)" />
+        </Field>
+        <Field label="Address">
+          <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Business address" />
+        </Field>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3">
+        {saved && <span className="text-xs text-emerald-600">Saved ✓</span>}
+        {!saved && <span />}
+        <Button variant="primary" disabled={!tauriReady} onClick={() => void save()}>
+          Save Changes
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function AiSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(DEFAULT_GEMINI_MODEL);
@@ -673,6 +755,8 @@ export default function GeneralSettingsPage() {
         <StatusPill ok={isCloudinaryConfigured()} label="Cloudinary images" />
         <StatusPill ok={tauriReady} label="Desktop shell" />
       </div>
+
+      <CompanyProfileCard tauriReady={tauriReady} />
 
       {/* Remount after the editor closes: the logo may have changed there. */}
       <PrintSettingsCard key={String(templatesOpen)} tauriReady={tauriReady} onOpenTemplates={() => setTemplatesOpen(true)} />
