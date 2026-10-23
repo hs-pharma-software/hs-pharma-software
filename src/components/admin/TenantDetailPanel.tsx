@@ -18,6 +18,7 @@ import {
   STATUS_LABELS,
   businessType,
   defaultModulesFor,
+  moduleAllowedForType,
   type CapabilityKey,
 } from "@/config/businessTypes";
 
@@ -253,7 +254,7 @@ export function TenantDetailPanel({
             </button>
           </div>
           <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-            {NAV.map((item) => (
+            {NAV.filter((item) => !item.onlyFor || item.onlyFor.includes(typeId)).map((item) => (
               <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
                 <input
                   type="checkbox"
@@ -268,7 +269,14 @@ export function TenantDetailPanel({
         </Section>
 
         <Section title="Permissions" hint="Applies to every login of this pharmacy, owner included.">
-          {(["Invoices", "Purchases", "Restaurant"] as const).map((group) => (
+          {(["Invoices", "Purchases", "Restaurant"] as const)
+            .filter((group) => {
+              if (group === "Restaurant") return typeId === "restaurant";
+              if (group === "Invoices") return moduleAllowedForType(typeId, "invoices");
+              if (group === "Purchases") return moduleAllowedForType(typeId, "purchase");
+              return true;
+            })
+            .map((group) => (
             <div key={group} className="mb-1.5 last:mb-0">
               <p className="mb-1 text-[11px] font-medium text-neutral-500">{group}</p>
               <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
