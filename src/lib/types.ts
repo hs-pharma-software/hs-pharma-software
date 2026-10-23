@@ -94,6 +94,10 @@ export interface Customer extends TenantRow {
   email: string | null;
   phone: string | null;
   cnic_ntn: string | null;
+  ntn: string | null;
+  strn: string | null;
+  registration_type: string | null;
+  business_name: string | null;
   address: string | null;
   area: string | null;
   province: string | null;
@@ -105,6 +109,7 @@ export interface Customer extends TenantRow {
   credit_limit: number | null;
   income_tax_status: string | null;
   sales_tax_status: string | null;
+  fbr_active_status: string | null;
   description: string | null;
 }
 

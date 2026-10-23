@@ -1105,6 +1105,20 @@ fn schema_sql_v32() -> &'static str {
     "#
 }
 
+/// Extended customer / client fields for contractor and FBR compliance (v33).
+/// Splits the combined cnic_ntn field into separate cnic_ntn (CNIC) and ntn
+/// fields, adds strn, registration_type, business_name and fbr_active_status
+/// so contractor tenants can store structured client identity and FBR data.
+fn schema_sql_v33() -> &'static str {
+    r#"
+    ALTER TABLE customers ADD COLUMN ntn TEXT;
+    ALTER TABLE customers ADD COLUMN strn TEXT;
+    ALTER TABLE customers ADD COLUMN registration_type TEXT;
+    ALTER TABLE customers ADD COLUMN business_name TEXT;
+    ALTER TABLE customers ADD COLUMN fbr_active_status TEXT
+    "#
+}
+
 /// Tenant ownership for the catalog that used to be shared by every tenant
 /// (products, categories, sub categories, units, generic names). Additive
 /// only: existing rows keep tenant_id NULL here, which no tenant query
@@ -1667,6 +1681,12 @@ pub fn run() {
             version: 32,
             description: "backfill_catalog_group",
             sql: schema_sql_v32(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 33,
+            description: "customer_contractor_fields",
+            sql: schema_sql_v33(),
             kind: MigrationKind::Up,
         },
     ];
