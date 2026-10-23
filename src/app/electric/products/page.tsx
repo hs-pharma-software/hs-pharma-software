@@ -1,18 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { pick, useT } from "@/lib/i18n";
 import { electric, errorText } from "@/lib/electric";
-import { SERIAL_DEFAULT, SPEC_FIELDS, cleanSerials, type ProductType } from "@/lib/electric/engine";
-import { DEFAULT_UNITS, ES_SETTINGS, type EsProduct } from "@/lib/electric/store";
-import { Err, EsGuard, Id, PageTitle, Txt, money, useLoad } from "@/components/electric/ui";
-import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
-
-const TYPES: ProductType[] = ["general", "electrical", "cable", "solar_panel", "inverter", "battery", "electronics"];
+import type { EsProduct } from "@/lib/electric/store";
+import { Err, EsGuard, Id, Note, PageTitle, Txt, money, useLoad } from "@/components/electric/ui";
 
 export default function ProductsPage() {
   return (
@@ -22,219 +18,211 @@ export default function ProductsPage() {
   );
 }
 
+const PRODUCT_TYPES = ["general", "electrical", "cable", "solar_panel", "inverter", "battery", "electronics"] as const;
+
 function Products() {
   const t = useT();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [type, setType] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [stockFilter, setStockFilter] = useState<"" | "low" | "out">("");
-  const [editing, setEditing] = useState<EsProduct | "new" | null>(null);
-  const cats = useLoad(() => electric.listCategories(), []);
-  const list = useLoad(() => electric.listProducts({ search, categoryId: categoryId || null, type: type || null, includeInactive: true, stockFilter: stockFilter || null }), [search, categoryId, type, stockFilter]);
-  const [error, setError] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [editing, setEditing] = useState<Partial<EsProduct> | null>(null);
+
+  const categories = useLoad(() => electric.listCategories(true), []);
+  const list = useLoad(
+    () =>
+      electric.listProducts({
+        search: search || undefined,
+        categoryId: categoryId || null,
+        type: typeFilter || null,
+        stockFilter: (stockFilter as "low" | "out") || null,
+        includeInactive: showInactive,
+      }),
+    [search, categoryId, typeFilter, stockFilter, showInactive]
+  );
+
   return (
     <div className="space-y-3">
       <PageTitle
         title={t("p.title")}
         actions={
-          <>
-            <Button variant="primary" onClick={() => setEditing("new")}>
-              <Plus size={14} /> {t("p.add")}
-            </Button>
-            <Button
-              onClick={() => {
-                const data = list.data ?? [];
-                exportCsv(
-                  `products-${new Date().toISOString().slice(0,10)}.csv`,
-                  ["SKU","Name","Category","Type","Brand","Model","Unit","Price","Stock"],
-                  data.map((p) => [p.sku, pick(t.lang, p.name, p.name_ur), pick(t.lang, p.category_name ?? "", p.category_name_ur), p.product_type, p.brand, p.model, p.unit, p.price, p.stock])
-                );
-              }}
-            >
-              Export CSV
-            </Button>
-            <Button
-              onClick={() => {
-                const headers = ["SKU","Name (English)*","Name (Urdu)","Category","Type*","Brand","Model","Unit*","Cost Price","Sale Price","Min Stock Level"];
-                const sample = [
-                  ["ELEC-001","LED Bulb 18W","ایل ای ڈی بلب","Lighting","electrical","Philips","PH-18W","Piece","85.00","120.00","10"],
-                  ["SOL-001","Solar Panel 150W","سولر پینل","Solar","solar_panel","Longi","LR4-150","Panel","15000.00","18000.00","2"],
-                  ["","(* = required)","","","general/electrical/cable/solar_panel/inverter/battery/electronics","","","","","",""],
-                ];
-                downloadCsv("products-import-sample.csv", buildCsv(headers, sample));
-              }}
-            >
-              Sample File
-            </Button>
-          </>
+          <Button variant="primary" onClick={() => setEditing({ is_active: 1, product_type: "general", unit: "pcs", purchase_factor: 1, tax_rate: 0 })}>
+            <Plus size={14} /> {t("p.add")}
+          </Button>
         }
       />
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="min-w-64 flex-1">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("c.searchProducts")} />
-        </div>
-        <Select className="!w-56" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-          <option value="">
-            {t("p.category")}: {t("c.all")}
-          </option>
-          {(cats.data ?? []).map((c) => (
+
+      <div className="flex flex-wrap gap-2">
+        <Input
+          className="!w-72"
+          placeholder={t("c.searchProducts")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Select className="!w-48" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">{t("p.category")}: {t("c.all")}</option>
+          {(categories.data ?? []).map((c) => (
             <option key={c.id} value={c.id}>
               {pick(t.lang, c.name, c.name_ur)}
             </option>
           ))}
         </Select>
-        <Select className="!w-44" value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="">
-            {t("p.type")}: {t("c.all")}
-          </option>
-          {TYPES.map((ty) => (
-            <option key={ty} value={ty}>
-              {t(`type.${ty}`)}
-            </option>
+        <Select className="!w-44" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="">{t("p.type")}: {t("c.all")}</option>
+          {PRODUCT_TYPES.map((tp) => (
+            <option key={tp} value={tp}>{t(`type.${tp}`)}</option>
           ))}
         </Select>
-        <Select className="!w-36" value={stockFilter} onChange={(e) => setStockFilter(e.target.value as "" | "low" | "out")}>
-          <option value="">{t("c.all")}</option>
+        <Select className="!w-40" value={stockFilter} onChange={(e) => setStockFilter(e.target.value as "" | "low" | "out")}>
+          <option value="">{t("p.stock")}: {t("c.all")}</option>
           <option value="low">{t("p.low")}</option>
           <option value="out">{t("p.out")}</option>
         </Select>
+        <label className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          {t("c.inactive")}
+        </label>
       </div>
-      <Err error={list.error ?? error} />
+
+      <Err error={list.error} />
+
       <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-black/5">
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-xs text-neutral-500">
             <tr>
               <th className="px-3 py-2 text-start">{t("p.sku")}</th>
-              <th className="px-3 py-2 text-start">{t("c.name")}</th>
+              <th className="px-3 py-2 text-start">{t("p.name")}</th>
               <th className="px-3 py-2 text-start">{t("p.category")}</th>
               <th className="px-3 py-2 text-start">{t("p.type")}</th>
-              <th className="px-3 py-2 text-start">{t("p.model")}</th>
               <th className="px-3 py-2 text-end">{t("p.price")}</th>
               <th className="px-3 py-2 text-end">{t("p.stock")}</th>
+              <th className="px-3 py-2 text-start">{t("c.status")}</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
             {(list.data ?? []).map((p) => (
-              <tr key={p.id} className={`border-t border-neutral-100 ${p.is_active ? "" : "opacity-50"}`}>
-                <td className="px-3 py-2"><Id>{p.sku}</Id></td>
+              <tr key={p.id} className={`border-t border-neutral-100 ${!p.is_active ? "opacity-50" : ""}`}>
+                <td className="px-3 py-2 text-xs">
+                  <Id>{p.sku}</Id>
+                  {p.barcode && <span className="block text-[10px] text-neutral-400"><Id>{p.barcode}</Id></span>}
+                </td>
                 <td className="px-3 py-2">
-                  <div className="font-medium"><Txt>{pick(t.lang, p.name, p.name_ur)}</Txt></div>
-                  {p.brand && <div className="text-[11px] text-neutral-500"><Txt>{p.brand}</Txt></div>}
+                  <span className="font-medium"><Txt>{p.name}</Txt></span>
+                  {p.name_ur && <span className="block font-urdu text-[12px]" dir="rtl">{p.name_ur}</span>}
+                  {(p.brand || p.model) && (
+                    <span className="block text-[11px] text-neutral-400">
+                      {[p.brand, p.model].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
                 </td>
-                <td className="px-3 py-2 text-xs"><Txt>{pick(t.lang, p.category_name ?? "", p.category_name_ur)}</Txt></td>
+                <td className="px-3 py-2 text-xs">{p.category_name ?? "—"}</td>
                 <td className="px-3 py-2 text-xs">{t(`type.${p.product_type}`)}</td>
-                <td className="px-3 py-2 text-xs"><Id>{p.model}</Id></td>
-                <td className="px-3 py-2 text-end">{money(p.price)}</td>
-                <td className={`px-3 py-2 text-end font-medium ${p.stock <= 0 ? "text-rose-600" : p.reorder_level > 0 && p.stock <= p.reorder_level ? "text-amber-600" : ""}`}>
-                  <Id>{p.stock}</Id> <span className="text-xs text-neutral-500">{p.unit}</span>
+                <td className="px-3 py-2 text-end text-xs font-semibold">{money(p.price)}</td>
+                <td className={`px-3 py-2 text-end text-xs font-semibold ${p.stock <= 0 ? "text-rose-600" : p.reorder_level > 0 && p.stock <= p.reorder_level ? "text-amber-600" : ""}`}>
+                  {p.stock} {p.unit}
                 </td>
-                <td className="px-3 py-2 text-end whitespace-nowrap">
-                  <Button variant="ghost" onClick={() => setEditing(p)}><Pencil size={14} /></Button>
-                  <Button
-                    variant="ghost"
-                    onClick={async () => {
-                      if (!confirm(`${t("c.delete")}: ${p.name}?`)) return;
-                      try {
-                        await electric.deleteProduct(p.id);
-                        setError(null);
-                        void list.reload();
-                      } catch (e) {
-                        setError(errorText(e));
-                      }
-                    }}
-                  >
-                    <Trash2 size={14} />
+                <td className="px-3 py-2 text-xs">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${p.is_active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>
+                    {p.is_active ? t("c.active") : t("c.inactive")}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-end">
+                  <Button variant="ghost" onClick={() => setEditing(p)}>
+                    <Pencil size={14} />
                   </Button>
                 </td>
               </tr>
             ))}
             {!list.data?.length && (
-              <tr><td colSpan={8} className="py-8 text-center text-neutral-400">{list.loading ? t("c.loading") : t("c.empty")}</td></tr>
+              <tr>
+                <td colSpan={8} className="py-8 text-center text-neutral-400">
+                  {list.loading ? t("c.loading") : t("c.empty")}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
-      {editing && <ProductModal product={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void list.reload(); }} />}
+
+      {editing && (
+        <ProductModal
+          value={editing}
+          categories={categories.data ?? []}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void list.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-type Form = Record<string, string | boolean>;
-
-function ProductModal({ product, onClose, onSaved }: { product: EsProduct | null; onClose: () => void; onSaved: () => void }) {
+function ProductModal({
+  value,
+  categories,
+  onClose,
+  onSaved,
+}: {
+  value: Partial<EsProduct> & { opening?: { qty: number; unitCost: number; serials?: string[] } };
+  categories: { id: string; name: string; name_ur: string | null }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const t = useT();
-  const cats = useLoad(() => electric.listCategories(), []);
-  const suppliers = useLoad(() => electric.listParties("supplier"), []);
-  const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
-  const s = (v: unknown) => (v == null ? "" : String(v));
-  const [f, setF] = useState<Form>(() => ({
-    name: s(product?.name), name_ur: s(product?.name_ur), sku: s(product?.sku), barcode: s(product?.barcode),
-    category_id: s(product?.category_id), product_type: product?.product_type ?? "general",
-    brand: s(product?.brand), manufacturer: s(product?.manufacturer), model: s(product?.model),
-    description: s(product?.description), description_ur: s(product?.description_ur),
-    unit: product?.unit ?? "pcs", purchase_unit: s(product?.purchase_unit), purchase_factor: s(product?.purchase_factor ?? 1),
-    cost: s(product?.cost ?? ""), price: s(product?.price ?? ""), wholesale_price: s(product?.wholesale_price), min_price: s(product?.min_price),
-    tax_rate: s(product?.tax_rate ?? ""), supplier_id: s(product?.supplier_id), reorder_level: s(product?.reorder_level ?? ""), location: s(product?.location),
-    is_active: product ? !!product.is_active : true, serial_tracked: product ? !!product.serial_tracked : false,
-    warranty_mfr_months: s(product?.warranty_mfr_months), warranty_seller_months: s(product?.warranty_seller_months),
-    hs_code: s(product?.hs_code), fbr_sale_type: s(product?.fbr_sale_type), fbr_uom: s(product?.fbr_uom), sro_no: s(product?.sro_no), sro_item_serial_no: s(product?.sro_item_serial_no),
-    opening_qty: "", opening_cost: "", opening_serials: "",
-  }));
-  const [specs, setSpecs] = useState<Record<string, string>>(() => {
-    try {
-      return product?.specs ? (JSON.parse(product.specs) as Record<string, string>) : {};
-    } catch {
-      return {};
-    }
-  });
+  const isNew = !value.id;
+  const [v, setV] = useState<Partial<EsProduct> & { openingQty?: number; openingCost?: number; openingSerials?: string }>(value);
+  const [tab, setTab] = useState<"basic" | "pricing" | "warranty">("basic");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const set = (k: string, v: string | boolean) => setF((x) => ({ ...x, [k]: v }));
-  const type = f.product_type as ProductType;
 
-  useEffect(() => {
-    void electric.settings.get(ES_SETTINGS.units).then((v) => {
-      const list = v ? v.split(",").map((x) => x.trim()).filter(Boolean) : [];
-      if (list.length) setUnits(list);
-    });
-    if (!product) void electric.settings.get(ES_SETTINGS.defaultTax).then((v) => v && setF((x) => ({ ...x, tax_rate: x.tax_rate || v })));
-  }, [product]);
+  const suppliers = useLoad(() => electric.listParties("supplier"), []);
 
-  const txt = (k: string, label: string, opts: { required?: boolean; dir?: "ltr" | "auto"; type?: string; urdu?: boolean } = {}) => (
+  const n = (k: keyof EsProduct, label: string, opts: { required?: boolean; step?: string } = {}) => (
     <Field label={label} required={opts.required}>
       <Input
-        type={opts.type ?? "text"}
-        step={opts.type === "number" ? "any" : undefined}
-        min={opts.type === "number" ? "0" : undefined}
-        dir={opts.urdu ? "rtl" : opts.dir ?? "auto"}
-        className={opts.urdu ? "font-urdu" : ""}
-        value={String(f[k] ?? "")}
-        onChange={(e) => set(k, e.target.value)}
+        type="number"
+        min="0"
+        step={opts.step ?? "any"}
+        value={v[k] == null ? "" : String(v[k])}
+        onChange={(e) => setV({ ...v, [k]: e.target.value === "" ? null : Number(e.target.value) } as typeof v)}
       />
     </Field>
   );
-  const num = (v: string | boolean) => (v === "" ? null : Number(v));
+
+  const f = (k: keyof EsProduct, label: string, opts: { required?: boolean; dir?: string; cls?: string } = {}) => (
+    <Field label={label} required={opts.required}>
+      <Input
+        dir={opts.dir}
+        className={opts.cls}
+        value={v[k] == null ? "" : String(v[k])}
+        onChange={(e) => setV({ ...v, [k]: e.target.value || null } as typeof v)}
+      />
+    </Field>
+  );
 
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      const openingQty = Number(f.opening_qty) || 0;
+      // Strip form-only fields before passing to the store.
+      const { openingQty, openingCost, openingSerials, ...productData } = v;
       await electric.saveProduct({
-        id: product?.id,
-        name: String(f.name), name_ur: String(f.name_ur) || null, sku: String(f.sku), barcode: String(f.barcode) || null,
-        category_id: String(f.category_id) || null, product_type: type,
-        brand: String(f.brand) || null, manufacturer: String(f.manufacturer) || null, model: String(f.model) || null,
-        description: String(f.description) || null, description_ur: String(f.description_ur) || null,
-        unit: String(f.unit), purchase_unit: String(f.purchase_unit) || null, purchase_factor: Number(f.purchase_factor) || 1,
-        cost: Number(f.cost) || 0, price: Number(f.price) || 0, wholesale_price: num(f.wholesale_price), min_price: num(f.min_price),
-        tax_rate: Number(f.tax_rate) || 0, supplier_id: String(f.supplier_id) || null, reorder_level: Number(f.reorder_level) || 0, location: String(f.location) || null,
-        is_active: f.is_active ? 1 : 0, serial_tracked: f.serial_tracked ? 1 : 0,
-        warranty_mfr_months: num(f.warranty_mfr_months), warranty_seller_months: num(f.warranty_seller_months),
-        hs_code: String(f.hs_code) || null, fbr_sale_type: String(f.fbr_sale_type) || null, fbr_uom: String(f.fbr_uom) || null, sro_no: String(f.sro_no) || null, sro_item_serial_no: String(f.sro_item_serial_no) || null,
-        specs,
-        opening: !product && openingQty > 0 ? { qty: openingQty, unitCost: Number(f.opening_cost) || Number(f.cost) || 0, serials: cleanSerials(String(f.opening_serials).split(/[\n,]+/)) } : null,
+        ...productData,
+        specs: productData.specs ?? null,
+        opening:
+          isNew && (openingQty ?? 0) > 0
+            ? {
+                qty: Number(openingQty),
+                unitCost: Number(openingCost ?? 0),
+                serials: openingSerials
+                  ? openingSerials.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+                  : [],
+              }
+            : null,
       });
       onSaved();
     } catch (e) {
@@ -244,144 +232,149 @@ function ProductModal({ product, onClose, onSaved }: { product: EsProduct | null
     }
   };
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <fieldset className="rounded-xl border border-neutral-200 p-3">
-      <legend className="px-1 text-xs font-semibold text-neutral-600">{title}</legend>
-      <div className="grid gap-2 md:grid-cols-3">{children}</div>
-    </fieldset>
-  );
+  const tabs = [
+    { key: "basic" as const, label: t("p.basic") },
+    { key: "pricing" as const, label: t("p.pricing") },
+    { key: "warranty" as const, label: t("p.warranty") },
+  ];
 
   return (
-    <Modal title={product ? t("p.edit") : t("p.add")} onClose={onClose} width="max-w-4xl">
-      <div className="max-h-[75vh] space-y-3 overflow-y-auto pe-1">
-        {Section({
-          title: t("p.basic"),
-          children: (
-            <>
-              <Field label={t("p.type")} required>
-                <Select
-                  value={type}
-                  onChange={(e) => {
-                    const nt = e.target.value as ProductType;
-                    setF((x) => ({ ...x, product_type: nt, serial_tracked: product ? x.serial_tracked : SERIAL_DEFAULT[nt], unit: !product && nt === "cable" ? "m" : x.unit, purchase_unit: !product && nt === "cable" && !x.purchase_unit ? "roll" : x.purchase_unit }));
-                  }}
-                >
-                  {TYPES.map((ty) => <option key={ty} value={ty}>{t(`type.${ty}`)}</option>)}
-                </Select>
-              </Field>
-              {txt("name", t("p.name"), { required: true })}
-              {txt("name_ur", t("p.nameUr"), { urdu: true })}
-              {txt("sku", t("p.sku"), { required: true, dir: "ltr" })}
-              {txt("barcode", t("p.barcode"), { dir: "ltr" })}
-              <Field label={t("p.category")}>
-                <Select value={String(f.category_id)} onChange={(e) => set("category_id", e.target.value)}>
-                  <option value="">{t("c.none")}</option>
-                  {(cats.data ?? []).map((c) => <option key={c.id} value={c.id}>{pick(t.lang, c.name, c.name_ur)}</option>)}
-                </Select>
-              </Field>
-              {txt("brand", t("p.brand"))}
-              {txt("manufacturer", t("p.manufacturer"))}
-              {txt("model", t("p.model"), { dir: "ltr" })}
-              <div className="md:col-span-3 grid gap-2 md:grid-cols-2">
-                <Field label={t("p.description")}><Textarea rows={2} value={String(f.description)} onChange={(e) => set("description", e.target.value)} dir="auto" /></Field>
-                <Field label={t("p.descriptionUr")}><Textarea rows={2} className="font-urdu" dir="rtl" value={String(f.description_ur)} onChange={(e) => set("description_ur", e.target.value)} /></Field>
-              </div>
-            </>
-          ),
-        })}
-        {SPEC_FIELDS[type].length > 0 &&
-          Section({
-            title: `${t("p.specs")} — ${t(`type.${type}`)}`,
-            children: SPEC_FIELDS[type].map((sf) => (
-              <Field key={sf.key} label={`${t(sf.label)}${sf.unit ? ` (${sf.unit})` : ""}`}>
-                {sf.kind === "select" ? (
-                  <Select value={specs[sf.key] ?? ""} onChange={(e) => setSpecs({ ...specs, [sf.key]: e.target.value })}>
-                    <option value="">—</option>
-                    {sf.options!.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </Select>
-                ) : (
-                  <Input type={sf.kind === "number" ? "number" : "text"} min="0" step="any" dir="ltr" value={specs[sf.key] ?? ""} onChange={(e) => setSpecs({ ...specs, [sf.key]: e.target.value })} />
-                )}
-              </Field>
-            )),
-          })}
-        {Section({
-          title: t("p.pricing"),
-          children: (
-            <>
-              <Field label={t("p.unit")} required>
-                <Select value={String(f.unit)} onChange={(e) => set("unit", e.target.value)}>
-                  {[...new Set([...units, String(f.unit)])].map((u) => <option key={u} value={u}>{u}</option>)}
-                </Select>
-              </Field>
-              <Field label={t("p.purchaseUnit")}>
-                <Select value={String(f.purchase_unit)} onChange={(e) => set("purchase_unit", e.target.value)}>
-                  <option value="">{t("c.none")}</option>
-                  {[...new Set([...units, String(f.purchase_unit)].filter(Boolean))].map((u) => <option key={u} value={u}>{u}</option>)}
-                </Select>
-              </Field>
-              {f.purchase_unit ? txt("purchase_factor", `${t("p.factor")} (1 ${f.purchase_unit} = ? ${f.unit})`, { type: "number" }) : <div />}
-              {txt("cost", t("p.cost"), { type: "number" })}
-              {txt("price", t("p.price"), { type: "number", required: true })}
-              {txt("wholesale_price", t("p.wholesale"), { type: "number" })}
-              {txt("min_price", t("p.minPrice"), { type: "number" })}
-              {txt("tax_rate", t("p.tax"), { type: "number" })}
-              {txt("reorder_level", t("p.reorder"), { type: "number" })}
-              {txt("location", t("p.location"))}
-              <Field label={t("p.supplier")}>
-                <Select value={String(f.supplier_id)} onChange={(e) => set("supplier_id", e.target.value)}>
-                  <option value="">{t("c.none")}</option>
-                  {(suppliers.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                </Select>
-              </Field>
-              <label className="flex items-center gap-2 self-end pb-2 text-sm">
-                <input type="checkbox" checked={!!f.is_active} onChange={(e) => set("is_active", e.target.checked)} /> {t("p.isActive")}
-              </label>
-              {!product && (
-                <>
-                  {txt("opening_qty", `${t("p.opening")} (${f.unit})`, { type: "number" })}
-                  {txt("opening_cost", t("p.openingCost"), { type: "number" })}
-                </>
-              )}
-            </>
-          ),
-        })}
-        {Section({
-          title: t("p.warranty"),
-          children: (
-            <>
-              <label className="flex items-center gap-2 self-end pb-2 text-sm">
-                <input type="checkbox" checked={!!f.serial_tracked} disabled={!!product && product.stock !== 0} onChange={(e) => set("serial_tracked", e.target.checked)} /> {t("p.serialTracked")}
-              </label>
-              {txt("warranty_mfr_months", t("p.warrantyMfr"), { type: "number" })}
-              {txt("warranty_seller_months", t("p.warrantySeller"), { type: "number" })}
-              {!product && !!f.serial_tracked && Number(f.opening_qty) > 0 && (
-                <div className="md:col-span-3">
-                  <Field label={`${t("p.serials")} — ${Number(f.opening_qty)}`}>
-                    <Textarea rows={3} dir="ltr" className="font-mono text-xs" value={String(f.opening_serials)} onChange={(e) => set("opening_serials", e.target.value)} />
-                  </Field>
-                </div>
-              )}
-            </>
-          ),
-        })}
-        {Section({
-          title: t("p.fbr"),
-          children: (
-            <>
-              {txt("hs_code", "HS Code", { dir: "ltr" })}
-              {txt("fbr_sale_type", "Sale Type", { dir: "ltr" })}
-              {txt("fbr_uom", "FBR UoM", { dir: "ltr" })}
-              {txt("sro_no", "SRO / Schedule No", { dir: "ltr" })}
-              {txt("sro_item_serial_no", "SRO Item Serial No", { dir: "ltr" })}
-            </>
-          ),
-        })}
-        <Err error={error} />
+    <Modal title={isNew ? t("p.add") : t("p.edit")} onClose={onClose} width="max-w-3xl">
+      <div className="flex gap-1 border-b border-neutral-200 pb-0 mb-3">
+        {tabs.map((tb) => (
+          <button
+            key={tb.key}
+            type="button"
+            onClick={() => setTab(tb.key)}
+            className={`rounded-t px-4 py-1.5 text-sm font-medium transition-colors ${tab === tb.key ? "bg-neutral-900 text-white" : "text-neutral-600 hover:text-neutral-900"}`}
+          >
+            {tb.label}
+          </button>
+        ))}
       </div>
-      <div className="mt-3 flex justify-end gap-2">
+
+      <div className="max-h-[60vh] overflow-y-auto pe-1">
+        {tab === "basic" && (
+          <div className="grid gap-3 md:grid-cols-3">
+            {f("name", t("p.name"), { required: true })}
+            {f("name_ur", t("p.nameUr"), { dir: "rtl", cls: "font-urdu" })}
+            {f("sku", t("p.sku"), { required: true })}
+            {f("barcode", t("p.barcode"))}
+            <Field label={t("p.category")}>
+              <Select value={v.category_id ?? ""} onChange={(e) => setV({ ...v, category_id: e.target.value || null })}>
+                <option value="">—</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {pick(t.lang, c.name, c.name_ur)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={t("p.type")}>
+              <Select value={v.product_type ?? "general"} onChange={(e) => setV({ ...v, product_type: e.target.value as EsProduct["product_type"] })}>
+                {PRODUCT_TYPES.map((tp) => (
+                  <option key={tp} value={tp}>{t(`type.${tp}`)}</option>
+                ))}
+              </Select>
+            </Field>
+            {f("brand", t("p.brand"))}
+            {f("model", t("p.model"))}
+            {f("manufacturer", t("p.manufacturer"))}
+            <Field label={t("p.unit")} required>
+              <Input
+                value={v.unit ?? ""}
+                onChange={(e) => setV({ ...v, unit: e.target.value })}
+                placeholder="pcs, m, kW…"
+              />
+            </Field>
+            {f("purchase_unit", t("p.purchaseUnit"))}
+            {n("purchase_factor", t("p.factor"))}
+            <Field label={t("p.image")}><Input value={v.image ?? ""} onChange={(e) => setV({ ...v, image: e.target.value || null })} /></Field>
+            {f("location", t("p.location"))}
+            <Field label={t("p.description")}>
+              <Textarea rows={2} value={v.description ?? ""} onChange={(e) => setV({ ...v, description: e.target.value || null })} />
+            </Field>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm md:col-span-3">
+              <input type="checkbox" checked={!!v.is_active} onChange={(e) => setV({ ...v, is_active: e.target.checked ? 1 : 0 })} />
+              {t("p.isActive")}
+            </label>
+          </div>
+        )}
+
+        {tab === "pricing" && (
+          <div className="grid gap-3 md:grid-cols-3">
+            {n("price", t("p.price"), { required: true })}
+            {n("wholesale_price", t("p.wholesale"))}
+            {n("min_price", t("p.minPrice"))}
+            {n("cost", t("p.cost"))}
+            {n("tax_rate", t("p.tax"))}
+            {n("reorder_level", t("p.reorder"))}
+            <Field label={t("p.supplier")}>
+              <Select value={v.supplier_id ?? ""} onChange={(e) => setV({ ...v, supplier_id: e.target.value || null })}>
+                <option value="">—</option>
+                {(suppliers.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </Select>
+            </Field>
+            {isNew && (
+              <>
+                <Note tone="neutral">
+                  <span className="block text-xs font-semibold mb-1">{t("p.opening")}</span>
+                  <span className="text-xs text-neutral-500">Set opening stock and cost when creating this product.</span>
+                </Note>
+                <Field label={t("p.opening")}>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={v.openingQty ?? ""}
+                    onChange={(e) => setV({ ...v, openingQty: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  />
+                </Field>
+                <Field label={t("p.openingCost")}>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={v.openingCost ?? ""}
+                    onChange={(e) => setV({ ...v, openingCost: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  />
+                </Field>
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === "warranty" && (
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm md:col-span-2">
+              <input type="checkbox" checked={!!v.serial_tracked} onChange={(e) => setV({ ...v, serial_tracked: e.target.checked ? 1 : 0 })} />
+              {t("p.serialTracked")}
+            </label>
+            {n("warranty_mfr_months", t("p.warrantyMfr"))}
+            {n("warranty_seller_months", t("p.warrantySeller"))}
+            {isNew && !!v.serial_tracked && (v.openingQty ?? 0) > 0 && (
+              <Field label={t("p.serials")} required>
+                <Textarea
+                  rows={4}
+                  dir="ltr"
+                  placeholder={"SN001\nSN002\nSN003"}
+                  value={v.openingSerials ?? ""}
+                  onChange={(e) => setV({ ...v, openingSerials: e.target.value })}
+                />
+              </Field>
+            )}
+          </div>
+        )}
+      </div>
+
+      <Err error={error} />
+      <div className="mt-3 flex justify-end gap-2 border-t border-neutral-100 pt-3">
         <Button onClick={onClose}>{t("c.cancel")}</Button>
-        <Button variant="primary" disabled={busy} onClick={() => void save()}>{t("c.save")}</Button>
+        <Button variant="primary" disabled={busy} onClick={() => void save()}>
+          {t("c.save")}
+        </Button>
       </div>
     </Modal>
   );

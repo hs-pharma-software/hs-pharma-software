@@ -431,8 +431,9 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     advanced: ["Serial & warranty tracking", "Repair job cards", "Instalment plans", "Solar system packages"],
     // Own catalog, sales, purchases, stock and parties come from the store
     // module (config/nav.ts onlyFor); pharmacy product/stock screens are not used.
+    // Also exclude generic customers/suppliers — the store uses es_parties for both.
     defaultModules: ["dashboard", "cash_register", "banks", "expenses", "staff", "utilities", "settings"],
-    excludedModules: PHARMACY_CATALOG_MODULES,
+    excludedModules: [...PHARMACY_CATALOG_MODULES, "customers", "suppliers"],
     planned: ["Installation / service items", "Repair job cards", "Instalment plans", "Branch-wise stock"],
   },
   {
@@ -466,8 +467,9 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     mvp: ["Companies & catalog", "Customers with geotag", "Salesmen, targets, location", "Bookings -> invoices", "WHT"],
     advanced: ["Live salesman map", "Permission matrix per sub-user", "Audit log"],
     // Distribution sections come from config/nav.ts onlyFor; pharmacy catalog screens are not used.
+    // Also exclude generic customers/suppliers — distributors use dist_customers and dist_purchases.
     defaultModules: ["dashboard", "cash_register", "banks", "expenses", "staff", "utilities", "settings"],
-    excludedModules: PHARMACY_CATALOG_MODULES,
+    excludedModules: [...PHARMACY_CATALOG_MODULES, "customers", "suppliers"],
     planned: ["Batch / expiry stock per product", "Delivery challans and van loads", "Bonus schemes and principal claims", "Background tracking app (native)"],
   },
   {

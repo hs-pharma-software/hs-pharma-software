@@ -90,6 +90,49 @@ export async function giveProductsToTenant(productIds: string[], tenantId: strin
   return n;
 }
 
+// ── Tenant catalog views (super admin only) ──────────────────────────────────
+
+export interface TenantProductRow extends UnownedProductRow {
+  tenant_id: string;
+  tenant_name: string;
+}
+
+/** All products belonging to tenants of the given business type. */
+export async function listProductsByBusinessType(typeId: string): Promise<TenantProductRow[]> {
+  requireSuperAdmin();
+  // Tenants with no business_type stored default to retail_pharmacy
+  const typeFilter =
+    typeId === "retail_pharmacy"
+      ? `(t.business_type = 'retail_pharmacy' OR t.business_type IS NULL OR t.business_type = '')`
+      : `t.business_type = ?`;
+  const params: unknown[] = typeId === "retail_pharmacy" ? [] : [typeId];
+  return dbSelect<TenantProductRow>(
+    `SELECT p.*, c.name AS category_name, u.name AS unit_name, t.name AS tenant_name
+     FROM products p
+     JOIN tenants t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+     LEFT JOIN categories c ON c.id = p.category_id AND c.tenant_id = p.tenant_id
+     LEFT JOIN uoms u ON u.id = p.base_unit_id AND u.tenant_id = p.tenant_id
+     WHERE p.tenant_id IS NOT NULL AND p.deleted_at IS NULL AND ${typeFilter}
+     ORDER BY t.name, p.name`,
+    params
+  );
+}
+
+/** Product counts per business type (for tab badges). */
+export async function catalogCountsByType(): Promise<Record<string, number>> {
+  requireSuperAdmin();
+  const rows = await dbSelect<{ btype: string; n: number }>(
+    `SELECT COALESCE(NULLIF(TRIM(t.business_type),''), 'retail_pharmacy') AS btype, COUNT(p.id) AS n
+     FROM products p
+     JOIN tenants t ON t.id = p.tenant_id AND t.deleted_at IS NULL
+     WHERE p.tenant_id IS NOT NULL AND p.deleted_at IS NULL
+     GROUP BY btype`
+  );
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.btype] = r.n;
+  return out;
+}
+
 export async function deleteUnownedProduct(id: string): Promise<void> {
   requireSuperAdmin();
   const ts = nowIso();
