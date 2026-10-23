@@ -11,11 +11,9 @@ export const BILLORI_ENABLED_SETTING = "billori_enabled";
 
 /** Text models offered in Settings. */
 export const GEMINI_MODELS = [
-  { id: "gemini-2.5-flash",    label: "Gemini 2.5 Flash (recommended)" },
-  { id: "gemini-2.5-pro",      label: "Gemini 2.5 Pro (most capable)" },
-  { id: "gemini-2.0-flash",    label: "Gemini 2.0 Flash" },
-  { id: "gemini-1.5-flash",    label: "Gemini 1.5 Flash" },
-  { id: "gemini-1.5-flash-8b", label: "Gemini 1.5 Flash-8B (fastest, highest free limits)" },
+  { id: "gemini-3.8-flash",      label: "Gemini 3.8 Flash (recommended)" },
+  { id: "gemini-3.6-flash",      label: "Gemini 3.6 Flash" },
+  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (fastest, highest free limits)" },
 ];
 export const DEFAULT_GEMINI_MODEL = GEMINI_MODELS[0].id;
 
