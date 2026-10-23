@@ -19,6 +19,24 @@ export async function getSetting(key: string, tenantId?: string): Promise<string
   return rows[0]?.value ?? null;
 }
 
+/** Reads a global (non-tenant-scoped) setting — used for admin-level keys
+ * that apply to all tenants (e.g. Billori AI key). */
+export async function getGlobalSetting(key: string): Promise<string | null> {
+  const rows = await dbSelect<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, [key]);
+  return rows[0]?.value ?? null;
+}
+
+/** Writes a global (non-tenant-scoped) setting. */
+export async function setGlobalSetting(key: string, value: string): Promise<void> {
+  const ts = nowIso();
+  await dbExecute(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [key, value, ts]
+  );
+  await recordOutbox("settings", key, "update", { key, value, updated_at: ts });
+}
+
 export async function setSetting(key: string, value: string, tenantId?: string): Promise<void> {
   const ts = nowIso();
   const fullKey = scopedKey(key, tenantId);

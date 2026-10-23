@@ -11,7 +11,7 @@ import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
 import { FBR_PROVINCES } from "@/lib/fbrData";
-import { DEFAULT_GEMINI_MODEL, GEMINI_KEY_SETTING, GEMINI_MODELS, GEMINI_MODEL_SETTING, testGemini } from "@/lib/gemini";
+import { BILLORI_ENABLED_SETTING } from "@/lib/gemini";
 import { useAuthStore } from "@/store/authStore";
 import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
 import {
@@ -330,101 +330,66 @@ function CompanyProfileCard({ tauriReady }: { tauriReady: boolean }) {
   );
 }
 
-function AiSettingsCard({ tauriReady }: { tauriReady: boolean }) {
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(DEFAULT_GEMINI_MODEL);
-  const [show, setShow] = useState(false);
-  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const [testing, setTesting] = useState(false);
+function BilloriCard({ tauriReady }: { tauriReady: boolean }) {
+  const [enabled, setEnabled] = useState(true);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) return;
-    void getSetting(GEMINI_KEY_SETTING).then((k) => setApiKey(k ?? ""));
-    void getSetting(GEMINI_MODEL_SETTING).then((m) => m && GEMINI_MODELS.some((x) => x.id === m) && setModel(m));
+    void getSetting(BILLORI_ENABLED_SETTING).then((v) => {
+      if (v === "false") setEnabled(false);
+    });
   }, []);
 
-  async function save() {
-    await setSetting(GEMINI_KEY_SETTING, apiKey.trim());
-    await setSetting(GEMINI_MODEL_SETTING, model);
-    setStatus({ ok: true, text: "Saved ✓" });
-    setTimeout(() => setStatus(null), 2000);
-  }
-
-  async function test() {
-    setTesting(true);
-    setStatus(null);
-    try {
-      await save();
-      await testGemini();
-      setStatus({ ok: true, text: "Connected to Gemini ✓" });
-    } catch (e) {
-      setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setTesting(false);
-    }
+  async function save(val: boolean) {
+    await setSetting(BILLORI_ENABLED_SETTING, val ? "true" : "false");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
   }
 
   return (
     <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900 text-[10px] font-bold tracking-tight text-white shadow-sm">
-          AI
-        </div>
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-neutral-900">AI Assistant</h2>
-          <p className="text-xs text-neutral-400">Google Gemini (free API) powers the chatbot and fills products&apos; FBR details</p>
-        </div>
-        <span
-          className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${apiKey.trim() ? "bg-emerald-100 text-emerald-800" : "bg-neutral-100 text-neutral-500"}`}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold tracking-tight text-white shadow-sm"
+          style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${apiKey.trim() ? "bg-emerald-500" : "bg-neutral-400"}`} />
-          {apiKey.trim() ? "Key set" : "No key"}
-        </span>
-      </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="Gemini API Key">
-          <div className="flex gap-2">
-            <Input
-              type={show ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="AIza..."
-              autoComplete="off"
+          B
+        </div>
+        <div className="flex-1">
+          <h2 className="text-base font-semibold tracking-tight text-neutral-900">Billori AI Assistant</h2>
+          <p className="text-xs text-neutral-400">AI chatbot · auto-fills FBR details · powered by Google Gemini</p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2">
+          <span className="text-xs font-medium text-neutral-500">{enabled ? "On" : "Off"}</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            disabled={!tauriReady}
+            onClick={() => {
+              const next = !enabled;
+              setEnabled(next);
+              void save(next);
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+              enabled ? "bg-violet-600" : "bg-neutral-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                enabled ? "translate-x-6" : "translate-x-1"
+              }`}
             />
-            <button type="button" onClick={() => setShow((v) => !v)} className="shrink-0 px-2 text-xs text-neutral-500 hover:text-neutral-800">
-              {show ? "Hide" : "Show"}
-            </button>
-          </div>
-        </Field>
-        <Field label="Model">
-          <Select value={model} onChange={(e) => setModel(e.target.value)}>
-            {GEMINI_MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
+          </button>
+        </label>
+        {saved && <span className="text-xs text-emerald-600">Saved ✓</span>}
       </div>
-      <p className="mt-3 text-xs leading-relaxed text-neutral-400">
-        Get a free key at <span className="font-medium text-neutral-600">aistudio.google.com/apikey</span> (sign in with a
-        Google account, then &quot;Create API key&quot;). The free tier has per-minute and daily limits; if you hit them, choose
-        Flash-Lite. The key is used by the AI chatbot (bottom-right) and when a product&apos;s description is new to your
-        catalog. If another product already has the same description, its FBR details are copied with no AI call; without a
-        key, built-in rules are used. Results are always checked against FBR&apos;s code lists and stay editable. The key is
-        stored with your settings and synced like the FBR tokens.
-      </p>
-      <div className="mt-4 flex items-center justify-end gap-3">
-        {status && (
-          <span className={`text-xs ${status.ok ? "text-emerald-600" : "text-rose-600"}`}>{status.text}</span>
-        )}
-        <Button disabled={!tauriReady || testing || !apiKey.trim()} onClick={() => void test()}>
-          {testing ? "Testing…" : "Test Connection"}
-        </Button>
-        <Button variant="primary" disabled={!tauriReady} onClick={() => void save()}>
-          Save Changes
-        </Button>
-      </div>
+      {!enabled && (
+        <p className="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+          Billori is disabled for this store. Enable it to use the AI chatbot and automatic FBR field filling.
+        </p>
+      )}
     </div>
   );
 }
@@ -771,7 +736,7 @@ export default function GeneralSettingsPage() {
         </div>
       )}
 
-      <AiSettingsCard tauriReady={tauriReady} />
+      <BilloriCard tauriReady={tauriReady} />
 
       {templatesOpen && <PrintTemplatesModal onClose={() => setTemplatesOpen(false)} />}
 

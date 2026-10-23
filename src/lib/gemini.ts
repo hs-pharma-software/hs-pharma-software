@@ -1,8 +1,14 @@
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { getSetting } from "./repo/settings";
+import { getSetting, getGlobalSetting } from "./repo/settings";
 
 export const GEMINI_KEY_SETTING = "ai_gemini_api_key";
 export const GEMINI_MODEL_SETTING = "ai_gemini_model";
+
+/** Global (admin-level) keys — no tenant prefix, shared across all tenants. */
+export const BILLORI_KEY_SETTING = "billori_api_key";
+export const BILLORI_MODEL_SETTING = "billori_model";
+/** Per-tenant enable/disable toggle for the Billori assistant. */
+export const BILLORI_ENABLED_SETTING = "billori_enabled";
 
 /** Text models offered in Settings. Flash-Lite has the most generous free-tier limits. */
 export const GEMINI_MODELS = [
@@ -58,14 +64,30 @@ export interface GeminiResult {
   finishReason: string;
 }
 
+/** True when the Billori assistant has a usable key (global or tenant-own)
+ * and is not explicitly disabled by this tenant. */
 export async function hasAiKey(): Promise<boolean> {
-  return !!((await getSetting(GEMINI_KEY_SETTING)) ?? "").trim();
+  const enabled = await getSetting(BILLORI_ENABLED_SETTING);
+  if (enabled === "false") return false;
+  const tenantKey = (await getSetting(GEMINI_KEY_SETTING)) ?? "";
+  if (tenantKey.trim()) return true;
+  return !!((await getGlobalSetting(BILLORI_KEY_SETTING)) ?? "").trim();
 }
 
 async function geminiConfig(): Promise<{ apiKey: string; model: string }> {
-  const [key, model] = await Promise.all([getSetting(GEMINI_KEY_SETTING), getSetting(GEMINI_MODEL_SETTING)]);
-  const apiKey = (key ?? "").trim();
-  if (!apiKey) throw new Error("No Gemini API key set in Settings > AI Assistant.");
+  const enabled = await getSetting(BILLORI_ENABLED_SETTING);
+  if (enabled === "false") throw new Error("Billori AI Assistant is disabled. Enable it in Settings.");
+
+  // Tenant-own key first; fall back to global Billori key set by admin.
+  const [tenantKey, tenantModel, globalKey, globalModel] = await Promise.all([
+    getSetting(GEMINI_KEY_SETTING),
+    getSetting(GEMINI_MODEL_SETTING),
+    getGlobalSetting(BILLORI_KEY_SETTING),
+    getGlobalSetting(BILLORI_MODEL_SETTING),
+  ]);
+  const apiKey = (tenantKey ?? "").trim() || (globalKey ?? "").trim();
+  if (!apiKey) throw new Error("Billori AI is not configured yet. Contact the administrator.");
+  const model = tenantModel ?? globalModel ?? null;
   return { apiKey, model: GEMINI_MODELS.some((m) => m.id === model) ? model! : DEFAULT_GEMINI_MODEL };
 }
 
