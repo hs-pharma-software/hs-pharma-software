@@ -34,6 +34,13 @@ import { loadFbrSettings } from "@/lib/fbr";
 import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "@/lib/fbrData";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
+import { businessType } from "@/config/businessTypes";
+
+/** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 interface Line {
   product: Product;
@@ -79,6 +86,10 @@ export function InvoiceFormModal({
   const [quickAddCustomer, setQuickAddCustomer] = useState(false);
   const [quickAddSalesman, setQuickAddSalesman] = useState(false);
   const [invOn, setInvOn] = useState(invoice ? (invoice.inv_on === "credit" ? "Credit" : "Cash") : "Cash");
+  // Contractors may date an invoice in the past (work billed later); other
+  // types always use today's date.
+  const canPickDate = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id === "contractor";
+  const [invoiceDate, setInvoiceDate] = useState(invoice?.date ?? localToday());
   const [invoiceType, setInvoiceType] = useState(
     invoice ? (invoice.invoice_type === "wholesale" ? "Wholesale" : "Retail") : "Retail"
   );
@@ -365,7 +376,7 @@ export function InvoiceFormModal({
 
   function invoiceHeader() {
     return {
-      date: invoice?.date ?? new Date().toISOString().slice(0, 10),
+      date: canPickDate ? invoiceDate : invoice?.date ?? localToday(),
       inv_on: invOn.toLowerCase(),
       invoice_type: invoiceType.toLowerCase(),
       description: description || null,
@@ -392,6 +403,10 @@ export function InvoiceFormModal({
     e.preventDefault();
     if (lines.length === 0) {
       setError("Add at least one product line.");
+      return;
+    }
+    if (canPickDate && (!invoiceDate || invoiceDate > localToday())) {
+      setError("Invoice date can't be in the future.");
       return;
     }
     const buyerError = validateBuyer();
@@ -486,6 +501,20 @@ export function InvoiceFormModal({
       ) : (
       <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          {canPickDate && (
+            <Field label="Invoice Date" required>
+              <Input
+                type="date"
+                value={invoiceDate}
+                max={localToday()}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                required
+              />
+              {invoiceDate < localToday() && (
+                <span className="text-[11px] text-amber-700">Back-dated invoice</span>
+              )}
+            </Field>
+          )}
           <Field label="Inv On (F9)" required>
             <Select value={invOn} onChange={(e) => setInvOn(e.target.value)} required>
               <option value="Cash">Cash</option>
