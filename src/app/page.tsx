@@ -342,6 +342,9 @@ export default function LandingPage() {
               <span style={{fontWeight:700,color:"#1a1a6e"}}>Billora</span>
             </div>
             <p>© 2026 Billora · Built for Pakistani Pharmacies</p>
+            <p style={{fontSize:12,color:"#cbd5e1",letterSpacing:".01em"}}>
+              Developed by <span style={{color:"#1a1a6e",fontWeight:600}}>HS Software and Technology</span>
+            </p>
             <Link href="/dashboard" style={{color:"#f97316",textDecoration:"none",fontSize:13,fontWeight:600}}>
               Sign in to Web App →
             </Link>
