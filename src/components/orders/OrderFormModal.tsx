@@ -9,7 +9,7 @@ import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { suppliersRepo } from "@/lib/repo/suppliers";
 import { ordersRepo, orderItemsRepo } from "@/lib/repo/orders";
-import { uomsRepo } from "@/lib/repo/uoms";
+import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Supplier, Product, Uom } from "@/lib/types";
 
@@ -34,7 +34,7 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
 
   useEffect(() => {
     void suppliersRepo.list().then(setSuppliers);
-    void uomsRepo.list().then(setUoms);
+    void listUomsWithShared().then(setUoms);
   }, []);
 
   function unitName(id: string | null) {

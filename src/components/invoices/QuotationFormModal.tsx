@@ -12,7 +12,7 @@ import { salesmenRepo } from "@/lib/repo/salesmen";
 import { invoicesRepo, invoiceItemsRepo, nextQuotationNo } from "@/lib/repo/invoices";
 import { listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
 import { getLatestPrice } from "@/lib/repo/products";
-import { uomsRepo } from "@/lib/repo/uoms";
+import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman } from "@/lib/types2";
@@ -51,7 +51,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
   useEffect(() => {
     void customersRepo.list().then(setCustomers);
     void salesmenRepo.list().then(setSalesmen);
-    void uomsRepo.list().then(setUoms);
+    void listUomsWithShared().then(setUoms);
   }, []);
 
   function unitName(id: string | null) {

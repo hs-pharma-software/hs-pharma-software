@@ -29,7 +29,7 @@ import { newId } from "@/lib/id";
 import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Purchase } from "@/lib/types2";
 import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
-import { uomsRepo } from "@/lib/repo/uoms";
+import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Supplier, Product, Uom } from "@/lib/types";
 
@@ -133,7 +133,7 @@ export function PurchaseFormModal({
 
   useEffect(() => {
     void suppliersRepo.list().then(setSuppliers);
-    void uomsRepo.list().then(setUoms);
+    void listUomsWithShared().then(setUoms);
   }, []);
 
   // Edit mode: rebuild the line grid from the saved purchase lines (stored in

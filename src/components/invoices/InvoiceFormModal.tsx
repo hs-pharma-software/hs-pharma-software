@@ -21,7 +21,7 @@ import {
 import { deductStock, listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
 import { getLatestPrice, productsRepo } from "@/lib/repo/products";
 import { getEffectiveDiscountPct } from "@/lib/repo/categories";
-import { uomsRepo } from "@/lib/repo/uoms";
+import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { useAuthStore } from "@/store/authStore";
 import {
   hasSecondaryUnit,
@@ -173,7 +173,7 @@ export function InvoiceFormModal({
   useEffect(() => {
     void customersRepo.list().then(setCustomers);
     void salesmenRepo.list().then(setSalesmen);
-    void uomsRepo.list().then(setUoms);
+    void listUomsWithShared().then(setUoms);
     void loadFbrSettings().then((s) => {
       setFbrEnabled(s.enabled);
       setBuyerProvince((prev) => prev || s.sellerProvince);
