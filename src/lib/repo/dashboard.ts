@@ -1,8 +1,21 @@
 ﻿import { dbSelect } from "../db";
 import { useAuthStore } from "../../store/authStore";
+import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../catalogAccess";
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
+}
+
+function currentBusinessType(): string | null {
+  return useAuthStore.getState().currentTenant?.businessType ?? null;
+}
+
+/** Returns a properly-scoped product WHERE clause + params for the current
+ * tenant: includes their own products + only the shared catalog groups they
+ * are allowed to see (e.g. general_store tenants only see general_store
+ * shared catalog, not the pharma catalog). */
+function productScopeClause(tenantId: string) {
+  return sharedCatalogWhereClause(tenantId, sharedCatalogGroupsFor(currentBusinessType()));
 }
 
 export interface LowStockRow {
@@ -13,16 +26,12 @@ export interface LowStockRow {
 }
 
 /** Flags products at or below a low-stock threshold: their own
- * `max_stock_qty * 0.2` when set, else a flat fallback of 10 units \u2014 so
- * products that never got a max stock configured still surface here instead
- * of silently never alerting. `avail_qty` is this tenant's own stock of an
- * otherwise shared product. */
+ * `max_stock_qty * 0.2` when set, else a flat fallback of 10 units.
+ * Only includes products accessible to the current tenant type (general-store
+ * tenants see general_store catalog, pharmacy tenants see pharma + general_store). */
 export async function getLowStockProducts(limit = 8): Promise<LowStockRow[]> {
-  // HAVING without GROUP BY would collapse to a single row in SQLite (the
-  // whole result treated as one implicit group) instead of filtering
-  // per-product, so the low-stock threshold check has to live in an outer
-  // WHERE over a subquery instead.
-  const tenantId = currentTenantId();
+  const tenantId = currentTenantId() ?? "";
+  const { clause, params } = productScopeClause(tenantId);
   return dbSelect<LowStockRow>(
     `
     SELECT * FROM (
@@ -30,14 +39,13 @@ export async function getLowStockProducts(limit = 8): Promise<LowStockRow[]> {
              COALESCE((SELECT SUM(qty) FROM product_batches WHERE product_id = p.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS avail_qty,
              p.max_stock_qty
       FROM products p
-      WHERE p.deleted_at IS NULL
-        AND (p.tenant_id = ? OR (p.tenant_id IS NULL AND p.catalog_group IS NOT NULL))
+      WHERE p.deleted_at IS NULL AND (${clause})
     )
     WHERE avail_qty <= COALESCE(max_stock_qty * 0.2, 10)
     ORDER BY avail_qty ASC
     LIMIT ?
   `,
-    [tenantId, tenantId, limit]
+    [tenantId, ...params, limit]
   );
 }
 
@@ -94,10 +102,7 @@ export interface TopProductRow {
   sales: number;
 }
 
-/** Nets returns out of qty/sales per product \u2014 a return invoice (is_return=1)
- * subtracts from the original sale instead of being invisible to this
- * ranking (previously it only looked at is_return=0, so returning an item
- * had zero effect on "top selling"). */
+/** Nets returns out of qty/sales per product. */
 export async function getTopSellingProducts(limit = 5): Promise<TopProductRow[]> {
   return dbSelect<TopProductRow>(
     `
@@ -123,11 +128,11 @@ export interface InventoryUnitRow {
   total_qty: number;
 }
 
-/** Groups available stock by secondary-unit type (Tab, Inj, Susp, Drops …).
- * Falls back to base-unit name when no secondary unit is set, so every
- * product is counted. Handles shared-catalog products (tenant_id IS NULL). */
+/** Groups available stock by secondary-unit type. Scoped to the catalog
+ * groups the current tenant can access. */
 export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
-  const tenantId = currentTenantId();
+  const tenantId = currentTenantId() ?? "";
+  const { clause, params } = productScopeClause(tenantId);
   return dbSelect<InventoryUnitRow>(
     `
     SELECT
@@ -136,18 +141,15 @@ export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
       COALESCE(SUM(pb.qty), 0) AS total_qty
     FROM products p
     LEFT JOIN uoms su ON su.id = p.secondary_unit_id
-                     AND (su.tenant_id = ? OR su.tenant_id IS NULL)
     LEFT JOIN uoms u  ON u.id  = p.base_unit_id
-                     AND (u.tenant_id = ? OR u.tenant_id IS NULL)
     LEFT JOIN product_batches pb
            ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL
-      AND (p.tenant_id = ? OR (p.tenant_id IS NULL AND p.catalog_group IS NOT NULL))
+    WHERE p.deleted_at IS NULL AND (${clause})
     GROUP BY COALESCE(su.name, u.name, 'Other')
     ORDER BY product_count DESC
     LIMIT 8
   `,
-    [tenantId, tenantId, tenantId, tenantId]
+    [tenantId, ...params]
   );
 }
 
@@ -157,9 +159,12 @@ export interface InventoryCategoryRow {
   total_qty: number;
 }
 
-/** Groups available stock by product category — suited to general-store tenants. */
+/** Groups available stock by product category. Scoped to the catalog
+ * groups the current tenant can access (general_store sees only
+ * general_store categories, pharmacy sees pharma + general_store). */
 export async function getInventoryByCategory(): Promise<InventoryCategoryRow[]> {
-  const tenantId = currentTenantId();
+  const tenantId = currentTenantId() ?? "";
+  const { clause, params } = productScopeClause(tenantId);
   return dbSelect<InventoryCategoryRow>(
     `
     SELECT
@@ -168,27 +173,24 @@ export async function getInventoryByCategory(): Promise<InventoryCategoryRow[]> 
       COALESCE(SUM(pb.qty), 0) AS total_qty
     FROM products p
     LEFT JOIN categories c ON c.id = p.category_id
-                          AND (c.tenant_id = ? OR c.tenant_id IS NULL)
     LEFT JOIN product_batches pb
            ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL
-      AND (p.tenant_id = ? OR (p.tenant_id IS NULL AND p.catalog_group IS NOT NULL))
+    WHERE p.deleted_at IS NULL AND (${clause})
     GROUP BY COALESCE(c.name, 'Uncategorized')
     ORDER BY product_count DESC
     LIMIT 8
   `,
-    [tenantId, tenantId, tenantId]
+    [tenantId, ...params]
   );
 }
 
-/** Counts products visible to the current tenant: own rows + shared catalog. */
+/** Counts products visible to the current tenant: own rows + allowed shared catalog. */
 export async function countProducts(): Promise<number> {
-  const tenantId = currentTenantId();
+  const tenantId = currentTenantId() ?? "";
+  const { clause, params } = productScopeClause(tenantId);
   const rows = await dbSelect<{ n: number }>(
-    `SELECT COUNT(*) as n FROM products
-     WHERE deleted_at IS NULL
-       AND (tenant_id = ? OR (tenant_id IS NULL AND catalog_group IS NOT NULL))`,
-    [tenantId]
+    `SELECT COUNT(*) as n FROM products WHERE deleted_at IS NULL AND (${clause})`,
+    params
   );
   return rows[0]?.n ?? 0;
 }
@@ -204,8 +206,6 @@ export interface TodaySummary {
 export async function getTodaySummary(): Promise<TodaySummary> {
   const tenantId = currentTenantId();
   const [sales, expenses, cash] = await Promise.all([
-    // Net today's returns out of today's sales total, but count invoices
-    // (not returns) for the "Invoices Today" tile.
     dbSelect<{ sales: number; n: number }>(
       `SELECT
          COALESCE(SUM(CASE WHEN is_return = 0 THEN total ELSE -total END), 0) AS sales,
