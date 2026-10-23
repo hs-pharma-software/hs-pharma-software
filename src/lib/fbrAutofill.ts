@@ -117,7 +117,9 @@ export function suggestFromRules(name: string, description: string): FbrSuggesti
   if (/HERBAL|UNANI|AYURVED|\bARQ\b|TINCT/.test(t)) {
     return { hsCode: "3004.9010", saleType: "Goods at standard rate (default)", saleRate: "18", uom: "Packs", sroNo: "", sroItem: "", source: "rules", note: "Herbal / unani preparation" };
   }
-  const hsCode = /PARACETAMOL/.test(t) ? "3004.9092"
+  // Determine if a specific medicine keyword matched — if so, use the most
+  // specific medicine HS code; otherwise check dosage form before assuming medicine.
+  const medicineHsCode = /PARACETAMOL/.test(t) ? "3004.9092"
     : /COUGH|EXPECTORANT/.test(t) && /SYR|SYP|SUSP/.test(t) ? "3004.9091"
     : /EYE DROP|OPHTHALMIC/.test(t) ? "3004.9050"
     : /OINTMENT/.test(t) ? "3004.9060"
@@ -131,8 +133,29 @@ export function suggestFromRules(name: string, description: string): FbrSuggesti
     : /VITAMIN|FOLIC|FOLATE|MULTIVIT|\bIRON\b|\bZINC\b|SUPPLEMENT/.test(t) ||
       /^\s*CALCIUM\b|CALCIUM\s+(?:CARBONATE|CITRATE|LACTATE|GLUCONATE|PHOSPHATE)|CALCIUM\s*\+\s*VITAMIN/.test(description.toUpperCase())
       ? "3004.5090"
-    : "3004.9099";
-  return { hsCode, uom: "Packs", ...MEDICINE_DEFAULT, source: "rules", note: "Registered medicine (keyword rules)" };
+    : null;
+  if (medicineHsCode) {
+    return { hsCode: medicineHsCode, uom: "Packs", ...MEDICINE_DEFAULT, source: "rules", note: "Registered medicine (keyword rules)" };
+  }
+  // Dosage-form abbreviations or a numeric strength suggest medicine even without
+  // a named-ingredient match — use 3004.9099 (other medicines) as the catch-all.
+  const hasDosageForm = /\b(TABS?|CAPS?|CAPSULES?|SYR|SYRUP|SYP|SUSP|SUSPENSION|INJ|INJECTION|VIALS?|AMP|AMPOULES?|DROPS?|SACHETS?|ENEMA|PATCH|IMPLANT|INFUSION)\b/.test(t)
+    || /\b[0-9]+\s*(MG|MCG|GM|ML|IU)\b/.test(t);
+  if (hasDosageForm) {
+    return { hsCode: "3004.9099", uom: "Packs", ...MEDICINE_DEFAULT, source: "rules", note: "Registered medicine (keyword rules)" };
+  }
+  // No medicine pattern matched — leave the HS code blank so the user can
+  // set the correct code; default to standard rate (18%).
+  return {
+    hsCode: "",
+    saleType: "Goods at standard rate (default)",
+    saleRate: "18",
+    uom: "Numbers, pieces, units",
+    sroNo: "",
+    sroItem: "",
+    source: "rules",
+    note: "Unrecognized item — standard rate assumed. Please select the correct HS code.",
+  };
 }
 
 // The full FBR list has ~7,800 codes; the prompt gets the headings a pharmacy

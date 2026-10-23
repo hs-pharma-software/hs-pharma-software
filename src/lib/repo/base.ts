@@ -115,8 +115,16 @@ export async function assertOwnedRefs(refs: [table: string, id: string | null | 
     if (!id) continue;
     let rows: { id: string }[];
     if (sharedGroups.length && SHARED_CATALOG_TABLES.has(table)) {
-      const { clause, params } = sharedCatalogWhereClause(tenantId, sharedGroups);
-      rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND ${clause}`, [id, ...params]);
+      if (table === "uoms") {
+        // UOMs have no catalog_group column — shared ones are simply tenant_id IS NULL.
+        rows = await dbSelect<{ id: string }>(
+          `SELECT id FROM uoms WHERE id = ? AND deleted_at IS NULL AND (tenant_id = ? OR tenant_id IS NULL)`,
+          [id, tenantId]
+        );
+      } else {
+        const { clause, params } = sharedCatalogWhereClause(tenantId, sharedGroups);
+        rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND ${clause}`, [id, ...params]);
+      }
     } else {
       rows = await dbSelect<{ id: string }>(`SELECT id FROM ${table} WHERE id = ? AND tenant_id = ?`, [id, tenantId]);
     }
