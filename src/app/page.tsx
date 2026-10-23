@@ -197,6 +197,27 @@ export default function LandingPage() {
                 }}>FREE</span>
               </a>
 
+              <a
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora.apk"
+                className="dl-btn"
+                style={{
+                  display:"inline-flex",alignItems:"center",gap:10,
+                  padding:"15px 30px",
+                  background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
+                  borderRadius:13,color:"white",
+                  textDecoration:"none",fontSize:16,fontWeight:800,
+                  letterSpacing:"-.02em",
+                }}
+              >
+                <AndroidIcon size={20}/>
+                Download for Android
+                <span style={{
+                  fontSize:11,fontWeight:700,
+                  background:"rgba(255,255,255,.2)",
+                  padding:"2px 9px",borderRadius:5,letterSpacing:".05em",
+                }}>APK</span>
+              </a>
+
               <Link href="/dashboard" className="web-btn" style={{
                 display:"inline-flex",alignItems:"center",gap:9,
                 padding:"15px 30px",
@@ -216,7 +237,7 @@ export default function LandingPage() {
               {[
                 {v:"18+",l:"Modules"},
                 {v:"12+",l:"Reports"},
-                {v:"Win 10/11",l:"Platform"},
+                {v:"Win + Android",l:"Platforms"},
                 {v:"FBR",l:"Compliant"},
                 {v:"Offline",l:"First"},
               ].map((s,i)=>(
@@ -274,7 +295,7 @@ export default function LandingPage() {
             borderTop:"1px solid #e2e8f0",
             borderBottom:"1px solid #e2e8f0",
           }}>
-            <div style={{maxWidth:580,margin:"0 auto"}}>
+            <div style={{maxWidth:640,margin:"0 auto"}}>
 
               <div style={{position:"relative",display:"inline-flex",marginBottom:36}}>
                 {[0,.5,1].map((d,i)=>(
@@ -307,24 +328,43 @@ export default function LandingPage() {
                 Syncs to cloud automatically when internet is available.
               </p>
 
-              <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora_0.1.1_x64-setup.exe"
-                className="dl-btn"
-                style={{
-                  display:"inline-flex",alignItems:"center",gap:12,
-                  padding:"18px 44px",
-                  background:"linear-gradient(135deg,#1a1a6e 0%,#2d2d9f 100%)",
-                  borderRadius:14,color:"white",
-                  textDecoration:"none",fontSize:17,fontWeight:800,
-                  letterSpacing:"-.02em",
-                }}
-              >
-                <WinIcon size={22}/>
-                Download for Windows (.exe)
-              </a>
+              {/* Dual download buttons */}
+              <div style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:16}}>
+                <a
+                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora_0.1.1_x64-setup.exe"
+                  className="dl-btn"
+                  style={{
+                    display:"inline-flex",alignItems:"center",gap:12,
+                    padding:"16px 32px",
+                    background:"linear-gradient(135deg,#1a1a6e 0%,#2d2d9f 100%)",
+                    borderRadius:14,color:"white",
+                    textDecoration:"none",fontSize:16,fontWeight:800,
+                    letterSpacing:"-.02em",
+                  }}
+                >
+                  <WinIcon size={20}/>
+                  Download for Windows
+                </a>
 
-              <p style={{marginTop:14,fontSize:12.5,color:"#94a3b8",letterSpacing:".02em"}}>
-                WINDOWS 10 / 11 · 64-BIT · FREE TO DOWNLOAD
+                <a
+                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora.apk"
+                  className="dl-btn"
+                  style={{
+                    display:"inline-flex",alignItems:"center",gap:12,
+                    padding:"16px 32px",
+                    background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
+                    borderRadius:14,color:"white",
+                    textDecoration:"none",fontSize:16,fontWeight:800,
+                    letterSpacing:"-.02em",
+                  }}
+                >
+                  <AndroidIcon size={20}/>
+                  Download for Android
+                </a>
+              </div>
+
+              <p style={{marginTop:4,fontSize:12.5,color:"#94a3b8",letterSpacing:".02em"}}>
+                WINDOWS 10/11 · ANDROID 7+ · 64-BIT · FREE TO DOWNLOAD
               </p>
             </div>
           </section>
@@ -360,6 +400,14 @@ function WinIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
       <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.951-1.8"/>
+    </svg>
+  );
+}
+
+function AndroidIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.523 15.341A5.522 5.522 0 0 1 12 20.862a5.522 5.522 0 0 1-5.523-5.521V9.66h11.046v5.681zm-9.738-8.5 1.5-2.6a.4.4 0 1 0-.693-.4l-1.54 2.666A7.684 7.684 0 0 0 4.46 9.16H3v.5h18v-.5h-1.461a7.684 7.684 0 0 0-3.592-2.653l-1.54-2.666a.4.4 0 1 0-.693.4l1.5 2.6a7.23 7.23 0 0 0-3.43 0zM9.5 7a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1zm5 0a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1z"/>
     </svg>
   );
 }

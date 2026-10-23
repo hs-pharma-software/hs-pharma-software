@@ -17,6 +17,8 @@ interface AppState {
   pendingCount: number;
   lastError: string | null;
   sidebarCollapsed: boolean;
+  /** Slide-in drawer state for mobile screens (< md breakpoint). */
+  sidebarMobileOpen: boolean;
   /** Set by global keyboard shortcuts (see GlobalShortcuts.tsx), consumed by
    * the page that can act on it (e.g. Invoices opens Create Invoice when
    * this becomes "new-invoice"), which then clears it back to null. */
@@ -30,6 +32,7 @@ interface AppState {
   setPendingCount: (n: number) => void;
   setLastError: (message: string | null) => void;
   toggleSidebar: () => void;
+  setSidebarMobileOpen: (open: boolean) => void;
   setPendingAction: (action: PendingAction) => void;
   setCalculatorOpen: (open: boolean) => void;
 }
@@ -44,6 +47,7 @@ export const useAppStore = create<AppState>((set) => ({
   pendingCount: 0,
   lastError: null,
   sidebarCollapsed: false,
+  sidebarMobileOpen: false,
   pendingAction: null,
   calculatorOpen: false,
   setOnline: (online) => set({ online }),
@@ -52,6 +56,7 @@ export const useAppStore = create<AppState>((set) => ({
   setPendingCount: (pendingCount) => set({ pendingCount }),
   setLastError: (lastError) => set({ lastError }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setSidebarMobileOpen: (sidebarMobileOpen) => set({ sidebarMobileOpen }),
   setPendingAction: (pendingAction) => set({ pendingAction }),
   setCalculatorOpen: (calculatorOpen) => set({ calculatorOpen }),
 }));

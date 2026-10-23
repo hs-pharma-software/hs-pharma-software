@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { LanguageToggle } from "@/components/electric/LanguageSync";
 import Image from "next/image";
-import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut } from "lucide-react";
+import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut, Menu } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
@@ -15,6 +15,8 @@ export function Topbar() {
   const syncStatus = useAppStore((s) => s.syncStatus);
   const pendingCount = useAppStore((s) => s.pendingCount);
   const lastError = useAppStore((s) => s.lastError);
+  const sidebarMobileOpen = useAppStore((s) => s.sidebarMobileOpen);
+  const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const [showStatus, setShowStatus] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -24,6 +26,15 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/80 px-4 backdrop-blur-xl">
       <div className="flex items-center gap-2.5">
+        {/* Hamburger — mobile only */}
+        <button
+          type="button"
+          onClick={() => setSidebarMobileOpen(!sidebarMobileOpen)}
+          className="mr-1 flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 md:hidden"
+          title="Menu"
+        >
+          <Menu size={20} />
+        </button>
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}

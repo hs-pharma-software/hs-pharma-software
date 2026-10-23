@@ -12,6 +12,7 @@ import { Calculator } from "./Calculator";
 import { AssistantChat } from "@/components/assistant/AssistantChat";
 import { FormTabsHost } from "./FormTabsHost";
 import { useAuthStore } from "@/store/authStore";
+import { useAppStore } from "@/store/appStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
 import { PraBackground } from "@/components/restaurant/PraBackground";
 import { LanguageSync } from "@/components/electric/LanguageSync";
@@ -19,9 +20,16 @@ import { LanguageSync } from "@/components/electric/LanguageSync";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const currentTenant = useAuthStore((s) => s.currentTenant);
+  const sidebarMobileOpen = useAppStore((s) => s.sidebarMobileOpen);
+  const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const moduleKey = moduleKeyForPath(pathname);
   const allowed = hasModuleAccess(moduleKey);
   const subscriptionLocked = Boolean(currentTenant) && currentTenant?.subscriptionStatus !== "active";
+
+  // Close mobile sidebar on navigation.
+  useEffect(() => {
+    setSidebarMobileOpen(false);
+  }, [pathname, setSidebarMobileOpen]);
 
   // Pick up permission changes an owner made while this staff user is logged in.
   useEffect(() => {
@@ -37,9 +45,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {currentTenant && !subscriptionLocked && <PraBackground />}
       <LanguageSync />
       <Topbar />
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* Mobile overlay — closes sidebar when tapped outside */}
+        {sidebarMobileOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setSidebarMobileOpen(false)}
+          />
+        )}
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto p-5">
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-5">
           {subscriptionLocked ? (
             <div className="mx-auto mt-10 max-w-md rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center">
               <p className="font-serif text-lg text-amber-900">Subscription {currentTenant?.subscriptionStatus}</p>

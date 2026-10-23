@@ -1,0 +1,41 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Android / iOS runtime permissions (no shell — unavailable on mobile)",
+  "platforms": ["android", "ios"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-close",
+    "fs:default",
+    "fs:allow-appdata-write-recursive",
+    "fs:allow-appdata-read-recursive",
+    "dialog:default",
+    "http:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.turso.io/*" },
+        { "url": "https://api.cloudinary.com/*" },
+        { "url": "https://eapp.dra.gov.pk/*" },
+        { "url": "https://api.anthropic.com/*" },
+        { "url": "https://generativelanguage.googleapis.com/*" },
+        { "url": "https://ims.pral.com.pk/*" }
+      ]
+    },
+    "os:default",
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://wa.me/*" },
+        { "url": "mailto:*" },
+        { "url": "https://www.google.com/maps/*" }
+      ]
+    }
+  ]
+}

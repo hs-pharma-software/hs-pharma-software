@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { NAV } from "@/config/nav";
 import { useAuthStore } from "@/store/authStore";
+import { useAppStore } from "@/store/appStore";
 import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import { translate, useLang } from "@/lib/i18n";
 
@@ -43,6 +44,8 @@ export function Sidebar() {
   const userPermissions = useAuthStore((s) => s.currentUser?.permissions ?? null);
   const typeId = useAuthStore((s) => businessType(s.currentTenant?.businessType).id);
   const lang = useLang((s) => s.lang);
+  const sidebarMobileOpen = useAppStore((s) => s.sidebarMobileOpen);
+  const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const label = (x: { label: string; labelKey?: string }) => (x.labelKey ? translate(x.labelKey, lang) : x.label);
   const visibleNav = NAV.filter((item) => {
     // Business-type sections (e.g. Restaurant) follow the tenant type, not the plan.
@@ -65,9 +68,28 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex h-full w-64 shrink-0 flex-col overflow-y-auto text-sm text-neutral-200"
+      className={[
+        // Mobile: fixed drawer sliding in from left, sits above overlay (z-40)
+        "fixed top-12 bottom-0 left-0 z-40 flex w-72 flex-col overflow-y-auto text-sm text-neutral-200",
+        "transition-transform duration-300 ease-in-out",
+        sidebarMobileOpen ? "translate-x-0" : "-translate-x-full",
+        // Desktop: inline in the flex layout, always visible
+        "md:static md:top-auto md:bottom-auto md:z-auto md:h-full md:w-64 md:shrink-0",
+        "md:translate-x-0 md:transition-none",
+      ].join(" ")}
       style={{ background: "linear-gradient(to bottom, var(--sidebar-from), var(--sidebar-to))" }}
     >
+      {/* Mobile close button */}
+      <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5 md:hidden">
+        <span className="text-xs font-semibold uppercase tracking-widest text-white/60">Navigation</span>
+        <button
+          type="button"
+          onClick={() => setSidebarMobileOpen(false)}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-white/60 hover:bg-white/10"
+        >
+          <X size={15} />
+        </button>
+      </div>
       <nav className="flex-1 py-1">
         {visibleNav.map((item) => {
           const isOpen = openLabel === item.label;
