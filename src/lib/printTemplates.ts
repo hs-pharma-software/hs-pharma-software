@@ -12,8 +12,36 @@ export interface BlockConfig {
   size: BlockSize;
 }
 
+/** Colour design for A4 / A5 (thermal prints black only). */
+export type PrintStyle = "banner" | "lines" | "plain";
+export interface PrintTheme {
+  style: PrintStyle;
+  /** Banner, table header and Payable bar. */
+  primary: string;
+  /** Lines, stripes and highlights. */
+  accent: string;
+}
+
+export const PRINT_STYLES: { id: PrintStyle; label: string; hint: string }[] = [
+  { id: "banner", label: "Banner", hint: "Coloured header banner, table header and Payable bar" },
+  { id: "lines", label: "Lines", hint: "Coloured lines and headings on white" },
+  { id: "plain", label: "Plain", hint: "Black and white" },
+];
+
+export const THEME_PRESETS: { name: string; primary: string; accent: string }[] = [
+  { name: "Teal", primary: "#0f766e", accent: "#f59e0b" },
+  { name: "Royal Blue", primary: "#1e3a8a", accent: "#38bdf8" },
+  { name: "Emerald", primary: "#065f46", accent: "#84cc16" },
+  { name: "Maroon", primary: "#7f1d1d", accent: "#f97316" },
+  { name: "Purple", primary: "#5b21b6", accent: "#f472b6" },
+  { name: "Charcoal", primary: "#1f2937", accent: "#ef4444" },
+];
+
+export const DEFAULT_THEME: PrintTheme = { style: "banner", primary: THEME_PRESETS[0].primary, accent: THEME_PRESETS[0].accent };
+
 export interface PrintTemplate {
   paper: PaperSize;
+  theme: PrintTheme;
   /** Printed top to bottom in this order. */
   blocks: BlockConfig[];
   logoHeight: number;
@@ -48,6 +76,7 @@ const b = (id: BlockId, align: Align, size: BlockSize = "md", visible = true): B
 export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
   a4: {
     paper: "a4",
+    theme: { ...DEFAULT_THEME },
     blocks: [
       b("logo", "left"), b("business", "left", "lg"), b("title", "right", "lg"), b("meta", "right"),
       b("customer", "left"), b("items", "left"), b("totals", "right"), b("note", "left", "sm"),
@@ -59,6 +88,7 @@ export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
   },
   a5: {
     paper: "a5",
+    theme: { ...DEFAULT_THEME },
     blocks: [
       b("logo", "center"), b("business", "center", "md"), b("title", "center", "md"), b("meta", "left", "sm"),
       b("customer", "left", "sm"), b("items", "left", "sm"), b("totals", "right", "sm"), b("note", "left", "sm"),
@@ -70,6 +100,7 @@ export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
   },
   thermal: {
     paper: "thermal",
+    theme: { ...DEFAULT_THEME, style: "plain" },
     blocks: [
       b("logo", "center"), b("business", "center", "md"), b("title", "center", "sm"), b("meta", "center", "sm"),
       b("customer", "left", "sm"), b("items", "left", "sm"), b("totals", "left", "sm"), b("note", "left", "sm"),
@@ -96,7 +127,14 @@ export async function loadTemplate(paper: PaperSize, tenantId?: string): Promise
     const known = new Set(def.blocks.map((x) => x.id));
     const blocks = (saved.blocks ?? []).filter((x) => known.has(x.id));
     for (const d of def.blocks) if (!blocks.some((x) => x.id === d.id)) blocks.push({ ...d });
-    return { ...def, ...saved, paper, blocks, columns: { ...def.columns, ...(saved.columns ?? {}) } };
+    return {
+      ...def,
+      ...saved,
+      paper,
+      blocks,
+      columns: { ...def.columns, ...(saved.columns ?? {}) },
+      theme: { ...def.theme, ...(saved.theme ?? {}) },
+    };
   } catch {
     return structuredClone(def);
   }

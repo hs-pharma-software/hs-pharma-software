@@ -10,6 +10,8 @@ import {
   BLOCK_LABELS,
   DEFAULT_TEMPLATES,
   PAPERS,
+  PRINT_STYLES,
+  THEME_PRESETS,
   loadLogo,
   loadTemplate,
   resizeLogo,
@@ -239,6 +241,63 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
               </div>
               <p className="mt-2 text-[11px] text-neutral-400">Shared by all three templates.</p>
             </div>
+
+            {paper === "thermal" ? (
+              <p className="rounded-xl border border-neutral-200 p-3 text-[11px] text-neutral-500">
+                Thermal printers print black only, so this template has no colours.
+              </p>
+            ) : (
+              <div className="rounded-xl border border-neutral-200 p-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Design &amp; colours</p>
+                <div className="mb-2 flex gap-1 rounded-lg bg-neutral-50 p-0.5 text-xs ring-1 ring-neutral-200">
+                  {PRINT_STYLES.map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      title={st.hint}
+                      onClick={() => update((t) => ({ ...t, theme: { ...t.theme, style: st.id } }))}
+                      className={`flex-1 rounded-md px-2 py-1 font-medium ${tpl.theme.style === st.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+                {tpl.theme.style !== "plain" && (
+                  <>
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {THEME_PRESETS.map((preset) => {
+                        const on = tpl.theme.primary === preset.primary && tpl.theme.accent === preset.accent;
+                        return (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            title={preset.name}
+                            onClick={() => update((t) => ({ ...t, theme: { ...t.theme, primary: preset.primary, accent: preset.accent } }))}
+                            className={`flex h-7 w-10 overflow-hidden rounded-md ring-2 ${on ? "ring-neutral-900" : "ring-transparent hover:ring-neutral-300"}`}
+                          >
+                            <span className="flex-[2]" style={{ background: preset.primary }} />
+                            <span className="flex-1" style={{ background: preset.accent }} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["primary", "accent"] as const).map((key) => (
+                        <label key={key} className="flex items-center gap-2 rounded-lg bg-neutral-50 px-2 py-1.5 text-xs text-neutral-700 ring-1 ring-neutral-200">
+                          <input
+                            type="color"
+                            value={tpl.theme[key]}
+                            onChange={(e) => update((t) => ({ ...t, theme: { ...t.theme, [key]: e.target.value } }))}
+                            className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                          />
+                          {key === "primary" ? "Banner colour" : "Line colour"}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="rounded-xl border border-neutral-200 p-3">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Sections (drag to reorder)</p>
