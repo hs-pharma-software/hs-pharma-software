@@ -71,8 +71,8 @@ export async function listItemsForOrder(orderId: string) {
     `
     SELECT oi.*, p.name AS product_name, p.barcode, u.name AS uom_name
     FROM order_items oi
-    LEFT JOIN products p ON p.id = oi.product_id AND p.tenant_id = oi.tenant_id
-    LEFT JOIN uoms u ON u.id = oi.uom_id AND u.tenant_id = oi.tenant_id
+    LEFT JOIN products p ON p.id = oi.product_id AND (p.tenant_id = oi.tenant_id OR p.tenant_id IS NULL)
+    LEFT JOIN uoms u ON u.id = oi.uom_id
     WHERE oi.order_id = ? AND oi.tenant_id = ? AND oi.deleted_at IS NULL
   `,
     [orderId, currentTenantId()]

@@ -78,8 +78,8 @@ export default function StockPage() {
         FROM product_batches pb
         JOIN products p ON p.id = pb.product_id AND (p.tenant_id = pb.tenant_id OR p.tenant_id IS NULL)
         LEFT JOIN categories c ON c.id = p.category_id AND (c.tenant_id = pb.tenant_id OR c.tenant_id IS NULL)
-        LEFT JOIN uoms u ON u.id = p.base_unit_id AND (u.tenant_id = pb.tenant_id OR u.tenant_id IS NULL)
-        LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND (su.tenant_id = pb.tenant_id OR su.tenant_id IS NULL)
+        LEFT JOIN uoms u ON u.id = p.base_unit_id
+        LEFT JOIN uoms su ON su.id = p.secondary_unit_id
         LEFT JOIN (
           SELECT product_id, sale_price, mrp
           FROM price_list

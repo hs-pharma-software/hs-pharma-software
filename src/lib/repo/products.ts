@@ -158,8 +158,9 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
   const scJoinCondition = sharedGroups.length
     ? "(sc.tenant_id = p.tenant_id OR (sc.tenant_id IS NULL AND p.tenant_id IS NULL AND sc.catalog_group IS NOT NULL))"
     : "sc.tenant_id = p.tenant_id";
-  const uJoinCondition = "u.tenant_id = p.tenant_id OR (u.tenant_id IS NULL AND p.tenant_id IS NULL)";
-  const suJoinCondition = "su.tenant_id = p.tenant_id OR (su.tenant_id IS NULL AND p.tenant_id IS NULL)";
+  // UOMs are identified by UUID — join on ID alone, regardless of tenant.
+  // A pharmacy may create a tenant-specific UOM and assign it to a shared
+  // catalog product, so a tenant-scoped join condition silently drops the name.
 
   let productWhere: string;
   let productParams: (string | null)[];
@@ -202,8 +203,8 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
     FROM products p
     LEFT JOIN categories c ON c.id = p.category_id AND (${joinCondition})
     LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id AND (${scJoinCondition})
-    LEFT JOIN uoms u ON u.id = p.base_unit_id AND (${uJoinCondition})
-    LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND (${suJoinCondition})
+    LEFT JOIN uoms u ON u.id = p.base_unit_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE ${productWhere}
     ORDER BY p.created_at DESC
   `,

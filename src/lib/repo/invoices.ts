@@ -287,8 +287,8 @@ export async function listItemsForInvoice(invoiceId: string): Promise<InvoiceIte
            p.secondary_unit_id,
            su.name AS secondary_unit_name
     FROM invoice_items ii
-    LEFT JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
-    LEFT JOIN uoms su ON su.id = p.secondary_unit_id AND su.tenant_id = p.tenant_id
+    LEFT JOIN products p ON p.id = ii.product_id AND (p.tenant_id = ii.tenant_id OR p.tenant_id IS NULL)
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL
   `,
     [invoiceId, currentTenantId()]
