@@ -95,7 +95,7 @@ export function UserLoginsPage({
     const tenant = u.tenant_id == null
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
-    const bt = businessType(tenant?.businessType ?? null);
+    const bt = businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
     const typeId = bt.id;
     return NAV.filter((item) => {
       if (item.onlyFor) return item.onlyFor.includes(typeId);
@@ -126,7 +126,7 @@ export function UserLoginsPage({
     const tenant = u.tenant_id == null
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
-    const bt = businessType(tenant?.businessType ?? null);
+    const bt = businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
     const typeId = bt.id;
     return (["Invoices", "Purchases", "Restaurant"] as const).filter((group) => {
       if (group === "Restaurant") return typeId === "restaurant";
