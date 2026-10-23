@@ -13,6 +13,7 @@ import { subscriptionPlansRepo } from "@/lib/repo/subscriptionPlans";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { nowIso } from "@/lib/id";
 import type { Tenant, SubscriptionPlan } from "@/lib/types2";
+import { BUSINESS_TYPES, FAMILY_LABELS, businessType } from "@/config/businessTypes";
 
 function addDaysIso(days: number): string {
   const d = new Date();
@@ -26,6 +27,8 @@ export default function TenantsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Tenant | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState("");
+  const shown = typeFilter ? tenants.filter((t) => businessType(t.business_type).id === typeFilter) : tenants;
   const detail = tenants.find((t) => t.id === detailId) ?? null;
 
   async function reload() {
@@ -74,6 +77,17 @@ export default function TenantsPage() {
           {t.name}
         </button>
       ),
+    },
+    {
+      header: "Type",
+      render: (t) => {
+        const type = businessType(t.business_type);
+        return (
+          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-700" title={FAMILY_LABELS[type.family].label}>
+            {type.label.split(" \u2014 ")[0]}
+          </span>
+        );
+      },
     },
     { header: "Owner", render: (t) => t.owner_name ?? "\u2014" },
     { header: "Phone", render: (t) => t.phone ?? "\u2014" },
@@ -145,14 +159,31 @@ export default function TenantsPage() {
           Run inside the desktop app to manage tenants.
         </p>
       ) : (
+        <>
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-xs text-neutral-500">Type</span>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm"
+          >
+            <option value="">All types ({tenants.length})</option>
+            {BUSINESS_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label} ({tenants.filter((x) => businessType(x.business_type).id === t.id).length})
+              </option>
+            ))}
+          </select>
+        </div>
         <DataTable
           columns={columns}
-          rows={tenants}
+          rows={shown}
           onRowClick={(t) => {
             setEditing(t);
             setModalOpen(true);
           }}
         />
+        </>
       )}
 
       {detail && (

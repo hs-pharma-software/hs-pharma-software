@@ -12,6 +12,7 @@ import { subscriptionPlansRepo } from "@/lib/repo/subscriptionPlans";
 import { dbSelect } from "@/lib/db";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
+import { businessType } from "@/config/businessTypes";
 
 type View = { kind: "list" } | { kind: "tenant"; id: string } | { kind: "admins" };
 
@@ -138,7 +139,7 @@ export default function AdminUsersPage() {
                 >
                   <td className="whitespace-nowrap px-4 py-2.5">
                     <span className="font-medium text-neutral-900 underline-offset-2 hover:underline">{t.name}</span>
-                    {t.business_type && <span className="ml-2 text-[11px] text-neutral-400">{t.business_type}</span>}
+                    <span className="ml-2 text-[11px] text-neutral-400">{businessType(t.business_type).label}</span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-2.5">{t.owner_name ?? "—"}</td>
                   <td className="whitespace-nowrap px-4 py-2.5">{t.phone ?? "—"}</td>

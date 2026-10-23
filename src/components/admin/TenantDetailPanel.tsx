@@ -11,8 +11,16 @@ import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions"
 import { PAPERS, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/lib/printTemplates";
 import { NAV } from "@/config/nav";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
+import {
+  BUSINESS_TYPES,
+  CAPABILITY_LABELS,
+  FAMILY_LABELS,
+  STATUS_LABELS,
+  businessType,
+  defaultModulesFor,
+  type CapabilityKey,
+} from "@/config/businessTypes";
 
-export const BUSINESS_TYPES = ["Retail Pharmacy", "Medical Store", "Wholesale / Distributor", "Hospital Pharmacy", "General Store"];
 
 function Section({ title, children, hint }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -59,7 +67,7 @@ export function TenantDetailPanel({
 }) {
   const plan = (id: string) => plans.find((p) => p.id === id) ?? null;
   const [planId, setPlanId] = useState(tenant.subscription_plan_id ?? "");
-  const [businessType, setBusinessType] = useState(tenant.business_type || BUSINESS_TYPES[0]);
+  const [typeId, setTypeId] = useState(businessType(tenant.business_type).id);
   const [customModules, setCustomModules] = useState(!!tenant.allowed_modules);
   const [modules, setModules] = useState<string[]>(() => tenantAllowedModules(tenant, plan(tenant.subscription_plan_id ?? "")));
   const [denied, setDenied] = useState<string[]>(parseDeniedActions(tenant.denied_actions));
@@ -74,6 +82,7 @@ export function TenantDetailPanel({
     void loadDefaultPaper(tenant.id).then(setPaper);
   }, [tenant.id]);
 
+  const type = businessType(typeId);
   const selectedPlan = plan(planId);
   const planModules = selectedPlan ? parseAllowedModules(selectedPlan) : [];
   const effectiveModules = customModules ? modules : planModules;
@@ -93,7 +102,7 @@ export function TenantDetailPanel({
     try {
       await tenantsRepo.update(tenant.id, {
         subscription_plan_id: planId || null,
-        business_type: businessType,
+        business_type: typeId,
         allowed_modules: customModules ? JSON.stringify(modules) : null,
         denied_actions: denied.length ? JSON.stringify(denied) : null,
         fbr_allowed: fbrAllowed ? 1 : 0,
@@ -122,7 +131,7 @@ export function TenantDetailPanel({
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-neutral-900">{tenant.name}</h2>
-            <p className="text-xs text-neutral-500">{businessType}</p>
+            <p className="text-xs text-neutral-500">{type.label}</p>
           </div>
           <div className="flex items-center gap-2">
             <span
@@ -158,9 +167,15 @@ export function TenantDetailPanel({
               </Select>
             </Field>
             <Field label="Type">
-              <Select value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
-                {BUSINESS_TYPES.map((t) => (
-                  <option key={t}>{t}</option>
+              <Select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+                {(Object.keys(FAMILY_LABELS) as (keyof typeof FAMILY_LABELS)[]).map((fam) => (
+                  <optgroup key={fam} label={FAMILY_LABELS[fam].label}>
+                    {BUSINESS_TYPES.filter((t) => t.family === fam).map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </Select>
             </Field>
@@ -172,6 +187,27 @@ export function TenantDetailPanel({
               , {selectedPlan.duration_days} days per renewal.
             </p>
           )}
+          <div className="mt-3 rounded-lg bg-white p-2.5 ring-1 ring-neutral-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-neutral-800">{FAMILY_LABELS[type.family].label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_LABELS[type.status].cls}`}>
+                {STATUS_LABELS[type.status].label}
+              </span>
+              <span className="rounded bg-[#006633] px-1.5 py-0.5 text-[10px] text-white">FBR DI ready</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(Object.keys(CAPABILITY_LABELS) as CapabilityKey[])
+                .filter((cap) => cap !== "digitalInvoicing" && type.capabilities[cap] === "Core")
+                .map((cap) => (
+                  <span key={cap} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600">
+                    {CAPABILITY_LABELS[cap]}
+                  </span>
+                ))}
+            </div>
+            {type.planned.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-neutral-500">Still to build for this type: {type.planned.join(", ")}.</p>
+            )}
+          </div>
         </Section>
 
         <Section title="FBR Digital Integration">
@@ -190,6 +226,16 @@ export function TenantDetailPanel({
           hint={customModules ? "Custom list for this pharmacy." : "Following the plan. Tick or untick to customise."}
         >
           <div className="mb-2 flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setCustomModules(true);
+                setModules(defaultModulesFor(type, planModules));
+              }}
+              className="text-sky-700 hover:underline"
+            >
+              Apply {type.label.split(" — ")[0]} defaults
+            </button>
             {customModules && (
               <button type="button" onClick={() => setCustomModules(false)} className="text-amber-700 hover:underline">
                 Reset to plan

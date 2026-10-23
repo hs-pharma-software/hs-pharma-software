@@ -8,6 +8,8 @@ import { tenantsRepo } from "@/lib/repo/tenants";
 import { createUser, AuthError } from "@/lib/auth";
 import { nowIso } from "@/lib/id";
 import type { Tenant, SubscriptionPlan } from "@/lib/types2";
+import { BUSINESS_TYPES, FAMILY_LABELS, businessType, defaultModulesFor } from "@/config/businessTypes";
+import { parseAllowedModules } from "@/lib/repo/subscriptionPlans";
 
 function addDaysIso(days: number): string {
   const d = new Date();
@@ -27,6 +29,7 @@ export function TenantFormModal({
   onSaved: () => void;
 }) {
   const isEdit = Boolean(tenant);
+  const [typeId, setTypeId] = useState(businessType(tenant?.business_type).id);
   const [name, setName] = useState(tenant?.name ?? "");
   const [ownerName, setOwnerName] = useState(tenant?.owner_name ?? "");
   const [phone, setPhone] = useState(tenant?.phone ?? "");
@@ -54,6 +57,7 @@ export function TenantFormModal({
         address: address || null,
         subscription_plan_id: planId,
         mrp_discount_pct: Number(mrpDiscountPct) || 0,
+        business_type: typeId,
       };
       if (isEdit && tenant) {
         await tenantsRepo.update(tenant.id, payload);
@@ -63,8 +67,13 @@ export function TenantFormModal({
           setSaving(false);
           return;
         }
+        // A new tenant starts with its type's sections (within the plan).
+        const type = businessType(typeId);
         const created = await tenantsRepo.create({
           ...payload,
+          allowed_modules: JSON.stringify(defaultModulesFor(type, plan ? parseAllowedModules(plan) : [])),
+          fbr_allowed: 1,
+          print_templates_editable: 1,
           subscription_status: "active",
           subscription_started_at: nowIso(),
           subscription_expires_at: addDaysIso(plan?.duration_days ?? 30),
@@ -89,8 +98,25 @@ export function TenantFormModal({
   return (
     <Modal title={isEdit ? "Edit Tenant" : "Add Tenant"} onClose={onClose} width="max-w-2xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <Field label="Business Type" required>
+          <Select value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
+            {(Object.keys(FAMILY_LABELS) as (keyof typeof FAMILY_LABELS)[]).map((fam) => (
+              <optgroup key={fam} label={FAMILY_LABELS[fam].label}>
+                {BUSINESS_TYPES.filter((t) => t.family === fam).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        </Field>
+        <p className="-mt-1 text-[11px] text-neutral-400">
+          {businessType(typeId).purpose}
+          {!isEdit && " New tenants start with this type's sidebar sections; adjust them later in Tenant Detail."}
+        </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Pharmacy Name" required>
+          <Field label="Business Name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
           </Field>
           <Field label="Owner Name">
@@ -126,7 +152,7 @@ export function TenantFormModal({
 
         {!isEdit && (
           <div className="rounded-xl border border-neutral-200 p-4">
-            <p className="mb-3 text-sm font-medium text-neutral-700">First login for this pharmacy</p>
+            <p className="mb-3 text-sm font-medium text-neutral-700">First login for this business</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Username" required>
                 <Input value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} required />
