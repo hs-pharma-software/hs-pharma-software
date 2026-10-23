@@ -150,18 +150,24 @@ export function InvoiceViewModal({
       return {
         id: item.id,
         name: item.product_name,
+        hsCode: item.hs_code ?? null,
         batch: item.batch_no ?? null,
         qty: `${fmtQty(qty)}${unit}`,
         bonus: bonus > 0 ? `${fmtQty(bonus)}${unit}` : null,
         price: hasSecondary ? item.sale_price / packing : item.sale_price,
         discountPct: item.discount_pct,
+        taxPct: item.tax_pct || 0,
+        taxRs: item.tax_rs || 0,
         total: item.total,
       };
     }),
+    // Same arithmetic as the invoice form: payable = total - line discounts
+    // - bill discount + sales tax + charges.
     totals: {
       total: inv.total,
       charges: inv.charges,
-      discount: inv.discount_rs,
+      discount: items.reduce((s, i) => s + (i.discount_rs || 0), 0) + (inv.discount_rs || 0),
+      tax: items.reduce((s, i) => s + (i.tax_rs || 0), 0),
       payable: inv.payable,
       paid: inv.paid,
       balance: inv.balance,

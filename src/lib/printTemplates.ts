@@ -12,20 +12,48 @@ export interface BlockConfig {
   size: BlockSize;
 }
 
-/** Colour design for A4 / A5 (thermal prints black only). */
-export type PrintStyle = "banner" | "lines" | "plain";
+/** Graphical design for A4 / A5 (thermal prints black only). How each one
+ * looks is defined in components/print/InvoicePrintLayout.tsx (SKINS). */
+export type PrintStyle =
+  | "banner"
+  | "lines"
+  | "gradient"
+  | "wave"
+  | "sidebar"
+  | "boxed"
+  | "ribbon"
+  | "dark"
+  | "pastel"
+  | "diagonal"
+  | "frame"
+  | "minimal"
+  | "medical"
+  | "plain";
+
 export interface PrintTheme {
   style: PrintStyle;
-  /** Banner, table header and Payable bar. */
+  /** Banner, table header and Grand Total bar. */
   primary: string;
   /** Lines, stripes and highlights. */
   accent: string;
 }
 
-export const PRINT_STYLES: { id: PrintStyle; label: string; hint: string }[] = [
-  { id: "banner", label: "Banner", hint: "Coloured header banner, table header and Payable bar" },
-  { id: "lines", label: "Lines", hint: "Coloured lines and headings on white" },
-  { id: "plain", label: "Plain", hint: "Black and white" },
+/** Each design with the colours it starts with (changeable afterwards). */
+export const PRINT_STYLES: { id: PrintStyle; label: string; hint: string; primary: string; accent: string }[] = [
+  { id: "banner", label: "Classic Banner", hint: "Header banner, coloured table head, Grand Total bar", primary: "#0f766e", accent: "#f59e0b" },
+  { id: "gradient", label: "Gradient", hint: "Two-colour gradient header and totals", primary: "#4f46e5", accent: "#06b6d4" },
+  { id: "wave", label: "Wave", hint: "Curved wave header and footer", primary: "#0369a1", accent: "#22d3ee" },
+  { id: "medical", label: "Medical Cross", hint: "Banner with a medical cross badge", primary: "#0e7490", accent: "#ef4444" },
+  { id: "sidebar", label: "Corporate Sidebar", hint: "Coloured bar down the left edge", primary: "#1f2937", accent: "#f59e0b" },
+  { id: "boxed", label: "Boxed Sections", hint: "Every section in its own framed box", primary: "#065f46", accent: "#84cc16" },
+  { id: "ribbon", label: "Ribbon", hint: "Full-width title ribbon", primary: "#7f1d1d", accent: "#f97316" },
+  { id: "dark", label: "Bold Dark", hint: "Dark header with bright highlights", primary: "#111827", accent: "#facc15" },
+  { id: "pastel", label: "Soft Pastel", hint: "Light tinted panels, gentle on ink", primary: "#7c3aed", accent: "#f472b6" },
+  { id: "diagonal", label: "Diagonal Stripes", hint: "Striped bands top and bottom", primary: "#b45309", accent: "#1f2937" },
+  { id: "frame", label: "Double Frame", hint: "Formal double border around the page", primary: "#1e40af", accent: "#93c5fd" },
+  { id: "lines", label: "Elegant Lines", hint: "Coloured rules and headings on white", primary: "#1e3a8a", accent: "#38bdf8" },
+  { id: "minimal", label: "Minimal Accent", hint: "Thin accent lines only", primary: "#0f172a", accent: "#10b981" },
+  { id: "plain", label: "Plain", hint: "Black and white", primary: "#111111", accent: "#999999" },
 ];
 
 export const THEME_PRESETS: { name: string; primary: string; accent: string }[] = [
@@ -46,7 +74,8 @@ export interface PrintTemplate {
   blocks: BlockConfig[];
   logoHeight: number;
   thanksText: string;
-  columns: { batch: boolean; bonus: boolean; discount: boolean };
+  /** hsCode / tax only print on A4 and A5; thermal shows tax in the totals. */
+  columns: { batch: boolean; bonus: boolean; discount: boolean; hsCode: boolean; tax: boolean };
 }
 
 export const PAPERS: { id: PaperSize; label: string; css: string; widthMm: number; marginMm: number }[] = [
@@ -84,7 +113,7 @@ export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
     ],
     logoHeight: 64,
     thanksText: "Thank you for your business!",
-    columns: { batch: true, bonus: true, discount: true },
+    columns: { batch: true, bonus: true, discount: true, hsCode: true, tax: true },
   },
   a5: {
     paper: "a5",
@@ -96,7 +125,7 @@ export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
     ],
     logoHeight: 48,
     thanksText: "Thank you for your visit!",
-    columns: { batch: true, bonus: false, discount: true },
+    columns: { batch: true, bonus: false, discount: true, hsCode: true, tax: true },
   },
   thermal: {
     paper: "thermal",
@@ -108,7 +137,7 @@ export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
     ],
     logoHeight: 40,
     thanksText: "Thank you for your visit!",
-    columns: { batch: true, bonus: true, discount: true },
+    columns: { batch: true, bonus: true, discount: true, hsCode: false, tax: false },
   },
 };
 

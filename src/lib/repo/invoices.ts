@@ -263,6 +263,7 @@ export async function getReturnedQtyByProduct(originalInvoiceId: string): Promis
 export interface InvoiceItemWithProduct extends InvoiceItem {
   product_name: string;
   barcode: string | null;
+  hs_code: string | null;
   packing: number;
   secondary_unit_id: string | null;
   secondary_unit_name: string | null;
@@ -271,7 +272,7 @@ export interface InvoiceItemWithProduct extends InvoiceItem {
 export async function listItemsForInvoice(invoiceId: string): Promise<InvoiceItemWithProduct[]> {
   return dbSelect<InvoiceItemWithProduct>(
     `
-    SELECT ii.*, p.name AS product_name, p.barcode,
+    SELECT ii.*, p.name AS product_name, p.barcode, p.hs_code,
            COALESCE(p.packing, 1) AS packing,
            p.secondary_unit_id,
            su.name AS secondary_unit_name

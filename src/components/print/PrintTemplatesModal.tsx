@@ -41,11 +41,11 @@ function sampleData(business: PrintData["business"], logo: string | null): Print
     salesman: "Ali",
     customer: { name: "Walk-in Customer", phone: "0300 1234567", ntn: null, address: null },
     items: [
-      { id: "1", name: "Panadol 500mg Tablet", batch: "PN2401", qty: "20 Tab", bonus: null, price: 2.5, discountPct: 0, total: 50 },
-      { id: "2", name: "Augmentin 625mg Tablet", batch: "AG1187", qty: "6 Tab", bonus: null, price: 48, discountPct: 5, total: 273.6 },
-      { id: "3", name: "Mechico Feeder 250ml", batch: null, qty: "1", bonus: "1", price: 350, discountPct: 0, total: 350 },
+      { id: "1", name: "Panadol 500mg Tablet", hsCode: "3004.9092", batch: "PN2401", qty: "20 Tab", bonus: null, price: 2.5, discountPct: 0, taxPct: 0, taxRs: 0, total: 50 },
+      { id: "2", name: "Augmentin 625mg Tablet", hsCode: "3004.1090", batch: "AG1187", qty: "6 Tab", bonus: null, price: 48, discountPct: 5, taxPct: 0, taxRs: 0, total: 273.6 },
+      { id: "3", name: "Mechico Feeder 250ml", hsCode: "3924.9000", batch: null, qty: "1", bonus: "1", price: 350, discountPct: 0, taxPct: 18, taxRs: 63, total: 413 },
     ],
-    totals: { total: 673.6, charges: 0, discount: 3.6, payable: 670, paid: 700, balance: -30 },
+    totals: { total: 688, discount: 14.4, tax: 63, charges: 0, payable: 736.6, paid: 750, balance: -13.4 },
     note: "Keep medicines away from children.",
     fbrInvoiceNo: "1234567DI1700000000000",
   };
@@ -248,19 +248,36 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
               </p>
             ) : (
               <div className="rounded-xl border border-neutral-200 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Design &amp; colours</p>
-                <div className="mb-2 flex gap-1 rounded-lg bg-neutral-50 p-0.5 text-xs ring-1 ring-neutral-200">
-                  {PRINT_STYLES.map((st) => (
-                    <button
-                      key={st.id}
-                      type="button"
-                      title={st.hint}
-                      onClick={() => update((t) => ({ ...t, theme: { ...t.theme, style: st.id } }))}
-                      className={`flex-1 rounded-md px-2 py-1 font-medium ${tpl.theme.style === st.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
-                    >
-                      {st.label}
-                    </button>
-                  ))}
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  Design ({PRINT_STYLES.length}) &amp; colours
+                </p>
+                {/* Live thumbnails: each design in its own starting colours. */}
+                <div className="mb-3 grid max-h-80 grid-cols-2 gap-2 overflow-y-auto pr-1">
+                  {PRINT_STYLES.map((st) => {
+                    const active = tpl.theme.style === st.id;
+                    const widthPx = PAPERS.find((p) => p.id === paper)!.widthMm * 3.78;
+                    return (
+                      <button
+                        key={st.id}
+                        type="button"
+                        title={st.hint}
+                        onClick={() => update((t) => ({ ...t, theme: { style: st.id, primary: st.primary, accent: st.accent } }))}
+                        className={`overflow-hidden rounded-lg bg-white text-left ring-2 transition ${active ? "ring-neutral-900" : "ring-neutral-200 hover:ring-neutral-400"}`}
+                      >
+                        <div className="pointer-events-none h-28 overflow-hidden bg-white">
+                          <div style={{ width: widthPx, transform: `scale(${124 / widthPx})`, transformOrigin: "top left", padding: 12 }}>
+                            <InvoicePrintLayout
+                              template={{ ...tpl, theme: { style: st.id, primary: st.primary, accent: st.accent } }}
+                              data={sampleData(business, logo)}
+                            />
+                          </div>
+                        </div>
+                        <p className={`truncate border-t border-neutral-100 px-1.5 py-1 text-[10px] font-medium ${active ? "bg-neutral-900 text-white" : "text-neutral-600"}`}>
+                          {st.label}
+                        </p>
+                      </button>
+                    );
+                  })}
                 </div>
                 {tpl.theme.style !== "plain" && (
                   <>
@@ -384,7 +401,10 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                 )}
                 {sel.id === "items" && (
                   <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-700">
-                    {(["batch", "bonus", "discount"] as const).map((c) => (
+                    {(paper === "thermal"
+                      ? (["batch", "bonus", "discount"] as const)
+                      : (["hsCode", "batch", "bonus", "discount", "tax"] as const)
+                    ).map((c) => (
                       <label key={c} className="flex items-center gap-1.5">
                         <input
                           type="checkbox"
@@ -392,9 +412,12 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                           onChange={(e) => update((t) => ({ ...t, columns: { ...t.columns, [c]: e.target.checked } }))}
                           className="accent-[#006633]"
                         />
-                        Show {c === "batch" ? "Batch" : c === "bonus" ? "Bonus" : "Discount"}
+                        Show {{ hsCode: "HS Code", batch: "Batch", bonus: "Bonus", discount: "Discount", tax: "Tax % & Tax Rs" }[c]}
                       </label>
                     ))}
+                    {paper === "thermal" && (
+                      <p className="w-full text-[11px] text-neutral-400">Thermal receipts show tax as one line in the totals.</p>
+                    )}
                   </div>
                 )}
               </div>
