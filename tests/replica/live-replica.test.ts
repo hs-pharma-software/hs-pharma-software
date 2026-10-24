@@ -40,7 +40,8 @@ function statementsOf(n: number): string[] {
 
 function replica(): DatabaseSync {
   // Turso does not enforce foreign keys by default; mirror it (and load tables in any order).
-  const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
+  const db = new DatabaseSync(":memory:");
+  db.exec("PRAGMA foreign_keys = OFF");
   const schema = readFileSync(join(DIR!, "schema.sql"), "utf8").split(/;\n\n/).map((s) => s.trim().replace(/;$/, "")).filter(Boolean);
   for (const s of schema) if (!/^CREATE TABLE sqlite_/i.test(s)) db.exec(s);
   for (const f of readdirSync(DIR!)) {
