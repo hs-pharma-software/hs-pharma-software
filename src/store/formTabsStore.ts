@@ -15,6 +15,8 @@ export interface FormTab {
   purchase?: Purchase;
   /** Purchase draft being resumed. */
   draftId?: string;
+  /** Prescription ID: pre-populate the invoice from this rx when opening new. */
+  rxId?: string;
 }
 
 const MODULE: Record<TabKind, string> = { invoice: "invoices", purchase: "purchase" };
@@ -42,6 +44,7 @@ interface FormTabsState {
   /** Bumped when a form saves, so list screens know to reload. */
   savedTick: Record<TabKind, number>;
   openNew: (kind: TabKind) => void;
+  openNewFromRx: (rxId: string) => void;
   openEditInvoice: (invoice: Invoice) => void;
   openEditPurchase: (purchase: Purchase) => void;
   openPurchaseDraft: (draftId: string) => void;
@@ -67,6 +70,18 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
     let seq = 1;
     while (used.has(seq)) seq++;
     const tab: FormTab = { id: newId(), kind, seq };
+    set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
+  },
+
+  openNewFromRx: (rxId) => {
+    if (!canOpenKind("invoice")) return;
+    // Reuse an existing rx tab if already open for this prescription.
+    const existing = get().tabs.find((t) => t.rxId === rxId);
+    if (existing) return set({ activeId: existing.id, minimized: false });
+    const used = new Set(get().tabs.filter((t) => t.kind === "invoice" && !t.invoice).map((t) => t.seq));
+    let seq = 1;
+    while (used.has(seq)) seq++;
+    const tab: FormTab = { id: newId(), kind: "invoice", seq, rxId };
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
   },
 

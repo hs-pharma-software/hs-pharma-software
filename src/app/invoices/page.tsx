@@ -23,6 +23,7 @@ import type { Invoice } from "@/lib/types2";
 export default function InvoicesPage() {
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
   const openNewTab = useFormTabs((s) => s.openNew);
+  const openNewFromRxTab = useFormTabs((s) => s.openNewFromRx);
   const openEditTab = useFormTabs((s) => s.openEditInvoice);
   const savedTick = useFormTabs((s) => s.savedTick.invoice);
   const [viewing, setViewing] = useState<{ invoice: Invoice; customerName: string; salesmanName: string | null } | null>(
@@ -36,6 +37,7 @@ export default function InvoicesPage() {
   const [fbrErrors, setFbrErrors] = useState<Record<string, string>>({});
 
   const pendingAction = useAppStore((s) => s.pendingAction);
+  const pendingRxId = useAppStore((s) => s.pendingRxId);
   const setPendingAction = useAppStore((s) => s.setPendingAction);
 
   async function reload() {
@@ -54,8 +56,11 @@ export default function InvoicesPage() {
     if (pendingAction === "new-invoice") {
       openNewTab("invoice");
       setPendingAction(null);
+    } else if (pendingAction === "new-invoice-from-rx" && pendingRxId) {
+      openNewFromRxTab(pendingRxId);
+      setPendingAction(null);
     }
-  }, [pendingAction, setPendingAction, openNewTab]);
+  }, [pendingAction, pendingRxId, setPendingAction, openNewTab, openNewFromRxTab]);
 
   // An invoice tab saved: refresh the list.
   useEffect(() => {

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Plus, Trash2, Send, FileText } from "lucide-react";
+import { useAppStore } from "@/store/appStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -46,6 +46,7 @@ const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Ointm
 
 export default function ConsultationForm({ consultationId }: { consultationId?: string }) {
   const router = useRouter();
+  const setPendingAction = useAppStore((s) => s.setPendingAction);
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
   const tenantName = useAuthStore((s) => s.currentTenant?.name ?? null);
   const isEdit = Boolean(consultationId);
@@ -309,12 +310,10 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Create Invoice button */}
-                  <Link href={`/invoices/new?rx=${rx.id}&patient=${patientId}`}>
-                    <Button variant="ghost">
-                      <FileText size={13} className="mr-1" />
-                      Invoice
-                    </Button>
-                  </Link>
+                  <Button variant="ghost" onClick={() => { setPendingAction("new-invoice-from-rx", rx.id); router.push("/invoices"); }}>
+                    <FileText size={13} className="mr-1" />
+                    Invoice
+                  </Button>
                   {/* Send to pharmacy */}
                   {rx.status === "draft" && pharmacyTenants.length > 0 && (
                     <Button

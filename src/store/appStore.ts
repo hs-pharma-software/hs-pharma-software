@@ -8,6 +8,7 @@ export type PendingAction =
   | "new-order"
   | "new-expense"
   | "new-audit"
+  | "new-invoice-from-rx"
   | null;
 
 interface AppState {
@@ -23,6 +24,8 @@ interface AppState {
    * the page that can act on it (e.g. Invoices opens Create Invoice when
    * this becomes "new-invoice"), which then clears it back to null. */
   pendingAction: PendingAction;
+  /** Prescription ID to pre-populate when pendingAction is "new-invoice-from-rx". */
+  pendingRxId: string | null;
   /** CTRL+T (System Calculator) toggles this \u2014 see GlobalShortcuts.tsx and
    * the Calculator component mounted in AppShell. */
   calculatorOpen: boolean;
@@ -33,7 +36,7 @@ interface AppState {
   setLastError: (message: string | null) => void;
   toggleSidebar: () => void;
   setSidebarMobileOpen: (open: boolean) => void;
-  setPendingAction: (action: PendingAction) => void;
+  setPendingAction: (action: PendingAction, rxId?: string | null) => void;
   setCalculatorOpen: (open: boolean) => void;
 }
 
@@ -49,6 +52,7 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarCollapsed: false,
   sidebarMobileOpen: false,
   pendingAction: null,
+  pendingRxId: null,
   calculatorOpen: false,
   setOnline: (online) => set({ online }),
   setSyncStatus: (syncStatus) => set({ syncStatus }),
@@ -57,6 +61,6 @@ export const useAppStore = create<AppState>((set) => ({
   setLastError: (lastError) => set({ lastError }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarMobileOpen: (sidebarMobileOpen) => set({ sidebarMobileOpen }),
-  setPendingAction: (pendingAction) => set({ pendingAction }),
+  setPendingAction: (pendingAction, rxId = null) => set({ pendingAction, pendingRxId: rxId }),
   setCalculatorOpen: (calculatorOpen) => set({ calculatorOpen }),
 }));

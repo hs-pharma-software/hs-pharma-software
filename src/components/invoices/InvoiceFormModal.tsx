@@ -35,6 +35,7 @@ import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
 import { businessType } from "@/config/businessTypes";
+import { getRxItems, prescriptionsRepo } from "@/lib/repo/clinic";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -66,12 +67,15 @@ const LAST_COL = COL_DISC;
 
 export function InvoiceFormModal({
   invoice,
+  rxId,
   onClose,
   onSaved,
   active = true,
 }: {
   /** Pass an existing invoice to edit it in place; omit to create a new one. */
   invoice?: Invoice | null;
+  /** Prescription ID: pre-populate invoice lines from this prescription's rx items. */
+  rxId?: string;
   onClose: () => void;
   onSaved: () => void;
   /** False while another invoice tab is in front: keyboard shortcuts are
@@ -268,6 +272,53 @@ export function InvoiceFormModal({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoice?.id]);
+
+  // Pre-populate lines from a prescription's rx items (one-click Create Invoice from Rx).
+  useEffect(() => {
+    if (!rxId || invoice) return;
+    (async () => {
+      const rx = await prescriptionsRepo.get(rxId).catch(() => null);
+      const rxItems = await getRxItems(rxId).catch(() => []);
+      if (!rxItems.length) return;
+      const newLines: Line[] = [];
+      for (const item of rxItems) {
+        // Try to find the product by id (when doctor selected from catalogue)
+        // or by name search (free-text fallback).
+        let product: Product | null = null;
+        if (item.product_id) {
+          product = await productsRepo.get(item.product_id).catch(() => null);
+        }
+        if (!product) {
+          // Name-based lookup: find first matching non-deleted product.
+          const matches = await productsRepo.list({ where: "name LIKE ?", params: [`%${item.product_name}%`], orderBy: "name ASC" }).catch(() => []);
+          product = matches[0] ?? null;
+        }
+        if (!product) continue;
+        const batches = await listAvailableBatches(product.id).catch(() => []);
+        const batch = batches[0];
+        if (!batch) continue;
+        const [price, discPct] = await Promise.all([
+          getLatestPrice(product.id).catch(() => 0),
+          getEffectiveDiscountPct(product).catch(() => 0),
+        ]);
+        newLines.push({
+          product,
+          batch,
+          qty: item.qty,
+          bonusQty: 0,
+          salePrice: price,
+          taxPct: product.tax_rate_pct,
+          discountPct: discPct,
+          unit: "base",
+        });
+      }
+      if (newLines.length) {
+        setLines(newLines);
+        if (rx?.notes) setDescription(rx.notes);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rxId]);
 
   /** No manual batch picker: picking a product adds it straight away, using
    * the batch with the earliest expiry (FEFO) that `listAvailableBatches`

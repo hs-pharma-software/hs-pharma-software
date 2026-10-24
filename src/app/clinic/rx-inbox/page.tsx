@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCircle, Package, XCircle } from "lucide-react";
+import { useAppStore } from "@/store/appStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { isTauri, useIsTauri } from "@/lib/platform";
@@ -25,6 +26,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function RxInboxPage() {
   const router = useRouter();
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
+  const setPendingAction = useAppStore((s) => s.setPendingAction);
   const [notifications, setNotifications] = useState<PharmacyRxNotification[]>([]);
   const [filter, setFilter] = useState<"pending" | "all">("pending");
   const tauriReady = useIsTauri();
@@ -49,7 +51,8 @@ export default function RxInboxPage() {
   async function handleCreateInvoice(notif: PharmacyRxNotification) {
     if (!isTauri()) return;
     await markRxNotificationRead(notif.id);
-    router.push(`/invoices/new?rx_notif=${notif.id}&patient_name=${encodeURIComponent(notif.patient_name ?? "")}`);
+    setPendingAction("new-invoice-from-rx", notif.prescription_id);
+    router.push("/invoices");
   }
 
   return (
