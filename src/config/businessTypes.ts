@@ -572,8 +572,11 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     validations: ["Consultation line needs a doctor", "Follow-up fee only inside the window"],
     mvp: ["Patients", "Doctors & fees", "Walk-in billing", "Receipts", "Cash closing"],
     advanced: ["Appointments & reminders", "Queue display", "Prescription print", "Dispensary inventory"],
-    defaultModules: m("staff"),
-    planned: ["Patients & visits", "Doctors & consultation fees", "Clinic service master", "Appointments / tokens"],
+    // Clinics bill fees and services: no product catalog and no customers list
+    // (Patients replace Customers). Only hides the sections; data is untouched.
+    defaultModules: m("staff").filter((k) => k !== "products" && k !== "customers"),
+    excludedModules: ["products", "customers"],
+    planned: ["Clinic service master"],
   },
 ];
 

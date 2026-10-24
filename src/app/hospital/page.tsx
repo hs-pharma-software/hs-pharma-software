@@ -33,10 +33,10 @@ export default function HospitalDashboard() {
         title="Hospital Dashboard"
         actions={
           <>
-            <Button variant="primary" onClick={() => router.push("/hospital/patients/new")}>
+            <Button variant="primary" onClick={() => router.push("/hospital/patients")}>
               Register Patient
             </Button>
-            <Button onClick={() => router.push("/hospital/episodes/new")}>
+            <Button onClick={() => router.push("/hospital/episodes")}>
               New Episode
             </Button>
           </>
@@ -65,7 +65,7 @@ export default function HospitalDashboard() {
       {/* Today's open episodes */}
       <div className="rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-sm text-neutral-700">Today's Open Episodes</h2>
+          <h2 className="font-semibold text-sm text-neutral-700">Today&apos;s Open Episodes</h2>
           <Button variant="ghost" onClick={() => router.push("/hospital/episodes")}>
             <Activity size={14} className="mr-1" />
             All Episodes
@@ -94,7 +94,7 @@ export default function HospitalDashboard() {
                   <tr
                     key={ep.id}
                     className="border-b border-neutral-50 hover:bg-neutral-50 cursor-pointer"
-                    onClick={() => router.push(`/hospital/episodes/${ep.id}`)}
+                    onClick={() => router.push(`/hospital/episodes/view?id=${ep.id}`)}
                   >
                     <td className="py-2 pr-4 font-mono text-xs">{ep.episode_no}</td>
                     <td className="py-2 pr-4">

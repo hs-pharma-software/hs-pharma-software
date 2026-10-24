@@ -1278,6 +1278,34 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// Walk-in appointments have no doctor yet: doctor_id must be nullable.
+fn schema_sql_v37() -> &'static str {
+    r#"
+    CREATE TABLE clinic_appointments_new (
+        id          TEXT PRIMARY KEY,
+        tenant_id   TEXT NOT NULL,
+        patient_id  TEXT NOT NULL,
+        doctor_id   TEXT,
+        date        TEXT NOT NULL,
+        time        TEXT,
+        status      TEXT NOT NULL DEFAULT 'scheduled',
+        type        TEXT NOT NULL DEFAULT 'routine',
+        reason      TEXT,
+        notes       TEXT,
+        token_no    INTEGER,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        deleted_at  TEXT
+    );
+    INSERT INTO clinic_appointments_new SELECT id, tenant_id, patient_id, doctor_id, date, time, status, type, reason, notes, token_no, created_at, updated_at, deleted_at FROM clinic_appointments;
+    DROP TABLE clinic_appointments;
+    ALTER TABLE clinic_appointments_new RENAME TO clinic_appointments;
+    CREATE INDEX IF NOT EXISTS idx_ca_tenant_date ON clinic_appointments (tenant_id, date, status);
+    CREATE INDEX IF NOT EXISTS idx_ca_doctor_date ON clinic_appointments (doctor_id, date);
+    CREATE INDEX IF NOT EXISTS idx_ca_patient     ON clinic_appointments (patient_id)
+    "#
+}
+
 fn schema_sql_v36() -> &'static str {
     r#"
     CREATE TABLE clinic_consultations_new (
@@ -2112,6 +2140,12 @@ pub fn run() {
             version: 36,
             description: "hospital_departments_lab_radiology_and_nullable_clinic_fks",
             sql: schema_sql_v36(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 37,
+            description: "clinic_appointments_nullable_doctor",
+            sql: schema_sql_v37(),
             kind: MigrationKind::Up,
         },
     ];

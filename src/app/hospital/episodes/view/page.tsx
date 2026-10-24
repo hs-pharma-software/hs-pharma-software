@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Plus, Trash2, CheckCircle2, ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -16,7 +16,9 @@ import {
 import type { HospitalEpisode, PaymentMethod } from "@/lib/types-hospital";
 
 export default function EpisodeDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  // Static export: the id arrives as ?id=, read after mount.
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => setId(new URLSearchParams(window.location.search).get("id")), []);
   const router = useRouter();
 
   const [episode, setEpisode] = useState<HospitalEpisode | null>(null);

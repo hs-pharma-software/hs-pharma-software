@@ -418,7 +418,7 @@ export const NAV: NavItem[] = [
     onlyFor: ["clinic"],
   },
   {
-    label: "Consultations",
+    label: "Consultation",
     href: "/clinic/consultations",
     icon: FileHeart,
     moduleKey: "clinic_consultations",

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { isTauri } from "@/lib/platform";
 import { hospitalPatientsRepo, nextMrNo, type HospitalPatient } from "@/lib/repo/hospital";
 
 interface Props {

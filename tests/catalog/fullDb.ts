@@ -11,7 +11,12 @@ function schema(n: number): string {
   return m[1];
 }
 
-export function fullSchemaDb(upTo = 29): DatabaseSync {
+/** Applies one migration (schema_sql_v<n>) to an existing database. */
+export function applySchema(db: DatabaseSync, n: number): void {
+  db.exec(schema(n));
+}
+
+export function fullSchemaDb(upTo = 37): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   for (let v = 1; v <= upTo; v++) db.exec(schema(v));
   return db;

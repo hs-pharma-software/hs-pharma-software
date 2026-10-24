@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
-import { patientsRepo } from "@/lib/repo/clinic";
+import { savePatient } from "@/lib/repo/clinic";
 import type { ClinicPatient } from "@/lib/types-clinic";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -33,7 +33,7 @@ export default function PatientFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || saving) return;
     setSaving(true);
     try {
       const payload = {
@@ -48,11 +48,7 @@ export default function PatientFormModal({
         emergency_contact: emergencyContact.trim() || null,
         notes: notes.trim() || null,
       };
-      if (isEdit && patient) {
-        await patientsRepo.update(patient.id, payload);
-      } else {
-        await patientsRepo.create(payload);
-      }
+      await savePatient(isEdit && patient ? patient.id : null, payload);
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -69,7 +65,7 @@ export default function PatientFormModal({
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Patient name" required />
           </Field>
           <Field label="MRN">
-            <Input value={mrn} onChange={(e) => setMrn(e.target.value)} placeholder="Medical record number" />
+            <Input value={mrn} onChange={(e) => setMrn(e.target.value)} placeholder="Generated automatically if blank" />
           </Field>
           <Field label="Date of Birth">
             <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />

@@ -15,7 +15,7 @@ const T2 = "t2-pharmacy";
 const T3 = "t3-restaurant";
 
 function legacy(): DatabaseSync {
-  const sql = fullSchemaDb();
+  const sql = fullSchemaDb(29);
   const ins = (table: string, r: Record<string, unknown>) => {
     const v = { created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", ...r };
     const k = Object.keys(v);

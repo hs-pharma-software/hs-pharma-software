@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -22,9 +23,16 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function EpisodesPage() {
+  return (
+    <Suspense fallback={null}>
+      <EpisodesList />
+    </Suspense>
+  );
+}
+
+function EpisodesList() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const typeFilter = searchParams.get("type") ?? "";
+  const typeFilter = useSearchParams().get("type") ?? "";
 
   const [rows, setRows] = useState<EpisodeListRow[]>([]);
   const [statusFilter, setStatusFilter] = useState("open");
@@ -105,14 +113,14 @@ export default function EpisodesPage() {
       <DataTable
         columns={columns}
         rows={rows}
-        onRowClick={(r) => router.push(`/hospital/episodes/${r.id}`)}
+        onRowClick={(r) => router.push(`/hospital/episodes/view?id=${r.id}`)}
       />
 
       {showNew && (
         <NewEpisodeModal
           defaultType={(typeFilter as "opd" | "ipd" | "emergency") || "opd"}
           onClose={() => setShowNew(false)}
-          onSaved={(id) => { setShowNew(false); router.push(`/hospital/episodes/${id}`); }}
+          onSaved={(id) => { setShowNew(false); router.push(`/hospital/episodes/view?id=${id}`); }}
         />
       )}
     </div>

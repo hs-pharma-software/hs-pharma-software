@@ -18,21 +18,139 @@ export type { PharmacyRxNotification } from "../types-clinic";
 
 export const patientsRepo = createTenantRepo<ClinicPatient>("clinic_patients");
 export const doctorsRepo = createTenantRepo<ClinicDoctor>("clinic_doctors");
-export const appointmentsRepo = createTenantRepo<ClinicAppointment>("clinic_appointments");
-export const consultationsRepo = createTenantRepo<ClinicConsultation>("clinic_consultations");
+
+// `refs` makes every write prove that the patient / doctor / appointment it
+// points at belongs to the logged-in tenant.
+const PATIENT_REF: [string, string, string] = ["patient_id", "clinic_patients", "Patient"];
+const DOCTOR_REF: [string, string, string] = ["doctor_id", "clinic_doctors", "Doctor"];
+export const appointmentsRepo = createTenantRepo<ClinicAppointment>("clinic_appointments", { refs: [PATIENT_REF, DOCTOR_REF] });
+export const consultationsRepo = createTenantRepo<ClinicConsultation>("clinic_consultations", {
+  refs: [PATIENT_REF, DOCTOR_REF, ["appointment_id", "clinic_appointments", "Appointment"]],
+});
 
 // ── Prescriptions ──────────────────────────────────────────────────────────
 
-export const prescriptionsRepo = createTenantRepo<ClinicPrescription>("clinic_prescriptions");
+export const prescriptionsRepo = createTenantRepo<ClinicPrescription>("clinic_prescriptions", {
+  refs: [PATIENT_REF, DOCTOR_REF, ["consultation_id", "clinic_consultations", "Consultation"]],
+});
+
+// ── Patients ───────────────────────────────────────────────────────────────
+
+/** Next free MRN for this clinic (MRN-000001, ...). Skips numbers already taken. */
+export async function nextPatientMrn(): Promise<string> {
+  const tenantId = requireCurrentTenantId();
+  const rows = await dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM clinic_patients WHERE tenant_id = ?`, [tenantId]);
+  let seq = (rows[0]?.n ?? 0) + 1;
+  for (;;) {
+    const mrn = `MRN-${String(seq).padStart(6, "0")}`;
+    const taken = await dbSelect(`SELECT 1 FROM clinic_patients WHERE tenant_id = ? AND mrn = ? AND deleted_at IS NULL`, [tenantId, mrn]);
+    if (!taken.length) return mrn;
+    seq++;
+  }
+}
+
+/** Creates or updates a patient. A blank MRN is generated; an MRN already used
+ * by another patient is refused. Same name or phone as another patient is allowed. */
+export async function savePatient(id: string | null, data: Partial<ClinicPatient>): Promise<ClinicPatient> {
+  const tenantId = requireCurrentTenantId();
+  const name = (data.name ?? "").trim();
+  if (!name) throw new Error("Patient name is required.");
+  let mrn = (data.mrn ?? "").trim();
+  if (!mrn) mrn = id ? ((await patientsRepo.get(id))?.mrn ?? (await nextPatientMrn())) : await nextPatientMrn();
+  const clash = await dbSelect<{ id: string; name: string }>(
+    `SELECT id, name FROM clinic_patients WHERE tenant_id = ? AND mrn = ? AND deleted_at IS NULL AND id != ?`,
+    [tenantId, mrn, id ?? ""]
+  );
+  if (clash.length) throw new Error(`MRN ${mrn} is already used by ${clash[0].name}.`);
+  const payload = { ...data, name, mrn };
+  if (id) {
+    const updated = await patientsRepo.update(id, payload);
+    if (!updated) throw new Error("Patient not found.");
+    return updated;
+  }
+  return patientsRepo.create(payload);
+}
+
+// ── Appointments ───────────────────────────────────────────────────────────
+
+/** An active (not cancelled / no-show) appointment of the same doctor at the
+ * same date and time, or the same token that day. */
+export async function findAppointmentConflict(a: { doctor_id: string | null; date: string; time: string | null; token_no: number | null }, excludeId?: string): Promise<ClinicAppointment | null> {
+  if (!a.doctor_id) return null;
+  const tenantId = requireCurrentTenantId();
+  const rows = await dbSelect<ClinicAppointment>(
+    `SELECT * FROM clinic_appointments
+     WHERE tenant_id = ? AND doctor_id = ? AND date = ? AND deleted_at IS NULL
+       AND status NOT IN ('cancelled', 'no_show') AND id != ?
+       AND ((? IS NOT NULL AND time = ?) OR (? IS NOT NULL AND token_no = ?))
+     LIMIT 1`,
+    [tenantId, a.doctor_id, a.date, excludeId ?? "", a.time, a.time, a.token_no, a.token_no]
+  );
+  return rows[0] ?? null;
+}
+
+/** Creates or updates an appointment with validation and double-booking protection. */
+export async function saveAppointment(id: string | null, data: Partial<ClinicAppointment>): Promise<ClinicAppointment> {
+  if (!data.patient_id) throw new Error("Select a patient.");
+  if (!data.date || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) || Number.isNaN(Date.parse(data.date))) throw new Error("Enter a valid appointment date.");
+  if (data.status !== "cancelled" && data.status !== "no_show") {
+    const clash = await findAppointmentConflict(
+      { doctor_id: data.doctor_id ?? null, date: data.date, time: data.time ?? null, token_no: data.token_no ?? null },
+      id ?? undefined
+    );
+    if (clash) throw new Error(clash.time === (data.time ?? null) && data.time ? `The doctor already has an appointment at ${clash.time} on ${clash.date}.` : `Token ${clash.token_no} is already taken for this doctor on ${clash.date}.`);
+  }
+  if (id) {
+    const updated = await appointmentsRepo.update(id, data);
+    if (!updated) throw new Error("Appointment not found.");
+    return updated;
+  }
+  return appointmentsRepo.create(data);
+}
+
+// ── Consultations ──────────────────────────────────────────────────────────
+
+/** Creates or updates a consultation. Starting one from an appointment links
+ * it, moves the appointment to "in consultation", and never creates a second
+ * consultation for the same appointment (the existing one is updated). */
+export async function saveConsultation(id: string | null, data: Partial<ClinicConsultation>): Promise<ClinicConsultation> {
+  if (!data.patient_id) throw new Error("Select a patient.");
+  if (!data.date) throw new Error("Enter the consultation date.");
+  let targetId = id;
+  if (!targetId && data.appointment_id) {
+    const existing = await dbSelect<{ id: string }>(
+      `SELECT id FROM clinic_consultations WHERE tenant_id = ? AND appointment_id = ? AND deleted_at IS NULL LIMIT 1`,
+      [requireCurrentTenantId(), data.appointment_id]
+    );
+    targetId = existing[0]?.id ?? null;
+  }
+  if (targetId) {
+    const updated = await consultationsRepo.update(targetId, data);
+    if (!updated) throw new Error("Consultation not found.");
+    return updated;
+  }
+  const created = await consultationsRepo.create(data);
+  if (created.appointment_id) {
+    const appt = await appointmentsRepo.get(created.appointment_id);
+    if (appt && (appt.status === "scheduled" || appt.status === "arrived")) {
+      await appointmentsRepo.update(appt.id, { status: "in_consultation" });
+    }
+  }
+  return created;
+}
 
 export async function getRxItems(prescriptionId: string): Promise<ClinicRxItem[]> {
+  // clinic_rx_items has no tenant_id: ownership is proven through its prescription.
   return dbSelect<ClinicRxItem>(
-    `SELECT * FROM clinic_rx_items WHERE prescription_id = ? AND deleted_at IS NULL ORDER BY created_at`,
-    [prescriptionId]
+    `SELECT i.* FROM clinic_rx_items i
+     JOIN clinic_prescriptions p ON p.id = i.prescription_id
+     WHERE i.prescription_id = ? AND p.tenant_id = ? AND i.deleted_at IS NULL ORDER BY i.created_at`,
+    [prescriptionId, requireCurrentTenantId()]
   );
 }
 
 export async function saveRxItems(prescriptionId: string, items: Omit<ClinicRxItem, "id" | "created_at" | "updated_at" | "deleted_at">[]): Promise<void> {
+  if (!(await prescriptionsRepo.get(prescriptionId))) throw new Error("Prescription not found in this business.");
   const ts = nowIso();
   await dbExecute(`DELETE FROM clinic_rx_items WHERE prescription_id = ?`, [prescriptionId]);
   for (const item of items) {
@@ -59,8 +177,8 @@ export async function getPrescriptionsForConsultation(consultationId: string): P
      FROM clinic_prescriptions p
      LEFT JOIN clinic_patients pt ON pt.id = p.patient_id
      LEFT JOIN clinic_doctors d ON d.id = p.doctor_id
-     WHERE p.consultation_id = ? AND p.deleted_at IS NULL`,
-    [consultationId]
+     WHERE p.consultation_id = ? AND p.tenant_id = ? AND p.deleted_at IS NULL`,
+    [consultationId, requireCurrentTenantId()]
   );
 }
 
@@ -128,14 +246,14 @@ export async function sendPrescriptionToPharmacy(
   // Insert notification for the pharmacy tenant
   await dbExecute(
     `INSERT OR REPLACE INTO pharmacy_rx_notifications
-     (id, tenant_id, prescription_id, clinic_tenant_id, clinic_name, patient_name, patient_id, doctor_name, rx_date, item_count, status, invoice_id, read_at, created_at, updated_at)
+     (id, pharmacy_tenant_id, prescription_id, clinic_tenant_id, clinic_name, patient_name, patient_id, doctor_name, rx_date, item_count, status, invoice_id, read_at, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
-    [notifId, pharmacyTenantId, prescriptionId, opts.clinicTenantId, opts.clinicName, opts.patientName, opts.patientId, opts.doctorName, opts.rxDate, opts.itemCount, ts, ts]
+    [notifId, pharmacyTenantId, prescriptionId, opts.clinicTenantId, opts.clinicName ?? "", opts.patientName, opts.patientId, opts.doctorName ?? "", opts.rxDate, opts.itemCount, ts, ts]
   );
   // Mark prescription as sent
   await dbExecute(
-    `UPDATE clinic_prescriptions SET status = 'sent', pharmacy_tenant_id = ?, sent_at = ?, updated_at = ? WHERE id = ?`,
-    [pharmacyTenantId, ts, ts, prescriptionId]
+    `UPDATE clinic_prescriptions SET status = 'sent', pharmacy_tenant_id = ?, sent_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+    [pharmacyTenantId, ts, ts, prescriptionId, requireCurrentTenantId()]
   );
   await recordOutbox("pharmacy_rx_notifications", notifId, "insert", { id: notifId, tenant_id: pharmacyTenantId });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -26,6 +27,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function AppointmentsPage() {
+  const router = useRouter();
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
   const [appointments, setAppointments] = useState<AppointmentWithNames[]>([]);
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10));
@@ -77,7 +79,12 @@ export default function AppointmentsPage() {
     {
       header: "",
       render: (a) => (
-        <Button variant="ghost" onClick={() => { setEditing(a); setModalOpen(true); }}>Edit</Button>
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {a.status !== "cancelled" && a.status !== "no_show" && (
+            <Button variant="ghost" onClick={() => router.push(`/clinic/consultations/new?appointment=${a.id}`)}>Consult</Button>
+          )}
+          <Button variant="ghost" onClick={() => { setEditing(a); setModalOpen(true); }}>Edit</Button>
+        </div>
       ),
     },
   ];

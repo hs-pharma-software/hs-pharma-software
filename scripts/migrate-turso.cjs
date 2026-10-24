@@ -293,6 +293,8 @@ const MIGRATIONS = [
 
   { version: 36, label: 'hospital departments, lab, radiology + nullable clinic FKs', statements: rustSchemaStatements(36) },
 
+  { version: 37, label: 'clinic_appointments nullable doctor_id', statements: rustSchemaStatements(37) },
+
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(

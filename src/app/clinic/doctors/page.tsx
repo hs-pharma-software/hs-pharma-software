@@ -26,6 +26,17 @@ export default function DoctorsPage() {
 
   useEffect(() => { void reload(); }, [tenantId]);
 
+  // Soft delete: the doctor leaves the lists, past appointments and consultations keep their name.
+  async function deactivate(d: ClinicDoctor) {
+    if (!window.confirm(`Deactivate Dr. ${d.name}? Past appointments and consultations are kept.`)) return;
+    try {
+      await doctorsRepo.remove(d.id);
+      await reload();
+    } catch (e) {
+      window.alert(`Could not deactivate: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   const filtered = doctors.filter((d) => {
     const t = search.toLowerCase();
     return !t || d.name.toLowerCase().includes(t) || (d.specialization ?? "").toLowerCase().includes(t);
@@ -42,7 +53,10 @@ export default function DoctorsPage() {
     {
       header: "",
       render: (d) => (
-        <Button variant="ghost" onClick={() => { setEditing(d); setModalOpen(true); }}>Edit</Button>
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" onClick={() => { setEditing(d); setModalOpen(true); }}>Edit</Button>
+          <Button variant="ghost" onClick={() => void deactivate(d)}>Deactivate</Button>
+        </div>
       ),
     },
   ];

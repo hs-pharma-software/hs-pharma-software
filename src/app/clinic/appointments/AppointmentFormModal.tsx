@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
-import { appointmentsRepo, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
+import { saveAppointment, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
 import type { AppointmentWithNames } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { isTauri } from "@/lib/platform";
@@ -40,7 +40,7 @@ export default function AppointmentFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!patientId || !date) return;
+    if (!patientId || !date || saving) return;
     setSaving(true);
     try {
       const payload = {
@@ -54,11 +54,7 @@ export default function AppointmentFormModal({
         reason: reason.trim() || null,
         notes: notes.trim() || null,
       };
-      if (isEdit && appointment) {
-        await appointmentsRepo.update(appointment.id, payload);
-      } else {
-        await appointmentsRepo.create(payload);
-      }
+      await saveAppointment(isEdit && appointment ? appointment.id : null, payload);
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);

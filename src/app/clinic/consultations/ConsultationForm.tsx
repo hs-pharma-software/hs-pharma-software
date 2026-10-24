@@ -11,10 +11,11 @@ import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import {
   consultationsRepo,
+  saveConsultation,
+  appointmentsRepo,
   prescriptionsRepo,
   patientsRepo,
   doctorsRepo,
-  getRxItems,
   saveRxItems,
   getPharmacyLink,
   sendPrescriptionToPharmacy,
@@ -23,7 +24,7 @@ import {
   type PrescriptionWithDetails,
   getPrescriptionsForConsultation,
 } from "@/lib/repo/clinic";
-import type { ClinicPatient, ClinicDoctor, ClinicRxItem } from "@/lib/types-clinic";
+import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 
 interface RxItemDraft {
   product_id: string | null;
@@ -46,7 +47,7 @@ const EMPTY_RX_ITEM: RxItemDraft = {
 const ROUTES = ["Oral", "IV", "IM", "SC", "Topical", "Inhalation", "Sublingual", "Rectal", "Nasal", "Ophthalmic"];
 const DOSAGE_FORMS = ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Ointment", "Drops", "Inhaler", "Patch", "Suppository"];
 
-export default function ConsultationForm({ consultationId }: { consultationId?: string }) {
+export default function ConsultationForm({ consultationId, appointmentId }: { consultationId?: string; appointmentId?: string }) {
   const router = useRouter();
   const setPendingAction = useAppStore((s) => s.setPendingAction);
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
@@ -81,9 +82,19 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [saved, setSaved] = useState(isEdit);
+  const [linkedAppointmentId, setLinkedAppointmentId] = useState(appointmentId ?? "");
 
   useEffect(() => {
     if (!isTauri()) return;
+    if (appointmentId && !consultationId) {
+      void appointmentsRepo.get(appointmentId).then((a) => {
+        if (!a) return;
+        setPatientId(a.patient_id);
+        setDoctorId(a.doctor_id ?? "");
+        setDate(a.date);
+        if (a.reason) setComplaint(a.reason);
+      });
+    }
     void patientsRepo.list({ orderBy: "name ASC" }).then(setPatients);
     void doctorsRepo.list({ orderBy: "name ASC" }).then(setDoctors);
     void listPharmacyTenants().then(setPharmacyTenants);
@@ -91,6 +102,7 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
     if (consultationId) {
       void consultationsRepo.get(consultationId).then((c) => {
         if (!c) return;
+        setLinkedAppointmentId(c.appointment_id ?? "");
         setPatientId(c.patient_id);
         setDoctorId(c.doctor_id ?? "");
         setDate(c.date);
@@ -107,8 +119,8 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
     }
   }, [consultationId, tenantId]);
 
-  async function saveConsultation() {
-    if (!patientId || !date) return;
+  async function saveConsultationClicked() {
+    if (!patientId || !date || saving) return;
     setSaving(true);
     try {
       const payload = {
@@ -123,17 +135,15 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
         advice: advice.trim() || null,
         followup_date: followupDate || null,
         followup_notes: followupNotes.trim() || null,
-        appointment_id: null,
+        // Only linked when creating; an edit never clears an existing link.
+        ...(savedConsultationId ? {} : { appointment_id: linkedAppointmentId || null }),
       };
-      if (isEdit && consultationId) {
-        await consultationsRepo.update(consultationId, payload);
-        setSavedConsultationId(consultationId);
-      } else {
-        const record = await consultationsRepo.create(payload);
-        setSavedConsultationId(record.id);
-        router.replace(`/clinic/consultations/${record.id}`);
-      }
+      // A second click updates the record the first click created.
+      const record = await saveConsultation(savedConsultationId || null, payload);
+      const firstSave = !savedConsultationId;
+      setSavedConsultationId(record.id);
       setSaved(true);
+      if (firstSave) router.replace(`/clinic/consultations/view?id=${record.id}`);
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -142,9 +152,10 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
   }
 
   async function saveRx() {
-    if (!savedConsultationId) { await saveConsultation(); }
     const cid = savedConsultationId || consultationId;
-    if (!cid) return;
+    if (!cid) { window.alert("Save the consultation first."); return; }
+    if (saving) return;
+    if (!rxItems.some((i) => i.product_name.trim())) { window.alert("Add at least one medicine."); return; }
     setSaving(true);
     try {
       const items = rxItems
@@ -187,6 +198,10 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
       const updated = await getPrescriptionsForConsultation(cid);
       setExistingPrescriptions(updated);
       setShowRx(false);
+      // The next "Add Prescription" starts a new prescription.
+      setSavedRxId("");
+      setRxItems([{ ...EMPTY_RX_ITEM }]);
+      setRxNotes("");
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -259,7 +274,7 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
       <PageHeader
         title={isEdit ? "Consultation Detail" : "New Consultation"}
         actions={
-          <Button variant="primary" onClick={() => void saveConsultation()} disabled={saving || !patientId}>
+          <Button variant="primary" onClick={() => void saveConsultationClicked()} disabled={saving || !patientId}>
             {saving ? "Savingâ€¦" : "Save Consultation"}
           </Button>
         }

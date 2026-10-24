@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { NAV } from "@/config/nav";
 import { useAuthStore } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
-import { businessType, moduleAllowedForType } from "@/config/businessTypes";
+import { businessType } from "@/config/businessTypes";
+import { visibleNavFor } from "@/config/navFilter";
 import { translate, useLang } from "@/lib/i18n";
 
 /** Strips trailing slashes so routes compare consistently regardless of
@@ -47,19 +48,7 @@ export function Sidebar() {
   const sidebarMobileOpen = useAppStore((s) => s.sidebarMobileOpen);
   const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const label = (x: { label: string; labelKey?: string }) => (x.labelKey ? translate(x.labelKey, lang) : x.label);
-  const visibleNav = NAV.filter((item) => {
-    // Business-type sections (e.g. Restaurant) follow the tenant type, not the plan.
-    if (item.onlyFor) {
-      if (!item.onlyFor.includes(typeId)) return false;
-    } else {
-      // Shared sections a business type never uses (the pharmacy catalog for
-      // restaurants) stay hidden whatever the plan lists.
-      if (!moduleAllowedForType(typeId, item.moduleKey)) return false;
-      if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) return false;
-    }
-    if (userPermissions !== null && !userPermissions.includes(item.moduleKey)) return false;
-    return true;
-  });
+  const visibleNav = visibleNavFor(typeId, allowedModules, userPermissions);
   const activeHref = findActiveHref(pathname);
   const activeTop = visibleNav.find(
     (item) => item.href === activeHref || item.children?.some((c) => c.href === activeHref)

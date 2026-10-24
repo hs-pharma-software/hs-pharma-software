@@ -37,7 +37,7 @@ export default function ConsultationsPage() {
     {
       header: "",
       render: (c) => (
-        <Link href={`/clinic/consultations/${c.id}`}>
+        <Link href={`/clinic/consultations/view?id=${c.id}`}>
           <Button variant="ghost">Open</Button>
         </Link>
       ),
