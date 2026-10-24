@@ -514,3 +514,44 @@ export async function orderLabTests(input: {
   }
   return { episode, orders, request: (await labRequestsRepo.get(request.id)) ?? request };
 }
+
+/** Loads the standard list of major lab tests into Performing Tests. Tests
+ * already in the list (same name) are left as they are. New ones come without a
+ * fee and "not performing", so nothing can be ordered free by mistake; entering a
+ * test's fee starts performing it. */
+export async function importStandardLabTests(onProgress?: (done: number, total: number) => void): Promise<{ added: number; skipped: number }> {
+  const { STANDARD_LAB_TESTS } = await import("../../config/labTestCatalog");
+  const existing = new Set((await listLabTests({ includeInactive: true })).map((t) => t.name.trim().toLowerCase()));
+  const todo = STANDARD_LAB_TESTS.filter((t) => !existing.has(t.name.toLowerCase()));
+  let code = await nextLabCode();
+  let n = Number(code.split("-").pop());
+  const taken = new Set((await dbSelect<{ code: string }>(`SELECT code FROM hospital_services WHERE tenant_id = ?`, [requireCurrentTenantId()])).map((r) => r.code));
+  let done = 0;
+  for (const t of todo) {
+    while (taken.has(code)) code = `LAB-${String(++n).padStart(3, "0")}`;
+    taken.add(code);
+    await hospitalServicesRepo.create({
+      code, name: t.name, department: t.section, category: "lab", billing_unit: "test", rate: 0, is_active: 0, notes: null,
+      sample_type: t.sample, unit: t.unit, ref_range: t.range, turnaround_hours: t.tat,
+    });
+    done++;
+    onProgress?.(done, todo.length);
+  }
+  return { added: todo.length, skipped: STANDARD_LAB_TESTS.length - todo.length };
+}
+
+/** Sets a test's fee from the list. A fee above zero also starts performing the test. */
+export async function setLabTestFee(id: string, fee: number): Promise<HospitalService> {
+  if (!(Number(fee) >= 0)) throw new Error("The fee cannot be negative.");
+  const t = await hospitalServicesRepo.get(id);
+  if (!t || t.category !== "lab") throw new Error("Test not found.");
+  const updated = await hospitalServicesRepo.update(id, { rate: Number(fee), ...(Number(fee) > 0 ? { is_active: 1 } : {}) });
+  return updated!;
+}
+
+/** Starts or stops performing a test (stopped tests cannot be ordered). */
+export async function setLabTestActive(id: string, active: boolean): Promise<HospitalService> {
+  const t = await hospitalServicesRepo.get(id);
+  if (!t || t.category !== "lab") throw new Error("Test not found.");
+  return (await hospitalServicesRepo.update(id, { is_active: active ? 1 : 0 }))!;
+}
