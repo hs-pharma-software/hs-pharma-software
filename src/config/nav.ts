@@ -40,6 +40,9 @@ import {
   CalendarDays,
   FileHeart,
   Bell,
+  Hospital,
+  Activity,
+  Bed,
 } from "lucide-react";
 
 export interface NavChild {
@@ -422,6 +425,41 @@ export const NAV: NavItem[] = [
       { label: "Consultation List", href: "/clinic/consultations" },
       { label: "New Consultation", href: "/clinic/consultations/new" },
     ],
+  },
+  // ── Hospital Management System ─────────────────────────────────────────
+  {
+    label: "Hospital",
+    href: "/hospital",
+    icon: Hospital,
+    moduleKey: "hospital_dashboard",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Hospital Dashboard", href: "/hospital" },
+      { label: "OPD Queue", href: "/hospital/episodes?type=opd" },
+      { label: "Inpatients (IPD)", href: "/hospital/episodes?type=ipd" },
+      { label: "Emergency", href: "/hospital/episodes?type=emergency" },
+    ],
+  },
+  {
+    label: "Patients",
+    href: "/hospital/patients",
+    icon: UserRoundPlus,
+    moduleKey: "hospital_patients",
+    onlyFor: ["hospital"],
+  },
+  {
+    label: "Episodes & Billing",
+    href: "/hospital/episodes",
+    icon: ClipboardList,
+    moduleKey: "hospital_episodes",
+    onlyFor: ["hospital"],
+  },
+  {
+    label: "Service Master",
+    href: "/hospital/services",
+    icon: Activity,
+    moduleKey: "hospital_services",
+    onlyFor: ["hospital"],
   },
   // ── Pharmacy Rx Inbox (hospital_pharmacy only) ──────────────────────────
   {

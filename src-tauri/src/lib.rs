@@ -1278,6 +1278,124 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+fn schema_sql_v35() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_patients (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        mr_no TEXT NOT NULL,
+        name TEXT NOT NULL,
+        father_name TEXT,
+        dob TEXT,
+        age_years INTEGER,
+        age_months INTEGER,
+        gender TEXT NOT NULL DEFAULT 'Unknown',
+        phone TEXT,
+        address TEXT,
+        city TEXT,
+        cnic TEXT,
+        blood_group TEXT,
+        allergies TEXT,
+        chronic_conditions TEXT,
+        insurance_company TEXT,
+        insurance_no TEXT,
+        next_of_kin_name TEXT,
+        next_of_kin_phone TEXT,
+        next_of_kin_relation TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_patient_mr ON hospital_patients (tenant_id, mr_no);
+    CREATE INDEX IF NOT EXISTS idx_hosp_patient_tenant ON hospital_patients (tenant_id, name);
+
+    CREATE TABLE IF NOT EXISTS hospital_services (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        department TEXT NOT NULL DEFAULT 'General',
+        category TEXT NOT NULL DEFAULT 'misc',
+        billing_unit TEXT NOT NULL DEFAULT 'visit',
+        rate REAL NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_svc_code ON hospital_services (tenant_id, code);
+    CREATE INDEX IF NOT EXISTS idx_hosp_svc_dept ON hospital_services (tenant_id, department, category);
+
+    CREATE TABLE IF NOT EXISTS hospital_episodes (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        episode_no TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'opd',
+        patient_id TEXT NOT NULL,
+        doctor_id TEXT,
+        department TEXT,
+        date TEXT NOT NULL,
+        time TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        room_ward TEXT,
+        bed_no TEXT,
+        admission_date TEXT,
+        discharge_date TEXT,
+        diagnosis TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_episode_no ON hospital_episodes (tenant_id, episode_no);
+    CREATE INDEX IF NOT EXISTS idx_hosp_episode_patient ON hospital_episodes (patient_id, date);
+    CREATE INDEX IF NOT EXISTS idx_hosp_episode_status ON hospital_episodes (tenant_id, status, type);
+
+    CREATE TABLE IF NOT EXISTS hospital_charges (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        episode_id TEXT NOT NULL,
+        service_id TEXT,
+        description TEXT NOT NULL,
+        department TEXT,
+        category TEXT,
+        qty REAL NOT NULL DEFAULT 1,
+        rate REAL NOT NULL DEFAULT 0,
+        discount_pct REAL NOT NULL DEFAULT 0,
+        amount REAL NOT NULL DEFAULT 0,
+        doctor_id TEXT,
+        performed_by TEXT,
+        charge_date TEXT NOT NULL,
+        notes TEXT,
+        invoice_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_charge_episode ON hospital_charges (episode_id);
+    CREATE INDEX IF NOT EXISTS idx_hosp_charge_tenant ON hospital_charges (tenant_id, charge_date);
+
+    CREATE TABLE IF NOT EXISTS hospital_payments (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        episode_id TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'payment',
+        amount REAL NOT NULL DEFAULT 0,
+        method TEXT NOT NULL DEFAULT 'cash',
+        reference TEXT,
+        notes TEXT,
+        received_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_payment_episode ON hospital_payments (episode_id);
+    CREATE INDEX IF NOT EXISTS idx_hosp_payment_tenant ON hospital_payments (tenant_id, received_at)
+    "#
+}
+
 /// Extended customer / client fields for contractor and FBR compliance (v33).
 /// Splits the combined cnic_ntn field into separate cnic_ntn (CNIC) and ntn
 /// fields, adds strn, registration_type, business_name and fbr_active_status
@@ -1866,6 +1984,12 @@ pub fn run() {
             version: 34,
             description: "clinic_module",
             sql: schema_sql_v34(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 35,
+            description: "hospital_module",
+            sql: schema_sql_v35(),
             kind: MigrationKind::Up,
         },
     ];

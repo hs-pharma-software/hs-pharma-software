@@ -183,8 +183,11 @@ export default function DashboardPage() {
   if (tenant && businessType(tenant.businessType).id === "distributor") return <DistDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "general_store") return <GeneralStoreDashboard />;
   if (tenant && businessType(tenant.businessType).id === "clinic") {
-    // Redirect to the dedicated clinic dashboard
     if (typeof window !== "undefined") { window.location.href = "/clinic"; }
+    return null;
+  }
+  if (tenant && businessType(tenant.businessType).id === "hospital") {
+    if (typeof window !== "undefined") { window.location.href = "/hospital"; }
     return null;
   }
   return <GeneralDashboard />;
