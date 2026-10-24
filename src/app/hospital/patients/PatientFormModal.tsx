@@ -9,15 +9,18 @@ import { hospitalPatientsRepo, nextMrNo, type HospitalPatient } from "@/lib/repo
 interface Props {
   patient: HospitalPatient | null;
   onClose: () => void;
-  onSaved: () => void;
+  /** Receives the saved patient. */
+  onSaved: (patient?: HospitalPatient) => void;
+  /** Name to start a new registration with (e.g. what was typed in a search). */
+  initialName?: string;
 }
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
-export default function PatientFormModal({ patient, onClose, onSaved }: Props) {
+export default function PatientFormModal({ patient, onClose, onSaved, initialName }: Props) {
   const isEdit = patient !== null;
   const [mrNo, setMrNo] = useState(patient?.mr_no ?? "");
-  const [name, setName] = useState(patient?.name ?? "");
+  const [name, setName] = useState(patient?.name ?? initialName ?? "");
   const [fatherName, setFatherName] = useState(patient?.father_name ?? "");
   const [gender, setGender] = useState<HospitalPatient["gender"]>(patient?.gender ?? "Male");
   const [dob, setDob] = useState(patient?.dob ?? "");
@@ -70,12 +73,8 @@ export default function PatientFormModal({ patient, onClose, onSaved }: Props) {
         next_of_kin_relation: nokRelation.trim() || null,
         notes: notes.trim() || null,
       };
-      if (isEdit) {
-        await hospitalPatientsRepo.update(patient.id, payload);
-      } else {
-        await hospitalPatientsRepo.create(payload);
-      }
-      onSaved();
+      const saved = isEdit ? await hospitalPatientsRepo.update(patient.id, payload) : await hospitalPatientsRepo.create(payload);
+      onSaved(saved ?? undefined);
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

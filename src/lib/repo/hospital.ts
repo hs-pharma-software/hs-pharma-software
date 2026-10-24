@@ -33,16 +33,24 @@ export async function nextOrderNo(table: "hospital_lab_orders" | "hospital_imagi
 
 // ── Episode number generation ──────────────────────────────────────────────
 
-export async function nextEpisodeNo(type: EpisodeType): Promise<string> {
+/** Next free episode number for the day: OPD-20261024-001, IPD-..., ER-... .
+ * Counts every episode of that type and date (deleted ones too, because the
+ * number stays reserved) and skips any number already taken. */
+export async function nextEpisodeNo(type: EpisodeType, date?: string): Promise<string> {
   const tenantId = requireCurrentTenantId();
+  const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : nowIso().slice(0, 10);
   const prefix = type === "opd" ? "OPD" : type === "ipd" ? "IPD" : "ER";
-  const today = nowIso().slice(0, 10).replace(/-/g, "");
   const rows = await dbSelect<{ n: number }>(
     `SELECT COUNT(*) AS n FROM hospital_episodes WHERE tenant_id = ? AND type = ? AND date = ?`,
-    [tenantId, type, nowIso().slice(0, 10)]
+    [tenantId, type, day]
   );
-  const seq = (rows[0]?.n ?? 0) + 1;
-  return `${prefix}-${today}-${String(seq).padStart(3, "0")}`;
+  let seq = (rows[0]?.n ?? 0) + 1;
+  for (;;) {
+    const no = `${prefix}-${day.replace(/-/g, "")}-${String(seq).padStart(3, "0")}`;
+    const taken = await dbSelect(`SELECT 1 FROM hospital_episodes WHERE tenant_id = ? AND episode_no = ?`, [tenantId, no]);
+    if (!taken.length) return no;
+    seq++;
+  }
 }
 
 // ── Episode with patient name ──────────────────────────────────────────────
