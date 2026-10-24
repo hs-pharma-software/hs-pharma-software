@@ -13,6 +13,7 @@ import type {
   PharmacyRxNotification,
   ClinicPharmacyLink,
 } from "../types-clinic";
+import { localDate } from "../localDate";
 
 export type { PharmacyRxNotification } from "../types-clinic";
 
@@ -336,7 +337,7 @@ export interface ClinicStats {
 
 export async function getClinicStats(): Promise<ClinicStats> {
   const tenantId = requireCurrentTenantId();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const [pats, docs, appts, rx] = await Promise.all([
     dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM clinic_patients WHERE tenant_id = ? AND deleted_at IS NULL`, [tenantId]),
     dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM clinic_doctors WHERE tenant_id = ? AND deleted_at IS NULL`, [tenantId]),
@@ -363,7 +364,7 @@ export interface TodayAppointmentRow {
 
 export async function getTodayAppointments(limit = 20): Promise<TodayAppointmentRow[]> {
   const tenantId = requireCurrentTenantId();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   return dbSelect<TodayAppointmentRow>(
     `SELECT a.id, pt.name AS patient_name, d.name AS doctor_name, a.time, a.token_no, a.status, a.type
      FROM clinic_appointments a

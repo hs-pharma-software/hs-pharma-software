@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { getHospitalStats, listEpisodes, type HospitalStats, type EpisodeListRow } from "@/lib/repo/hospital";
+import { localDate } from "@/lib/localDate";
 
 export default function HospitalDashboard() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function HospitalDashboard() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate();
     void getHospitalStats().then(setStats);
     void listEpisodes({ date: today, status: "open", limit: 20 }).then(setTodayEpisodes);
   }, []);

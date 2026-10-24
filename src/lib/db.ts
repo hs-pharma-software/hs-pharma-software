@@ -2,6 +2,7 @@
 import { createClient, type Client } from "@libsql/client/web";
 import { resolveSystem, SYSTEM_DB_FILE, type DbSystem } from "./dbRouting";
 import { copyTenantData, type SqlRunner } from "./dbSplit";
+import { explainMissingTable } from "./dbErrors";
 import { businessType } from "../config/businessTypes";
 import { useAuthStore } from "../store/authStore";
 
@@ -68,14 +69,18 @@ function getTauriDb(system: DbSystem): Promise<TauriDb> {
   return p;
 }
 
+function explain(err: unknown): never {
+  throw explainMissingTable(err) ?? err;
+}
+
 // ── Raw access to one named system (no routing, no first-use copy) ────
 
 export async function rawSelect<T = Record<string, unknown>>(system: DbSystem, sql: string, params: unknown[] = []): Promise<T[]> {
   if (isTauri()) {
     const db = await getTauriDb(system);
-    return db.select<T[]>(sql, params);
+    return db.select<T[]>(sql, params).catch(explain);
   }
-  const result = await getTursoClient(system).execute({ sql, args: params as never[] });
+  const result = await getTursoClient(system).execute({ sql, args: params as never[] }).catch(explain);
   return result.rows.map((row) => {
     const obj: Record<string, unknown> = {};
     result.columns.forEach((col, i) => {
@@ -92,9 +97,9 @@ export async function rawExecute(
 ): Promise<{ rowsAffected: number; lastInsertId?: number }> {
   if (isTauri()) {
     const db = await getTauriDb(system);
-    return db.execute(sql, params);
+    return db.execute(sql, params).catch(explain);
   }
-  const result = await getTursoClient(system).execute({ sql, args: params as never[] });
+  const result = await getTursoClient(system).execute({ sql, args: params as never[] }).catch(explain);
   return {
     rowsAffected: result.rowsAffected,
     lastInsertId: result.lastInsertRowid !== undefined ? Number(result.lastInsertRowid) : undefined,

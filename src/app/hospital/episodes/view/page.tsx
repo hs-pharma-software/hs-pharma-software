@@ -14,6 +14,7 @@ import {
   type HospitalPatient, type HospitalService, type HospitalCharge, type HospitalPayment,
 } from "@/lib/repo/hospital";
 import type { HospitalEpisode, PaymentMethod } from "@/lib/types-hospital";
+import { localDate, localDateTime } from "@/lib/localDate";
 
 export default function EpisodeDetailPage() {
   // Static export: the id arrives as ?id=, read after mount.
@@ -88,18 +89,20 @@ export default function EpisodeDetailPage() {
         description: chargeDesc.trim(),
         department: services.find((s) => s.id === selectedServiceId)?.department ?? null,
         category: services.find((s) => s.id === selectedServiceId)?.category ?? null,
-        qty: Number(chargeQty) || 1,
+        qty: Number(chargeQty),
         rate: Number(chargeRate) || 0,
         discount_pct: Number(chargeDisc) || 0,
-        amount: (Number(chargeQty) || 1) * (Number(chargeRate) || 0) * (1 - (Number(chargeDisc) || 0) / 100),
+        amount: 0, // worked out when saved
         doctor_id: null,
         performed_by: null,
-        charge_date: episode?.date ?? new Date().toISOString().slice(0, 10),
+        charge_date: episode?.date ?? localDate(),
         notes: chargeNotes.trim() || null,
         invoice_id: null,
       });
       setSelectedServiceId(""); setChargeDesc(""); setChargeQty("1"); setChargeRate(""); setChargeDisc("0"); setChargeNotes("");
       await reload();
+    } catch (e) {
+      window.alert(`Could not add the charge: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setAddingCharge(false);
     }
@@ -117,24 +120,34 @@ export default function EpisodeDetailPage() {
         method: payMethod,
         reference: payRef.trim() || null,
         notes: payNotes.trim() || null,
-        received_at: new Date().toISOString().slice(0, 16).replace("T", " "),
+        received_at: localDateTime(),
       });
       setPayAmount(""); setPayRef(""); setPayNotes("");
       await reload();
+    } catch (e) {
+      window.alert(`Could not save the payment: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setAddingPayment(false);
     }
   }
 
   async function handleDischarge() {
-    if (!id || !window.confirm("Mark this episode as discharged?")) return;
+    if (!id) return;
+    const unpaid = charges.reduce((s, c) => s + c.amount, 0)
+      - payments.reduce((s, p) => s + (p.type === "refund" ? -p.amount : p.amount), 0);
+    const question = unpaid > 0.5
+      ? `This episode still has Rs ${unpaid.toFixed(0)} unpaid. Discharge anyway?`
+      : "Mark this episode as discharged?";
+    if (!window.confirm(question)) return;
     setDischarging(true);
     try {
       await hospitalEpisodesRepo.update(id, {
         status: "discharged",
-        discharge_date: new Date().toISOString().slice(0, 10),
+        discharge_date: localDate(),
       });
       await reload();
+    } catch (e) {
+      window.alert(`Could not discharge: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setDischarging(false);
     }
@@ -278,7 +291,7 @@ export default function EpisodeDetailPage() {
                     <td className="py-1.5 text-right font-medium">{c.amount.toFixed(0)}</td>
                     {episode.status === "open" && (
                       <td className="py-1.5 pl-2">
-                        <button type="button" onClick={() => deleteCharge(c.id).then(reload)} className="text-neutral-300 hover:text-red-500">
+                        <button type="button" onClick={() => deleteCharge(c.id).then(reload).catch((e) => window.alert(`Could not remove the charge: ${e instanceof Error ? e.message : String(e)}`))} className="text-neutral-300 hover:text-red-500">
                           <Trash2 size={13} />
                         </button>
                       </td>

@@ -10,6 +10,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { listAppointments, appointmentsRepo, type AppointmentWithNames } from "@/lib/repo/clinic";
 import AppointmentFormModal from "./AppointmentFormModal";
+import { localDate } from "@/lib/localDate";
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-700",
@@ -30,7 +31,7 @@ export default function AppointmentsPage() {
   const router = useRouter();
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
   const [appointments, setAppointments] = useState<AppointmentWithNames[]>([]);
-  const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10));
+  const [dateFilter, setDateFilter] = useState(localDate());
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AppointmentWithNames | null>(null);
@@ -102,7 +103,7 @@ export default function AppointmentsPage() {
       />
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-40" />
-        <Button variant="ghost" onClick={() => setDateFilter(new Date().toISOString().slice(0, 10))}>Today</Button>
+        <Button variant="ghost" onClick={() => setDateFilter(localDate())}>Today</Button>
         <Input placeholder="Search patient or doctor…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
       </div>
       {!tauriReady ? (

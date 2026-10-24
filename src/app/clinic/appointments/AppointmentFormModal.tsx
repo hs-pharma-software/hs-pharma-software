@@ -8,6 +8,7 @@ import { saveAppointment, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
 import type { AppointmentWithNames } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { isTauri } from "@/lib/platform";
+import { localDate } from "@/lib/localDate";
 
 export default function AppointmentFormModal({
   appointment,
@@ -23,7 +24,7 @@ export default function AppointmentFormModal({
   const [doctors, setDoctors] = useState<ClinicDoctor[]>([]);
   const [patientId, setPatientId] = useState(appointment?.patient_id ?? "");
   const [doctorId, setDoctorId] = useState(appointment?.doctor_id ?? "");
-  const [date, setDate] = useState(appointment?.date ?? new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(appointment?.date ?? localDate());
   const [time, setTime] = useState(appointment?.time ?? "");
   const [tokenNo, setTokenNo] = useState(String(appointment?.token_no ?? ""));
   const [status, setStatus] = useState<AppointmentWithNames["status"]>(appointment?.status ?? "scheduled");

@@ -12,6 +12,7 @@ import {
 } from "@/lib/repo/hospital";
 import type { EpisodeType } from "@/lib/types-hospital";
 import PatientFormModal from "../patients/PatientFormModal";
+import { localDate } from "@/lib/localDate";
 
 interface Props {
   defaultType: EpisodeType;
@@ -27,7 +28,7 @@ export default function NewEpisodeModal({ defaultType, onClose, onSaved }: Props
   const [registering, setRegistering] = useState(false);
   const [type, setType] = useState<EpisodeType>(defaultType);
   const [episodeNo, setEpisodeNo] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDate());
   const [time, setTime] = useState(new Date().toTimeString().slice(0, 5));
   const [department, setDepartment] = useState("");
   const [notes, setNotes] = useState("");

@@ -10,6 +10,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { hospitalLabRepo, hospitalPatientsRepo, nextOrderNo, type HospitalLabOrder, type HospitalPatient } from "@/lib/repo/hospital";
 import type { OrderPriority } from "@/lib/types-hospital";
+import { localDateTime } from "@/lib/localDate";
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -18,7 +19,7 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "bg-neutral-100 text-neutral-500",
 };
 
-const now = () => new Date().toISOString().slice(0, 16).replace("T", " ");
+const now = () => localDateTime();
 
 export default function LabPage() {
   const [rows, setRows] = useState<HospitalLabOrder[]>([]);

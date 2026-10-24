@@ -4,6 +4,29 @@ import { recordOutbox } from "../sync/outbox";
 import { useAuthStore } from "../../store/authStore";
 import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../catalogAccess";
 
+/** Turns a raw database error into a message a user can act on. */
+export function friendlyDbError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  const unique = /UNIQUE constraint failed:\s*(.+)$/i.exec(msg);
+  if (unique) {
+    const columns = unique[1]
+      .split(",")
+      .map((c) => c.trim().split(".").pop() ?? "")
+      .filter((c) => c && c !== "tenant_id")
+      .map((c) => c.replace(/_/g, " "));
+    return new Error(`That ${columns.join(" / ") || "value"} is already in use. Enter a different one.`);
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
+async function exec(sql: string, params: unknown[] = []) {
+  try {
+    return await dbExecute(sql, params);
+  } catch (e) {
+    throw friendlyDbError(e);
+  }
+}
+
 export interface BaseRow {
   id: string;
   created_at: string;
@@ -53,7 +76,7 @@ export function createRepo<T extends BaseRow>(table: string) {
       const ts = nowIso();
       const record = { ...data, id, created_at: ts, updated_at: ts, deleted_at: null } as T;
       const keys = Object.keys(record);
-      await dbExecute(
+      await exec(
         `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`,
         keys.map((k) => (record as Record<string, unknown>)[k] ?? null)
       );
@@ -67,7 +90,7 @@ export function createRepo<T extends BaseRow>(table: string) {
       delete (patch as Partial<T>).id;
       const keys = Object.keys(patch);
       if (keys.length > 0) {
-        await dbExecute(
+        await exec(
           `UPDATE ${table} SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`,
           [...keys.map((k) => (patch as Record<string, unknown>)[k] ?? null), id]
         );
@@ -81,12 +104,12 @@ export function createRepo<T extends BaseRow>(table: string) {
      * -> Delete History in the reference app). */
     async remove(id: string, reason?: string, deletedFromLabel?: string): Promise<void> {
       const ts = nowIso();
-      await dbExecute(`UPDATE ${table} SET deleted_at = ?, updated_at = ? WHERE id = ?`, [ts, ts, id]);
+      await exec(`UPDATE ${table} SET deleted_at = ?, updated_at = ? WHERE id = ?`, [ts, ts, id]);
       await recordOutbox(table, id, "delete", null);
       if (reason) {
         const tenantId = useAuthStore.getState().currentTenant?.id ?? null;
         const deletedBy = useAuthStore.getState().currentUser?.displayName ?? "user";
-        await dbExecute(
+        await exec(
           `INSERT INTO delete_history (id, tenant_id, date, delete_from, delete_by, reason, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [newId(), tenantId, ts, deletedFromLabel ?? table, deletedBy, reason, ts]
@@ -177,7 +200,7 @@ export function createTenantRepo<T extends TenantRow>(table: string, opts: { ref
       await checkRefs(data);
       const record = { ...data, id, tenant_id: tenantId, created_at: ts, updated_at: ts, deleted_at: null } as T;
       const keys = Object.keys(record);
-      await dbExecute(
+      await exec(
         `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`,
         keys.map((k) => (record as Record<string, unknown>)[k] ?? null)
       );
@@ -193,7 +216,7 @@ export function createTenantRepo<T extends TenantRow>(table: string, opts: { ref
       delete (patch as Partial<T>).tenant_id;
       const keys = Object.keys(patch);
       if (keys.length > 0) {
-        await dbExecute(
+        await exec(
           `UPDATE ${table} SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ? AND tenant_id = ?`,
           [...keys.map((k) => (patch as Record<string, unknown>)[k] ?? null), id, requireCurrentTenantId()]
         );
@@ -207,7 +230,7 @@ export function createTenantRepo<T extends TenantRow>(table: string, opts: { ref
     async remove(id: string, reason?: string, deletedFromLabel?: string): Promise<void> {
       const ts = nowIso();
       const tenantId = requireCurrentTenantId();
-      await dbExecute(`UPDATE ${table} SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, [
+      await exec(`UPDATE ${table} SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, [
         ts,
         ts,
         id,
@@ -216,7 +239,7 @@ export function createTenantRepo<T extends TenantRow>(table: string, opts: { ref
       await recordOutbox(table, id, "delete", null);
       if (reason) {
         const deletedBy = useAuthStore.getState().currentUser?.displayName ?? "user";
-        await dbExecute(
+        await exec(
           `INSERT INTO delete_history (id, tenant_id, date, delete_from, delete_by, reason, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [newId(), tenantId, ts, deletedFromLabel ?? table, deletedBy, reason, ts]

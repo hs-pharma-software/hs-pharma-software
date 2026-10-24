@@ -25,6 +25,7 @@ import {
   getPrescriptionsForConsultation,
 } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
+import { localDate } from "@/lib/localDate";
 
 interface RxItemDraft {
   product_id: string | null;
@@ -61,7 +62,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
   // Consultation fields
   const [patientId, setPatientId] = useState("");
   const [doctorId, setDoctorId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDate());
   const [complaint, setComplaint] = useState("");
   const [history, setHistory] = useState("");
   const [vitals, setVitals] = useState("");
