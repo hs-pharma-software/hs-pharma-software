@@ -16,7 +16,7 @@ export function applySchema(db: DatabaseSync, n: number): void {
   db.exec(schema(n));
 }
 
-export function fullSchemaDb(upTo = 39): DatabaseSync {
+export function fullSchemaDb(upTo = 40): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   for (let v = 1; v <= upTo; v++) db.exec(schema(v));
   return db;

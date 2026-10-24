@@ -27,6 +27,7 @@ import {
 import { getTotalPartyBalance } from "@/lib/repo/ledger";
 import { loadLogo } from "@/lib/printTemplates";
 import { businessType } from "@/config/businessTypes";
+import { visibleNavFor } from "@/config/navFilter";
 import { RestaurantDashboard } from "@/components/restaurant/RestaurantDashboard";
 import { ElectricDashboard } from "@/components/electric/ElectricDashboard";
 import { ELECTRIC_TYPE } from "@/lib/electric";
@@ -182,15 +183,26 @@ export default function DashboardPage() {
   if (tenant && businessType(tenant.businessType).id === ELECTRIC_TYPE) return <ElectricDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "distributor") return <DistDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "general_store") return <GeneralStoreDashboard />;
-  if (tenant && businessType(tenant.businessType).id === "clinic") {
-    if (typeof window !== "undefined") { window.location.href = "/clinic"; }
-    return null;
-  }
-  if (tenant && businessType(tenant.businessType).id === "hospital") {
-    if (typeof window !== "undefined") { window.location.href = "/hospital"; }
-    return null;
-  }
+  if (tenant && businessType(tenant.businessType).id === "clinic") return <RedirectTo href="/clinic" />;
+  if (tenant && businessType(tenant.businessType).id === "hospital") return <HospitalLanding />;
   return <GeneralDashboard />;
+}
+
+function RedirectTo({ href }: { href: string }) {
+  useEffect(() => {
+    window.location.replace(href);
+  }, [href]);
+  return null;
+}
+
+/** A hospital login lands on the first page it may open (a receptionist on
+ * Reception, a doctor on the Doctor Desk, the owner on the dashboard). */
+function HospitalLanding() {
+  const tenant = useAuthStore((s) => s.currentTenant);
+  const perms = useAuthStore((s) => s.currentUser?.permissions ?? null);
+  const first = tenant ? visibleNavFor(tenant.businessType, tenant.allowedModules, perms)[0] : undefined;
+  const href = first ? (first.children?.[0]?.children?.[0]?.href ?? first.children?.[0]?.href ?? first.href) : "/hospital";
+  return <RedirectTo href={href} />;
 }
 
 /* ── Category bar chart ── */

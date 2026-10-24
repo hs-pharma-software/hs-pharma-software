@@ -306,6 +306,8 @@ const MIGRATIONS = [
 
   { version: 39, label: 'rx items owner columns for sync', statements: rustSchemaStatements(39) },
 
+  { version: 40, label: 'hospital HR, OPD reception, doctor desk, paid lab/radiology orders', statements: rustSchemaStatements(40) },
+
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(

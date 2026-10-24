@@ -6,8 +6,25 @@ import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { staffRepo } from "@/lib/repo/staff";
 import type { Staff } from "@/lib/types";
+import { useAuthStore } from "@/store/authStore";
+import { businessType } from "@/config/businessTypes";
+import { HospitalStaffFormModal } from "./HospitalStaffFormModal";
 
 export function StaffFormModal({
+  staff,
+  onClose,
+  onSaved,
+}: {
+  staff: Staff | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isHospital = useAuthStore((st) => businessType(st.currentTenant?.businessType).id === "hospital");
+  if (isHospital) return <HospitalStaffFormModal staff={staff} onClose={onClose} onSaved={onSaved} />;
+  return <GeneralStaffForm staff={staff} onClose={onClose} onSaved={onSaved} />;
+}
+
+function GeneralStaffForm({
   staff,
   onClose,
   onSaved,

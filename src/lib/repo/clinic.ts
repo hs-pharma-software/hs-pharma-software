@@ -248,35 +248,49 @@ export async function dispenseRxNotification(id: string, invoiceId: string): Pro
   await updateNotification(id, `status = 'dispensed', invoice_id = ?, updated_at = ?`, [invoiceId, ts]);
 }
 
-/** Send a prescription to the linked pharmacy. The pharmacy is another tenant
- * and cannot read the clinic's records, so it receives its own copy: a mailbox
- * entry plus the prescription lines (pharmacy_rx_notifications /
- * pharmacy_rx_items). Then the prescription is marked "sent". Sending again
- * refreshes the pharmacy's copy instead of duplicating it. Only the pharmacy
- * this clinic has linked can receive it, and the pharmacy's stock and
- * invoices are untouched: it decides itself whether to bill. */
-export async function sendPrescriptionToPharmacy(
-  prescriptionId: string,
-  pharmacyTenantId: string,
-  opts: { patientName: string; patientId: string; doctorName: string | null; clinicTenantId?: string; clinicName: string | null; rxDate: string; itemCount?: number }
-): Promise<void> {
-  const clinicTenantId = requireCurrentTenantId();
-  await assertLinkedPharmacy(pharmacyTenantId);
-  const prescription = await prescriptionsRepo.get(prescriptionId);
-  if (!prescription) throw new Error("Prescription not found in this business.");
-  const items = await getRxItems(prescriptionId);
-  if (!items.length) throw new Error("This prescription has no medicines to send.");
+/** One medicine line handed to a pharmacy. */
+export interface MailboxLine {
+  product_id: string | null;
+  product_name: string;
+  strength?: string | null;
+  dosage_form?: string | null;
+  dose?: string | null;
+  route?: string | null;
+  frequency?: string | null;
+  duration?: string | null;
+  qty: number;
+  instructions?: string | null;
+}
+
+/** Hands a prescription to the pharmacy this tenant (clinic or hospital) has
+ * linked: a mailbox entry plus the lines (pharmacy_rx_notifications /
+ * pharmacy_rx_items). The pharmacy cannot read the sender's own records, so it
+ * gets this copy. Sending again refreshes the copy instead of duplicating it.
+ * The pharmacy's stock and invoices are untouched: it decides itself whether to bill. */
+export async function postToPharmacyMailbox(params: {
+  pharmacyTenantId: string;
+  prescriptionId: string;
+  patientName: string;
+  patientId: string;
+  doctorName: string | null;
+  senderName: string | null;
+  rxDate: string;
+  notes: string | null;
+  lines: MailboxLine[];
+}): Promise<void> {
+  const senderTenantId = requireCurrentTenantId();
+  await assertLinkedPharmacy(params.pharmacyTenantId);
+  if (!params.lines.length) throw new Error("This prescription has no medicines to send.");
   const ts = nowIso();
 
-  // 1) The pharmacy's copy first: if the clinic-side update below fails, sending again is safe.
   const existing = await dbSelect<{ id: string; created_at: string }>(
     `SELECT id, created_at FROM pharmacy_rx_notifications WHERE pharmacy_tenant_id = ? AND prescription_id = ? LIMIT 1`,
-    [pharmacyTenantId, prescriptionId]
+    [params.pharmacyTenantId, params.prescriptionId]
   );
   const notification = {
-    id: existing[0]?.id ?? newId(), pharmacy_tenant_id: pharmacyTenantId, prescription_id: prescriptionId, clinic_tenant_id: clinicTenantId,
-    clinic_name: opts.clinicName ?? "", patient_name: opts.patientName, patient_id: opts.patientId, doctor_name: opts.doctorName ?? "",
-    rx_date: opts.rxDate, item_count: items.length, status: "pending", invoice_id: null, read_at: null, rx_notes: prescription.notes ?? null,
+    id: existing[0]?.id ?? newId(), pharmacy_tenant_id: params.pharmacyTenantId, prescription_id: params.prescriptionId, clinic_tenant_id: senderTenantId,
+    clinic_name: params.senderName ?? "", patient_name: params.patientName, patient_id: params.patientId, doctor_name: params.doctorName ?? "",
+    rx_date: params.rxDate, item_count: params.lines.length, status: "pending", invoice_id: null, read_at: null, rx_notes: params.notes ?? null,
     created_at: existing[0]?.created_at ?? ts, updated_at: ts,
   };
   const cols = Object.keys(notification);
@@ -289,19 +303,19 @@ export async function sendPrescriptionToPharmacy(
 
   const oldLines = await dbSelect<{ id: string }>(
     `SELECT id FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ? AND deleted_at IS NULL`,
-    [pharmacyTenantId, prescriptionId]
+    [params.pharmacyTenantId, params.prescriptionId]
   );
   for (const o of oldLines) {
     await dbExecute(`UPDATE pharmacy_rx_items SET deleted_at = ?, updated_at = ? WHERE id = ?`, [ts, ts, o.id]);
     const full = (await dbSelect<Record<string, unknown>>(`SELECT * FROM pharmacy_rx_items WHERE id = ?`, [o.id]))[0];
     if (full) await recordOutbox("pharmacy_rx_items", o.id, "update", full);
   }
-  for (const it of items) {
+  for (const it of params.lines) {
     const line = {
-      id: newId(), pharmacy_tenant_id: pharmacyTenantId, clinic_tenant_id: clinicTenantId, prescription_id: prescriptionId,
-      product_id: it.product_id, product_name: it.product_name, strength: it.strength, dosage_form: it.dosage_form, dose: it.dose,
-      route: it.route, frequency: it.frequency, duration: it.duration, qty: it.qty, instructions: it.instructions,
-      created_at: ts, updated_at: ts, deleted_at: null,
+      id: newId(), pharmacy_tenant_id: params.pharmacyTenantId, clinic_tenant_id: senderTenantId, prescription_id: params.prescriptionId,
+      product_id: it.product_id ?? null, product_name: it.product_name, strength: it.strength ?? null, dosage_form: it.dosage_form ?? null,
+      dose: it.dose ?? null, route: it.route ?? null, frequency: it.frequency ?? null, duration: it.duration ?? null, qty: it.qty,
+      instructions: it.instructions ?? null, created_at: ts, updated_at: ts, deleted_at: null,
     };
     const lc = Object.keys(line);
     await dbExecute(
@@ -310,9 +324,21 @@ export async function sendPrescriptionToPharmacy(
     );
     await recordOutbox("pharmacy_rx_items", line.id, "insert", line);
   }
+}
 
-  // 2) The clinic's own record.
-  await prescriptionsRepo.update(prescriptionId, { status: "sent", pharmacy_tenant_id: pharmacyTenantId, sent_at: ts });
+/** Send a clinic prescription to the linked pharmacy, then mark it "sent". */
+export async function sendPrescriptionToPharmacy(
+  prescriptionId: string,
+  pharmacyTenantId: string,
+  opts: { patientName: string; patientId: string; doctorName: string | null; clinicTenantId?: string; clinicName: string | null; rxDate: string; itemCount?: number }
+): Promise<void> {
+  const prescription = await prescriptionsRepo.get(prescriptionId);
+  if (!prescription) throw new Error("Prescription not found in this business.");
+  await postToPharmacyMailbox({
+    pharmacyTenantId, prescriptionId, patientName: opts.patientName, patientId: opts.patientId, doctorName: opts.doctorName,
+    senderName: opts.clinicName, rxDate: opts.rxDate, notes: prescription.notes ?? null, lines: await getRxItems(prescriptionId),
+  });
+  await prescriptionsRepo.update(prescriptionId, { status: "sent", pharmacy_tenant_id: pharmacyTenantId, sent_at: nowIso() });
 }
 
 export interface RxLine {
@@ -505,9 +531,9 @@ export async function searchProductsForPharmacy(
          tenant_id = ?
          OR (tenant_id IS NULL AND catalog_group = 'pharma')
        )
-       AND (name LIKE ? OR barcode LIKE ?)
+       AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?)
      ORDER BY name ASC LIMIT 20`,
-    [pharmacyTenantId, like, like]
+    [pharmacyTenantId, like, like, like]
   );
 }
 

@@ -477,6 +477,8 @@ function shared(label: string, moduleKey: string): NavChild {
 /** Hospital Management sidebar, in this order (see config/navFilter.ts). */
 const HOSPITAL_NAV: NavItem[] = [
   { label: "Dashboard", href: "/hospital", icon: LayoutDashboard, moduleKey: "hospital_dashboard", onlyFor: ["hospital"] },
+  { label: "Reception", href: "/hospital/reception", icon: Bell, moduleKey: "hospital_reception", onlyFor: ["hospital"] },
+  { label: "Doctor Desk", href: "/hospital/doctor", icon: Stethoscope, moduleKey: "hospital_doctor_desk", onlyFor: ["hospital"] },
   {
     label: "Hospital",
     href: "/hospital/profile",

@@ -9,6 +9,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { hospitalLabRepo, hospitalPatientsRepo, nextOrderNo, type HospitalLabOrder, type HospitalPatient } from "@/lib/repo/hospital";
+import { canProcess, reportLabResult } from "@/lib/repo/hospitalOpd";
 import type { OrderPriority } from "@/lib/types-hospital";
 import { localDateTime } from "@/lib/localDate";
 
@@ -47,9 +48,11 @@ export default function LabPage() {
     { header: "Result", render: (r) => (r.result_value ? `${r.result_value} ${r.unit ?? ""} ${r.flag && r.flag !== "N" ? `(${r.flag})` : ""}` : "—") },
     {
       header: "",
-      render: (r) => (r.status !== "reported" && r.status !== "cancelled"
-        ? <Button variant="ghost" onClick={() => setResulting(r)}>Enter Result</Button>
-        : null),
+      render: (r) => (r.status === "reported" || r.status === "cancelled"
+        ? null
+        : canProcess(r)
+          ? <Button variant="ghost" onClick={() => setResulting(r)}>Enter Result</Button>
+          : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Awaiting fee Rs {Number(r.fee).toFixed(0)}</span>),
     },
   ];
 
@@ -155,14 +158,7 @@ function ResultModal({ order, onClose, onSaved }: { order: HospitalLabOrder; onC
     if (!value.trim()) return;
     setSaving(true);
     try {
-      await hospitalLabRepo.update(order.id, {
-        result_value: value.trim(),
-        unit: unit.trim() || null,
-        ref_range: range.trim() || null,
-        flag,
-        status: "reported",
-        reported_at: now(),
-      });
+      await reportLabResult(order.id, { result_value: value, unit: unit.trim() || null, ref_range: range.trim() || null, flag });
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);

@@ -71,6 +71,38 @@ export interface HospitalEpisode extends TenantRow {
   discharge_date: string | null;
   diagnosis: string | null;
   notes: string | null;
+  // OPD visit and the doctor's notes (v40).
+  token_no?: number | null;
+  consult_status?: "waiting" | "in_consultation" | "done" | null;
+  complaint?: string | null;
+  vitals?: string | null;
+  findings?: string | null;
+  advice?: string | null;
+  followup_date?: string | null;
+}
+
+/** A medicine a hospital doctor prescribes in an episode (v40). */
+export interface HospitalRxItem extends TenantRow {
+  episode_id: string;
+  product_id: string | null;
+  product_name: string;
+  generic_name: string | null;
+  dose: string | null;
+  route: string | null;
+  frequency: string | null;
+  duration: string | null;
+  qty: number;
+  instructions: string | null;
+  sent_at: string | null;
+}
+
+/** Fee fields of a lab / radiology order (v40): an order with a fee can only be
+ * processed once that fee is paid. */
+export interface OrderFee {
+  service_id?: string | null;
+  charge_id?: string | null;
+  fee?: number | null;
+  paid?: number | null;
 }
 
 export interface HospitalCharge extends TenantRow {
@@ -114,7 +146,7 @@ export interface HospitalDepartment extends TenantRow {
 
 export type OrderPriority = "routine" | "urgent" | "stat";
 
-export interface HospitalLabOrder extends TenantRow {
+export interface HospitalLabOrder extends TenantRow, OrderFee {
   order_no: string;
   episode_id: string | null;
   patient_id: string;
@@ -131,7 +163,7 @@ export interface HospitalLabOrder extends TenantRow {
   notes: string | null;
 }
 
-export interface HospitalImagingOrder extends TenantRow {
+export interface HospitalImagingOrder extends TenantRow, OrderFee {
   order_no: string;
   episode_id: string | null;
   patient_id: string;

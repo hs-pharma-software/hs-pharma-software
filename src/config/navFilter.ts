@@ -23,6 +23,8 @@ export const CLINIC_NAV_ORDER = [
  * under Purchase Cell, Staff under HR Department. */
 export const HOSPITAL_NAV_ORDER = [
   "hospital_dashboard",
+  "hospital_reception",
+  "hospital_doctor_desk",
   "hospital_profile",
   "hospital_patients",
   "hospital_episodes",

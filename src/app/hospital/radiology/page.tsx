@@ -9,6 +9,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { hospitalImagingRepo, hospitalPatientsRepo, nextOrderNo, type HospitalImagingOrder, type HospitalPatient } from "@/lib/repo/hospital";
+import { canProcess, reportImaging } from "@/lib/repo/hospitalOpd";
 import type { OrderPriority } from "@/lib/types-hospital";
 import { localDateTime } from "@/lib/localDate";
 
@@ -49,9 +50,11 @@ export default function RadiologyPage() {
     { header: "Impression", render: (r) => r.impression ?? "—" },
     {
       header: "",
-      render: (r) => (r.status !== "reported" && r.status !== "cancelled"
-        ? <Button variant="ghost" onClick={() => setReporting(r)}>Report</Button>
-        : null),
+      render: (r) => (r.status === "reported" || r.status === "cancelled"
+        ? null
+        : canProcess(r)
+          ? <Button variant="ghost" onClick={() => setReporting(r)}>Report</Button>
+          : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">Awaiting fee Rs {Number(r.fee).toFixed(0)}</span>),
     },
   ];
 
@@ -159,13 +162,7 @@ function ReportModal({ order, onClose, onSaved }: { order: HospitalImagingOrder;
     if (!impression.trim()) return;
     setSaving(true);
     try {
-      await hospitalImagingRepo.update(order.id, {
-        findings: findings.trim() || null,
-        impression: impression.trim(),
-        radiologist: radiologist.trim() || null,
-        status: "reported",
-        reported_at: now(),
-      });
+      await reportImaging(order.id, { findings: findings.trim() || null, impression, radiologist: radiologist.trim() || null });
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);

@@ -9,12 +9,15 @@ import { StaffFormModal } from "@/components/staff/StaffFormModal";
 import { staffRepo } from "@/lib/repo/staff";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { Staff } from "@/lib/types";
+import { useAuthStore } from "@/store/authStore";
+import { businessType } from "@/config/businessTypes";
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
+  const isHospital = useAuthStore((st) => businessType(st.currentTenant?.businessType).id === "hospital");
 
   async function reload() {
     if (!isTauri()) return;
@@ -27,12 +30,20 @@ export default function StaffPage() {
 
   const filtered = staff.filter((s) => {
     const term = search.toLowerCase();
-    return !term || s.name.toLowerCase().includes(term) || (s.phone ?? "").toLowerCase().includes(term);
+    return !term || s.name.toLowerCase().includes(term) || (s.phone ?? "").toLowerCase().includes(term) || (s.employee_id ?? "").toLowerCase().includes(term);
   });
 
   const columns: Column<Staff>[] = [
+    ...(isHospital ? [{ header: "Emp ID", render: (s: Staff) => <span className="font-mono text-xs">{s.employee_id ?? "\u2014"}</span> }] : []),
     { header: "Name", render: (s) => <span className="font-medium">{s.name}</span> },
     { header: "Designation", render: (s) => s.designation ?? "\u2014" },
+    ...(isHospital
+      ? [
+          { header: "Licence", render: (s: Staff) => (s.license_no ? `${s.license_type ?? ""} ${s.license_no}` : "\u2014") },
+          { header: "Department", render: (s: Staff) => s.department ?? "\u2014" },
+          { header: "Login", render: (s: Staff) => (s.user_id ? <span className="text-emerald-700">Yes</span> : <span className="text-neutral-400">No</span>) },
+        ]
+      : []),
     { header: "Phone No", render: (s) => s.phone ?? "\u2014" },
     { header: "CNIC", render: (s) => s.cnic ?? "\u2014" },
     { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "\u2014" },

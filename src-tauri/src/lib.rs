@@ -1278,6 +1278,62 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// Hospital HR, OPD reception and the doctor's desk (all additive):
+/// - staff: designation category, automatic employee id (MO-01...), PMDC / PNC /
+///   licence number, department, specialization, consultation fee, linked login.
+/// - hospital_episodes: OPD token and the consultation notes.
+/// - lab / radiology orders: the fee and whether it is paid (unpaid orders with a
+///   fee cannot be processed).
+/// - hospital_rx_items: medicines a hospital doctor prescribes in an episode.
+fn schema_sql_v40() -> &'static str {
+    r#"
+    ALTER TABLE staff ADD COLUMN employee_id TEXT;
+    ALTER TABLE staff ADD COLUMN staff_category TEXT;
+    ALTER TABLE staff ADD COLUMN license_type TEXT;
+    ALTER TABLE staff ADD COLUMN license_no TEXT;
+    ALTER TABLE staff ADD COLUMN department TEXT;
+    ALTER TABLE staff ADD COLUMN specialization TEXT;
+    ALTER TABLE staff ADD COLUMN consultation_fee REAL DEFAULT 0;
+    ALTER TABLE staff ADD COLUMN user_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_staff_employee_id ON staff (tenant_id, employee_id) WHERE employee_id IS NOT NULL;
+    ALTER TABLE hospital_episodes ADD COLUMN token_no INTEGER;
+    ALTER TABLE hospital_episodes ADD COLUMN consult_status TEXT DEFAULT 'waiting';
+    ALTER TABLE hospital_episodes ADD COLUMN complaint TEXT;
+    ALTER TABLE hospital_episodes ADD COLUMN vitals TEXT;
+    ALTER TABLE hospital_episodes ADD COLUMN findings TEXT;
+    ALTER TABLE hospital_episodes ADD COLUMN advice TEXT;
+    ALTER TABLE hospital_episodes ADD COLUMN followup_date TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hosp_episode_doctor ON hospital_episodes (tenant_id, doctor_id, date);
+    ALTER TABLE hospital_lab_orders ADD COLUMN service_id TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN charge_id TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN fee REAL DEFAULT 0;
+    ALTER TABLE hospital_lab_orders ADD COLUMN paid INTEGER DEFAULT 0;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN service_id TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN charge_id TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN fee REAL DEFAULT 0;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN paid INTEGER DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS hospital_rx_items (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        episode_id TEXT NOT NULL,
+        product_id TEXT,
+        product_name TEXT NOT NULL,
+        generic_name TEXT,
+        dose TEXT,
+        route TEXT,
+        frequency TEXT,
+        duration TEXT,
+        qty REAL NOT NULL DEFAULT 1,
+        instructions TEXT,
+        sent_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_rx_episode ON hospital_rx_items (tenant_id, episode_id)
+    "#
+}
+
 /// Owner columns so prescription lines can sync like every other tenant row:
 /// clinic_rx_items gets tenant_id (filled from its prescription), and the
 /// pharmacy's copy gets the sending clinic and a soft-delete column.
@@ -2200,6 +2256,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 39,
             description: "rx_items_owner_columns_for_sync",
             sql: schema_sql_v39(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 40,
+            description: "hospital_hr_opd_doctor_desk",
+            sql: schema_sql_v40(),
             kind: MigrationKind::Up,
         },
     ]

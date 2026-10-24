@@ -136,4 +136,13 @@ export interface Staff extends TenantRow {
   balance_type: BalanceType;
   basic_pay: number;
   date_of_joining: string | null;
+  // Hospital HR (v40); empty for other business types.
+  employee_id?: string | null;
+  staff_category?: string | null;
+  license_type?: string | null;
+  license_no?: string | null;
+  department?: string | null;
+  specialization?: string | null;
+  consultation_fee?: number | null;
+  user_id?: string | null;
 }
