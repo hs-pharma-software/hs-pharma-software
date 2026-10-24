@@ -252,39 +252,37 @@ function GeneralStoreDashboard() {
   const [categories, setCategories] = useState<InventoryCategoryRow[]>([]);
   const tauriReady = useIsTauri();
   const { openNew } = useFormTabs();
+  const sessionTenantGS = useAuthStore((s) => s.currentTenant);
+  const tenantIdGS = sessionTenantGS?.id ?? null;
 
   useEffect(() => {
     if (!isTauri()) return;
+    if (!tenantIdGS) return;
     (async () => {
-      try {
-        const [customers, suppliers, products, customerReceivable, supplierPayable, todaySummary, low, recent, top, cats] =
-          await Promise.all([
-            count("customers", true),
-            count("suppliers", true),
-            countProducts(),
-            getTotalPartyBalance("customer"),
-            getTotalPartyBalance("supplier"),
-            getTodaySummary(),
-            getLowStockProducts(8),
-            getRecentInvoices(6),
-            getTopSellingProducts(5),
-            getInventoryByCategory(),
-          ]);
-        setStats({ customers, suppliers, products, customerReceivable, supplierPayable });
-        setToday(todaySummary);
-        setLowStock(low);
-        setRecentInvoices(recent);
-        setTopProducts(top);
-        setCategories(cats);
-      } catch (err) {
-        console.error("dashboard load failed", err);
-      }
+      const [customers, suppliers, products, customerReceivable, supplierPayable, todaySummary, low, recent, top, cats] =
+        await Promise.all([
+          count("customers", true).catch(() => 0),
+          count("suppliers", true).catch(() => 0),
+          countProducts().catch(() => 0),
+          getTotalPartyBalance("customer").catch(() => 0),
+          getTotalPartyBalance("supplier").catch(() => 0),
+          getTodaySummary().catch(() => EMPTY_TODAY),
+          getLowStockProducts(8).catch(() => [] as LowStockRow[]),
+          getRecentInvoices(6).catch(() => [] as RecentInvoiceRow[]),
+          getTopSellingProducts(5).catch(() => [] as TopProductRow[]),
+          getInventoryByCategory().catch(() => [] as InventoryCategoryRow[]),
+        ]);
+      setStats({ customers, suppliers, products, customerReceivable, supplierPayable });
+      setToday(todaySummary);
+      setLowStock(low);
+      setRecentInvoices(recent);
+      setTopProducts(top);
+      setCategories(cats);
     })();
-  }, []);
+  }, [tenantIdGS]);
 
   const now = new Date();
   const dateLabel = now.toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const sessionTenant = useAuthStore((s) => s.currentTenant);
   const [logo, setLogo] = useState<string | null>(null);
   useEffect(() => {
     if (tauriReady) void loadLogo().then(setLogo);
@@ -305,7 +303,7 @@ function GeneralStoreDashboard() {
           <div>
             <p className="text-[11px] font-medium uppercase tracking-widest text-neutral-400">{dateLabel}</p>
             <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-neutral-900">
-              {sessionTenant?.name ?? "Dashboard"}
+              {sessionTenantGS?.name ?? "Dashboard"}
             </h1>
           </div>
         </div>
@@ -479,31 +477,27 @@ function GeneralDashboard() {
     if (!isTauri()) return;
     if (!tenantId) return;
     (async () => {
-      try {
-        const [customers, suppliers, products, customerReceivable, supplierPayable, todaySummary, low, exp, recent, top, units] =
-          await Promise.all([
-            count("customers", true),
-            count("suppliers", true),
-            countProducts(),
-            getTotalPartyBalance("customer"),
-            getTotalPartyBalance("supplier"),
-            getTodaySummary(),
-            getLowStockProducts(8),
-            getExpiringSoonBatches(180, 12),
-            getRecentInvoices(6),
-            getTopSellingProducts(5),
-            getInventoryByUnitType(),
-          ]);
-        setStats({ customers, suppliers, products, customerReceivable, supplierPayable });
-        setToday(todaySummary);
-        setLowStock(low);
-        setExpiring(exp);
-        setRecentInvoices(recent);
-        setTopProducts(top);
-        setUnitBreakdown(units);
-      } catch (err) {
-        console.error("dashboard load failed", err);
-      }
+      const [customers, suppliers, products, customerReceivable, supplierPayable, todaySummary, low, exp, recent, top, units] =
+        await Promise.all([
+          count("customers", true).catch(() => 0),
+          count("suppliers", true).catch(() => 0),
+          countProducts().catch(() => 0),
+          getTotalPartyBalance("customer").catch(() => 0),
+          getTotalPartyBalance("supplier").catch(() => 0),
+          getTodaySummary().catch(() => EMPTY_TODAY),
+          getLowStockProducts(8).catch(() => [] as LowStockRow[]),
+          getExpiringSoonBatches(180, 12).catch(() => [] as ExpiringBatchRow[]),
+          getRecentInvoices(6).catch(() => [] as RecentInvoiceRow[]),
+          getTopSellingProducts(5).catch(() => [] as TopProductRow[]),
+          getInventoryByUnitType().catch(() => [] as InventoryUnitRow[]),
+        ]);
+      setStats({ customers, suppliers, products, customerReceivable, supplierPayable });
+      setToday(todaySummary);
+      setLowStock(low);
+      setExpiring(exp);
+      setRecentInvoices(recent);
+      setTopProducts(top);
+      setUnitBreakdown(units);
     })();
   }, [tenantId]);
 
