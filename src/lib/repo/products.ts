@@ -1,7 +1,7 @@
 ﻿import { dbSelect, dbExecute } from "../db";
 import { assertOwnedRefs, createTenantRepo, requireCurrentTenantId, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
-import { sharedCatalogGroupsFor, sharedCatalogWhereClause, isPharmacyFamilyType, type SharedCatalogGroup } from "../catalogAccess";
+import { sharedCatalogGroupsFor, sharedCatalogWhereClause, type SharedCatalogGroup } from "../catalogAccess";
 import { newId, nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
 import type { Product, ProductBatch, PriceListEntry } from "../types";
@@ -66,13 +66,34 @@ export const productsRepo = {
     if (sharedGroups.length) {
       const tenantId = requireCurrentTenantId();
       const { clause, params } = sharedCatalogWhereClause(tenantId, sharedGroups);
-      const existing = (await dbSelect<{ id: string }>(`SELECT id FROM products WHERE id = ? AND ${clause}`, [id, ...params]))[0];
+      const existing = (await dbSelect<{ id: string; tenant_id: string | null }>(`SELECT id, tenant_id FROM products WHERE id = ? AND ${clause}`, [id, ...params]))[0];
       if (!existing) throw new Error("Product not found in this business.");
+      if (existing.tenant_id === null) return updateSharedProduct(id, data, sharedGroups);
       return productsBase.update(id, data);
     }
     return productsBase.update(id, data);
   },
 };
+
+/** Saves an edit to a shared catalog product (tenant_id NULL). The tenant repo
+ * cannot: its UPDATE also matches tenant_id = <this tenant>, so the edit was
+ * silently lost. Ownership never changes and the row stays in its group. */
+async function updateSharedProduct(id: string, data: Partial<Product>, groups: SharedCatalogGroup[]): Promise<Product | null> {
+  const patch: Record<string, unknown> = { ...data, updated_at: nowIso() };
+  delete patch.id;
+  delete patch.tenant_id;
+  delete patch.created_at;
+  if (patch.catalog_group != null && !groups.includes(patch.catalog_group as SharedCatalogGroup)) delete patch.catalog_group;
+  const keys = Object.keys(patch);
+  await dbExecute(
+    `UPDATE products SET ${keys.map((k) => `${k} = ?`).join(", ")}
+     WHERE id = ? AND tenant_id IS NULL AND catalog_group IN (${groups.map(() => "?").join(", ")})`,
+    [...keys.map((k) => patch[k] ?? null), id, ...groups]
+  );
+  const full = (await dbSelect<Product>(`SELECT * FROM products WHERE id = ?`, [id]))[0] ?? null;
+  if (full) await recordOutbox("products", id, "update", full as unknown as Record<string, unknown>);
+  return full;
+}
 
 /**
  * Creates a master product in the shared catalog (tenant_id = NULL).
@@ -81,11 +102,14 @@ export const productsRepo = {
  * Stock (batches, price list) must still be created per-tenant.
  */
 export async function createSharedProduct(data: Partial<Product>): Promise<Product> {
-  const { currentTenant } = useAuthStore.getState();
-  if (!isPharmacyFamilyType(currentTenant?.businessType)) {
-    throw new Error("Only pharmacy-type tenants can create shared catalog products.");
-  }
+  requireCurrentTenantId();
   if (!data.catalog_group) throw new Error("catalog_group is required for shared products.");
+  // Pharmacies add to the pharma and general-store catalogs, general stores to
+  // the general-store catalog (it used to refuse general stores, so their
+  // products were never saved).
+  if (!sharedCatalogGroupsFor(currentBusinessType()).includes(data.catalog_group as SharedCatalogGroup)) {
+    throw new Error("This business cannot add products to that shared catalog.");
+  }
   // Category / sub_category / unit refs are allowed to be shared or tenant-owned.
   await productRefs(data);
   const id = (data.id as string) ?? newId();

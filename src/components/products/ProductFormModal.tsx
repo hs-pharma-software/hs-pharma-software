@@ -324,7 +324,12 @@ export function ProductFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !baseUnitId) return;
+    if (!name.trim()) return;
+    if (!baseUnitId) {
+      window.alert("Choose the base unit from the list (type to search, then pick it).");
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     try {
       // Determine if this product should go into the shared catalog.
@@ -412,6 +417,8 @@ export function ProductFormModal({
         }
       }
       onSaved();
+    } catch (err) {
+      window.alert(`Could not save the product: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
