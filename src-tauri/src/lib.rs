@@ -1105,6 +1105,179 @@ fn schema_sql_v32() -> &'static str {
     "#
 }
 
+/// Clinic Management module (v34): patients, doctors, appointments,
+/// consultations, prescriptions, pharmacy notifications and link config.
+/// All clinic tables are tenant-scoped; pharmacy notifications are owned
+/// by the pharmacy tenant so pharmacy staff can query their own inbox.
+fn schema_sql_v34() -> &'static str {
+    r#"
+    -- ── Clinic: patients ──────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS clinic_patients (
+        id          TEXT PRIMARY KEY,
+        tenant_id   TEXT NOT NULL,
+        mrn         TEXT,
+        name        TEXT NOT NULL,
+        dob         TEXT,
+        gender      TEXT,
+        phone       TEXT,
+        address     TEXT,
+        blood_group TEXT,
+        allergies   TEXT,
+        emergency_contact TEXT,
+        notes       TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        deleted_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_cp_tenant ON clinic_patients (tenant_id, name);
+    CREATE INDEX IF NOT EXISTS idx_cp_mrn   ON clinic_patients (tenant_id, mrn);
+
+    -- ── Clinic: doctors ───────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS clinic_doctors (
+        id                TEXT PRIMARY KEY,
+        tenant_id         TEXT NOT NULL,
+        name              TEXT NOT NULL,
+        specialization    TEXT,
+        qualification     TEXT,
+        phone             TEXT,
+        email             TEXT,
+        consultation_fee  REAL DEFAULT 0,
+        follow_up_fee     REAL DEFAULT 0,
+        follow_up_days    INTEGER DEFAULT 30,
+        slot_minutes      INTEGER DEFAULT 15,
+        available_days    TEXT,
+        notes             TEXT,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        deleted_at        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_cd_tenant ON clinic_doctors (tenant_id, name);
+
+    -- ── Clinic: appointments ──────────────────────────────────────────
+    -- status: scheduled | confirmed | checked_in | waiting | in_consultation
+    --         | completed | cancelled | no_show
+    CREATE TABLE IF NOT EXISTS clinic_appointments (
+        id          TEXT PRIMARY KEY,
+        tenant_id   TEXT NOT NULL,
+        patient_id  TEXT NOT NULL,
+        doctor_id   TEXT NOT NULL,
+        date        TEXT NOT NULL,
+        time        TEXT NOT NULL,
+        status      TEXT NOT NULL DEFAULT 'scheduled',
+        type        TEXT NOT NULL DEFAULT 'routine',
+        reason      TEXT,
+        notes       TEXT,
+        token_no    INTEGER,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        deleted_at  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ca_tenant_date ON clinic_appointments (tenant_id, date, status);
+    CREATE INDEX IF NOT EXISTS idx_ca_doctor_date ON clinic_appointments (doctor_id, date);
+    CREATE INDEX IF NOT EXISTS idx_ca_patient     ON clinic_appointments (patient_id);
+
+    -- ── Clinic: consultations ─────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS clinic_consultations (
+        id             TEXT PRIMARY KEY,
+        tenant_id      TEXT NOT NULL,
+        appointment_id TEXT NOT NULL,
+        patient_id     TEXT NOT NULL,
+        doctor_id      TEXT NOT NULL,
+        date           TEXT NOT NULL,
+        complaint      TEXT,
+        history        TEXT,
+        vitals         TEXT,
+        findings       TEXT,
+        diagnosis      TEXT,
+        advice         TEXT,
+        followup_date  TEXT,
+        followup_notes TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_cc_appointment ON clinic_consultations (appointment_id);
+    CREATE INDEX IF NOT EXISTS idx_cc_patient ON clinic_consultations (patient_id);
+
+    -- ── Clinic: prescriptions ─────────────────────────────────────────
+    -- status: draft | finalized | sent | acknowledged | partially_dispensed
+    --         | dispensed | cancelled
+    CREATE TABLE IF NOT EXISTS clinic_prescriptions (
+        id                TEXT PRIMARY KEY,
+        tenant_id         TEXT NOT NULL,
+        consultation_id   TEXT,
+        patient_id        TEXT NOT NULL,
+        doctor_id         TEXT NOT NULL,
+        date              TEXT NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'draft',
+        pharmacy_tenant_id TEXT,
+        sent_at           TEXT,
+        acknowledged_at   TEXT,
+        dispensed_at      TEXT,
+        notes             TEXT,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        deleted_at        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_crx_tenant    ON clinic_prescriptions (tenant_id, date);
+    CREATE INDEX IF NOT EXISTS idx_crx_patient   ON clinic_prescriptions (patient_id);
+    CREATE INDEX IF NOT EXISTS idx_crx_pharmacy  ON clinic_prescriptions (pharmacy_tenant_id, status);
+
+    -- ── Clinic: prescription items ────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS clinic_rx_items (
+        id              TEXT PRIMARY KEY,
+        prescription_id TEXT NOT NULL,
+        product_id      TEXT,
+        product_name    TEXT NOT NULL,
+        strength        TEXT,
+        dosage_form     TEXT,
+        dose            TEXT,
+        route           TEXT,
+        frequency       TEXT,
+        duration        TEXT,
+        qty             REAL NOT NULL DEFAULT 1,
+        instructions    TEXT,
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL,
+        deleted_at      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_crxi_rx ON clinic_rx_items (prescription_id);
+
+    -- ── Pharmacy: rx notifications (owned by pharmacy tenant) ─────────
+    -- One row per prescription sent to a pharmacy. Idempotent on prescription_id.
+    CREATE TABLE IF NOT EXISTS pharmacy_rx_notifications (
+        id                TEXT PRIMARY KEY,
+        pharmacy_tenant_id TEXT NOT NULL,
+        prescription_id   TEXT NOT NULL,
+        clinic_tenant_id  TEXT NOT NULL,
+        clinic_name       TEXT NOT NULL,
+        patient_name      TEXT NOT NULL,
+        patient_id        TEXT NOT NULL,
+        doctor_name       TEXT NOT NULL,
+        rx_date           TEXT NOT NULL,
+        item_count        INTEGER NOT NULL DEFAULT 0,
+        status            TEXT NOT NULL DEFAULT 'pending',
+        invoice_id        TEXT,
+        read_at           TEXT,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pharm_rx_notif ON pharmacy_rx_notifications (pharmacy_tenant_id, prescription_id);
+    CREATE INDEX IF NOT EXISTS idx_pharm_rx_status ON pharmacy_rx_notifications (pharmacy_tenant_id, status);
+
+    -- ── Clinic ↔ Pharmacy link config ─────────────────────────────────
+    CREATE TABLE IF NOT EXISTS clinic_pharmacy_link (
+        id                TEXT PRIMARY KEY,
+        clinic_tenant_id  TEXT NOT NULL,
+        pharmacy_tenant_id TEXT NOT NULL,
+        is_active         INTEGER NOT NULL DEFAULT 1,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_clinic_pharmacy ON clinic_pharmacy_link (clinic_tenant_id)
+    "#
+}
+
 /// Extended customer / client fields for contractor and FBR compliance (v33).
 /// Splits the combined cnic_ntn field into separate cnic_ntn (CNIC) and ntn
 /// fields, adds strn, registration_type, business_name and fbr_active_status
@@ -1687,6 +1860,12 @@ pub fn run() {
             version: 33,
             description: "customer_contractor_fields",
             sql: schema_sql_v33(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 34,
+            description: "clinic_module",
+            sql: schema_sql_v34(),
             kind: MigrationKind::Up,
         },
     ];

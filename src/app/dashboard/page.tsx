@@ -175,13 +175,18 @@ function ExpiryBadge({ dateStr }: { dateStr: string }) {
 }
 
 /* ══════════════════════════════════════════════ Page ══════════════════════════════════════════════ */
-/** Restaurant and electric/solar store tenants get their own dashboards; everyone else the general one. */
+/** Each business type gets its own dashboard; generic pharmacy/medical fallback for everything else. */
 export default function DashboardPage() {
   const tenant = useAuthStore((s) => s.currentTenant);
   if (tenant && businessType(tenant.businessType).id === "restaurant") return <RestaurantDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === ELECTRIC_TYPE) return <ElectricDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "distributor") return <DistDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "general_store") return <GeneralStoreDashboard />;
+  if (tenant && businessType(tenant.businessType).id === "clinic") {
+    // Redirect to the dedicated clinic dashboard
+    if (typeof window !== "undefined") { window.location.href = "/clinic"; }
+    return null;
+  }
   return <GeneralDashboard />;
 }
 

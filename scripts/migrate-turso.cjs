@@ -283,6 +283,8 @@ const MIGRATIONS = [
     `CREATE INDEX IF NOT EXISTS idx_sub_categories_catalog_group ON sub_categories (catalog_group) WHERE catalog_group IS NOT NULL`,
   ] },
 
+  { version: 34, label: 'clinic module (patients, doctors, appointments, consultations, prescriptions, pharmacy notifications)', statements: rustSchemaStatements(34) },
+
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(

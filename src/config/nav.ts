@@ -35,6 +35,11 @@ import {
   MapPin,
   Navigation,
   ShieldCheck,
+  Stethoscope,
+  UserRoundPlus,
+  CalendarDays,
+  FileHeart,
+  Bell,
 } from "lucide-react";
 
 export interface NavChild {
@@ -373,6 +378,58 @@ export const NAV: NavItem[] = [
       { label: "Billing & Tax", href: "/restaurant/settings" },
       { label: "PRA e-Invoicing", href: "/restaurant/pra" },
     ],
+  },
+  // ── Clinic (shown only to clinic tenants) ──────────────────────────────
+  {
+    label: "Clinic",
+    href: "/clinic",
+    icon: Stethoscope,
+    moduleKey: "clinic_dashboard",
+    onlyFor: ["clinic"],
+    children: [
+      { label: "Clinic Dashboard", href: "/clinic" },
+      { label: "Today's Queue", href: "/clinic/appointments" },
+    ],
+  },
+  {
+    label: "Patients",
+    href: "/clinic/patients",
+    icon: UserRoundPlus,
+    moduleKey: "clinic_patients",
+    onlyFor: ["clinic"],
+  },
+  {
+    label: "Doctors",
+    href: "/clinic/doctors",
+    icon: UserCog,
+    moduleKey: "clinic_doctors",
+    onlyFor: ["clinic"],
+  },
+  {
+    label: "Appointments",
+    href: "/clinic/appointments",
+    icon: CalendarDays,
+    moduleKey: "clinic_appointments",
+    onlyFor: ["clinic"],
+  },
+  {
+    label: "Consultations",
+    href: "/clinic/consultations",
+    icon: FileHeart,
+    moduleKey: "clinic_consultations",
+    onlyFor: ["clinic"],
+    children: [
+      { label: "Consultation List", href: "/clinic/consultations" },
+      { label: "New Consultation", href: "/clinic/consultations/new" },
+    ],
+  },
+  // ── Pharmacy Rx Inbox (hospital_pharmacy only) ──────────────────────────
+  {
+    label: "Rx Inbox",
+    href: "/clinic/rx-inbox",
+    icon: Bell,
+    moduleKey: "rx_inbox",
+    onlyFor: ["hospital_pharmacy"],
   },
   {
     label: "Settings",
