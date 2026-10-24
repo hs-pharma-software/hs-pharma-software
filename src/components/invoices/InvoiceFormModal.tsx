@@ -35,7 +35,7 @@ import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
 import { businessType } from "@/config/businessTypes";
-import { getRxForInvoice } from "@/lib/repo/clinic";
+import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -506,6 +506,8 @@ export function InvoiceFormModal({
         invoiceId = created.id;
       }
       await buildLineItems(invoiceId);
+      // Billed from a received prescription: mark it invoiced so it is not billed twice.
+      if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

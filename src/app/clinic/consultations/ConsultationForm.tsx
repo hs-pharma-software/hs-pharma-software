@@ -277,7 +277,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
         title={isEdit ? "Consultation Detail" : "New Consultation"}
         actions={
           <Button variant="primary" onClick={() => void saveConsultationClicked()} disabled={saving || !patientId}>
-            {saving ? "Savingâ€¦" : "Save Consultation"}
+            {saving ? "Saving…" : "Save Consultation"}
           </Button>
         }
       />
@@ -286,14 +286,14 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <Field label="Patient *">
             <Select value={patientId} onChange={(e) => setPatientId(e.target.value)} required>
-              <option value="">â€” Select Patient â€”</option>
+              <option value="">— Select Patient —</option>
               {patients.map((p) => <option key={p.id} value={p.id}>{p.name}{p.mrn ? ` (${p.mrn})` : ""}</option>)}
             </Select>
           </Field>
           <Field label="Doctor">
             <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-              <option value="">â€” Select Doctor â€”</option>
-              {doctors.map((d) => <option key={d.id} value={d.id}>Dr. {d.name}{d.specialization ? ` â€” ${d.specialization}` : ""}</option>)}
+              <option value="">— Select Doctor —</option>
+              {doctors.map((d) => <option key={d.id} value={d.id}>Dr. {d.name}{d.specialization ? ` — ${d.specialization}` : ""}</option>)}
             </Select>
           </Field>
           <Field label="Date *">
@@ -309,7 +309,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
             <Textarea value={history} onChange={(e) => setHistory(e.target.value)} rows={2} placeholder="Medical/surgical history" />
           </Field>
           <Field label="Vitals">
-            <Textarea value={vitals} onChange={(e) => setVitals(e.target.value)} rows={2} placeholder="BP, pulse, temp, SpO2, weightâ€¦" />
+            <Textarea value={vitals} onChange={(e) => setVitals(e.target.value)} rows={2} placeholder="BP, pulse, temp, SpO2, weight…" />
           </Field>
           <Field label="Findings / Examination">
             <Textarea value={findings} onChange={(e) => setFindings(e.target.value)} rows={2} placeholder="Examination findings" />
@@ -351,7 +351,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                     {rx.status}
                   </span>
                   <span className="text-sm text-neutral-700">{rx.item_count} item{rx.item_count !== 1 ? "s" : ""}</span>
-                  {rx.notes && <span className="text-xs text-neutral-400 ml-2">â€” {rx.notes}</span>}
+                  {rx.notes && <span className="text-xs text-neutral-400 ml-2">— {rx.notes}</span>}
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Create Invoice button */}
@@ -390,7 +390,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                     .catch((err) => window.alert(`Could not link the pharmacy: ${err instanceof Error ? err.message : String(err)}`));
                 }}
               >
-                <option value="">â€” None â€”</option>
+                <option value="">— None —</option>
                 {pharmacyTenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </Field>
@@ -453,7 +453,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                       </td>
                       <td className="py-1 pr-2">
                         <Select value={item.dosage_form} onChange={(e) => updateRxRow(i, "dosage_form", e.target.value)} className="w-28">
-                          <option value="">â€”</option>
+                          <option value="">—</option>
                           {DOSAGE_FORMS.map((f) => <option key={f} value={f}>{f}</option>)}
                         </Select>
                       </td>
@@ -497,7 +497,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                 </Field>
               </div>
               <Button variant="primary" onClick={() => void saveRx()} disabled={saving}>
-                {saving ? "Savingâ€¦" : "Save Prescription"}
+                {saving ? "Saving…" : "Save Prescription"}
               </Button>
             </div>
           </div>

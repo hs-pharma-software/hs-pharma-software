@@ -365,6 +365,38 @@ export async function getRxForInvoice(prescriptionId: string): Promise<{ items: 
   return { items, notes: notif[0]?.rx_notes ?? null };
 }
 
+/** After this pharmacy bills a received prescription: status "dispensed" with
+ * the invoice id. Does nothing for a prescription the pharmacy did not receive. */
+export async function markPrescriptionInvoiced(prescriptionId: string, invoiceId: string): Promise<void> {
+  const rows = await dbSelect<{ id: string }>(
+    `SELECT id FROM pharmacy_rx_notifications WHERE pharmacy_tenant_id = ? AND prescription_id = ? LIMIT 1`,
+    [requireCurrentTenantId(), prescriptionId]
+  );
+  if (rows[0]) await dispenseRxNotification(rows[0].id, invoiceId);
+}
+
+export interface MailboxPrescription {
+  notification: PharmacyRxNotification;
+  lines: (MailboxLine & { id: string })[];
+}
+
+/** A prescription this pharmacy received, with every line (dose, frequency,
+ * duration...), to show and print. Only the receiving pharmacy can open it. */
+export async function getMailboxPrescription(notificationId: string): Promise<MailboxPrescription | null> {
+  const tenantId = requireCurrentTenantId();
+  const n = await dbSelect<PharmacyRxNotification>(
+    `SELECT * FROM pharmacy_rx_notifications WHERE id = ? AND pharmacy_tenant_id = ?`,
+    [notificationId, tenantId]
+  );
+  if (!n.length) return null;
+  const lines = await dbSelect<MailboxLine & { id: string }>(
+    `SELECT id, product_id, product_name, strength, dosage_form, dose, route, frequency, duration, qty, instructions
+     FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ? AND deleted_at IS NULL ORDER BY created_at`,
+    [tenantId, n[0].prescription_id]
+  );
+  return { notification: n[0], lines };
+}
+
 // ── Clinic ↔ Pharmacy link ───────────────────────────────────────────────
 
 export async function getPharmacyLink(): Promise<ClinicPharmacyLink | null> {

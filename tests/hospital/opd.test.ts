@@ -250,3 +250,47 @@ test("another hospital cannot book these doctors, see this queue or take these f
   await assert.rejects(sendRxToPharmacy(episode.id), /Visit not found/);
   assert.equal(await nextEmployeeId("consultant"), "CON-01", "ids are per hospital");
 });
+
+test("pharmacy: show the full prescription, convert it to an invoice once, doctor name shown once", async () => {
+  const { getMailboxPrescription, markPrescriptionInvoiced } = await import("@/lib/repo/clinic");
+  const { doctorLabel } = await import("@/lib/doctorName");
+  const d = await doctor({ name: "Dr Rab Nawaz" });
+  const p = await patient("Bilal Khalid");
+  const { episode } = await bookOpdVisit({ patientId: p.id, doctorId: d.id });
+  await saveConsultationNotes(episode.id, { diagnosis: "Fever", advice: "Fluids" });
+  await savePharmacyLink(PH);
+  await saveRx(episode.id, [
+    { product_id: "prod-1", product_name: "Panadol 500mg", generic_name: "Paracetamol", dose: "1", route: "Oral", frequency: "TDS (three times)", duration: "5", qty: 15, instructions: "After meals" },
+    { product_id: null, product_name: "ORS", generic_name: null, dose: "1 sachet", route: "Oral", frequency: "SOS (when needed)", duration: "3", qty: 6, instructions: null },
+  ]);
+  await sendRxToPharmacy(episode.id);
+
+  assert.equal(await getMailboxPrescription("missing"), null);
+  loginAs(PH, "hospital_pharmacy");
+  const [n] = await listRxNotifications();
+  const rx = await getMailboxPrescription(n.id);
+  assert.ok(rx);
+  assert.equal(rx!.notification.patient_name, "Bilal Khalid");
+  assert.equal(rx!.notification.clinic_name, `${H} name`);
+  assert.deepEqual(rx!.lines.map((l) => [l.product_name, l.dose, l.frequency, l.duration, l.qty, l.instructions]), [
+    ["Panadol 500mg", "1", "TDS (three times)", "5", 15, "After meals"],
+    ["ORS", "1 sachet", "SOS (when needed)", "3", 6, null],
+  ]);
+  assert.match(rx!.notification.rx_notes ?? "", /Fever/);
+
+  await markPrescriptionInvoiced(episode.id, "inv-1");
+  const after = await getMailboxPrescription(n.id);
+  assert.equal(after!.notification.status, "dispensed");
+  assert.equal(after!.notification.invoice_id, "inv-1");
+
+  // Nobody else can open it: not the sender, not another pharmacy.
+  loginAs(H);
+  assert.equal(await getMailboxPrescription(n.id), null);
+  loginAs("other-pharm", "hospital_pharmacy");
+  assert.equal(await getMailboxPrescription(n.id), null);
+
+  assert.equal(doctorLabel("Dr Rab Nawaz"), "Dr Rab Nawaz");
+  assert.equal(doctorLabel("dr. Ali"), "dr. Ali");
+  assert.equal(doctorLabel("Rab Nawaz"), "Dr. Rab Nawaz");
+  assert.equal(doctorLabel(""), "Doctor not named");
+});

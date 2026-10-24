@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCircle, Package, XCircle } from "lucide-react";
+import { Bell, CheckCircle, FileText, Package } from "lucide-react";
+import { PrescriptionViewModal } from "./PrescriptionViewModal";
+import { doctorLabel } from "@/lib/doctorName";
 import { useAppStore } from "@/store/appStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +31,8 @@ export default function RxInboxPage() {
   const setPendingAction = useAppStore((s) => s.setPendingAction);
   const [notifications, setNotifications] = useState<PharmacyRxNotification[]>([]);
   const [filter, setFilter] = useState<"pending" | "all">("pending");
+  const [viewing, setViewing] = useState<string | null>(null);
+  const pharmacyName = useAuthStore((s) => s.currentTenant?.name ?? null);
   const tauriReady = useIsTauri();
 
   async function reload() {
@@ -48,11 +52,19 @@ export default function RxInboxPage() {
     void reload();
   }
 
-  async function handleCreateInvoice(notif: PharmacyRxNotification) {
+  async function convertToInvoice(prescriptionId: string, notificationId: string) {
     if (!isTauri()) return;
-    await markRxNotificationRead(notif.id);
-    setPendingAction("new-invoice-from-rx", notif.prescription_id);
+    await markRxNotificationRead(notificationId);
+    setPendingAction("new-invoice-from-rx", prescriptionId);
     router.push("/invoices");
+  }
+
+  async function showPrescription(notif: PharmacyRxNotification) {
+    setViewing(notif.id);
+    if (!notif.read_at) {
+      await markRxNotificationRead(notif.id).catch(() => undefined);
+      void reload();
+    }
   }
 
   return (
@@ -83,7 +95,7 @@ export default function RxInboxPage() {
       />
 
       {!tauriReady ? (
-        <p className="p-6 text-sm text-neutral-400">Loadingâ€¦</p>
+        <p className="p-6 text-sm text-neutral-400">Loading…</p>
       ) : notifications.length === 0 ? (
         <div className="rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-10 text-center">
           <Bell className="mx-auto mb-3 text-neutral-300" size={32} />
@@ -107,10 +119,14 @@ export default function RxInboxPage() {
                   </div>
                   <p className="font-semibold text-sm text-neutral-800">{notif.patient_name ?? "Unknown Patient"}</p>
                   <p className="text-xs text-neutral-500 mt-0.5">
-                    {notif.clinic_name ?? "Clinic"} â€¢ Dr. {notif.doctor_name ?? "Unknown"} â€¢ {notif.item_count} item{notif.item_count !== 1 ? "s" : ""}
+                    {notif.clinic_name || "Clinic"} · {doctorLabel(notif.doctor_name)} · {notif.item_count} item{notif.item_count !== 1 ? "s" : ""}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="ghost" onClick={() => void showPrescription(notif)}>
+                    <FileText size={13} className="mr-1" />
+                    Show Prescription
+                  </Button>
                   {notif.status === "pending" && (
                     <Button variant="ghost" onClick={() => void handleAcknowledge(notif.id)}>
                       <CheckCircle size={13} className="mr-1" />
@@ -118,7 +134,7 @@ export default function RxInboxPage() {
                     </Button>
                   )}
                   {notif.status !== "dispensed" && notif.status !== "rejected" && (
-                    <Button variant="primary" onClick={() => void handleCreateInvoice(notif)}>
+                    <Button variant="primary" onClick={() => void convertToInvoice(notif.prescription_id, notif.id)}>
                       <Package size={13} className="mr-1" />
                       Create Invoice
                     </Button>
@@ -131,6 +147,18 @@ export default function RxInboxPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {viewing && (
+        <PrescriptionViewModal
+          notificationId={viewing}
+          pharmacyName={pharmacyName}
+          onClose={() => setViewing(null)}
+          onConvert={(prescriptionId, notificationId) => {
+            setViewing(null);
+            void convertToInvoice(prescriptionId, notificationId);
+          }}
+        />
       )}
     </div>
   );
