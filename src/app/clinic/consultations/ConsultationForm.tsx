@@ -19,12 +19,14 @@ import {
   getPharmacyLink,
   sendPrescriptionToPharmacy,
   listPharmacyTenants,
+  searchProductsForPharmacy,
   type PrescriptionWithDetails,
   getPrescriptionsForConsultation,
 } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor, ClinicRxItem } from "@/lib/types-clinic";
 
 interface RxItemDraft {
+  product_id: string | null;
   product_name: string;
   strength: string;
   dosage_form: string;
@@ -37,7 +39,7 @@ interface RxItemDraft {
 }
 
 const EMPTY_RX_ITEM: RxItemDraft = {
-  product_name: "", strength: "", dosage_form: "", dose: "", route: "Oral",
+  product_id: null, product_name: "", strength: "", dosage_form: "", dose: "", route: "Oral",
   frequency: "", duration: "", qty: "1", instructions: "",
 };
 
@@ -147,7 +149,7 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
         .filter((i) => i.product_name.trim())
         .map((i) => ({
           prescription_id: "",
-          product_id: null,
+          product_id: i.product_id ?? null,
           product_name: i.product_name.trim(),
           strength: i.strength.trim() || null,
           dosage_form: i.dosage_form.trim() || null,
@@ -216,6 +218,28 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
   function removeRxRow(i: number) { setRxItems((prev) => prev.filter((_, idx) => idx !== i)); }
   function updateRxRow(i: number, field: keyof RxItemDraft, value: string) {
     setRxItems((prev) => prev.map((row, idx) => idx === i ? { ...row, [field]: value } : row));
+  }
+
+  // Drug search state: keyed by row index
+  const [drugSuggestions, setDrugSuggestions] = useState<Record<number, { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null }[]>>({});
+  const [drugSearchOpen, setDrugSearchOpen] = useState<Record<number, boolean>>({});
+
+  function handleDrugInput(i: number, value: string) {
+    updateRxRow(i, "product_name", value);
+    if (!linkedPharmacyId || value.trim().length < 2) {
+      setDrugSuggestions((s) => ({ ...s, [i]: [] }));
+      return;
+    }
+    void searchProductsForPharmacy(value, linkedPharmacyId).then((results) => {
+      setDrugSuggestions((s) => ({ ...s, [i]: results }));
+      setDrugSearchOpen((s) => ({ ...s, [i]: true }));
+    });
+  }
+
+  function selectDrug(i: number, p: { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null }) {
+    setRxItems((prev) => prev.map((row, idx) => idx === i ? { ...row, product_id: p.id, product_name: p.name } : row));
+    setDrugSuggestions((s) => ({ ...s, [i]: [] }));
+    setDrugSearchOpen((s) => ({ ...s, [i]: false }));
   }
 
   const RX_STATUS_COLOR: Record<string, string> = {
@@ -365,8 +389,34 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
                 <tbody>
                   {rxItems.map((item, i) => (
                     <tr key={i} className="border-b border-neutral-50">
-                      <td className="py-1 pr-2">
-                        <Input value={item.product_name} onChange={(e) => updateRxRow(i, "product_name", e.target.value)} placeholder="Drug name" className="min-w-32" />
+                      <td className="py-1 pr-2 relative">
+                        <Input
+                          value={item.product_name}
+                          onChange={(e) => handleDrugInput(i, e.target.value)}
+                          onFocus={() => {
+                            if (linkedPharmacyId && item.product_name.trim().length >= 2) {
+                              setDrugSearchOpen((s) => ({ ...s, [i]: true }));
+                            }
+                          }}
+                          onBlur={() => setTimeout(() => setDrugSearchOpen((s) => ({ ...s, [i]: false })), 150)}
+                          placeholder={linkedPharmacyId ? "Search pharmacy…" : "Drug name"}
+                          className="min-w-36"
+                        />
+                        {drugSearchOpen[i] && (drugSuggestions[i]?.length ?? 0) > 0 && (
+                          <div className="absolute left-0 top-full z-20 mt-0.5 w-64 rounded-lg border border-neutral-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+                            {drugSuggestions[i].map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onMouseDown={() => selectDrug(i, p)}
+                                className="block w-full px-3 py-1.5 text-left text-xs hover:bg-amber-50"
+                              >
+                                <span className="font-medium">{p.name}</span>
+                                {p.company_name && <span className="ml-1 text-neutral-400">{p.company_name}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="py-1 pr-2">
                         <Input value={item.strength} onChange={(e) => updateRxRow(i, "strength", e.target.value)} placeholder="e.g. 500mg" className="w-24" />
