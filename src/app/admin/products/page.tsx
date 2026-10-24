@@ -12,6 +12,7 @@ import {
   bulkAssignByClassification,
   catalogCountsByType,
   deleteUnownedProduct,
+  deleteTenantProducts,
   giveProductsToTenant,
   listProductsByBusinessType,
   listUnownedProducts,
@@ -39,6 +40,7 @@ export default function AdminCatalogReviewPage() {
   const [search, setSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState(""); // for tenant tabs
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [pickedTenant, setPickedTenant] = useState<Set<string>>(new Set());
   const [giving, setGiving] = useState<"move" | "copy" | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [tenantId, setTenantId] = useState("");
@@ -60,6 +62,7 @@ export default function AdminCatalogReviewPage() {
     setSearch("");
     setTenantFilter("");
     setPicked(new Set());
+    setPickedTenant(new Set());
     setMsg(null);
     try {
       if (tab === "unowned") {
@@ -99,6 +102,7 @@ export default function AdminCatalogReviewPage() {
     (p) => !term || p.name.toLowerCase().includes(term) || (p.barcode ?? "").toLowerCase().includes(term) || (p.company_name ?? "").toLowerCase().includes(term)
   );
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const togglePickTenant = (id: string) => setPickedTenant((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   // ── Tenant tab view ─────────────────────────────────────────────────────────
   const tenantOptions = [...new Map(tenantRows.map((r) => [r.tenant_id, r.tenant_name])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
@@ -155,7 +159,25 @@ export default function AdminCatalogReviewPage() {
               <Button onClick={() => { void loadTab("unowned"); void loadCounts(); }}>Refresh</Button>
             </>
           ) : (
-            <Button onClick={() => { void loadTab(activeTab); void loadCounts(); }}>Refresh</Button>
+            <>
+              <Button
+                disabled={!pickedTenant.size}
+                onClick={async () => {
+                  if (!confirm(`Delete ${pickedTenant.size} selected product(s)? This cannot be undone.`)) return;
+                  try {
+                    const n = await deleteTenantProducts([...pickedTenant]);
+                    setMsg({ ok: true, text: `${n} product(s) deleted.` });
+                    void loadTab(activeTab);
+                    void loadCounts();
+                  } catch (e) {
+                    setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+                  }
+                }}
+              >
+                Delete Selected ({pickedTenant.size})
+              </Button>
+              <Button onClick={() => { void loadTab(activeTab); void loadCounts(); }}>Refresh</Button>
+            </>
           )
         }
       />
@@ -287,6 +309,13 @@ export default function AdminCatalogReviewPage() {
             <table className="w-full text-sm">
               <thead className="bg-neutral-50 text-xs text-neutral-500">
                 <tr>
+                  <th className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={shownTenant.length > 0 && shownTenant.every((p) => pickedTenant.has(p.id))}
+                      onChange={(e) => setPickedTenant(e.target.checked ? new Set(shownTenant.map((p) => p.id)) : new Set())}
+                    />
+                  </th>
                   <th className="px-3 py-2 text-start">Tenant</th>
                   <th className="px-3 py-2 text-start">Barcode</th>
                   <th className="px-3 py-2 text-start">Name</th>
@@ -294,11 +323,13 @@ export default function AdminCatalogReviewPage() {
                   <th className="px-3 py-2 text-start">Category</th>
                   <th className="px-3 py-2 text-start">Unit</th>
                   <th className="px-3 py-2 text-start">Added</th>
+                  <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {shownTenant.map((p) => (
                   <tr key={p.id} className="border-t border-neutral-100">
+                    <td className="px-3 py-2"><input type="checkbox" checked={pickedTenant.has(p.id)} onChange={() => togglePickTenant(p.id)} /></td>
                     <td className="px-3 py-2">
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
                         {p.tenant_name}
@@ -310,12 +341,29 @@ export default function AdminCatalogReviewPage() {
                     <td className="px-3 py-2">{p.category_name ?? "—"}</td>
                     <td className="px-3 py-2">{p.unit_name ?? "—"}</td>
                     <td className="px-3 py-2 text-xs">{p.created_at.slice(0, 10)}</td>
+                    <td className="px-3 py-2 text-end">
+                      <Button
+                        variant="ghost"
+                        onClick={async () => {
+                          if (!confirm(`Delete "${p.name}" from ${p.tenant_name}?`)) return;
+                          try {
+                            await deleteTenantProducts([p.id]);
+                            void loadTab(activeTab);
+                            void loadCounts();
+                          } catch (e) {
+                            setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+                          }
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </td>
                   </tr>
                 ))}
-                {loading && <tr><td colSpan={7} className="py-8 text-center text-neutral-400">Loading…</td></tr>}
+                {loading && <tr><td colSpan={9} className="py-8 text-center text-neutral-400">Loading…</td></tr>}
                 {!loading && !shownTenant.length && (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-neutral-400">
+                    <td colSpan={9} className="py-8 text-center text-neutral-400">
                       {typeCounts[activeTab] === 0 || !typeCounts[activeTab]
                         ? "No tenants of this type have products yet."
                         : "No products match the filter."}

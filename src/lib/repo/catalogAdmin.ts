@@ -140,6 +140,23 @@ export async function deleteUnownedProduct(id: string): Promise<void> {
   await recordOutbox("products", id, "delete", null);
 }
 
+export async function deleteTenantProducts(ids: string[]): Promise<number> {
+  requireSuperAdmin();
+  const ts = nowIso();
+  let n = 0;
+  for (const id of ids) {
+    const { rowsAffected } = await dbExecute(
+      `UPDATE products SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id IS NOT NULL AND deleted_at IS NULL`,
+      [ts, ts, id]
+    );
+    if (rowsAffected) {
+      await recordOutbox("products", id, "delete", null);
+      n++;
+    }
+  }
+  return n;
+}
+
 /** Copy all unowned products to tenants of matching business types, based on
  *  the product's catalog_group field.  pharma → retail_pharmacy + medical_store +
  *  hospital_pharmacy; general_store → general_store.  Uses INSERT OR IGNORE so
