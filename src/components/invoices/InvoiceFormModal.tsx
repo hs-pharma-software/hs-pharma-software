@@ -297,16 +297,17 @@ export function InvoiceFormModal({
         const batches = await listAvailableBatches(product.id).catch(() => []);
         const batch = batches[0];
         if (!batch) continue;
-        const [price, discPct] = await Promise.all([
-          getLatestPrice(product.id).catch(() => 0),
+        const [priceObj, discPct] = await Promise.all([
+          getLatestPrice(product.id).catch(() => null),
           getEffectiveDiscountPct(product).catch(() => 0),
         ]);
+        const salePrice = priceObj?.salePrice ?? batch.purchase_price;
         newLines.push({
           product,
           batch,
           qty: item.qty,
           bonusQty: 0,
-          salePrice: price,
+          salePrice,
           taxPct: product.tax_rate_pct,
           discountPct: discPct,
           unit: "base",
