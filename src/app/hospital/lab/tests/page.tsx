@@ -24,24 +24,38 @@ export default function PerformingTestsPage() {
 
   async function reload() {
     if (!isTauri()) return;
-    setRows(await listLabTests({ includeInactive: true }));
+    const list = await listLabTests({ includeInactive: true });
+    setRows(list);
+    return list;
   }
-  useEffect(() => { void reload(); }, []);
 
-  async function addStandard() {
+  // First visit with an empty list: load the standard tests straight away.
+  useEffect(() => {
+    void (async () => {
+      const list = await reload();
+      if (list && list.length === 0) await loadStandard(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadStandard(fromButton: boolean) {
     if (importing) return;
-    if (!window.confirm(`Add the standard list of ${STANDARD_LAB_TESTS.length} major lab tests (sample, unit, normal range, turnaround)? Tests already in your list are kept as they are. New tests have no fee and are not performed until you enter their fee.`)) return;
-    setImporting("Starting…");
+    setImporting("Loading standard tests…");
     try {
       const r = await importStandardLabTests((done, total) => setImporting(`Adding ${done} of ${total}…`));
       await reload();
-      setShow("no_fee");
-      window.alert(r.added ? `${r.added} tests added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Enter the fee of each test you perform.` : "All standard tests are already in your list.");
+      if (r.added) setShow("no_fee");
+      if (fromButton) window.alert(r.added ? `${r.added} tests added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Enter the fee of each test you perform.` : "All standard tests are already in your list.");
     } catch (e) {
-      window.alert(`Could not add the tests: ${e instanceof Error ? e.message : String(e)}`);
+      window.alert(`Could not add the standard tests: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setImporting(null);
     }
+  }
+
+  async function addStandard() {
+    if (!window.confirm(`Add any of the ${STANDARD_LAB_TESTS.length} standard lab tests that are missing from your list? Tests already in your list are kept as they are.`)) return;
+    await loadStandard(true);
   }
 
   async function saveFee(t: HospitalService, value: string) {
