@@ -1278,6 +1278,33 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// The prescription mailbox between a clinic and a pharmacy. A clinic and a
+/// pharmacy live in different databases, so the pharmacy gets its own copy of
+/// the prescription lines when one is sent (it can no longer read the clinic's).
+fn schema_sql_v38() -> &'static str {
+    r#"
+    ALTER TABLE pharmacy_rx_notifications ADD COLUMN rx_notes TEXT;
+    CREATE TABLE IF NOT EXISTS pharmacy_rx_items (
+        id                 TEXT PRIMARY KEY,
+        pharmacy_tenant_id TEXT NOT NULL,
+        prescription_id    TEXT NOT NULL,
+        product_id         TEXT,
+        product_name       TEXT NOT NULL,
+        strength           TEXT,
+        dosage_form        TEXT,
+        dose               TEXT,
+        route              TEXT,
+        frequency          TEXT,
+        duration           TEXT,
+        qty                REAL NOT NULL DEFAULT 1,
+        instructions       TEXT,
+        created_at         TEXT NOT NULL,
+        updated_at         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pharm_rx_items ON pharmacy_rx_items (pharmacy_tenant_id, prescription_id)
+    "#
+}
+
 /// Walk-in appointments have no doctor yet: doctor_id must be nullable.
 fn schema_sql_v37() -> &'static str {
     r#"
@@ -1923,9 +1950,12 @@ fn schema_sql_v9() -> &'static str {
     "#
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let migrations = vec![
+/// The full schema. The platform database (pharmacy.db), the Hospital database
+/// (hospital_management_db.db) and the Clinic database (clinic_management_db.db)
+/// each get every migration; which tables a database actually uses is decided
+/// by the routing in src/lib/dbRouting.ts.
+fn all_migrations() -> Vec<Migration> {
+    vec![
         Migration {
             version: 1,
             description: "initial_schema",
@@ -2148,12 +2178,23 @@ pub fn run() {
             sql: schema_sql_v37(),
             kind: MigrationKind::Up,
         },
-    ];
+        Migration {
+            version: 38,
+            description: "pharmacy_rx_items_mailbox",
+            sql: schema_sql_v38(),
+            kind: MigrationKind::Up,
+        },
+    ]
+}
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:pharmacy.db", migrations)
+                .add_migrations("sqlite:pharmacy.db", all_migrations())
+                .add_migrations("sqlite:hospital_management_db.db", all_migrations())
+                .add_migrations("sqlite:clinic_management_db.db", all_migrations())
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())

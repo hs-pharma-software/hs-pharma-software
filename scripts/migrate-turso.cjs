@@ -17,9 +17,21 @@ const env = fs.existsSync(envPath)
   ? Object.fromEntries(fs.readFileSync(envPath,'utf8').split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return[l.slice(0,i).trim(),l.slice(i+1).trim()]}))
   : {};
 
-const TURSO_URL   = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
-const TURSO_TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
-if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing NEXT_PUBLIC_TURSO_DATABASE_URL or NEXT_PUBLIC_TURSO_AUTH_TOKEN in .env.local'); process.exit(1); }
+// Which cloud database to migrate:  node scripts/migrate-turso.cjs [--target=platform|hospital|clinic]
+// platform (default) is the original database; hospital and clinic are their own
+// databases, configured in .env.local with the *_HOSPITAL_* / *_CLINIC_* variables.
+const TARGET = ((process.argv.find((a) => a.startsWith('--target=')) ?? '--target=platform').split('=')[1] || 'platform').toLowerCase();
+const ENV_KEYS = {
+  platform: ['NEXT_PUBLIC_TURSO_DATABASE_URL', 'NEXT_PUBLIC_TURSO_AUTH_TOKEN'],
+  hospital: ['NEXT_PUBLIC_TURSO_HOSPITAL_DATABASE_URL', 'NEXT_PUBLIC_TURSO_HOSPITAL_AUTH_TOKEN'],
+  clinic: ['NEXT_PUBLIC_TURSO_CLINIC_DATABASE_URL', 'NEXT_PUBLIC_TURSO_CLINIC_AUTH_TOKEN'],
+};
+if (!ENV_KEYS[TARGET]) { console.error(`Unknown --target=${TARGET} (use platform, hospital or clinic)`); process.exit(1); }
+const [URL_KEY, TOKEN_KEY] = ENV_KEYS[TARGET];
+const TURSO_URL   = (env[URL_KEY] ?? '').replace('libsql://', 'https://');
+const TURSO_TOKEN = env[TOKEN_KEY] ?? '';
+if (!TURSO_URL || !TURSO_TOKEN) { console.error(`Missing ${URL_KEY} or ${TOKEN_KEY} in .env.local`); process.exit(1); }
+console.log(`Migrating the ${TARGET} database`);
 
 async function exec(sql) {
   const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
@@ -291,9 +303,13 @@ const MIGRATIONS = [
 
   { version: 35, label: 'hospital module (patients, services, episodes, charges, payments)', statements: rustSchemaStatements(35) },
 
-  { version: 36, label: 'hospital departments, lab, radiology + nullable clinic FKs', statements: rustSchemaStatements(36) },
+  // stopOnError: these rebuild a table (copy, DROP, rename). If the copy fails the
+  // DROP must never run, so the first failed statement ends the migration.
+  { version: 36, label: 'hospital departments, lab, radiology + nullable clinic FKs', stopOnError: true, statements: rustSchemaStatements(36) },
 
-  { version: 37, label: 'clinic_appointments nullable doctor_id', statements: rustSchemaStatements(37) },
+  { version: 37, label: 'clinic_appointments nullable doctor_id', stopOnError: true, statements: rustSchemaStatements(37) },
+
+  { version: 38, label: 'pharmacy_rx_items mailbox + rx_notes', statements: rustSchemaStatements(38) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
@@ -319,6 +335,7 @@ async function main() {
       } catch (err) {
         console.error(`\n  ✗ FAILED: ${err.message}`);
         failed++;
+        if (m.stopOnError) { console.error(`  stopped v${m.version} here so no data is dropped; fix the error and run again`); break; }
       }
     }
     console.log(mSkip === m.statements.length ? 'already up to date' : `✓ (${mOk} applied, ${mSkip} skipped)`);

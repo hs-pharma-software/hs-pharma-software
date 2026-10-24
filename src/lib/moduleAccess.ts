@@ -1,5 +1,5 @@
 ﻿import { useAuthStore } from "../store/authStore";
-import { NAV } from "../config/nav";
+import { NAV, type NavChild } from "../config/nav";
 import { businessType, moduleAllowedForType } from "../config/businessTypes";
 
 /** Maps a pathname like "/invoices/returns" back to its top-level module key
@@ -8,10 +8,31 @@ export function moduleKeyForPath(pathname: string): string | null {
   const normalized = pathname.replace(/\/+$/, "") || "/";
   // Child links count too, e.g. /restaurant/deals belongs to Menu, not to
   // the /restaurant (POS) section it shares a prefix with.
-  const links = NAV.flatMap((item) => [item.href, ...(item.children ?? []).map((c) => c.href)].map((href) => ({ href: href.replace(/\/+$/, ""), key: item.moduleKey })));
+  // A group's child can belong to another section (Purchase Cell > Products is
+  // "products"), at any depth, so each link carries the key that guards it.
+  const links: { href: string; key: string }[] = [];
+  const add = (href: string, key: string) => links.push({ href: href.replace(/\/+$/, ""), key });
+  const addChildren = (children: NavChild[] | undefined, key: string) =>
+    children?.forEach((c) => {
+      add(c.href, c.moduleKey ?? key);
+      addChildren(c.children, c.moduleKey ?? key);
+    });
+  NAV.forEach((item) => {
+    add(item.href, item.moduleKey);
+    addChildren(item.children, item.moduleKey);
+  });
   const matches = links.filter((l) => normalized === l.href || normalized.startsWith(`${l.href}/`));
   if (matches.length === 0) return null;
   return matches.reduce((longest, candidate) => (candidate.href.length > longest.href.length ? candidate : longest)).key;
+}
+
+/** Whether a staff login's permission list covers a section: its own key, or
+ * the key of a menu group that contains it (e.g. Purchase Cell grants Products). */
+export function hasPermission(permissions: string[], moduleKey: string): boolean {
+  if (permissions.includes(moduleKey)) return true;
+  const inside = (children: NavChild[] | undefined): boolean =>
+    Boolean(children?.some((c) => c.moduleKey === moduleKey || inside(c.children)));
+  return NAV.some((item) => item.onlyFor && permissions.includes(item.moduleKey) && inside(item.children));
 }
 
 /** Whether the logged-in tenant's subscription plan includes this module.
@@ -24,7 +45,7 @@ export function hasModuleAccess(moduleKey: string | null): boolean {
   if (!currentTenant) return false;
   // A staff login limited to some sections can't open others by URL.
   // (Dashboard stays reachable: it is the landing page after sign-in.)
-  if (moduleKey !== "dashboard" && currentUser?.role === "staff" && currentUser.permissions && !currentUser.permissions.includes(moduleKey)) return false;
+  if (moduleKey !== "dashboard" && currentUser?.role === "staff" && currentUser.permissions && !hasPermission(currentUser.permissions, moduleKey)) return false;
   const item = NAV.find((n) => n.moduleKey === moduleKey);
   if (item?.onlyFor) return item.onlyFor.includes(businessType(currentTenant.businessType).id);
   if (!moduleAllowedForType(currentTenant.businessType, moduleKey)) return false;

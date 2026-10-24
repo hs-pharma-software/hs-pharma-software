@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ChevronRight, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { NAV } from "@/config/nav";
+import type { NavChild, NavItem } from "@/config/nav";
 import { useAuthStore } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { businessType } from "@/config/businessTypes";
@@ -24,11 +24,23 @@ function normalize(path: string): string {
  * light up both "/invoices" and "/invoices/returns" at once. Instead, match
  * every href in the whole nav tree and keep only the longest (most specific)
  * one, so exactly one entry is ever active. */
-function findActiveHref(pathname: string): string | null {
+function collectHrefs(children: NavChild[] | undefined, out: string[]) {
+  children?.forEach((c) => {
+    out.push(c.href);
+    collectHrefs(c.children, out);
+  });
+}
+
+/** Whether `href` is this entry's page or one of the pages inside it. */
+function containsHref(node: { href: string; children?: NavChild[] }, href: string | null): boolean {
+  return node.href === href || Boolean(node.children?.some((c) => containsHref(c, href)));
+}
+
+function findActiveHref(pathname: string, items: NavItem[]): string | null {
   const allHrefs: string[] = [];
-  NAV.forEach((item) => {
+  items.forEach((item) => {
     allHrefs.push(item.href);
-    item.children?.forEach((c) => allHrefs.push(c.href));
+    collectHrefs(item.children, allHrefs);
   });
   const norm = normalize(pathname);
   const matches = allHrefs.filter((href) => {
@@ -49,11 +61,12 @@ export function Sidebar() {
   const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const label = (x: { label: string; labelKey?: string }) => (x.labelKey ? translate(x.labelKey, lang) : x.label);
   const visibleNav = visibleNavFor(typeId, allowedModules, userPermissions);
-  const activeHref = findActiveHref(pathname);
-  const activeTop = visibleNav.find(
-    (item) => item.href === activeHref || item.children?.some((c) => c.href === activeHref)
-  );
+  const activeHref = findActiveHref(pathname, visibleNav);
+  const activeTop = visibleNav.find((item) => containsHref(item, activeHref));
   const [openLabel, setOpenLabel] = useState<string | null>(activeTop?.label ?? null);
+  // The expanded second-level group (e.g. Purchase Cell / Banks), by "parent/child".
+  const activeSub = activeTop?.children?.find((c) => c.children && containsHref(c, activeHref));
+  const [openSub, setOpenSub] = useState<string | null>(activeTop && activeSub ? `${activeTop.label}/${activeSub.label}` : null);
 
   return (
     <aside
@@ -82,8 +95,7 @@ export function Sidebar() {
       <nav className="flex-1 py-1">
         {visibleNav.map((item) => {
           const isOpen = openLabel === item.label;
-          const isActive =
-            item.href === activeHref || item.children?.some((c) => c.href === activeHref);
+          const isActive = containsHref(item, activeHref);
           const Icon = item.icon;
 
           return (
@@ -143,6 +155,45 @@ export function Sidebar() {
                   >
                     <div className="pb-1">
                       {item.children.filter((child) => !child.onlyFor || child.onlyFor.includes(typeId)).map((child) => {
+                        if (child.children) {
+                          const subKey = `${item.label}/${child.label}`;
+                          const subOpen = openSub === subKey;
+                          const subActive = containsHref(child, activeHref);
+                          return (
+                            <div key={subKey}>
+                              <button
+                                type="button"
+                                onClick={() => setOpenSub(subOpen ? null : subKey)}
+                                className="flex w-full items-center gap-2 px-11 py-2 text-start text-neutral-300 transition-colors hover:bg-white/[0.06] hover:text-white"
+                                style={subActive ? { color: "var(--accent)" } : {}}
+                              >
+                                <span className="flex-1">{label(child)}</span>
+                                <span className={`shrink-0 transition-transform rtl:-scale-x-100 ${subOpen ? "rotate-90" : ""}`}>
+                                  <ChevronRight size={13} />
+                                </span>
+                              </button>
+                              {subOpen && (
+                                <div className="bg-black/20 pb-1">
+                                  {child.children.map((leaf) => {
+                                    const leafActive = leaf.href === activeHref;
+                                    return (
+                                      <Link
+                                        key={leaf.href}
+                                        href={leaf.href}
+                                        className={`relative block px-14 py-1.5 text-[13px] transition-all duration-150 hover:text-white ${
+                                          leafActive ? "font-semibold" : "text-neutral-400 hover:bg-white/[0.06]"
+                                        }`}
+                                        style={leafActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
+                                      >
+                                        {label(leaf)}
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
                         const childActive = child.href === activeHref;
                         return (
                           <Link
@@ -153,7 +204,7 @@ export function Sidebar() {
                                 ? "font-semibold hover:ps-11"
                                 : "text-neutral-300 hover:bg-white/[0.06]"
                             }`}
-                          style={childActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
+                            style={childActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
                           >
                             {label(child)}
                           </Link>

@@ -94,6 +94,7 @@ export interface PharmacyRxNotification extends BaseRow {
   status: "pending" | "acknowledged" | "dispensed" | "rejected";
   invoice_id: string | null;
   read_at: string | null;
+  rx_notes?: string | null;
 }
 
 export interface ClinicPharmacyLink extends BaseRow {

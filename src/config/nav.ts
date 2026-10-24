@@ -54,6 +54,12 @@ export interface NavChild {
   onlyFor?: string[];
   /** i18n key (lib/i18n/dict.ts) for translated menus. */
   labelKey?: string;
+  /** Section this child belongs to for plans and per-user permissions, when it
+   * is another section's page shown under a group (e.g. Products under
+   * Purchase Cell). A user with the group's own key sees all its children. */
+  moduleKey?: string;
+  /** Third level: the pages inside this child. The child then only expands. */
+  children?: NavChild[];
 }
 
 export interface NavItem {
@@ -70,7 +76,7 @@ export interface NavItem {
   labelKey?: string;
 }
 
-export const NAV: NavItem[] = [
+const BASE_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, moduleKey: "dashboard", labelKey: "nav.dashboard" },
   {
     label: "Invoices",
@@ -428,44 +434,6 @@ export const NAV: NavItem[] = [
       { label: "New Consultation", href: "/clinic/consultations/new" },
     ],
   },
-  // ── Hospital Management System ─────────────────────────────────────────
-  {
-    label: "Hospital",
-    href: "/hospital",
-    icon: Hospital,
-    moduleKey: "hospital_dashboard",
-    onlyFor: ["hospital"],
-    children: [
-      { label: "Hospital Dashboard", href: "/hospital" },
-      { label: "OPD Queue", href: "/hospital/episodes?type=opd" },
-      { label: "Inpatients (IPD)", href: "/hospital/episodes?type=ipd" },
-      { label: "Emergency", href: "/hospital/episodes?type=emergency" },
-    ],
-  },
-  {
-    label: "Patients",
-    href: "/hospital/patients",
-    icon: UserRoundPlus,
-    moduleKey: "hospital_patients",
-    onlyFor: ["hospital"],
-  },
-  {
-    label: "Episodes & Billing",
-    href: "/hospital/episodes",
-    icon: ClipboardList,
-    moduleKey: "hospital_episodes",
-    onlyFor: ["hospital"],
-  },
-  { label: "Departments", href: "/hospital/departments", icon: Building2, moduleKey: "hospital_departments", onlyFor: ["hospital"] },
-  { label: "Laboratory", href: "/hospital/lab", icon: FlaskConical, moduleKey: "hospital_lab", onlyFor: ["hospital"] },
-  { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },
-  {
-    label: "Service Master",
-    href: "/hospital/services",
-    icon: Activity,
-    moduleKey: "hospital_services",
-    onlyFor: ["hospital"],
-  },
   // ── Pharmacy Rx Inbox (hospital_pharmacy only) ──────────────────────────
   {
     label: "Rx Inbox",
@@ -489,5 +457,83 @@ export const NAV: NavItem[] = [
     ],
   },
 ];
+
+/** A shared section's page list, reused as a group's sub-pages. */
+function pagesOf(moduleKey: string): NavChild[] {
+  const item = BASE_NAV.find((i) => i.moduleKey === moduleKey);
+  if (!item?.children) throw new Error(`nav: no section "${moduleKey}"`);
+  return item.children.map(({ label, href, labelKey }) => ({ label, href, labelKey }));
+}
+
+/** A shared section shown as one sub-tab of a group: it expands to its own pages. */
+function shared(label: string, moduleKey: string): NavChild {
+  const item = BASE_NAV.find((i) => i.moduleKey === moduleKey);
+  if (!item) throw new Error(`nav: no section "${moduleKey}"`);
+  return item.children
+    ? { label, href: item.href, moduleKey, children: pagesOf(moduleKey) }
+    : { label, href: item.href, moduleKey };
+}
+
+/** Hospital Management sidebar, in this order (see config/navFilter.ts). */
+const HOSPITAL_NAV: NavItem[] = [
+  { label: "Dashboard", href: "/hospital", icon: LayoutDashboard, moduleKey: "hospital_dashboard", onlyFor: ["hospital"] },
+  {
+    label: "Hospital",
+    href: "/hospital/profile",
+    icon: Hospital,
+    moduleKey: "hospital_profile",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Hospital Profile", href: "/hospital/profile" },
+      { label: "OPD Queue", href: "/hospital/opd", moduleKey: "hospital_episodes" },
+      { label: "Inpatients (IPD)", href: "/hospital/ipd", moduleKey: "hospital_episodes" },
+      { label: "Emergency", href: "/hospital/emergency", moduleKey: "hospital_episodes" },
+    ],
+  },
+  { label: "Patient", href: "/hospital/patients", icon: UserRoundPlus, moduleKey: "hospital_patients", onlyFor: ["hospital"] },
+  {
+    label: "Episodes & Billing",
+    href: "/hospital/episodes",
+    icon: ClipboardList,
+    moduleKey: "hospital_episodes",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Episodes", href: "/hospital/episodes" },
+      // Invoices live under Billing for hospitals (no separate top-level Invoices tab).
+      shared("Billing", "invoices"),
+    ],
+  },
+  { label: "Departments", href: "/hospital/departments", icon: Building2, moduleKey: "hospital_departments", onlyFor: ["hospital"] },
+  { label: "Labs", href: "/hospital/lab", icon: FlaskConical, moduleKey: "hospital_lab", onlyFor: ["hospital"] },
+  { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },
+  { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
+  {
+    label: "Purchase Cell",
+    href: "/products",
+    icon: ShoppingCart,
+    moduleKey: "hospital_purchase_cell",
+    onlyFor: ["hospital"],
+    children: [
+      shared("Products", "products"),
+      shared("Supplier", "suppliers"),
+      shared("Cash Register", "cash_register"),
+      shared("Banks", "banks"),
+      shared("Expenses", "expenses"),
+      shared("Other Revenue", "other_revenue"),
+      shared("Tasks", "tasks"),
+      shared("Utilities", "utilities"),
+    ],
+  },
+  {
+    label: "HR Department",
+    href: "/staff",
+    icon: UserCog,
+    moduleKey: "hospital_hr",
+    onlyFor: ["hospital"],
+    children: [shared("Staff", "staff")],
+  },
+];
+
+export const NAV: NavItem[] = [...BASE_NAV, ...HOSPITAL_NAV];
 
 export const ALL_MODULE_KEYS = NAV.map((item) => item.moduleKey);

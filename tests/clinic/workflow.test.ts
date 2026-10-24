@@ -12,7 +12,7 @@ import {
   savePatient, saveAppointment, saveConsultation,
   listAppointments, listConsultations, getClinicStats,
   getRxItems, saveRxItems, getPrescriptionsForConsultation,
-  sendPrescriptionToPharmacy, listRxNotifications,
+  sendPrescriptionToPharmacy, listRxNotifications, getRxForInvoice,
 } from "@/lib/repo/clinic";
 
 const A = "clinic-a";
@@ -32,7 +32,7 @@ function loginAs(tenantId: string, businessType = "clinic") {
 const count = (table: string, tenant = A) => (sql.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ? AND deleted_at IS NULL`).get(tenant) as { n: number }).n;
 
 beforeEach(() => {
-  sql = fullSchemaDb(37);
+  sql = fullSchemaDb(38);
   setTestDb(sql);
   loginAs(A);
 });
@@ -266,4 +266,29 @@ test("dashboard counts reflect saved records", async () => {
   assert.equal(s.totalPatients, 2);
   assert.equal(s.totalDoctors, 1);
   assert.equal(s.todayAppointments, 1);
+});
+
+test("pharmacy can bill a prescription a clinic sent it; sending twice does not duplicate; other pharmacies cannot see it", async () => {
+  const p = await savePatient(null, { name: "Bill Me" });
+  const c = await saveConsultation(null, { patient_id: p.id, doctor_id: null, date: TODAY });
+  const rx = await prescriptionsRepo.create({ consultation_id: c.id, patient_id: p.id, doctor_id: null, date: TODAY, status: "draft", pharmacy_tenant_id: null, sent_at: null, acknowledged_at: null, dispensed_at: null, notes: "Take care" });
+  await saveRxItems(rx.id, [
+    { prescription_id: rx.id, product_id: "prod-1", product_name: "Panadol", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 12, instructions: null },
+    { prescription_id: rx.id, product_id: null, product_name: "ORS", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 3, instructions: null },
+  ]);
+  const send = () => sendPrescriptionToPharmacy(rx.id, PHARM, { patientName: "Bill Me", patientId: p.id, doctorName: "Dr X", clinicTenantId: A, clinicName: "Clinic A", rxDate: TODAY, itemCount: 2 });
+  await send();
+  await send();
+
+  // The clinic still bills from its own prescription.
+  assert.equal((await getRxForInvoice(rx.id)).items.length, 2);
+
+  loginAs(PHARM, "hospital_pharmacy");
+  const billed = await getRxForInvoice(rx.id);
+  assert.deepEqual(billed.items.map((i) => [i.product_name, i.qty, i.product_id]).sort(), [["ORS", 3, null], ["Panadol", 12, "prod-1"]]);
+  assert.equal(billed.notes, "Take care");
+  assert.equal((await listRxNotifications()).length, 1, "one mailbox entry after sending twice");
+
+  loginAs("other-pharm", "hospital_pharmacy");
+  assert.equal((await getRxForInvoice(rx.id)).items.length, 0);
 });

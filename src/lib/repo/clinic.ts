@@ -234,28 +234,73 @@ export async function dispenseRxNotification(id: string, invoiceId: string): Pro
   );
 }
 
-/** Send a prescription to the linked pharmacy. Creates a notification row in
- * the pharmacy tenant's notifications table and marks the prescription "sent". */
+/** Send a prescription to the linked pharmacy. The pharmacy lives in another
+ * database than the clinic, so it receives its own copy: a mailbox entry plus
+ * the prescription lines (pharmacy_rx_notifications / pharmacy_rx_items, both
+ * on the platform database). Then the prescription is marked "sent". Sending
+ * again replaces the pharmacy's copy instead of duplicating it. */
 export async function sendPrescriptionToPharmacy(
   prescriptionId: string,
   pharmacyTenantId: string,
   opts: { patientName: string; patientId: string; doctorName: string | null; clinicTenantId: string; clinicName: string | null; rxDate: string; itemCount: number }
 ): Promise<void> {
+  const prescription = await prescriptionsRepo.get(prescriptionId);
+  if (!prescription) throw new Error("Prescription not found in this business.");
+  const items = await getRxItems(prescriptionId);
   const ts = nowIso();
   const notifId = newId();
-  // Insert notification for the pharmacy tenant
+  const notification = {
+    id: notifId, pharmacy_tenant_id: pharmacyTenantId, prescription_id: prescriptionId, clinic_tenant_id: opts.clinicTenantId,
+    clinic_name: opts.clinicName ?? "", patient_name: opts.patientName, patient_id: opts.patientId, doctor_name: opts.doctorName ?? "",
+    rx_date: opts.rxDate, item_count: items.length, status: "pending", invoice_id: null, read_at: null, rx_notes: prescription.notes ?? null,
+    created_at: ts, updated_at: ts,
+  };
+
+  // 1) The pharmacy's copy first: if the clinic-side update below fails, sending again is safe.
+  await dbExecute(`DELETE FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ?`, [pharmacyTenantId, prescriptionId]);
   await dbExecute(
     `INSERT OR REPLACE INTO pharmacy_rx_notifications
-     (id, pharmacy_tenant_id, prescription_id, clinic_tenant_id, clinic_name, patient_name, patient_id, doctor_name, rx_date, item_count, status, invoice_id, read_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?)`,
-    [notifId, pharmacyTenantId, prescriptionId, opts.clinicTenantId, opts.clinicName ?? "", opts.patientName, opts.patientId, opts.doctorName ?? "", opts.rxDate, opts.itemCount, ts, ts]
+     (id, pharmacy_tenant_id, prescription_id, clinic_tenant_id, clinic_name, patient_name, patient_id, doctor_name, rx_date, item_count, status, invoice_id, read_at, rx_notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?)`,
+    [notifId, pharmacyTenantId, prescriptionId, notification.clinic_tenant_id, notification.clinic_name, notification.patient_name, notification.patient_id, notification.doctor_name, notification.rx_date, notification.item_count, notification.rx_notes, ts, ts]
   );
-  // Mark prescription as sent
+  for (const it of items) {
+    const itemId = newId();
+    await dbExecute(
+      `INSERT INTO pharmacy_rx_items (id, pharmacy_tenant_id, prescription_id, product_id, product_name, strength, dosage_form, dose, route, frequency, duration, qty, instructions, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [itemId, pharmacyTenantId, prescriptionId, it.product_id, it.product_name, it.strength, it.dosage_form, it.dose, it.route, it.frequency, it.duration, it.qty, it.instructions, ts, ts]
+    );
+  }
+  // 2) The clinic's own record.
   await dbExecute(
     `UPDATE clinic_prescriptions SET status = 'sent', pharmacy_tenant_id = ?, sent_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
     [pharmacyTenantId, ts, ts, prescriptionId, requireCurrentTenantId()]
   );
-  await recordOutbox("pharmacy_rx_notifications", notifId, "insert", { id: notifId, tenant_id: pharmacyTenantId });
+  await recordOutbox("pharmacy_rx_notifications", notifId, "insert", notification);
+}
+
+export interface RxLine {
+  product_id: string | null;
+  product_name: string;
+  qty: number;
+}
+
+/** The prescription lines to bill: the clinic's own prescription when it is
+ * the one billing, otherwise the copy the clinic sent to this pharmacy. */
+export async function getRxForInvoice(prescriptionId: string): Promise<{ items: RxLine[]; notes: string | null }> {
+  const own = await prescriptionsRepo.get(prescriptionId);
+  if (own) return { items: await getRxItems(prescriptionId), notes: own.notes };
+  const tenantId = requireCurrentTenantId();
+  const items = await dbSelect<RxLine>(
+    `SELECT product_id, product_name, qty FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ? ORDER BY created_at`,
+    [tenantId, prescriptionId]
+  );
+  const notif = await dbSelect<{ rx_notes: string | null }>(
+    `SELECT rx_notes FROM pharmacy_rx_notifications WHERE pharmacy_tenant_id = ? AND prescription_id = ? LIMIT 1`,
+    [tenantId, prescriptionId]
+  );
+  return { items, notes: notif[0]?.rx_notes ?? null };
 }
 
 // ── Clinic ↔ Pharmacy link ───────────────────────────────────────────────
@@ -397,6 +442,7 @@ export async function searchProductsForPharmacy(
 ): Promise<{ id: string; name: string; barcode: string | null; company_name: string | null; description: string | null }[]> {
   if (!term.trim()) return [];
   const like = `%${term.trim()}%`;
+  // The pharmacy's products are in the platform database, not the clinic's.
   return dbSelect(
     `SELECT id, name, barcode, company_name, description
      FROM products
@@ -407,7 +453,8 @@ export async function searchProductsForPharmacy(
        )
        AND (name LIKE ? OR barcode LIKE ?)
      ORDER BY name ASC LIMIT 20`,
-    [pharmacyTenantId, like, like]
+    [pharmacyTenantId, like, like],
+    { system: "platform" }
   );
 }
 

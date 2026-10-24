@@ -35,7 +35,7 @@ import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
 import { businessType } from "@/config/businessTypes";
-import { getRxItems, prescriptionsRepo } from "@/lib/repo/clinic";
+import { getRxForInvoice } from "@/lib/repo/clinic";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -277,8 +277,8 @@ export function InvoiceFormModal({
   useEffect(() => {
     if (!rxId || invoice) return;
     (async () => {
-      const rx = await prescriptionsRepo.get(rxId).catch(() => null);
-      const rxItems = await getRxItems(rxId).catch(() => []);
+      const rx = await getRxForInvoice(rxId).catch(() => ({ items: [], notes: null }));
+      const rxItems = rx.items;
       if (!rxItems.length) return;
       const newLines: Line[] = [];
       for (const item of rxItems) {

@@ -1,5 +1,7 @@
 ﻿import { createClient, type Client } from "@libsql/client/web";
-import { dbExecute, dbSelect } from "../db";
+import { dbExecute, dbSelect, tursoConfigFor } from "../db";
+import { ALL_SYSTEMS, isPlatformTable, systemForBusinessType, type DbSystem } from "../dbRouting";
+import { businessType } from "../../config/businessTypes";
 import { nowIso } from "../id";
 import { CATALOG_TABLES, SYNCABLE_TABLES, TENANT_SCOPED_TABLES } from "./tables";
 import { useAuthStore } from "../../store/authStore";
@@ -13,14 +15,31 @@ export class TursoNotConfiguredError extends Error {
   }
 }
 
-let client: Client | null = null;
+const clients = new Map<string, Client>();
 
-function getRemoteClient(): Client {
-  const url = process.env.NEXT_PUBLIC_TURSO_DATABASE_URL;
-  const authToken = process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN;
-  if (!url || !authToken) throw new TursoNotConfiguredError();
-  if (!client) client = createClient({ url, authToken });
-  return client;
+/** The Turso database of a system. Hospital and Clinic use their own once
+ * configured, otherwise the platform database (see tursoConfigFor). */
+function getRemoteClient(system: DbSystem = "platform"): Client {
+  const cfg = tursoConfigFor(system);
+  if (!cfg) throw new TursoNotConfiguredError();
+  let c = clients.get(cfg.url);
+  if (!c) {
+    c = createClient(cfg);
+    clients.set(cfg.url, c);
+  }
+  return c;
+}
+
+/** The database system the signed-in tenant works in (platform for the Super Admin). */
+function sessionSystem(): DbSystem {
+  const raw = useAuthStore.getState().currentTenant?.businessType;
+  return raw ? systemForBusinessType(businessType(raw).id) : "platform";
+}
+
+/** Local databases whose outbox this session pushes: the platform one, plus its own. */
+function systemsToPush(): DbSystem[] {
+  const own = sessionSystem();
+  return ALL_SYSTEMS.filter((s) => s === "platform" || s === own);
 }
 
 export function isTursoConfigured(): boolean {
@@ -55,9 +74,21 @@ export function mayPush(table: string, op: OutboxRow["op"], row: Record<string, 
  * already exists remotely (e.g. created on another machine) safely merges
  * instead of erroring. */
 export async function pushOutbox(): Promise<{ pushed: number; errors: number }> {
-  const remote = getRemoteClient();
+  let pushed = 0;
+  let errors = 0;
+  for (const system of systemsToPush()) {
+    const r = await pushOutboxOf(system);
+    pushed += r.pushed;
+    errors += r.errors;
+  }
+  return { pushed, errors };
+}
+
+async function pushOutboxOf(system: DbSystem): Promise<{ pushed: number; errors: number }> {
   const pending = await dbSelect<OutboxRow>(
-    `SELECT * FROM sync_outbox WHERE synced_at IS NULL ORDER BY created_at ASC LIMIT 200`
+    `SELECT * FROM sync_outbox WHERE synced_at IS NULL ORDER BY created_at ASC LIMIT 200`,
+    [],
+    { system }
   );
   let pushed = 0;
   let errors = 0;
@@ -66,6 +97,9 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
 
   for (const entry of pending) {
     try {
+      // A write to a platform table (the pharmacy mailbox) may sit in a
+      // clinic's outbox, but it belongs on the platform remote.
+      const remote = getRemoteClient(isPlatformTable(entry.table_name) ? "platform" : system);
       const record = entry.op === "delete" ? null : (JSON.parse(entry.payload ?? "{}") as Record<string, unknown>);
       if (!mayPush(entry.table_name, entry.op, record, session)) {
         console.error(`[sync] refused to push ${entry.table_name}/${entry.row_id}: not this session's tenant`);
@@ -93,7 +127,7 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
           args: keys.map((k) => record![k] as never),
         });
       }
-      await dbExecute(`UPDATE sync_outbox SET synced_at = ? WHERE id = ?`, [nowIso(), entry.id]);
+      await dbExecute(`UPDATE sync_outbox SET synced_at = ? WHERE id = ?`, [nowIso(), entry.id], { system });
       pushed++;
     } catch (err) {
       console.error(`[sync] failed to push ${entry.table_name}/${entry.row_id}`, err);
@@ -111,14 +145,14 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
 /** Pulls one batch (up to 500 rows) of a table changed since its cursor.
  * `tenantId` filters tenant-scoped tables. Returns the rows applied and
  * whether a full batch came back (more may be waiting). */
-async function pullTable(remote: Client, table: string, tenantId: string | null, unownedOnly = false): Promise<{ applied: number; more: boolean }> {
+async function pullTable(remote: Client, table: string, tenantId: string | null, unownedOnly = false, system: DbSystem = "platform"): Promise<{ applied: number; more: boolean }> {
   const isTenantScoped = (TENANT_SCOPED_TABLES as readonly string[]).includes(table) && !unownedOnly;
   // Tenant-scoped tables get their own pull cursor per tenant, so
   // switching which tenant is logged in on one device (testing, a shared
   // machine) doesn't skip re-pulling data the previous session already
   // advanced the cursor past.
   const cursorKey = unownedOnly ? `last_pull_${table}_unowned` : isTenantScoped ? `last_pull_${table}_${tenantId}` : `last_pull_${table}`;
-  const cursorRows = await dbSelect<{ value: string }>(`SELECT value FROM sync_meta WHERE key = ?`, [cursorKey]);
+  const cursorRows = await dbSelect<{ value: string }>(`SELECT value FROM sync_meta WHERE key = ?`, [cursorKey], { system });
   const cursor = cursorRows[0]?.value ?? "1970-01-01T00:00:00.000Z";
 
   const result = await remote.execute(
@@ -142,7 +176,7 @@ async function pullTable(remote: Client, table: string, tenantId: string | null,
 
     const localRows = await dbSelect<{ updated_at: string }>(`SELECT updated_at FROM ${table} WHERE id = ?`, [
       record.id as string,
-    ]);
+    ], { system });
     const local = localRows[0];
     if (local && new Date(local.updated_at) >= new Date(record.updated_at as string)) {
       continue; // local copy is already current or newer
@@ -154,7 +188,8 @@ async function pullTable(remote: Client, table: string, tenantId: string | null,
       `INSERT INTO ${table} (${keys.join(", ")})
        VALUES (${keys.map(() => "?").join(", ")})
        ON CONFLICT(id) DO UPDATE SET ${updates}`,
-      keys.map((k) => record[k])
+      keys.map((k) => record[k]),
+      { system }
     );
     applied++;
   }
@@ -164,21 +199,25 @@ async function pullTable(remote: Client, table: string, tenantId: string | null,
     await dbExecute(
       `INSERT INTO sync_meta (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [cursorKey, lastUpdatedAt]
+      [cursorKey, lastUpdatedAt],
+      { system }
     );
   }
   return { applied, more: result.rows.length === 500 };
 }
 
 export async function pullChanges(): Promise<{ pulled: number }> {
-  const remote = getRemoteClient();
   let pulled = 0;
+  const ownSystem = sessionSystem();
 
   const session = useAuthStore.getState();
   const tenantId = session.currentTenant?.id ?? null;
   const isSuperAdmin = session.currentUser?.role === "super_admin";
 
   for (const table of SYNCABLE_TABLES) {
+    // Sign-in tables belong to the platform database; the rest to the tenant's own.
+    const system: DbSystem = isPlatformTable(table) ? "platform" : ownSystem;
+    const remote = getRemoteClient(system);
     const isTenantScoped = (TENANT_SCOPED_TABLES as readonly string[]).includes(table);
     // The Super Admin has no tenant and no business seeing any tenant's
     // private stock/pricing/sales — skip these tables for that session
@@ -186,13 +225,13 @@ export async function pullChanges(): Promise<{ pulled: number }> {
     // Except the catalog's unowned rows (quarantine / templates), which only
     // the Super Admin reviews and hands over to tenants.
     if (isTenantScoped && isSuperAdmin) {
-      if (CATALOG_TABLES.includes(table)) pulled += (await pullTable(remote, table, null, true)).applied;
+      if (CATALOG_TABLES.includes(table)) pulled += (await pullTable(remote, table, null, true, system)).applied;
       continue;
     }
     // Not logged in yet, or a tenant user with no tenant resolved somehow —
     // nothing safe to pull for tenant-scoped tables.
     if (isTenantScoped && !tenantId) continue;
-    pulled += (await pullTable(remote, table, tenantId)).applied;
+    pulled += (await pullTable(remote, table, tenantId, false, system)).applied;
   }
 
   return { pulled };
@@ -205,7 +244,7 @@ const AUTH_TABLES = ["subscription_plans", "tenants", "users"] as const;
 /** Brings plans, tenants and users down from Turso before login (all
  * batches). Throws when Turso is not configured or unreachable. */
 export async function pullAuthData(): Promise<number> {
-  const remote = getRemoteClient();
+  const remote = getRemoteClient("platform");
   let pulled = 0;
   for (const table of AUTH_TABLES) {
     for (let more = true; more; ) {

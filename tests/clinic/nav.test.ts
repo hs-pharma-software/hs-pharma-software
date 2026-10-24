@@ -7,7 +7,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { visibleNavFor, CLINIC_NAV_ORDER } from "@/config/navFilter";
 import { moduleAllowedForType, businessType } from "@/config/businessTypes";
-import { NAV } from "@/config/nav";
+import { NAV, type NavChild } from "@/config/nav";
 
 const labels = (type: string, allowed: string[] | null = null, perms: string[] | null = null) => visibleNavFor(type, allowed, perms).map((i) => i.label);
 
@@ -44,15 +44,17 @@ test("Products and Customers stay for the other business types", () => {
     assert.ok(!l.includes("Patients") && !l.includes("Doctors"), `${t} has no clinic tabs`);
   }
   assert.ok(labels("hospital_pharmacy").includes("Rx Inbox"));
-  const hospital = labels("hospital");
-  for (const l of ["Hospital", "Departments", "Laboratory", "Radiology"]) assert.ok(hospital.includes(l), `hospital has ${l}`);
-  assert.ok(hospital.includes("Products"));
+  assert.ok(labels("hospital").includes("Labs"));
 });
 
 test("clinic order list only names real nav entries", () => {
   const keys = new Set(NAV.map((i) => i.moduleKey));
   for (const k of CLINIC_NAV_ORDER) assert.ok(keys.has(k), `${k} exists in NAV`);
 });
+
+function allLinks(children: NavChild[] | undefined): string[] {
+  return (children ?? []).flatMap((c) => [c.href, ...allLinks(c.children)]);
+}
 
 function pageExists(href: string): boolean {
   const path = href.split("?")[0].replace(/\/$/, "");
@@ -63,10 +65,7 @@ test("every clinic and hospital menu link opens an existing page", () => {
   for (const type of ["clinic", "hospital", "hospital_pharmacy"]) {
     for (const item of visibleNavFor(type, null, null)) {
       assert.ok(pageExists(item.href), `${type}: ${item.label} -> ${item.href}`);
-      for (const c of item.children ?? []) {
-        if (c.onlyFor && !c.onlyFor.includes(type)) continue;
-        assert.ok(pageExists(c.href), `${type}: ${item.label} / ${c.label} -> ${c.href}`);
-      }
+      for (const href of allLinks(item.children)) assert.ok(pageExists(href), `${type}: ${item.label} -> ${href}`);
     }
   }
 });
