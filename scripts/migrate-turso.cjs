@@ -50,7 +50,11 @@ function rustSchemaStatements(n) {
   const rs = fs.readFileSync(require('path').join(__dirname, '..', 'src-tauri', 'src', 'lib.rs'), 'utf8');
   const m = new RegExp(`fn schema_sql_v${n}\\(\\)[^{]*\\{\\s*r#"([\\s\\S]*?)"#`).exec(rs);
   if (!m) throw new Error(`schema_sql_v${n} not found in lib.rs`);
-  return m[1].split(';').map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  // Strip -- line comments BEFORE collapsing whitespace. Without this, collapsing
+  // \n into a space turns "-- comment\nCREATE TABLE ..." into "-- comment CREATE TABLE ..."
+  // where the -- eats the entire rest of the collapsed "line" as a comment.
+  const stripped = m[1].replace(/--[^\n]*/g, '');
+  return stripped.split(';').map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
 const MIGRATIONS = [
