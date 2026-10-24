@@ -63,8 +63,13 @@ export function sharedCatalogWhereClause(
     return { clause: "tenant_id = ?", params: [tenantId] };
   }
   const placeholders = sharedGroups.map(() => "?").join(", ");
+  // Also match unowned products where catalog_group was never backfilled (NULL) —
+  // all such rows are pharma catalog entries predating the v32 migration.
+  const nullFallback = sharedGroups.includes("pharma")
+    ? " OR (tenant_id IS NULL AND catalog_group IS NULL)"
+    : "";
   return {
-    clause: `(tenant_id = ? OR (tenant_id IS NULL AND catalog_group IN (${placeholders})))`,
+    clause: `(tenant_id = ? OR (tenant_id IS NULL AND catalog_group IN (${placeholders}))${nullFallback})`,
     params: [tenantId, ...sharedGroups],
   };
 }
