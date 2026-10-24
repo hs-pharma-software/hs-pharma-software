@@ -8,15 +8,28 @@ import type {
   HospitalCharge,
   HospitalPayment,
   EpisodeType,
+  HospitalDepartment,
+  HospitalLabOrder,
+  HospitalImagingOrder,
 } from "../types-hospital";
 
-export type { HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
+export type { HospitalDepartment, HospitalLabOrder, HospitalImagingOrder, HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
 
 export const hospitalPatientsRepo = createTenantRepo<HospitalPatient>("hospital_patients");
 export const hospitalServicesRepo = createTenantRepo<HospitalService>("hospital_services");
 export const hospitalEpisodesRepo = createTenantRepo<HospitalEpisode>("hospital_episodes");
 export const hospitalChargesRepo = createTenantRepo<HospitalCharge>("hospital_charges");
 export const hospitalPaymentsRepo = createTenantRepo<HospitalPayment>("hospital_payments");
+export const hospitalDepartmentsRepo = createTenantRepo<HospitalDepartment>("hospital_departments");
+export const hospitalLabRepo = createTenantRepo<HospitalLabOrder>("hospital_lab_orders");
+export const hospitalImagingRepo = createTenantRepo<HospitalImagingOrder>("hospital_imaging_orders");
+
+export async function nextOrderNo(table: "hospital_lab_orders" | "hospital_imaging_orders"): Promise<string> {
+  const tenantId = requireCurrentTenantId();
+  const rows = await dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ?`, [tenantId]);
+  const prefix = table === "hospital_lab_orders" ? "LAB" : "RAD";
+  return `${prefix}-${nowIso().slice(0, 10).replace(/-/g, "")}-${String((rows[0]?.n ?? 0) + 1).padStart(4, "0")}`;
+}
 
 // ── Episode number generation ──────────────────────────────────────────────
 

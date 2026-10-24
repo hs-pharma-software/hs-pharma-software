@@ -66,6 +66,8 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
         await hospitalServicesRepo.create(payload);
       }
       onSaved();
+    } catch (e) {
+      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

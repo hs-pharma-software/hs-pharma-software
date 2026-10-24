@@ -41,6 +41,8 @@ import {
   FileHeart,
   Bell,
   Hospital,
+  FlaskConical,
+  ScanLine,
   Activity,
   Bed,
 } from "lucide-react";
@@ -454,6 +456,9 @@ export const NAV: NavItem[] = [
     moduleKey: "hospital_episodes",
     onlyFor: ["hospital"],
   },
+  { label: "Departments", href: "/hospital/departments", icon: Building2, moduleKey: "hospital_departments", onlyFor: ["hospital"] },
+  { label: "Laboratory", href: "/hospital/lab", icon: FlaskConical, moduleKey: "hospital_lab", onlyFor: ["hospital"] },
+  { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },
   {
     label: "Service Master",
     href: "/hospital/services",

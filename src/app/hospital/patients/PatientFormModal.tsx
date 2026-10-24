@@ -77,6 +77,8 @@ export default function PatientFormModal({ patient, onClose, onSaved }: Props) {
         await hospitalPatientsRepo.create(payload);
       }
       onSaved();
+    } catch (e) {
+      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

@@ -134,6 +134,8 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
         router.replace(`/clinic/consultations/${record.id}`);
       }
       setSaved(true);
+    } catch (e) {
+      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -185,6 +187,8 @@ export default function ConsultationForm({ consultationId }: { consultationId?: 
       const updated = await getPrescriptionsForConsultation(cid);
       setExistingPrescriptions(updated);
       setShowRx(false);
+    } catch (e) {
+      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

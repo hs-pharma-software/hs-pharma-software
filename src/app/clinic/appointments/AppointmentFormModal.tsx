@@ -60,6 +60,8 @@ export default function AppointmentFormModal({
         await appointmentsRepo.create(payload);
       }
       onSaved();
+    } catch (e) {
+      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

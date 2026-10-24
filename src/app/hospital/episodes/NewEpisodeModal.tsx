@@ -62,6 +62,8 @@ export default function NewEpisodeModal({ defaultType, onClose, onSaved }: Props
         notes: notes.trim() || null,
       });
       onSaved(ep.id);
+    } catch (e) {
+      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

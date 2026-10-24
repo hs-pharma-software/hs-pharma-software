@@ -1278,6 +1278,122 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+fn schema_sql_v36() -> &'static str {
+    r#"
+    CREATE TABLE clinic_consultations_new (
+        id             TEXT PRIMARY KEY,
+        tenant_id      TEXT NOT NULL,
+        appointment_id TEXT,
+        patient_id     TEXT NOT NULL,
+        doctor_id      TEXT,
+        date           TEXT NOT NULL,
+        complaint      TEXT,
+        history        TEXT,
+        vitals         TEXT,
+        findings       TEXT,
+        diagnosis      TEXT,
+        advice         TEXT,
+        followup_date  TEXT,
+        followup_notes TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL,
+        deleted_at     TEXT
+    );
+    INSERT INTO clinic_consultations_new SELECT id, tenant_id, appointment_id, patient_id, doctor_id, date, complaint, history, vitals, findings, diagnosis, advice, followup_date, followup_notes, created_at, updated_at, deleted_at FROM clinic_consultations;
+    DROP TABLE clinic_consultations;
+    ALTER TABLE clinic_consultations_new RENAME TO clinic_consultations;
+    CREATE INDEX IF NOT EXISTS idx_cc_appointment ON clinic_consultations (appointment_id);
+    CREATE INDEX IF NOT EXISTS idx_cc_patient ON clinic_consultations (patient_id);
+
+    CREATE TABLE clinic_prescriptions_new (
+        id                 TEXT PRIMARY KEY,
+        tenant_id          TEXT NOT NULL,
+        consultation_id    TEXT,
+        patient_id         TEXT NOT NULL,
+        doctor_id          TEXT,
+        date               TEXT NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'draft',
+        pharmacy_tenant_id TEXT,
+        sent_at            TEXT,
+        acknowledged_at    TEXT,
+        dispensed_at       TEXT,
+        notes              TEXT,
+        created_at         TEXT NOT NULL,
+        updated_at         TEXT NOT NULL,
+        deleted_at         TEXT
+    );
+    INSERT INTO clinic_prescriptions_new SELECT id, tenant_id, consultation_id, patient_id, doctor_id, date, status, pharmacy_tenant_id, sent_at, acknowledged_at, dispensed_at, notes, created_at, updated_at, deleted_at FROM clinic_prescriptions;
+    DROP TABLE clinic_prescriptions;
+    ALTER TABLE clinic_prescriptions_new RENAME TO clinic_prescriptions;
+    CREATE INDEX IF NOT EXISTS idx_crx_tenant ON clinic_prescriptions (tenant_id, date);
+    CREATE INDEX IF NOT EXISTS idx_crx_patient ON clinic_prescriptions (patient_id);
+    CREATE INDEX IF NOT EXISTS idx_crx_pharmacy ON clinic_prescriptions (pharmacy_tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS hospital_departments (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'clinical',
+        head TEXT,
+        phone TEXT,
+        notes TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_dept_name ON hospital_departments (tenant_id, name);
+
+    CREATE TABLE IF NOT EXISTS hospital_lab_orders (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        order_no TEXT NOT NULL,
+        episode_id TEXT,
+        patient_id TEXT NOT NULL,
+        test_name TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'routine',
+        status TEXT NOT NULL DEFAULT 'pending',
+        result_value TEXT,
+        unit TEXT,
+        ref_range TEXT,
+        flag TEXT,
+        ordered_by TEXT,
+        ordered_at TEXT NOT NULL,
+        reported_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_lab_tenant ON hospital_lab_orders (tenant_id, status, ordered_at);
+    CREATE INDEX IF NOT EXISTS idx_hosp_lab_patient ON hospital_lab_orders (patient_id);
+
+    CREATE TABLE IF NOT EXISTS hospital_imaging_orders (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        order_no TEXT NOT NULL,
+        episode_id TEXT,
+        patient_id TEXT NOT NULL,
+        modality TEXT NOT NULL,
+        body_part TEXT,
+        priority TEXT NOT NULL DEFAULT 'routine',
+        status TEXT NOT NULL DEFAULT 'pending',
+        findings TEXT,
+        impression TEXT,
+        radiologist TEXT,
+        ordered_by TEXT,
+        ordered_at TEXT NOT NULL,
+        reported_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_img_tenant ON hospital_imaging_orders (tenant_id, status, ordered_at);
+    CREATE INDEX IF NOT EXISTS idx_hosp_img_patient ON hospital_imaging_orders (patient_id)
+    "#
+}
+
 fn schema_sql_v35() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_patients (
@@ -1990,6 +2106,12 @@ pub fn run() {
             version: 35,
             description: "hospital_module",
             sql: schema_sql_v35(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 36,
+            description: "hospital_departments_lab_radiology_and_nullable_clinic_fks",
+            sql: schema_sql_v36(),
             kind: MigrationKind::Up,
         },
     ];

@@ -102,3 +102,48 @@ export interface HospitalPayment extends TenantRow {
   notes: string | null;
   received_at: string;
 }
+
+export interface HospitalDepartment extends TenantRow {
+  name: string;
+  type: "clinical" | "diagnostic" | "support" | "admin";
+  head: string | null;
+  phone: string | null;
+  notes: string | null;
+  is_active: number;
+}
+
+export type OrderPriority = "routine" | "urgent" | "stat";
+
+export interface HospitalLabOrder extends TenantRow {
+  order_no: string;
+  episode_id: string | null;
+  patient_id: string;
+  test_name: string;
+  priority: OrderPriority;
+  status: "pending" | "collected" | "reported" | "cancelled";
+  result_value: string | null;
+  unit: string | null;
+  ref_range: string | null;
+  flag: "N" | "H" | "L" | null;
+  ordered_by: string | null;
+  ordered_at: string;
+  reported_at: string | null;
+  notes: string | null;
+}
+
+export interface HospitalImagingOrder extends TenantRow {
+  order_no: string;
+  episode_id: string | null;
+  patient_id: string;
+  modality: string;
+  body_part: string | null;
+  priority: OrderPriority;
+  status: "pending" | "performed" | "reported" | "cancelled";
+  findings: string | null;
+  impression: string | null;
+  radiologist: string | null;
+  ordered_by: string | null;
+  ordered_at: string;
+  reported_at: string | null;
+  notes: string | null;
+}
