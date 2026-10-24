@@ -1278,6 +1278,17 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// The lab's "Performing Tests": a lab service also records its sample type,
+/// result unit, normal range and turnaround time (additive).
+fn schema_sql_v41() -> &'static str {
+    r#"
+    ALTER TABLE hospital_services ADD COLUMN sample_type TEXT;
+    ALTER TABLE hospital_services ADD COLUMN unit TEXT;
+    ALTER TABLE hospital_services ADD COLUMN ref_range TEXT;
+    ALTER TABLE hospital_services ADD COLUMN turnaround_hours REAL
+    "#
+}
+
 /// Hospital HR, OPD reception and the doctor's desk (all additive):
 /// - staff: designation category, automatic employee id (MO-01...), PMDC / PNC /
 ///   licence number, department, specialization, consultation fee, linked login.
@@ -2262,6 +2273,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 40,
             description: "hospital_hr_opd_doctor_desk",
             sql: schema_sql_v40(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 41,
+            description: "lab_performing_tests",
+            sql: schema_sql_v41(),
             kind: MigrationKind::Up,
         },
     ]

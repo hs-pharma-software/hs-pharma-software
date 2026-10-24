@@ -8,10 +8,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
-import { hospitalLabRepo, hospitalPatientsRepo, nextOrderNo, type HospitalLabOrder, type HospitalPatient } from "@/lib/repo/hospital";
-import { canProcess, reportLabResult } from "@/lib/repo/hospitalOpd";
-import type { OrderPriority } from "@/lib/types-hospital";
-import { localDateTime } from "@/lib/localDate";
+import { hospitalLabRepo, hospitalPatientsRepo, type HospitalLabOrder, type HospitalPatient } from "@/lib/repo/hospital";
+import { canProcess, reportLabResult, listLabTests, listOpenVisits, orderLabTests } from "@/lib/repo/hospitalOpd";
+import type { OrderPriority, HospitalService, HospitalEpisode } from "@/lib/types-hospital";
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
@@ -19,8 +18,6 @@ const STATUS_COLOR: Record<string, string> = {
   reported: "bg-emerald-100 text-emerald-700",
   cancelled: "bg-neutral-100 text-neutral-500",
 };
-
-const now = () => localDateTime();
 
 export default function LabPage() {
   const [rows, setRows] = useState<HospitalLabOrder[]>([]);
@@ -44,6 +41,7 @@ export default function LabPage() {
     { header: "Patient", render: (r) => <span className="font-medium">{patientName(r.patient_id)}</span> },
     { header: "Test", render: (r) => r.test_name },
     { header: "Priority", render: (r) => r.priority },
+    { header: "Fee", render: (r) => (Number(r.fee) > 0 ? <span className="tabular-nums">Rs {Number(r.fee).toFixed(0)}{Number(r.paid) ? " · paid" : ""}</span> : "—") },
     { header: "Status", render: (r) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[r.status] ?? ""}`}>{r.status}</span> },
     { header: "Result", render: (r) => (r.result_value ? `${r.result_value} ${r.unit ?? ""} ${r.flag && r.flag !== "N" ? `(${r.flag})` : ""}` : "—") },
     {
@@ -82,37 +80,35 @@ export default function LabPage() {
 
 function NewLabOrder({ patients, onClose, onSaved }: { patients: HospitalPatient[]; onClose: () => void; onSaved: () => void }) {
   const [patientId, setPatientId] = useState("");
-  const [tests, setTests] = useState("");
+  const [tests, setTests] = useState<HospitalService[]>([]);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [find, setFind] = useState("");
+  const [visits, setVisits] = useState<HospitalEpisode[]>([]);
+  const [visitId, setVisitId] = useState("");
   const [priority, setPriority] = useState<OrderPriority>("routine");
   const [orderedBy, setOrderedBy] = useState("");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => { void listLabTests().then(setTests); }, []);
+  useEffect(() => {
+    setVisitId("");
+    if (!patientId) return setVisits([]);
+    void listOpenVisits(patientId).then(setVisits);
+  }, [patientId]);
+
+  const term = find.trim().toLowerCase();
+  const shown = tests.filter((t) => !term || t.name.toLowerCase().includes(term) || t.code.toLowerCase().includes(term) || (t.sample_type ?? "").toLowerCase().includes(term));
+  const total = tests.filter((t) => chosen.includes(t.id)).reduce((s, t) => s + Number(t.rate || 0), 0);
+  const toggle = (id: string) => setChosen((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+
   async function save() {
-    const names = tests.split("\n").map((t) => t.trim()).filter(Boolean);
-    if (!patientId || names.length === 0) return;
+    if (!patientId || chosen.length === 0 || saving) return;
     setSaving(true);
     try {
-      for (const t of names) {
-        await hospitalLabRepo.create({
-          order_no: await nextOrderNo("hospital_lab_orders"),
-          episode_id: null,
-          patient_id: patientId,
-          test_name: t,
-          priority,
-          status: "pending",
-          result_value: null,
-          unit: null,
-          ref_range: null,
-          flag: null,
-          ordered_by: orderedBy.trim() || null,
-          ordered_at: now(),
-          reported_at: null,
-          notes: null,
-        });
-      }
+      await orderLabTests({ patientId, serviceIds: chosen, episodeId: visitId || null, priority, orderedBy: orderedBy.trim() || null });
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      window.alert(`Could not place the order: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -120,16 +116,37 @@ function NewLabOrder({ patients, onClose, onSaved }: { patients: HospitalPatient
 
   return (
     <Modal title="New Lab Order" onClose={onClose}>
-      <div className="grid grid-cols-1 gap-3 mb-4">
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field label="Patient *">
           <Select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
             <option value="">— Select —</option>
             {patients.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.mr_no})</option>)}
           </Select>
         </Field>
-        <Field label="Tests * (one per line)">
-          <textarea value={tests} onChange={(e) => setTests(e.target.value)} rows={4} placeholder={"CBC\nBlood Sugar Random\nLFT"} className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm" />
+        <Field label="Visit (bill)">
+          <Select value={visitId} onChange={(e) => setVisitId(e.target.value)} disabled={!patientId}>
+            <option value="">{visits.length ? "Today's open visit, or a new lab visit" : "A new lab visit"}</option>
+            {visits.map((v) => <option key={v.id} value={v.id}>{v.episode_no}{v.department ? ` · ${v.department}` : ""} · {v.date}</option>)}
+          </Select>
         </Field>
+        <div className="md:col-span-2">
+          <Field label="Tests * (from Performing Tests)">
+            <Input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search test, code or sample…" />
+            <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-neutral-200">
+              {shown.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-neutral-400">
+                  {tests.length === 0 ? "No tests yet. Add them in Labs › Performing Tests." : "No test matches."}
+                </p>
+              ) : shown.map((t) => (
+                <label key={t.id} className="flex cursor-pointer items-center gap-2 border-b border-neutral-50 px-3 py-1.5 text-sm hover:bg-amber-50">
+                  <input type="checkbox" checked={chosen.includes(t.id)} onChange={() => toggle(t.id)} />
+                  <span className="flex-1"><span className="font-medium">{t.name}</span>{t.sample_type && <span className="ml-2 text-xs text-neutral-400">{t.sample_type}</span>}</span>
+                  <span className="tabular-nums text-neutral-600">Rs {Number(t.rate).toFixed(0)}</span>
+                </label>
+              ))}
+            </div>
+          </Field>
+        </div>
         <Field label="Priority">
           <Select value={priority} onChange={(e) => setPriority(e.target.value as OrderPriority)}>
             <option value="routine">Routine</option>
@@ -139,9 +156,13 @@ function NewLabOrder({ patients, onClose, onSaved }: { patients: HospitalPatient
         </Field>
         <Field label="Ordered by"><Input value={orderedBy} onChange={(e) => setOrderedBy(e.target.value)} placeholder="Doctor name" /></Field>
       </div>
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <span className="mr-auto text-sm text-neutral-600">
+          {chosen.length} test{chosen.length === 1 ? "" : "s"} · <span className="font-semibold tabular-nums">Rs {total.toFixed(0)}</span>
+          {total > 0 && <span className="block text-xs text-neutral-400">Added to the patient&apos;s bill; Reception takes the fee before the lab starts.</span>}
+        </span>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId || !tests.trim()}>{saving ? "Saving…" : "Place Order"}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId || chosen.length === 0}>{saving ? "Saving…" : "Place Order"}</Button>
       </div>
     </Modal>
   );

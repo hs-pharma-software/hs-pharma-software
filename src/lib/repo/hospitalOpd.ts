@@ -20,7 +20,7 @@ import {
 import { getPharmacyLink, postToPharmacyMailbox } from "./clinic";
 import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, formatEmployeeId } from "../../config/hospitalStaff";
 import type { Staff } from "../types";
-import type { HospitalEpisode, HospitalRxItem, HospitalLabOrder, HospitalImagingOrder, PaymentMethod } from "../types-hospital";
+import type { HospitalEpisode, HospitalRxItem, HospitalLabOrder, HospitalImagingOrder, HospitalService, PaymentMethod } from "../types-hospital";
 
 // ── HR: staff with designation, licence and automatic employee id ─────────
 
@@ -291,9 +291,10 @@ export async function orderInvestigation(episodeId: string, serviceId: string, o
     service_id: svc.id, charge_id: charge?.id ?? null, fee, paid: fee > 0 ? 0 : 1,
   };
   if (kind === "lab") {
+    // The test's unit and normal range come along, so the result form is pre-filled.
     const order = await hospitalLabRepo.create({
       ...common, order_no: await nextOrderNo("hospital_lab_orders"), test_name: svc.name, status: "pending",
-      result_value: null, unit: null, ref_range: null, flag: null,
+      result_value: null, unit: svc.unit ?? null, ref_range: svc.ref_range ?? null, flag: null,
     });
     return { kind, order };
   }
@@ -374,4 +375,110 @@ export async function listVisitOrders(episodeId: string): Promise<{ kind: OrderK
      FROM hospital_imaging_orders WHERE tenant_id = ? AND episode_id = ? AND deleted_at IS NULL`,
     [t, episodeId, t, episodeId]
   );
+}
+
+// ── Lab: performing tests (the lab's own test list) ──────────────────────
+
+export interface LabTestInput {
+  name: string;
+  code?: string | null;
+  sample_type?: string | null;
+  unit?: string | null;
+  ref_range?: string | null;
+  turnaround_hours?: number | null;
+  rate: number;
+  is_active?: number;
+  department?: string | null;
+}
+
+/** The tests this lab performs (Service Master entries of category "lab"). */
+export async function listLabTests(opts: { includeInactive?: boolean } = {}): Promise<HospitalService[]> {
+  const all = await hospitalServicesRepo.list({ where: "category = 'lab'", orderBy: "name ASC" });
+  return opts.includeInactive ? all : all.filter((s) => s.is_active);
+}
+
+/** Next free test code: LAB-001, LAB-002 ... */
+async function nextLabCode(): Promise<string> {
+  const tenantId = requireCurrentTenantId();
+  const rows = await dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM hospital_services WHERE tenant_id = ? AND category = 'lab'`, [tenantId]);
+  let n = (rows[0]?.n ?? 0) + 1;
+  for (;;) {
+    const code = `LAB-${String(n).padStart(3, "0")}`;
+    const taken = await dbSelect(`SELECT 1 FROM hospital_services WHERE tenant_id = ? AND code = ?`, [tenantId, code]);
+    if (!taken.length) return code;
+    n++;
+  }
+}
+
+/** Adds or edits a test the lab performs. A blank code gets the next LAB-nnn;
+ * the same test name twice is refused. */
+export async function saveLabTest(id: string | null, t: LabTestInput): Promise<HospitalService> {
+  const name = t.name?.trim();
+  if (!name) throw new Error("Enter the test name.");
+  if (!(Number(t.rate) >= 0)) throw new Error("The fee cannot be negative.");
+  if (t.turnaround_hours != null && !(Number(t.turnaround_hours) >= 0)) throw new Error("Turnaround time cannot be negative.");
+  const clash = await dbSelect<{ id: string }>(
+    `SELECT id FROM hospital_services WHERE tenant_id = ? AND category = 'lab' AND deleted_at IS NULL AND LOWER(TRIM(name)) = LOWER(?) AND id != ?`,
+    [requireCurrentTenantId(), name, id ?? ""]
+  );
+  if (clash.length) throw new Error(`"${name}" is already in the test list.`);
+  const existing = id ? await hospitalServicesRepo.get(id) : null;
+  if (id && (!existing || existing.category !== "lab")) throw new Error("Test not found.");
+  const payload: Partial<HospitalService> = {
+    name,
+    code: t.code?.trim() ? t.code.trim().toUpperCase() : existing?.code ?? (await nextLabCode()),
+    department: t.department?.trim() || existing?.department || "Laboratory",
+    category: "lab",
+    billing_unit: "test",
+    rate: Number(t.rate) || 0,
+    is_active: t.is_active ?? existing?.is_active ?? 1,
+    sample_type: t.sample_type?.trim() || null,
+    unit: t.unit?.trim() || null,
+    ref_range: t.ref_range?.trim() || null,
+    turnaround_hours: t.turnaround_hours != null && String(t.turnaround_hours) !== "" ? Number(t.turnaround_hours) : null,
+  };
+  const saved = id ? await hospitalServicesRepo.update(id, payload) : await hospitalServicesRepo.create(payload);
+  if (!saved) throw new Error("Test not found.");
+  return saved;
+}
+
+/** The patient's open visits (newest first), to put lab tests on. */
+export async function listOpenVisits(patientId: string): Promise<HospitalEpisode[]> {
+  return hospitalEpisodesRepo.list({ where: "patient_id = ? AND status = 'open'", params: [patientId], orderBy: "date DESC, created_at DESC" });
+}
+
+/** Orders tests from the lab's list for a patient. They go on the chosen open
+ * visit, or today's open visit, or a new "Laboratory" visit, so each fee is on a
+ * bill that Reception can collect; the lab starts a test once its fee is paid. */
+export async function orderLabTests(input: { patientId: string; serviceIds: string[]; episodeId?: string | null; priority?: "routine" | "urgent" | "stat"; orderedBy?: string | null }): Promise<{ episode: HospitalEpisode; orders: HospitalLabOrder[] }> {
+  const patient = await hospitalPatientsRepo.get(input.patientId);
+  if (!patient) throw new Error("Patient not found in this hospital.");
+  const ids = [...new Set(input.serviceIds)];
+  if (!ids.length) throw new Error("Choose at least one test.");
+  const tests = await Promise.all(ids.map((id) => hospitalServicesRepo.get(id)));
+  const bad = tests.findIndex((s) => !s || s.category !== "lab" || !s.is_active);
+  if (bad >= 0) throw new Error("One of the chosen tests is not in the lab's list.");
+
+  let episode: HospitalEpisode | null = null;
+  if (input.episodeId) {
+    episode = await hospitalEpisodesRepo.get(input.episodeId);
+    if (!episode || episode.patient_id !== patient.id || episode.status !== "open") throw new Error("Choose an open visit of this patient.");
+  } else {
+    episode = (await listOpenVisits(patient.id)).find((e) => e.date === localDate()) ?? null;
+  }
+  if (!episode) {
+    const date = localDate();
+    episode = await hospitalEpisodesRepo.create({
+      episode_no: await nextEpisodeNo("opd", date), type: "opd", patient_id: patient.id, doctor_id: null, department: "Laboratory",
+      date, time: localDateTime().slice(11), status: "open", room_ward: null, bed_no: null, admission_date: null, discharge_date: null,
+      diagnosis: null, notes: "Lab visit", token_no: null, consult_status: "done",
+    });
+  }
+  const orders: HospitalLabOrder[] = [];
+  for (const id of ids) {
+    const { order } = await orderInvestigation(episode.id, id, input.orderedBy ?? null);
+    if (input.priority && input.priority !== "routine") await hospitalLabRepo.update(order.id, { priority: input.priority });
+    orders.push({ ...(order as HospitalLabOrder), priority: input.priority ?? "routine" });
+  }
+  return { episode, orders };
 }

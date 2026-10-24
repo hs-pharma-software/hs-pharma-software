@@ -276,12 +276,25 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
           <div className="min-w-64 flex-1">
             <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
               <option value="">— Choose a test or scan —</option>
-              {services.map((s) => <option key={s.id} value={s.id}>{s.category === "lab" ? "Lab" : "Radiology"} · {s.name} · Rs {Number(s.rate).toFixed(0)}</option>)}
+              {services.filter((s) => s.category === "lab").length > 0 && (
+                <optgroup label="Lab (Performing Tests)">
+                  {services.filter((s) => s.category === "lab").map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}{s.sample_type ? ` (${s.sample_type})` : ""} · Rs {Number(s.rate).toFixed(0)}</option>
+                  ))}
+                </optgroup>
+              )}
+              {services.filter((s) => s.category === "imaging").length > 0 && (
+                <optgroup label="Radiology">
+                  {services.filter((s) => s.category === "imaging").map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} · Rs {Number(s.rate).toFixed(0)}</option>
+                  ))}
+                </optgroup>
+              )}
             </Select>
           </div>
           <Button variant="primary" disabled={!serviceId || busy} onClick={() => void run("order", async () => { await orderInvestigation(ep.id, serviceId); setServiceId(""); })}>Order</Button>
         </div>
-        {services.length === 0 && <p className="mb-2 text-xs text-neutral-400">Add lab and radiology services (with their fees) in Service Master.</p>}
+        {services.length === 0 && <p className="mb-2 text-xs text-neutral-400">Add lab tests in Labs › Performing Tests, and radiology studies (with their fees) in Service Master.</p>}
         {orders.length === 0 ? <p className="text-sm text-neutral-400">Nothing ordered.</p> : (
           <div className="flex flex-col divide-y divide-neutral-100 text-sm">
             {orders.map((o) => {

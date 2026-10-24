@@ -49,7 +49,7 @@ const service = (name: string, category: "lab" | "imaging" | "procedure", rate: 
   hospitalServicesRepo.create({ code: name.toUpperCase().replace(/\W/g, "").slice(0, 8), name, department: category === "lab" ? "Laboratory" : "Radiology", category, billing_unit: "test", rate, is_active: 1, notes: null });
 
 beforeEach(() => {
-  sql = fullSchemaDb(40);
+  sql = fullSchemaDb(41);
   setTestDb(sql);
   insert("subscription_plans", { id: "plan", name: "Plan", max_staff_logins: 10, price: 0 });
   for (const [id, type] of [[H, "hospital"], [H2, "hospital"], [PH, "hospital_pharmacy"]]) insert("tenants", { id, name: `${id} name`, business_type: type, subscription_plan_id: "plan" });
@@ -293,4 +293,45 @@ test("pharmacy: show the full prescription, convert it to an invoice once, docto
   assert.equal(doctorLabel("dr. Ali"), "dr. Ali");
   assert.equal(doctorLabel("Rab Nawaz"), "Dr. Rab Nawaz");
   assert.equal(doctorLabel(""), "Doctor not named");
+});
+
+test("Performing Tests: the lab's own list drives doctor and lab orders, and pre-fills results", async () => {
+  const { saveLabTest, listLabTests, orderLabTests, listOpenVisits } = await import("@/lib/repo/hospitalOpd");
+  const cbc = await saveLabTest(null, { name: "CBC", sample_type: "Whole blood (EDTA)", unit: "g/dL", ref_range: "13-17", turnaround_hours: 4, rate: 800 });
+  const bsr = await saveLabTest(null, { name: "Blood Sugar Random", sample_type: "Blood", unit: "mg/dL", ref_range: "70-140", rate: 300 });
+  const old = await saveLabTest(null, { name: "ESR", rate: 200, is_active: 0 });
+  assert.deepEqual([cbc.code, bsr.code, old.code], ["LAB-001", "LAB-002", "LAB-003"]);
+  assert.equal(cbc.category, "lab");
+  await assert.rejects(saveLabTest(null, { name: " cbc ", rate: 1 }), /already in the test list/);
+  await assert.rejects(saveLabTest(null, { name: "X", rate: -1 }), /cannot be negative/);
+  const edited = await saveLabTest(cbc.id, { name: "CBC", sample_type: "Whole blood (EDTA)", unit: "g/dL", ref_range: "12-17", turnaround_hours: 4, rate: 850 });
+  assert.equal(edited.code, "LAB-001", "code kept on edit");
+  assert.deepEqual((await listLabTests()).map((t) => t.name), ["Blood Sugar Random", "CBC"], "only tests performed");
+  assert.equal((await listLabTests({ includeInactive: true })).length, 3);
+
+  // Doctor's desk order: unit and normal range travel with the order.
+  const d = await doctor();
+  const p = await patient();
+  const { episode } = await bookOpdVisit({ patientId: p.id, doctorId: d.id });
+  const fromDoctor = await orderInvestigation(episode.id, cbc.id);
+  assert.equal((fromDoctor.order as { unit: string | null }).unit, "g/dL");
+  assert.equal((fromDoctor.order as { ref_range: string | null }).ref_range, "12-17");
+  assert.equal(Number(fromDoctor.order.fee), 850);
+
+  // Lab's New Order: on today's open visit; a walk-in without a visit gets a lab visit.
+  const onVisit = await orderLabTests({ patientId: p.id, serviceIds: [bsr.id], priority: "urgent" });
+  assert.equal(onVisit.episode.id, episode.id);
+  assert.equal(onVisit.orders[0].priority, "urgent");
+  const walkIn = await patient("Walk-in Lab");
+  const lab = await orderLabTests({ patientId: walkIn.id, serviceIds: [cbc.id, bsr.id, cbc.id] });
+  assert.equal(lab.orders.length, 2, "a test chosen twice is ordered once");
+  assert.equal(lab.episode.department, "Laboratory");
+  assert.equal((await listOpenVisits(walkIn.id)).length, 1);
+  const bill = await listChargesForEpisode(lab.episode.id);
+  assert.deepEqual(bill.map((c) => c.amount).sort((a, b) => a - b), [300, 850]);
+  assert.equal((await listUnpaidOrders()).filter((o) => o.episode_id === lab.episode.id).length, 2, "Reception sees both fees");
+
+  await assert.rejects(orderLabTests({ patientId: walkIn.id, serviceIds: [old.id] }), /not in the lab's list/);
+  await assert.rejects(orderLabTests({ patientId: walkIn.id, serviceIds: [] }), /at least one test/);
+  await assert.rejects(orderLabTests({ patientId: walkIn.id, serviceIds: [cbc.id], episodeId: episode.id }), /open visit of this patient/);
 });

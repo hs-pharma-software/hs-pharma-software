@@ -506,7 +506,17 @@ const HOSPITAL_NAV: NavItem[] = [
     ],
   },
   { label: "Departments", href: "/hospital/departments", icon: Building2, moduleKey: "hospital_departments", onlyFor: ["hospital"] },
-  { label: "Labs", href: "/hospital/lab", icon: FlaskConical, moduleKey: "hospital_lab", onlyFor: ["hospital"] },
+  {
+    label: "Labs",
+    href: "/hospital/lab",
+    icon: FlaskConical,
+    moduleKey: "hospital_lab",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Lab Orders", href: "/hospital/lab" },
+      { label: "Performing Tests", href: "/hospital/lab/tests" },
+    ],
+  },
   { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
   {

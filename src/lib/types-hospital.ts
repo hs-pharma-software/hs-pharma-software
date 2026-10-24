@@ -51,6 +51,11 @@ export interface HospitalService extends TenantRow {
   rate: number;
   is_active: number;
   notes: string | null;
+  // Lab "Performing Tests" details (v41).
+  sample_type?: string | null;
+  unit?: string | null;
+  ref_range?: string | null;
+  turnaround_hours?: number | null;
 }
 
 export type EpisodeType = "opd" | "ipd" | "emergency";

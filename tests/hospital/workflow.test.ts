@@ -272,3 +272,10 @@ test("a missing table is explained, using the exact error from the web version",
   assert.match(e!.message, /migrate-turso\.cjs/);
   assert.equal(explainMissingTable(new Error("NOT NULL constraint failed")), null);
 });
+
+test("a missing column is explained too (new feature used before the database update)", async () => {
+  const { explainMissingTable } = await import("@/lib/dbErrors");
+  const e = explainMissingTable(new Error("SQLITE_UNKNOWN: SQLite error: table hospital_services has no column named sample_type"));
+  assert.match(e!.message, /column "sample_type" is missing/);
+  assert.match(explainMissingTable(new Error("no such column: unit"))!.message, /column "unit" is missing/);
+});
