@@ -13,7 +13,10 @@ import {
   listAppointments, listConsultations, getClinicStats,
   getRxItems, saveRxItems, getPrescriptionsForConsultation,
   sendPrescriptionToPharmacy, listRxNotifications, getRxForInvoice,
+  savePharmacyLink, searchProductsForPharmacy, acknowledgeRxNotification,
 } from "@/lib/repo/clinic";
+import { mayPush } from "@/lib/sync/engine";
+import { OWNER_COLUMNS, SYNCABLE_TABLES, TENANT_SCOPED_TABLES } from "@/lib/sync/tables";
 
 const A = "clinic-a";
 const B = "clinic-b";
@@ -31,10 +34,21 @@ function loginAs(tenantId: string, businessType = "clinic") {
 
 const count = (table: string, tenant = A) => (sql.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ? AND deleted_at IS NULL`).get(tenant) as { n: number }).n;
 
-beforeEach(() => {
-  sql = fullSchemaDb(38);
+/** Adds a tenants row (filling required columns). */
+function addTenant(id: string, businessType: string) {
+  const cols = sql.prepare(`PRAGMA table_info(tenants)`).all() as { name: string; notnull: number; dflt_value: unknown }[];
+  const r: Record<string, unknown> = { id, name: id, business_type: businessType, created_at: TODAY, updated_at: TODAY };
+  for (const c of cols) if (c.notnull && c.dflt_value == null && !(c.name in r)) r[c.name] = c.name.endsWith("_at") ? TODAY : 0;
+  const keys = Object.keys(r).filter((k) => cols.some((c) => c.name === k));
+  sql.prepare(`INSERT INTO tenants (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`).run(...(keys.map((k) => r[k]) as never[]));
+}
+
+beforeEach(async () => {
+  sql = fullSchemaDb(39);
   setTestDb(sql);
+  for (const [id, type] of [[A, "clinic"], [B, "clinic"], [PHARM, "hospital_pharmacy"], ["other-pharm", "hospital_pharmacy"], ["retail-1", "retail_pharmacy"]]) addTenant(id, type);
   loginAs(A);
+  await savePharmacyLink(PHARM);
 });
 
 // ── Doctors ────────────────────────────────────────────────────────────────
@@ -291,4 +305,74 @@ test("pharmacy can bill a prescription a clinic sent it; sending twice does not 
 
   loginAs("other-pharm", "hospital_pharmacy");
   assert.equal((await getRxForInvoice(rx.id)).items.length, 0);
+});
+
+test("integration is explicit: only the linked hospital pharmacy can be searched or sent a prescription", async () => {
+  const p = await savePatient(null, { name: "Linked" });
+  const c = await saveConsultation(null, { patient_id: p.id, doctor_id: null, date: TODAY });
+  const rx = await prescriptionsRepo.create({ consultation_id: c.id, patient_id: p.id, doctor_id: null, date: TODAY, status: "draft", pharmacy_tenant_id: null, sent_at: null, acknowledged_at: null, dispensed_at: null, notes: null });
+  await saveRxItems(rx.id, [{ prescription_id: rx.id, product_id: null, product_name: "Panadol", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 1, instructions: null }]);
+  const opts = { patientName: "Linked", patientId: p.id, doctorName: null, clinicName: null, rxDate: TODAY };
+
+  await assert.rejects(sendPrescriptionToPharmacy(rx.id, "other-pharm", opts), /Link this pharmacy/);
+  await assert.rejects(searchProductsForPharmacy("pan", "other-pharm"), /Link this pharmacy/);
+  await assert.rejects(savePharmacyLink("retail-1"), /pharmacy was not found/, "only hospital pharmacies");
+  await assert.rejects(savePharmacyLink(B), /pharmacy was not found/, "not another clinic");
+
+  await sendPrescriptionToPharmacy(rx.id, PHARM, opts);
+  // An empty prescription is not sent.
+  const empty = await prescriptionsRepo.create({ consultation_id: c.id, patient_id: p.id, doctor_id: null, date: TODAY, status: "draft", pharmacy_tenant_id: null, sent_at: null, acknowledged_at: null, dispensed_at: null, notes: null });
+  await assert.rejects(sendPrescriptionToPharmacy(empty.id, PHARM, opts), /no medicines/);
+
+  // The sending clinic is always the logged-in one, whatever the caller passes.
+  const row = sql.prepare(`SELECT clinic_tenant_id FROM pharmacy_rx_notifications WHERE prescription_id = ?`).get(rx.id) as { clinic_tenant_id: string };
+  assert.equal(row.clinic_tenant_id, A);
+});
+
+test("sending does not touch the pharmacy's stock, prices or invoices", async () => {
+  const before = ["product_batches", "invoices", "invoice_items", "price_list", "cash_register_entries"].map(
+    (t) => (sql.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n
+  );
+  const p = await savePatient(null, { name: "Stock Safe" });
+  const c = await saveConsultation(null, { patient_id: p.id, doctor_id: null, date: TODAY });
+  const rx = await prescriptionsRepo.create({ consultation_id: c.id, patient_id: p.id, doctor_id: null, date: TODAY, status: "draft", pharmacy_tenant_id: null, sent_at: null, acknowledged_at: null, dispensed_at: null, notes: null });
+  await saveRxItems(rx.id, [{ prescription_id: rx.id, product_id: null, product_name: "X", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 4, instructions: null }]);
+  await sendPrescriptionToPharmacy(rx.id, PHARM, { patientName: "Stock Safe", patientId: p.id, doctorName: null, clinicName: null, rxDate: TODAY });
+  loginAs(PHARM, "hospital_pharmacy");
+  const [n] = await listRxNotifications();
+  await acknowledgeRxNotification(n.id);
+  const after = ["product_batches", "invoices", "invoice_items", "price_list", "cash_register_entries"].map(
+    (t) => (sql.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n
+  );
+  assert.deepEqual(after, before);
+  assert.equal((await listRxNotifications())[0].status, "acknowledged");
+});
+
+test("prescription lines carry their clinic so they sync like other tenant rows", async () => {
+  const p = await savePatient(null, { name: "Sync" });
+  const c = await saveConsultation(null, { patient_id: p.id, doctor_id: null, date: TODAY });
+  const rx = await prescriptionsRepo.create({ consultation_id: c.id, patient_id: p.id, doctor_id: null, date: TODAY, status: "draft", pharmacy_tenant_id: null, sent_at: null, acknowledged_at: null, dispensed_at: null, notes: null });
+  await saveRxItems(rx.id, [{ prescription_id: rx.id, product_id: null, product_name: "A", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 1, instructions: null }]);
+  await saveRxItems(rx.id, [{ prescription_id: rx.id, product_id: null, product_name: "B", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 1, instructions: null }]);
+  const rows = sql.prepare(`SELECT product_name, tenant_id, deleted_at FROM clinic_rx_items WHERE prescription_id = ? ORDER BY product_name`).all(rx.id) as { product_name: string; tenant_id: string; deleted_at: string | null }[];
+  assert.deepEqual(rows.map((r) => [r.product_name, r.tenant_id, r.deleted_at === null]), [["A", A, false], ["B", A, true]], "old line soft-deleted, both owned by the clinic");
+});
+
+test("sync: clinic and hospital tables are pulled per tenant; the mailbox only by its two parties", () => {
+  for (const t of ["clinic_patients", "clinic_rx_items", "hospital_patients", "hospital_episodes", "hospital_lab_orders", "pharmacy_rx_notifications"]) {
+    assert.ok((SYNCABLE_TABLES as readonly string[]).includes(t), `${t} syncs`);
+    assert.ok(TENANT_SCOPED_TABLES.includes(t), `${t} is tenant-scoped`);
+  }
+  assert.deepEqual(OWNER_COLUMNS.pharmacy_rx_notifications, ["pharmacy_tenant_id", "clinic_tenant_id"]);
+  const clinic = { tenantId: A, superAdmin: false };
+  const pharmacy = { tenantId: PHARM, superAdmin: false };
+  const stranger = { tenantId: B, superAdmin: false };
+  const notif = { id: "n", pharmacy_tenant_id: PHARM, clinic_tenant_id: A };
+  assert.equal(mayPush("pharmacy_rx_notifications", "insert", notif, clinic), true);
+  assert.equal(mayPush("pharmacy_rx_notifications", "update", notif, pharmacy), true);
+  assert.equal(mayPush("pharmacy_rx_notifications", "update", notif, stranger), false);
+  assert.equal(mayPush("pharmacy_rx_notifications", "insert", notif, { tenantId: null, superAdmin: true }), false);
+  assert.equal(mayPush("clinic_patients", "insert", { id: "x", tenant_id: A }, clinic), true);
+  assert.equal(mayPush("clinic_patients", "insert", { id: "x", tenant_id: B }, clinic), false);
+  assert.equal(mayPush("hospital_patients", "insert", { id: "x", tenant_id: A }, stranger), false);
 });

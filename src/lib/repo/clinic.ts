@@ -141,7 +141,7 @@ export async function saveConsultation(id: string | null, data: Partial<ClinicCo
 }
 
 export async function getRxItems(prescriptionId: string): Promise<ClinicRxItem[]> {
-  // clinic_rx_items has no tenant_id: ownership is proven through its prescription.
+  // Ownership is proven through the prescription (rows written before v39 have no tenant_id).
   return dbSelect<ClinicRxItem>(
     `SELECT i.* FROM clinic_rx_items i
      JOIN clinic_prescriptions p ON p.id = i.prescription_id
@@ -150,17 +150,30 @@ export async function getRxItems(prescriptionId: string): Promise<ClinicRxItem[]
   );
 }
 
+/** Replaces a prescription's lines. Old lines are soft-deleted (so the change
+ * syncs), new ones carry the clinic's tenant id. */
 export async function saveRxItems(prescriptionId: string, items: Omit<ClinicRxItem, "id" | "created_at" | "updated_at" | "deleted_at">[]): Promise<void> {
   if (!(await prescriptionsRepo.get(prescriptionId))) throw new Error("Prescription not found in this business.");
+  const tenantId = requireCurrentTenantId();
   const ts = nowIso();
-  await dbExecute(`DELETE FROM clinic_rx_items WHERE prescription_id = ?`, [prescriptionId]);
+  const old = await getRxItems(prescriptionId);
+  for (const o of old) {
+    await dbExecute(`UPDATE clinic_rx_items SET deleted_at = ?, updated_at = ? WHERE id = ?`, [ts, ts, o.id]);
+    await recordOutbox("clinic_rx_items", o.id, "delete", null);
+  }
   for (const item of items) {
-    const id = newId();
+    const row = {
+      id: newId(), tenant_id: tenantId, prescription_id: prescriptionId, product_id: item.product_id ?? null, product_name: item.product_name,
+      strength: item.strength ?? null, dosage_form: item.dosage_form ?? null, dose: item.dose ?? null, route: item.route ?? null,
+      frequency: item.frequency ?? null, duration: item.duration ?? null, qty: item.qty, instructions: item.instructions ?? null,
+      created_at: ts, updated_at: ts, deleted_at: null,
+    };
+    const cols = Object.keys(row);
     await dbExecute(
-      `INSERT INTO clinic_rx_items (id, prescription_id, product_id, product_name, strength, dosage_form, dose, route, frequency, duration, qty, instructions, created_at, updated_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-      [id, prescriptionId, item.product_id ?? null, item.product_name, item.strength ?? null, item.dosage_form ?? null, item.dose ?? null, item.route ?? null, item.frequency ?? null, item.duration ?? null, item.qty, item.instructions ?? null, ts, ts]
+      `INSERT INTO clinic_rx_items (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,
+      cols.map((c) => (row as Record<string, unknown>)[c])
     );
+    await recordOutbox("clinic_rx_items", row.id, "insert", row);
   }
 }
 
@@ -211,74 +224,95 @@ export async function getPendingRxNotifications(limit = 50): Promise<PharmacyRxN
   );
 }
 
+/** Applies a pharmacy-side change to one of its received prescriptions and
+ * queues the whole row for sync. Only the receiving pharmacy can change it. */
+async function updateNotification(id: string, setSql: string, params: unknown[]): Promise<void> {
+  const tenantId = requireCurrentTenantId();
+  await dbExecute(`UPDATE pharmacy_rx_notifications SET ${setSql} WHERE id = ? AND pharmacy_tenant_id = ?`, [...params, id, tenantId]);
+  const row = (await dbSelect<Record<string, unknown>>(`SELECT * FROM pharmacy_rx_notifications WHERE id = ? AND pharmacy_tenant_id = ?`, [id, tenantId]))[0];
+  if (row) await recordOutbox("pharmacy_rx_notifications", id, "update", row);
+}
+
 export async function markRxNotificationRead(id: string): Promise<void> {
   const ts = nowIso();
-  await dbExecute(
-    `UPDATE pharmacy_rx_notifications SET read_at = ?, updated_at = ? WHERE id = ? AND pharmacy_tenant_id = ?`,
-    [ts, ts, id, requireCurrentTenantId()]
-  );
+  await updateNotification(id, `read_at = ?, updated_at = ?`, [ts, ts]);
 }
 
 export async function acknowledgeRxNotification(id: string): Promise<void> {
   const ts = nowIso();
-  await dbExecute(
-    `UPDATE pharmacy_rx_notifications SET status = 'acknowledged', read_at = COALESCE(read_at, ?), updated_at = ? WHERE id = ? AND pharmacy_tenant_id = ?`,
-    [ts, ts, id, requireCurrentTenantId()]
-  );
+  await updateNotification(id, `status = 'acknowledged', read_at = COALESCE(read_at, ?), updated_at = ?`, [ts, ts]);
 }
 
 export async function dispenseRxNotification(id: string, invoiceId: string): Promise<void> {
   const ts = nowIso();
-  await dbExecute(
-    `UPDATE pharmacy_rx_notifications SET status = 'dispensed', invoice_id = ?, updated_at = ? WHERE id = ? AND pharmacy_tenant_id = ?`,
-    [invoiceId, ts, id, requireCurrentTenantId()]
-  );
+  await updateNotification(id, `status = 'dispensed', invoice_id = ?, updated_at = ?`, [invoiceId, ts]);
 }
 
-/** Send a prescription to the linked pharmacy. The pharmacy lives in another
- * database than the clinic, so it receives its own copy: a mailbox entry plus
- * the prescription lines (pharmacy_rx_notifications / pharmacy_rx_items, both
- * on the platform database). Then the prescription is marked "sent". Sending
- * again replaces the pharmacy's copy instead of duplicating it. */
+/** Send a prescription to the linked pharmacy. The pharmacy is another tenant
+ * and cannot read the clinic's records, so it receives its own copy: a mailbox
+ * entry plus the prescription lines (pharmacy_rx_notifications /
+ * pharmacy_rx_items). Then the prescription is marked "sent". Sending again
+ * refreshes the pharmacy's copy instead of duplicating it. Only the pharmacy
+ * this clinic has linked can receive it, and the pharmacy's stock and
+ * invoices are untouched: it decides itself whether to bill. */
 export async function sendPrescriptionToPharmacy(
   prescriptionId: string,
   pharmacyTenantId: string,
-  opts: { patientName: string; patientId: string; doctorName: string | null; clinicTenantId: string; clinicName: string | null; rxDate: string; itemCount: number }
+  opts: { patientName: string; patientId: string; doctorName: string | null; clinicTenantId?: string; clinicName: string | null; rxDate: string; itemCount?: number }
 ): Promise<void> {
+  const clinicTenantId = requireCurrentTenantId();
+  await assertLinkedPharmacy(pharmacyTenantId);
   const prescription = await prescriptionsRepo.get(prescriptionId);
   if (!prescription) throw new Error("Prescription not found in this business.");
   const items = await getRxItems(prescriptionId);
+  if (!items.length) throw new Error("This prescription has no medicines to send.");
   const ts = nowIso();
-  const notifId = newId();
-  const notification = {
-    id: notifId, pharmacy_tenant_id: pharmacyTenantId, prescription_id: prescriptionId, clinic_tenant_id: opts.clinicTenantId,
-    clinic_name: opts.clinicName ?? "", patient_name: opts.patientName, patient_id: opts.patientId, doctor_name: opts.doctorName ?? "",
-    rx_date: opts.rxDate, item_count: items.length, status: "pending", invoice_id: null, read_at: null, rx_notes: prescription.notes ?? null,
-    created_at: ts, updated_at: ts,
-  };
 
   // 1) The pharmacy's copy first: if the clinic-side update below fails, sending again is safe.
-  await dbExecute(`DELETE FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ?`, [pharmacyTenantId, prescriptionId]);
-  await dbExecute(
-    `INSERT OR REPLACE INTO pharmacy_rx_notifications
-     (id, pharmacy_tenant_id, prescription_id, clinic_tenant_id, clinic_name, patient_name, patient_id, doctor_name, rx_date, item_count, status, invoice_id, read_at, rx_notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, NULL, ?, ?, ?)`,
-    [notifId, pharmacyTenantId, prescriptionId, notification.clinic_tenant_id, notification.clinic_name, notification.patient_name, notification.patient_id, notification.doctor_name, notification.rx_date, notification.item_count, notification.rx_notes, ts, ts]
+  const existing = await dbSelect<{ id: string; created_at: string }>(
+    `SELECT id, created_at FROM pharmacy_rx_notifications WHERE pharmacy_tenant_id = ? AND prescription_id = ? LIMIT 1`,
+    [pharmacyTenantId, prescriptionId]
   );
-  for (const it of items) {
-    const itemId = newId();
-    await dbExecute(
-      `INSERT INTO pharmacy_rx_items (id, pharmacy_tenant_id, prescription_id, product_id, product_name, strength, dosage_form, dose, route, frequency, duration, qty, instructions, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [itemId, pharmacyTenantId, prescriptionId, it.product_id, it.product_name, it.strength, it.dosage_form, it.dose, it.route, it.frequency, it.duration, it.qty, it.instructions, ts, ts]
-    );
+  const notification = {
+    id: existing[0]?.id ?? newId(), pharmacy_tenant_id: pharmacyTenantId, prescription_id: prescriptionId, clinic_tenant_id: clinicTenantId,
+    clinic_name: opts.clinicName ?? "", patient_name: opts.patientName, patient_id: opts.patientId, doctor_name: opts.doctorName ?? "",
+    rx_date: opts.rxDate, item_count: items.length, status: "pending", invoice_id: null, read_at: null, rx_notes: prescription.notes ?? null,
+    created_at: existing[0]?.created_at ?? ts, updated_at: ts,
+  };
+  const cols = Object.keys(notification);
+  await dbExecute(
+    `INSERT INTO pharmacy_rx_notifications (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})
+     ON CONFLICT(id) DO UPDATE SET ${cols.filter((c) => c !== "id" && c !== "created_at").map((c) => `${c} = excluded.${c}`).join(", ")}`,
+    cols.map((c) => (notification as Record<string, unknown>)[c])
+  );
+  await recordOutbox("pharmacy_rx_notifications", notification.id, "insert", notification);
+
+  const oldLines = await dbSelect<{ id: string }>(
+    `SELECT id FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ? AND deleted_at IS NULL`,
+    [pharmacyTenantId, prescriptionId]
+  );
+  for (const o of oldLines) {
+    await dbExecute(`UPDATE pharmacy_rx_items SET deleted_at = ?, updated_at = ? WHERE id = ?`, [ts, ts, o.id]);
+    const full = (await dbSelect<Record<string, unknown>>(`SELECT * FROM pharmacy_rx_items WHERE id = ?`, [o.id]))[0];
+    if (full) await recordOutbox("pharmacy_rx_items", o.id, "update", full);
   }
+  for (const it of items) {
+    const line = {
+      id: newId(), pharmacy_tenant_id: pharmacyTenantId, clinic_tenant_id: clinicTenantId, prescription_id: prescriptionId,
+      product_id: it.product_id, product_name: it.product_name, strength: it.strength, dosage_form: it.dosage_form, dose: it.dose,
+      route: it.route, frequency: it.frequency, duration: it.duration, qty: it.qty, instructions: it.instructions,
+      created_at: ts, updated_at: ts, deleted_at: null,
+    };
+    const lc = Object.keys(line);
+    await dbExecute(
+      `INSERT INTO pharmacy_rx_items (${lc.join(", ")}) VALUES (${lc.map(() => "?").join(", ")})`,
+      lc.map((c) => (line as Record<string, unknown>)[c])
+    );
+    await recordOutbox("pharmacy_rx_items", line.id, "insert", line);
+  }
+
   // 2) The clinic's own record.
-  await dbExecute(
-    `UPDATE clinic_prescriptions SET status = 'sent', pharmacy_tenant_id = ?, sent_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-    [pharmacyTenantId, ts, ts, prescriptionId, requireCurrentTenantId()]
-  );
-  await recordOutbox("pharmacy_rx_notifications", notifId, "insert", notification);
+  await prescriptionsRepo.update(prescriptionId, { status: "sent", pharmacy_tenant_id: pharmacyTenantId, sent_at: ts });
 }
 
 export interface RxLine {
@@ -294,7 +328,8 @@ export async function getRxForInvoice(prescriptionId: string): Promise<{ items: 
   if (own) return { items: await getRxItems(prescriptionId), notes: own.notes };
   const tenantId = requireCurrentTenantId();
   const items = await dbSelect<RxLine>(
-    `SELECT product_id, product_name, qty FROM pharmacy_rx_items WHERE pharmacy_tenant_id = ? AND prescription_id = ? ORDER BY created_at`,
+    `SELECT product_id, product_name, qty FROM pharmacy_rx_items
+     WHERE pharmacy_tenant_id = ? AND prescription_id = ? AND deleted_at IS NULL ORDER BY created_at`,
     [tenantId, prescriptionId]
   );
   const notif = await dbSelect<{ rx_notes: string | null }>(
@@ -315,8 +350,15 @@ export async function getPharmacyLink(): Promise<ClinicPharmacyLink | null> {
   return rows[0] ?? null;
 }
 
+/** Links this clinic to one hospital pharmacy: the explicit, clinic-made choice
+ * that allows searching that pharmacy's catalogue and sending it prescriptions. */
 export async function savePharmacyLink(pharmacyTenantId: string): Promise<void> {
   const tenantId = requireCurrentTenantId();
+  const ok = await dbSelect<{ id: string }>(
+    `SELECT id FROM tenants WHERE id = ? AND business_type = 'hospital_pharmacy' AND deleted_at IS NULL`,
+    [pharmacyTenantId]
+  );
+  if (!ok.length) throw new Error("That pharmacy was not found.");
   const ts = nowIso();
   await dbExecute(
     `INSERT INTO clinic_pharmacy_link (id, clinic_tenant_id, pharmacy_tenant_id, is_active, created_at, updated_at)
@@ -324,6 +366,16 @@ export async function savePharmacyLink(pharmacyTenantId: string): Promise<void> 
      ON CONFLICT(clinic_tenant_id) DO UPDATE SET pharmacy_tenant_id = excluded.pharmacy_tenant_id, is_active = 1, updated_at = excluded.updated_at`,
     [newId(), tenantId, pharmacyTenantId, ts, ts]
   );
+  const link = await getPharmacyLink();
+  if (link) await recordOutbox("clinic_pharmacy_link", link.id, "insert", link as unknown as Record<string, unknown>);
+}
+
+/** Throws unless the given pharmacy is the one this clinic has linked. */
+export async function assertLinkedPharmacy(pharmacyTenantId: string): Promise<void> {
+  const link = await getPharmacyLink();
+  if (!link || link.pharmacy_tenant_id !== pharmacyTenantId) {
+    throw new Error("Link this pharmacy to the clinic first (Linked Pharmacy, on the consultation screen).");
+  }
 }
 
 // ── Dashboard stats ───────────────────────────────────────────────────────
@@ -443,7 +495,8 @@ export async function searchProductsForPharmacy(
 ): Promise<{ id: string; name: string; barcode: string | null; company_name: string | null; description: string | null }[]> {
   if (!term.trim()) return [];
   const like = `%${term.trim()}%`;
-  // The pharmacy's products are in the platform database, not the clinic's.
+  // Another tenant's catalogue: only the pharmacy this clinic has linked.
+  await assertLinkedPharmacy(pharmacyTenantId);
   return dbSelect(
     `SELECT id, name, barcode, company_name, description
      FROM products
@@ -454,8 +507,7 @@ export async function searchProductsForPharmacy(
        )
        AND (name LIKE ? OR barcode LIKE ?)
      ORDER BY name ASC LIMIT 20`,
-    [pharmacyTenantId, like, like],
-    { system: "platform" }
+    [pharmacyTenantId, like, like]
   );
 }
 

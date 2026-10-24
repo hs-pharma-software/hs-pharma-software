@@ -48,7 +48,7 @@ const pay = (episodeId: string, type: "deposit" | "payment" | "refund", amount: 
   addPayment({ tenant_id: A, episode_id: episodeId, type, amount, method: "cash", reference: null, notes: null, received_at: localDateTime() });
 
 beforeEach(() => {
-  sql = fullSchemaDb(38);
+  sql = fullSchemaDb(39);
   setTestDb(sql);
   loginAs(A);
 });

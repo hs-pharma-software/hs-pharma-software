@@ -17,21 +17,14 @@ const env = fs.existsSync(envPath)
   ? Object.fromEntries(fs.readFileSync(envPath,'utf8').split('\n').filter(l=>l.includes('=')).map(l=>{const i=l.indexOf('=');return[l.slice(0,i).trim(),l.slice(i+1).trim()]}))
   : {};
 
-// Which cloud database to migrate:  node scripts/migrate-turso.cjs [--target=platform|hospital|clinic]
-// platform (default) is the original database; hospital and clinic are their own
-// databases, configured in .env.local with the *_HOSPITAL_* / *_CLINIC_* variables.
-const TARGET = ((process.argv.find((a) => a.startsWith('--target=')) ?? '--target=platform').split('=')[1] || 'platform').toLowerCase();
-const ENV_KEYS = {
-  platform: ['NEXT_PUBLIC_TURSO_DATABASE_URL', 'NEXT_PUBLIC_TURSO_AUTH_TOKEN'],
-  hospital: ['NEXT_PUBLIC_TURSO_HOSPITAL_DATABASE_URL', 'NEXT_PUBLIC_TURSO_HOSPITAL_AUTH_TOKEN'],
-  clinic: ['NEXT_PUBLIC_TURSO_CLINIC_DATABASE_URL', 'NEXT_PUBLIC_TURSO_CLINIC_AUTH_TOKEN'],
-};
-if (!ENV_KEYS[TARGET]) { console.error(`Unknown --target=${TARGET} (use platform, hospital or clinic)`); process.exit(1); }
-const [URL_KEY, TOKEN_KEY] = ENV_KEYS[TARGET];
-const TURSO_URL   = (env[URL_KEY] ?? '').replace('libsql://', 'https://');
-const TURSO_TOKEN = env[TOKEN_KEY] ?? '';
-if (!TURSO_URL || !TURSO_TOKEN) { console.error(`Missing ${URL_KEY} or ${TOKEN_KEY} in .env.local`); process.exit(1); }
-console.log(`Migrating the ${TARGET} database`);
+// The one Turso database shared by Pharmacy POS, Hospital and Clinic.
+//   node scripts/migrate-turso.cjs            every version (idempotent)
+//   node scripts/migrate-turso.cjs --from=34  only version 34 and later
+const FROM = Number((process.argv.find((a) => a.startsWith('--from=')) ?? '--from=0').split('=')[1]) || 0;
+const TURSO_URL   = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
+const TURSO_TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
+if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing NEXT_PUBLIC_TURSO_DATABASE_URL or NEXT_PUBLIC_TURSO_AUTH_TOKEN in .env.local'); process.exit(1); }
+console.log(`Migrating ${new URL(TURSO_URL).host}${FROM ? ` (versions ${FROM} and later)` : ''}`);
 
 async function exec(sql) {
   const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
@@ -311,6 +304,8 @@ const MIGRATIONS = [
 
   { version: 38, label: 'pharmacy_rx_items mailbox + rx_notes', statements: rustSchemaStatements(38) },
 
+  { version: 39, label: 'rx items owner columns for sync', statements: rustSchemaStatements(39) },
+
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(
@@ -322,6 +317,7 @@ const MIGRATIONS = [
 async function main() {
   let ok = 0, skipped = 0, failed = 0;
   for (const m of MIGRATIONS) {
+    if (m.version < FROM) continue;
     process.stdout.write(`v${m.version} ${m.label} ... `);
     let mOk = 0, mSkip = 0;
     let prevApplied = false;

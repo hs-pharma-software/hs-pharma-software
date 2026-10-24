@@ -18,6 +18,7 @@ import {
   doctorsRepo,
   saveRxItems,
   getPharmacyLink,
+  savePharmacyLink,
   sendPrescriptionToPharmacy,
   listPharmacyTenants,
   searchProductsForPharmacy,
@@ -379,7 +380,16 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
         {pharmacyTenants.length > 0 && (
           <div className="mb-4">
             <Field label="Linked Pharmacy">
-              <Select value={linkedPharmacyId} onChange={(e) => setLinkedPharmacyId(e.target.value)}>
+              <Select
+                value={linkedPharmacyId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) return setLinkedPharmacyId("");
+                  savePharmacyLink(id)
+                    .then(() => setLinkedPharmacyId(id))
+                    .catch((err) => window.alert(`Could not link the pharmacy: ${err instanceof Error ? err.message : String(err)}`));
+                }}
+              >
                 <option value="">â€” None â€”</option>
                 {pharmacyTenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>

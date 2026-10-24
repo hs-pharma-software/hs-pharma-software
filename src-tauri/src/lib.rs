@@ -1278,6 +1278,20 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// Owner columns so prescription lines can sync like every other tenant row:
+/// clinic_rx_items gets tenant_id (filled from its prescription), and the
+/// pharmacy's copy gets the sending clinic and a soft-delete column.
+fn schema_sql_v39() -> &'static str {
+    r#"
+    ALTER TABLE clinic_rx_items ADD COLUMN tenant_id TEXT;
+    UPDATE clinic_rx_items SET tenant_id = (SELECT p.tenant_id FROM clinic_prescriptions p WHERE p.id = clinic_rx_items.prescription_id) WHERE tenant_id IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_crxi_tenant ON clinic_rx_items (tenant_id);
+    ALTER TABLE pharmacy_rx_items ADD COLUMN clinic_tenant_id TEXT;
+    ALTER TABLE pharmacy_rx_items ADD COLUMN deleted_at TEXT;
+    UPDATE pharmacy_rx_items SET clinic_tenant_id = (SELECT n.clinic_tenant_id FROM pharmacy_rx_notifications n WHERE n.prescription_id = pharmacy_rx_items.prescription_id AND n.pharmacy_tenant_id = pharmacy_rx_items.pharmacy_tenant_id) WHERE clinic_tenant_id IS NULL
+    "#
+}
+
 /// The prescription mailbox between a clinic and a pharmacy. A clinic and a
 /// pharmacy live in different databases, so the pharmacy gets its own copy of
 /// the prescription lines when one is sent (it can no longer read the clinic's).
@@ -1950,10 +1964,8 @@ fn schema_sql_v9() -> &'static str {
     "#
 }
 
-/// The full schema. The platform database (pharmacy.db), the Hospital database
-/// (hospital_management_db.db) and the Clinic database (clinic_management_db.db)
-/// each get every migration; which tables a database actually uses is decided
-/// by the routing in src/lib/dbRouting.ts.
+/// The full schema of the single database shared by Pharmacy POS, Hospital and
+/// Clinic. scripts/migrate-turso.cjs applies the same versions to Turso.
 fn all_migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -2184,6 +2196,12 @@ fn all_migrations() -> Vec<Migration> {
             sql: schema_sql_v38(),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 39,
+            description: "rx_items_owner_columns_for_sync",
+            sql: schema_sql_v39(),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -2193,8 +2211,6 @@ pub fn run() {
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:pharmacy.db", all_migrations())
-                .add_migrations("sqlite:hospital_management_db.db", all_migrations())
-                .add_migrations("sqlite:clinic_management_db.db", all_migrations())
                 .build(),
         )
         .plugin(tauri_plugin_fs::init())

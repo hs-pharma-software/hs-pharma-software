@@ -25,7 +25,7 @@ async function openEpisode(type: EpisodeType, date: string, patientId: string) {
 }
 
 beforeEach(() => {
-  setTestDb(fullSchemaDb(38));
+  setTestDb(fullSchemaDb(39));
   loginAs("hosp-a");
 });
 

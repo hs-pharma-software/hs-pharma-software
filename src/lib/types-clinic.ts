@@ -68,6 +68,8 @@ export interface ClinicPrescription extends TenantRow {
 }
 
 export interface ClinicRxItem extends BaseRow {
+  /** Owning clinic (v39); older rows are owned through their prescription. */
+  tenant_id?: string | null;
   prescription_id: string;
   product_id: string | null;
   product_name: string;

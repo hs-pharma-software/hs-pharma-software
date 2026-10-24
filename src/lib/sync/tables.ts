@@ -87,6 +87,25 @@ export const SYNCABLE_TABLES = [
   "dist_stock_moves",
   "dist_user_perms",
   "dist_audit",
+  // Clinic and Hospital (tenant-scoped), parents first.
+  "clinic_patients",
+  "clinic_doctors",
+  "clinic_appointments",
+  "clinic_consultations",
+  "clinic_prescriptions",
+  "clinic_rx_items",
+  "hospital_patients",
+  "hospital_services",
+  "hospital_departments",
+  "hospital_episodes",
+  "hospital_charges",
+  "hospital_payments",
+  "hospital_lab_orders",
+  "hospital_imaging_orders",
+  // Clinic <-> pharmacy hand-over: shared by exactly two tenants (see OWNER_COLUMNS).
+  "clinic_pharmacy_link",
+  "pharmacy_rx_notifications",
+  "pharmacy_rx_items",
 ] as const;
 
 /** Tables private to one pharmacy tenant \u2014 `pullChanges()` in
@@ -175,7 +194,34 @@ export const TENANT_SCOPED_TABLES: string[] = [
   "dist_stock_moves",
   "dist_user_perms",
   "dist_audit",
+  "clinic_patients",
+  "clinic_doctors",
+  "clinic_appointments",
+  "clinic_consultations",
+  "clinic_prescriptions",
+  "clinic_rx_items",
+  "hospital_patients",
+  "hospital_services",
+  "hospital_departments",
+  "hospital_episodes",
+  "hospital_charges",
+  "hospital_payments",
+  "hospital_lab_orders",
+  "hospital_imaging_orders",
+  "clinic_pharmacy_link",
+  "pharmacy_rx_notifications",
+  "pharmacy_rx_items",
 ];
+
+/** Tenant-scoped tables owned through other columns than `tenant_id`: a row is
+ * visible to, and may be written by, the tenant named in any of these columns.
+ * The prescription mailbox belongs to the sending clinic and the receiving
+ * pharmacy; the clinic's pharmacy link to the clinic. */
+export const OWNER_COLUMNS: Record<string, string[]> = {
+  clinic_pharmacy_link: ["clinic_tenant_id"],
+  pharmacy_rx_notifications: ["pharmacy_tenant_id", "clinic_tenant_id"],
+  pharmacy_rx_items: ["pharmacy_tenant_id", "clinic_tenant_id"],
+};
 
 // `delete_history` and `backups` are intentionally excluded: they're
 // append-only local audit logs with no `updated_at` column (the pull side of
