@@ -472,9 +472,12 @@ function GeneralDashboard() {
   const [unitBreakdown, setUnitBreakdown] = useState<InventoryUnitRow[]>([]);
   const tauriReady = useIsTauri();
   const { openNew } = useFormTabs();
+  const sessionTenant = useAuthStore((s) => s.currentTenant);
+  const tenantId = sessionTenant?.id ?? null;
 
   useEffect(() => {
     if (!isTauri()) return;
+    if (!tenantId) return;
     (async () => {
       try {
         const [customers, suppliers, products, customerReceivable, supplierPayable, todaySummary, low, exp, recent, top, units] =
@@ -502,11 +505,10 @@ function GeneralDashboard() {
         console.error("dashboard load failed", err);
       }
     })();
-  }, []);
+  }, [tenantId]);
 
   const now = new Date();
   const dateLabel = now.toLocaleDateString("en-PK", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const sessionTenant = useAuthStore((s) => s.currentTenant);
   const [logo, setLogo] = useState<string | null>(null);
   useEffect(() => {
     if (tauriReady) void loadLogo().then(setLogo);
