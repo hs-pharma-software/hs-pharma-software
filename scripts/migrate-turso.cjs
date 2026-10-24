@@ -258,6 +258,20 @@ const MIGRATIONS = [
     `ALTER TABLE users ADD COLUMN denied_actions TEXT`,
   ]},
   // v31 — shared pharma / general-store catalog
+  { version: 33, label: 'customer contractor fields (ntn, strn, registration_type, business_name, fbr_active_status)', statements: [
+    `ALTER TABLE customers ADD COLUMN ntn TEXT`,
+    `ALTER TABLE customers ADD COLUMN strn TEXT`,
+    `ALTER TABLE customers ADD COLUMN registration_type TEXT`,
+    `ALTER TABLE customers ADD COLUMN business_name TEXT`,
+    `ALTER TABLE customers ADD COLUMN fbr_active_status TEXT`,
+  ] },
+
+  { version: 32, label: 'backfill catalog_group for unowned shared catalog products/categories', statements: [
+    `UPDATE products SET catalog_group = COALESCE(product_classification, 'pharma') WHERE tenant_id IS NULL AND deleted_at IS NULL AND catalog_group IS NULL`,
+    `UPDATE categories SET catalog_group = 'pharma' WHERE tenant_id IS NULL AND deleted_at IS NULL AND catalog_group IS NULL`,
+    `UPDATE sub_categories SET catalog_group = 'pharma' WHERE tenant_id IS NULL AND deleted_at IS NULL AND catalog_group IS NULL`,
+  ] },
+
   { version: 31, label: 'shared catalog: catalog_group + product_classification columns', statements: [
     `ALTER TABLE products ADD COLUMN catalog_group TEXT`,
     `ALTER TABLE products ADD COLUMN product_classification TEXT`,
