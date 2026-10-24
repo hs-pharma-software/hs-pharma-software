@@ -1278,6 +1278,88 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// Central lab reports (additive, existing rows kept):
+/// - hospital_collection_centers: locations of the same hospital that register tests.
+/// - hospital_lab_requests: one patient order of one or more tests, with a Unique
+///   Lab Number and a Lab Invoice Number (both unique per hospital), where it was
+///   registered, and the sample dates. Every existing lab order gets its own request.
+/// - hospital_lab_orders: link to the request, result entry and verification
+///   (who released the result, with credentials). Results released before this
+///   version are marked as released before verification was required.
+/// - hospital_lab_report_log: who viewed / printed / reprinted which report.
+/// - staff.collection_center_id: where a staff member works.
+fn schema_sql_v42() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_collection_centers (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        address TEXT,
+        phone TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_cc_code ON hospital_collection_centers (tenant_id, code);
+    CREATE TABLE IF NOT EXISTS hospital_lab_requests (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        lab_no TEXT NOT NULL,
+        invoice_no TEXT NOT NULL,
+        episode_id TEXT,
+        patient_id TEXT NOT NULL,
+        referring_doctor TEXT,
+        registration_location TEXT NOT NULL DEFAULT 'hospital_lab',
+        collection_center_id TEXT,
+        external_ref TEXT,
+        registered_by TEXT,
+        sample_collected_at TEXT,
+        sample_received_at TEXT,
+        print_count INTEGER NOT NULL DEFAULT 0,
+        last_printed_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_labreq_labno ON hospital_lab_requests (tenant_id, lab_no);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_labreq_invoice ON hospital_lab_requests (tenant_id, invoice_no);
+    CREATE INDEX IF NOT EXISTS idx_hosp_labreq_patient ON hospital_lab_requests (tenant_id, patient_id);
+    CREATE INDEX IF NOT EXISTS idx_hosp_labreq_extref ON hospital_lab_requests (tenant_id, external_ref);
+    ALTER TABLE hospital_lab_orders ADD COLUMN request_id TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN sample_type TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN result_entered_by TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN result_entered_at TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN verified_by TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN verified_by_name TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN verified_by_license TEXT;
+    ALTER TABLE hospital_lab_orders ADD COLUMN verified_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hosp_lab_request ON hospital_lab_orders (request_id);
+    CREATE TABLE IF NOT EXISTS hospital_lab_report_log (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        user_id TEXT,
+        user_name TEXT,
+        location_id TEXT,
+        details TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_labrep_log ON hospital_lab_report_log (tenant_id, request_id, created_at);
+    ALTER TABLE staff ADD COLUMN collection_center_id TEXT;
+    INSERT INTO hospital_lab_requests (id, tenant_id, lab_no, invoice_no, episode_id, patient_id, referring_doctor, registration_location, created_at, updated_at)
+        SELECT 'lr-' || o.id, o.tenant_id, 'LN-' || o.order_no, 'LI-' || o.order_no, o.episode_id, o.patient_id, o.ordered_by, 'hospital_lab', o.created_at, o.updated_at
+        FROM hospital_lab_orders o
+        WHERE o.request_id IS NULL AND NOT EXISTS (SELECT 1 FROM hospital_lab_requests r WHERE r.id = 'lr-' || o.id);
+    UPDATE hospital_lab_orders SET request_id = 'lr-' || id WHERE request_id IS NULL;
+    UPDATE hospital_lab_orders SET verified_at = COALESCE(reported_at, updated_at), verified_by_name = 'Released before verification was required' WHERE status = 'reported' AND verified_at IS NULL
+    "#
+}
+
 /// The lab's "Performing Tests": a lab service also records its sample type,
 /// result unit, normal range and turnaround time (additive).
 fn schema_sql_v41() -> &'static str {
@@ -2279,6 +2361,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 41,
             description: "lab_performing_tests",
             sql: schema_sql_v41(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 42,
+            description: "lab_requests_reports_collection_centers",
+            sql: schema_sql_v42(),
             kind: MigrationKind::Up,
         },
     ]

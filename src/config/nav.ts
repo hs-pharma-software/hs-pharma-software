@@ -513,8 +513,10 @@ const HOSPITAL_NAV: NavItem[] = [
     moduleKey: "hospital_lab",
     onlyFor: ["hospital"],
     children: [
-      { label: "Lab Orders", href: "/hospital/lab" },
+      { label: "Lab Orders", href: "/hospital/lab", moduleKey: "hospital_lab_orders" },
+      { label: "Lab Reports", href: "/hospital/lab/reports", moduleKey: "hospital_lab_reports" },
       { label: "Performing Tests", href: "/hospital/lab/tests" },
+      { label: "Collection Centers", href: "/hospital/lab/centers" },
     ],
   },
   { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },

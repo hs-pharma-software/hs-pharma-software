@@ -46,7 +46,9 @@ export function hasModuleAccess(moduleKey: string | null): boolean {
   // A staff login limited to some sections can't open others by URL.
   // (Dashboard stays reachable: it is the landing page after sign-in.)
   if (moduleKey !== "dashboard" && currentUser?.role === "staff" && currentUser.permissions && !hasPermission(currentUser.permissions, moduleKey)) return false;
-  const item = NAV.find((n) => n.moduleKey === moduleKey);
+  // A key may also belong to a sub-tab of a business-type group (Labs > Lab Reports).
+  const inside = (children: NavChild[] | undefined): boolean => Boolean(children?.some((c) => c.moduleKey === moduleKey || inside(c.children)));
+  const item = NAV.find((n) => n.moduleKey === moduleKey) ?? NAV.find((n) => n.onlyFor && inside(n.children));
   if (item?.onlyFor) return item.onlyFor.includes(businessType(currentTenant.businessType).id);
   if (!moduleAllowedForType(currentTenant.businessType, moduleKey)) return false;
   return currentTenant.allowedModules.includes(moduleKey);

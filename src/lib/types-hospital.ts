@@ -157,7 +157,17 @@ export interface HospitalLabOrder extends TenantRow, OrderFee {
   patient_id: string;
   test_name: string;
   priority: OrderPriority;
-  status: "pending" | "collected" | "reported" | "cancelled";
+  /** pending = registered, sample awaited; collected = sample received; processing; awaiting_verification =
+   * result entered, not released; reported = verified and released; cancelled / superseded. */
+  status: LabTestStatus;
+  request_id?: string | null;
+  sample_type?: string | null;
+  result_entered_by?: string | null;
+  result_entered_at?: string | null;
+  verified_by?: string | null;
+  verified_by_name?: string | null;
+  verified_by_license?: string | null;
+  verified_at?: string | null;
   result_value: string | null;
   unit: string | null;
   ref_range: string | null;
@@ -182,5 +192,37 @@ export interface HospitalImagingOrder extends TenantRow, OrderFee {
   ordered_by: string | null;
   ordered_at: string;
   reported_at: string | null;
+  notes: string | null;
+}
+
+export type LabTestStatus = "pending" | "collected" | "processing" | "awaiting_verification" | "reported" | "cancelled" | "superseded";
+
+/** A place of this hospital where lab tests are registered and samples taken. */
+export interface CollectionCenter extends TenantRow {
+  code: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  is_active: number;
+}
+
+export type RegistrationLocation = "hospital_lab" | "department" | "collection_center" | "referral";
+
+/** One patient order of one or more lab tests (v42). lab_no is the Unique Lab
+ * Number; invoice_no the Lab Invoice Number. Both are unique per hospital. */
+export interface LabRequest extends TenantRow {
+  lab_no: string;
+  invoice_no: string;
+  episode_id: string | null;
+  patient_id: string;
+  referring_doctor: string | null;
+  registration_location: RegistrationLocation;
+  collection_center_id: string | null;
+  external_ref: string | null;
+  registered_by: string | null;
+  sample_collected_at: string | null;
+  sample_received_at: string | null;
+  print_count: number;
+  last_printed_at: string | null;
   notes: string | null;
 }

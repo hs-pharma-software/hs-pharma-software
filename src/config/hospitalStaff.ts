@@ -16,7 +16,7 @@ export interface Designation {
   pages: string[] | null;
 }
 
-const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients"];
+const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab_reports"];
 
 export const DESIGNATIONS: Designation[] = [
   { key: "hod", label: "Head of Department (HoD)", prefix: "HOD", license: "PMDC", licenseRequired: true, doctor: true,
@@ -25,6 +25,12 @@ export const DESIGNATIONS: Designation[] = [
   { key: "medical_specialist", label: "Medical Specialist", prefix: "MS", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_officer", label: "Medical Officer", prefix: "MO", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "nurse", label: "Nurse", prefix: "NUR", license: "PNC", licenseRequired: true, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
+  { key: "pathologist", label: "Pathologist (verifies lab reports)", prefix: "PATH", license: "PMDC", licenseRequired: true, doctor: false,
+    pages: ["hospital_lab", "hospital_patients"] },
+  { key: "lab_receptionist", label: "Lab Counter Receptionist", prefix: "LR", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
+  { key: "collection_center_receptionist", label: "Collection Center Receptionist", prefix: "CCR", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
   { key: "lab_technician", label: "Lab Technician (Paramedic)", prefix: "LT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_lab"] },
   { key: "radiographer", label: "Radiographer (Paramedic)", prefix: "RT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_radiology"] },
   { key: "paramedic", label: "Paramedic (other)", prefix: "PM", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
@@ -32,7 +38,7 @@ export const DESIGNATIONS: Designation[] = [
   { key: "hr_officer", label: "HR Officer", prefix: "HR", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr"] },
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_reception", "hospital_patients", "hospital_episodes"] },
+    pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports"] },
   { key: "other", label: "Other", prefix: "EMP", license: null, licenseRequired: false, doctor: false, pages: ["hospital_dashboard"] },
 ];
 
@@ -52,3 +58,8 @@ export const LICENSE_LABEL: Record<LicenseKind, string> = {
 export function formatEmployeeId(prefix: string, n: number): string {
   return `${prefix}-${String(n).padStart(2, "0")}`;
 }
+
+/** What a role may do in the lab. Owners and full-access logins may do everything. */
+export const LAB_VERIFY_ROLES = ["pathologist", "hod"];
+export const LAB_PROCESS_ROLES = ["pathologist", "hod", "lab_technician"];
+export const LAB_REGISTER_ROLES = [...LAB_PROCESS_ROLES, "lab_receptionist", "collection_center_receptionist", "receptionist"];

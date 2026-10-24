@@ -216,7 +216,7 @@ export default function ReceptionPage() {
                 <div key={o.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <div>
                     <p className="font-medium">{o.name} <span className="text-xs font-normal text-neutral-400">{o.kind === "lab" ? "Lab" : "Radiology"} · {o.order_no}</span></p>
-                    <p className="text-xs text-neutral-500">{o.patient_name} ({o.mr_no}) · {o.episode_no}</p>
+                    <p className="text-xs text-neutral-500">{o.patient_name} ({o.mr_no}) · {o.episode_no}{o.lab_no ? <> · Lab No <span className="font-mono">{o.lab_no}</span></> : null}</p>
                   </div>
                   <Button variant="primary" onClick={() => void collect(o)} disabled={payingId === o.id}>
                     {payingId === o.id ? "…" : `Take Rs ${Number(o.fee).toFixed(0)}`}

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { saveHospitalStaff, nextEmployeeId } from "@/lib/repo/hospitalOpd";
 import { hospitalDepartmentsRepo, type HospitalDepartment } from "@/lib/repo/hospital";
 import { createStaffLogin } from "@/lib/hospitalLogins";
+import { listCollectionCenters } from "@/lib/repo/labReports";
+import type { CollectionCenter } from "@/lib/types-hospital";
 import { DESIGNATIONS, LICENSE_LABEL, designation as findDesignation } from "@/config/hospitalStaff";
 import { localDate } from "@/lib/localDate";
 import type { Staff } from "@/lib/types";
@@ -34,6 +36,8 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   const [password, setPassword] = useState("");
   const [employeeId, setEmployeeId] = useState(staff?.employee_id ?? "");
   const [departments, setDepartments] = useState<HospitalDepartment[]>([]);
+  const [centers, setCenters] = useState<CollectionCenter[]>([]);
+  const [centerId, setCenterId] = useState(staff?.collection_center_id ?? "");
   const [saving, setSaving] = useState(false);
 
   const d = findDesignation(category);
@@ -41,6 +45,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
 
   useEffect(() => {
     void hospitalDepartmentsRepo.list({ orderBy: "name ASC" }).then((all) => setDepartments(all.filter((x) => x.is_active)));
+    void listCollectionCenters().then(setCenters).catch(() => setCenters([]));
   }, []);
 
   // Preview the id the designation will get (kept when editing within the same designation).
@@ -61,6 +66,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         designation: category === "other" ? otherTitle : undefined,
         license_no: licenseNo,
         department: department || null,
+        collection_center_id: centerId || null,
         specialization,
         consultation_fee: Number(fee) || 0,
         address: address || null,
@@ -112,6 +118,12 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
               <option value="">— None —</option>
               {departments.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}
               {department && !departments.some((x) => x.name === department) && <option value={department}>{department}</option>}
+            </Select>
+          </Field>
+          <Field label="Works at">
+            <Select value={centerId} onChange={(e) => setCenterId(e.target.value)}>
+              <option value="">Hospital</option>
+              {centers.map((c) => <option key={c.id} value={c.id}>{c.name} (collection center)</option>)}
             </Select>
           </Field>
           {d?.doctor && (

@@ -20,7 +20,10 @@ import {
 import { getPharmacyLink, postToPharmacyMailbox } from "./clinic";
 import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, formatEmployeeId } from "../../config/hospitalStaff";
 import type { Staff } from "../types";
-import type { HospitalEpisode, HospitalRxItem, HospitalLabOrder, HospitalImagingOrder, HospitalService, PaymentMethod } from "../types-hospital";
+import { createLabRequest, enterLabResult, labCapabilities, labRequestsRepo, collectionCentersRepo } from "./labReports";
+
+const labRequestsRepoCenters = (id: string) => collectionCentersRepo.get(id);
+import type { HospitalEpisode, HospitalRxItem, HospitalLabOrder, HospitalImagingOrder, HospitalService, LabRequest, PaymentMethod } from "../types-hospital";
 
 // ── HR: staff with designation, licence and automatic employee id ─────────
 
@@ -55,6 +58,7 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
   if (d.licenseRequired && !licenseNo) throw new Error(`Enter the ${d.license === "PNC" ? "PNC" : d.license === "PMDC" ? "PMDC" : "licence"} number.`);
   const existing = id ? await staffRepo.get(id) : null;
   if (id && !existing) throw new Error("Staff member not found.");
+  if (data.collection_center_id && !(await labRequestsRepoCenters(data.collection_center_id))) throw new Error("That collection center was not found.");
   const employeeId = existing && existing.staff_category === d.key && existing.employee_id ? existing.employee_id : await nextEmployeeId(d.key);
   const payload: Partial<Staff> = {
     ...data,
@@ -272,7 +276,24 @@ export function canProcess(order: { fee?: number | null; paid?: number | null })
 
 /** Orders a lab test or radiology study from the Service Master for a visit:
  * the fee goes on the visit's bill and the order waits until it is paid. */
-export async function orderInvestigation(episodeId: string, serviceId: string, orderedBy: string | null = null): Promise<{ kind: OrderKind; order: HospitalLabOrder | HospitalImagingOrder }> {
+/** The lab request a doctor's order joins: the visit's department order that
+ * the lab has not started on yet, or a new one (registered by the department). */
+async function departmentLabRequest(ep: HospitalEpisode, orderedBy: string | null): Promise<string> {
+  const open = await dbSelect<{ id: string }>(
+    `SELECT r.id FROM hospital_lab_requests r
+     WHERE r.tenant_id = ? AND r.episode_id = ? AND r.deleted_at IS NULL
+       AND r.registration_location = 'department'
+       AND NOT EXISTS (SELECT 1 FROM hospital_lab_orders o WHERE o.request_id = r.id AND o.status NOT IN ('pending', 'cancelled'))
+     ORDER BY r.created_at DESC LIMIT 1`,
+    [requireCurrentTenantId(), ep.id]
+  );
+  if (open[0]) return open[0].id;
+  const doctor = ep.doctor_id ? await staffRepo.get(ep.doctor_id) : null;
+  const req = await createLabRequest({ patientId: ep.patient_id, episodeId: ep.id, referringDoctor: orderedBy ?? doctor?.name ?? null, location: "department" });
+  return req.id;
+}
+
+export async function orderInvestigation(episodeId: string, serviceId: string, orderedBy: string | null = null, labRequestId: string | null = null): Promise<{ kind: OrderKind; order: HospitalLabOrder | HospitalImagingOrder }> {
   const ep = await hospitalEpisodesRepo.get(episodeId);
   if (!ep) throw new Error("Visit not found in this hospital.");
   const svc = await hospitalServicesRepo.get(serviceId);
@@ -292,9 +313,11 @@ export async function orderInvestigation(episodeId: string, serviceId: string, o
   };
   if (kind === "lab") {
     // The test's unit and normal range come along, so the result form is pre-filled.
+    const requestId = labRequestId ?? (await departmentLabRequest(ep, orderedBy));
     const order = await hospitalLabRepo.create({
       ...common, order_no: await nextOrderNo("hospital_lab_orders"), test_name: svc.name, status: "pending",
       result_value: null, unit: svc.unit ?? null, ref_range: svc.ref_range ?? null, flag: null,
+      request_id: requestId, sample_type: svc.sample_type ?? null,
     });
     return { kind, order };
   }
@@ -327,17 +350,20 @@ export interface UnpaidOrderRow {
   patient_name: string;
   mr_no: string;
   ordered_at: string;
+  /** Unique Lab Number of a lab test (null for radiology). */
+  lab_no: string | null;
 }
 
 /** Investigations waiting for their fee, newest first. */
 export async function listUnpaidOrders(): Promise<UnpaidOrderRow[]> {
   const t = requireCurrentTenantId();
   return dbSelect<UnpaidOrderRow>(
-    `SELECT 'lab' AS kind, o.id, o.order_no, o.test_name AS name, o.fee, o.episode_id, e.episode_no, p.name AS patient_name, p.mr_no, o.ordered_at
+    `SELECT 'lab' AS kind, o.id, o.order_no, o.test_name AS name, o.fee, o.episode_id, e.episode_no, p.name AS patient_name, p.mr_no, o.ordered_at, r.lab_no
      FROM hospital_lab_orders o JOIN hospital_episodes e ON e.id = o.episode_id JOIN hospital_patients p ON p.id = o.patient_id
+     LEFT JOIN hospital_lab_requests r ON r.id = o.request_id
      WHERE o.tenant_id = ? AND o.deleted_at IS NULL AND o.status != 'cancelled' AND o.fee > 0 AND COALESCE(o.paid, 0) = 0
      UNION ALL
-     SELECT 'imaging' AS kind, o.id, o.order_no, o.modality AS name, o.fee, o.episode_id, e.episode_no, p.name AS patient_name, p.mr_no, o.ordered_at
+     SELECT 'imaging' AS kind, o.id, o.order_no, o.modality AS name, o.fee, o.episode_id, e.episode_no, p.name AS patient_name, p.mr_no, o.ordered_at, NULL AS lab_no
      FROM hospital_imaging_orders o JOIN hospital_episodes e ON e.id = o.episode_id JOIN hospital_patients p ON p.id = o.patient_id
      WHERE o.tenant_id = ? AND o.deleted_at IS NULL AND o.status != 'cancelled' AND o.fee > 0 AND COALESCE(o.paid, 0) = 0
      ORDER BY ordered_at DESC`,
@@ -345,13 +371,10 @@ export async function listUnpaidOrders(): Promise<UnpaidOrderRow[]> {
   );
 }
 
-/** Enters a lab result; refused while the fee is unpaid. */
+/** Enters a lab result (refused while the fee is unpaid). The result is not
+ * released: it waits for a pathologist's verification (see labReports.ts). */
 export async function reportLabResult(orderId: string, r: { result_value: string; unit: string | null; ref_range: string | null; flag: "N" | "H" | "L" }): Promise<void> {
-  const order = await hospitalLabRepo.get(orderId);
-  if (!order) throw new Error("Order not found in this hospital.");
-  if (!canProcess(order)) throw new Error("The fee for this test is not paid yet. Reception must take the fee first.");
-  if (!r.result_value.trim()) throw new Error("Enter the result.");
-  await hospitalLabRepo.update(orderId, { ...r, result_value: r.result_value.trim(), status: "reported", reported_at: localDateTime() });
+  await enterLabResult(orderId, r);
 }
 
 /** Writes a radiology report; refused while the fee is unpaid. */
@@ -368,7 +391,7 @@ export async function listVisitOrders(episodeId: string): Promise<{ kind: OrderK
   const t = requireCurrentTenantId();
   return dbSelect(
     `SELECT 'lab' AS kind, id, order_no, test_name AS name, COALESCE(fee, 0) AS fee, COALESCE(paid, 0) AS paid, status,
-            CASE WHEN result_value IS NULL THEN NULL ELSE result_value || COALESCE(' ' || unit, '') END AS result
+            CASE WHEN status != 'reported' OR result_value IS NULL THEN NULL ELSE result_value || COALESCE(' ' || unit, '') END AS result
      FROM hospital_lab_orders WHERE tenant_id = ? AND episode_id = ? AND deleted_at IS NULL
      UNION ALL
      SELECT 'imaging' AS kind, id, order_no, modality AS name, COALESCE(fee, 0) AS fee, COALESCE(paid, 0) AS paid, status, impression AS result
@@ -450,7 +473,12 @@ export async function listOpenVisits(patientId: string): Promise<HospitalEpisode
 /** Orders tests from the lab's list for a patient. They go on the chosen open
  * visit, or today's open visit, or a new "Laboratory" visit, so each fee is on a
  * bill that Reception can collect; the lab starts a test once its fee is paid. */
-export async function orderLabTests(input: { patientId: string; serviceIds: string[]; episodeId?: string | null; priority?: "routine" | "urgent" | "stat"; orderedBy?: string | null }): Promise<{ episode: HospitalEpisode; orders: HospitalLabOrder[] }> {
+export async function orderLabTests(input: {
+  patientId: string; serviceIds: string[]; episodeId?: string | null; priority?: "routine" | "urgent" | "stat"; orderedBy?: string | null;
+  externalRef?: string | null; sampleCollected?: boolean;
+}): Promise<{ episode: HospitalEpisode; orders: HospitalLabOrder[]; request: LabRequest }> {
+  const caps = await labCapabilities();
+  if (!caps.register) throw new Error("You do not have permission to register lab tests.");
   const patient = await hospitalPatientsRepo.get(input.patientId);
   if (!patient) throw new Error("Patient not found in this hospital.");
   const ids = [...new Set(input.serviceIds)];
@@ -474,11 +502,15 @@ export async function orderLabTests(input: { patientId: string; serviceIds: stri
       diagnosis: null, notes: "Lab visit", token_no: null, consult_status: "done",
     });
   }
+  const request = await createLabRequest({
+    patientId: patient.id, episodeId: episode.id, referringDoctor: input.orderedBy ?? null,
+    externalRef: input.externalRef ?? null, sampleCollected: input.sampleCollected ?? false,
+  });
   const orders: HospitalLabOrder[] = [];
   for (const id of ids) {
-    const { order } = await orderInvestigation(episode.id, id, input.orderedBy ?? null);
+    const { order } = await orderInvestigation(episode.id, id, input.orderedBy ?? null, request.id);
     if (input.priority && input.priority !== "routine") await hospitalLabRepo.update(order.id, { priority: input.priority });
     orders.push({ ...(order as HospitalLabOrder), priority: input.priority ?? "routine" });
   }
-  return { episode, orders };
+  return { episode, orders, request: (await labRequestsRepo.get(request.id)) ?? request };
 }

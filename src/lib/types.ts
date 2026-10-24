@@ -145,4 +145,6 @@ export interface Staff extends TenantRow {
   specialization?: string | null;
   consultation_fee?: number | null;
   user_id?: string | null;
+  /** Where this staff member works: a collection center, or null for the hospital (v42). */
+  collection_center_id?: string | null;
 }

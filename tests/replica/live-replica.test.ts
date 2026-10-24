@@ -76,7 +76,7 @@ function fingerprint(db: DatabaseSync) {
 function migrate(db: DatabaseSync): { applied: number; skipped: number; failed: string[] } {
   let applied = 0, skipped = 0;
   const failed: string[] = [];
-  for (const v of [34, 35, 36, 37, 38, 39, 40, 41]) {
+  for (const v of [34, 35, 36, 37, 38, 39, 40, 41, 42]) {
     for (const sql of statementsOf(v)) {
       try {
         db.exec(sql);

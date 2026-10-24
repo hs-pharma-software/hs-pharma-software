@@ -49,7 +49,7 @@ const service = (name: string, category: "lab" | "imaging" | "procedure", rate: 
   hospitalServicesRepo.create({ code: name.toUpperCase().replace(/\W/g, "").slice(0, 8), name, department: category === "lab" ? "Laboratory" : "Radiology", category, billing_unit: "test", rate, is_active: 1, notes: null });
 
 beforeEach(() => {
-  sql = fullSchemaDb(41);
+  sql = fullSchemaDb(42);
   setTestDb(sql);
   insert("subscription_plans", { id: "plan", name: "Plan", max_staff_logins: 10, price: 0 });
   for (const [id, type] of [[H, "hospital"], [H2, "hospital"], [PH, "hospital_pharmacy"]]) insert("tenants", { id, name: `${id} name`, business_type: type, subscription_plan_id: "plan" });
@@ -111,11 +111,13 @@ test("a login per role: receptionist sees Reception, a consultant the Doctor Des
   await assert.rejects(createStaffLogin(con.id, "x", "pass1234"), /already has a login/);
 
   const menu = (perms: string[] | null) => visibleNavFor("hospital", null, perms).map((i) => i.label);
-  assert.deepEqual(menu(JSON.parse(recUser.permissions!)), ["Reception", "Hospital", "Patient", "Episodes & Billing"]);
+  assert.deepEqual(menu(JSON.parse(recUser.permissions!)), ["Reception", "Hospital", "Patient", "Episodes & Billing", "Labs"]);
+  const recLabs = visibleNavFor("hospital", null, JSON.parse(recUser.permissions!)).find((i) => i.label === "Labs")!;
+  assert.deepEqual(recLabs.children!.map((c) => c.label), ["Lab Reports"], "a receptionist only searches and prints reports");
   // At the front desk "Hospital" holds only the OPD / IPD / Emergency queues, not the hospital's profile.
   const recHospital = visibleNavFor("hospital", null, JSON.parse(recUser.permissions!)).find((i) => i.label === "Hospital")!;
   assert.deepEqual(recHospital.children!.map((c) => c.label), ["OPD Queue", "Inpatients (IPD)", "Emergency"]);
-  assert.deepEqual(menu(JSON.parse(conUser.permissions!)), ["Doctor Desk", "Patient"]);
+  assert.deepEqual(menu(JSON.parse(conUser.permissions!)), ["Doctor Desk", "Patient", "Labs"], "doctors can look up lab reports");
   assert.ok(menu(null).includes("HR Department"));
 
   // The doctor's own login finds their staff record (the Doctor Desk opens on their patients).
@@ -223,6 +225,11 @@ test("lab and radiology wait for their fee: ordered from the doctor's desk, paid
   assert.deepEqual(pays.map((x) => x.amount).sort((a, b) => a - b), [800, 1200, 1500]);
 
   await reportLabResult(lab.order.id, { result_value: "13.2", unit: "g/dL", ref_range: "12-16", flag: "N" });
+  // Entered, not released: the doctor does not see it until a pathologist verifies it.
+  assert.equal((await hospitalLabRepo.get(lab.order.id))?.status, "awaiting_verification");
+  assert.ok(!(await listVisitOrders(episode.id)).some((o) => o.result));
+  const { verifyLabResult } = await import("@/lib/repo/labReports");
+  await verifyLabResult(lab.order.id);
   await reportImaging(rad.order.id, { findings: "Clear fields", impression: "Normal chest", radiologist: "Dr R" });
   assert.equal((await hospitalLabRepo.get(lab.order.id))?.status, "reported");
   assert.equal((await hospitalImagingRepo.get(rad.order.id))?.impression, "Normal chest");
@@ -245,7 +252,7 @@ test("another hospital cannot book these doctors, see this queue or take these f
   assert.equal((await listUnpaidOrders()).length, 0);
   assert.equal((await listHospitalDoctors()).length, 0);
   await assert.rejects(payOrderFee("lab", order.id, "cash"), /Order not found/);
-  await assert.rejects(reportLabResult(order.id, { result_value: "1", unit: null, ref_range: null, flag: "N" }), /Order not found/);
+  await assert.rejects(reportLabResult(order.id, { result_value: "1", unit: null, ref_range: null, flag: "N" }), /not found/);
   await assert.rejects(saveConsultationNotes(episode.id, { diagnosis: "x" }), /Visit not found/);
   await assert.rejects(sendRxToPharmacy(episode.id), /Visit not found/);
   assert.equal(await nextEmployeeId("consultant"), "CON-01", "ids are per hospital");

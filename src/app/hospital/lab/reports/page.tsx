@@ -1,0 +1,301 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Search, Printer, ArrowLeft } from "lucide-react";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { isTauri } from "@/lib/platform";
+import { printDirect } from "@/lib/print";
+import {
+  searchLabReports, getLabReport, recordReportPrint, listReportLog, labCapabilities,
+  type SearchMode, type ReportSearchRow, type LabReport, type ReportLogRow,
+} from "@/lib/repo/labReports";
+
+const MODES: { key: SearchMode; label: string; hint: string }[] = [
+  { key: "auto", label: "Lab Invoice / Lab Number", hint: "LI26-000123-4 or LN26-000123-7" },
+  { key: "invoice", label: "Lab Invoice Number", hint: "LI26-000123-4" },
+  { key: "lab_no", label: "Unique Lab Number", hint: "LN26-000123-7" },
+  { key: "order_no", label: "Lab Order Number", hint: "LAB-20261024-0001" },
+  { key: "mrn", label: "Patient MRN", hint: "MR-000123" },
+  { key: "external_ref", label: "Collection center reference", hint: "The center's own slip number" },
+  { key: "name_phone", label: "Patient name or phone", hint: "At least 3 letters or digits" },
+];
+
+const STATUS_HELP: Record<string, string> = {
+  "Registered (fee unpaid)": "The fee is not paid yet. Reception must take it before the lab can start.",
+  "Sample Awaited": "The sample has not reached the lab yet.",
+  "Sample Received": "The lab has the sample; results are not ready.",
+  Processing: "The lab is processing the sample.",
+  "Awaiting Verification": "Results are entered but not yet verified by a pathologist. They cannot be released or printed.",
+  Cancelled: "This order was cancelled.",
+  Superseded: "This order was replaced by a newer one.",
+};
+
+/** Lab Report Search: one central search for the hospital lab counter, every
+ * collection center and other authorised staff. Only verified results print. */
+export default function LabReportSearchPage() {
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<SearchMode>("auto");
+  const [query, setQuery] = useState("");
+  const [rows, setRows] = useState<ReportSearchRow[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [confirming, setConfirming] = useState<ReportSearchRow | null>(null);
+  const [report, setReport] = useState<LabReport | null>(null);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void labCapabilities().then((c) => setAllowed(c.search)).catch(() => setAllowed(false));
+  }, []);
+
+  async function search(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (searching) return;
+    setSearching(true);
+    try {
+      const r = await searchLabReports(query, mode);
+      setRows(r.rows);
+      setMessage(r.message);
+    } catch (err) {
+      setRows([]);
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function open(row: ReportSearchRow, method: string) {
+    try {
+      setReport(await getLabReport(row.request.id, { checked: true, method }));
+      setConfirming(null);
+    } catch (err) {
+      window.alert(`Could not open the report: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (allowed === false) {
+    return (
+      <div>
+        <PageHeader title="Lab Reports" />
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">You do not have permission to search lab reports. Ask the administrator to give your login Lab Reports.</p>
+      </div>
+    );
+  }
+
+  const modeInfo = MODES.find((m) => m.key === mode)!;
+
+  return (
+    <div>
+      <PageHeader title="Lab Reports" />
+      <form onSubmit={(e) => void search(e)} className="mb-4 grid grid-cols-1 gap-3 rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] md:grid-cols-[16rem_1fr_auto]">
+        <Field label="Search by">
+          <Select value={mode} onChange={(e) => setMode(e.target.value as SearchMode)}>
+            {MODES.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+          </Select>
+        </Field>
+        <Field label={modeInfo.label}>
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={modeInfo.hint} autoFocus className="font-mono" />
+        </Field>
+        <div className="flex items-end">
+          <Button type="submit" variant="primary" disabled={searching || !query.trim()}><Search size={14} className="mr-1" />{searching ? "Searching…" : "Search"}</Button>
+        </div>
+      </form>
+
+      {message && <p className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700">{message}</p>}
+
+      {rows.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {rows.map((r) => (
+            <div key={r.request.id} className="rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold">{r.patientName} <span className="text-xs font-normal text-neutral-500">{r.mrNo}</span></p>
+                  <p className="text-xs text-neutral-600">
+                    Lab No <span className="font-mono font-medium">{r.request.lab_no}</span> · Invoice <span className="font-mono font-medium">{r.request.invoice_no}</span>
+                    {r.request.external_ref ? <> · Ref <span className="font-mono">{r.request.external_ref}</span></> : null}
+                  </p>
+                  <p className="text-xs text-neutral-500">Registered at {r.location}{r.reportDate ? ` · Reported ${r.reportDate}` : ""}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.printable ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}`}>{r.status}</span>
+                  {r.printable ? (
+                    <Button variant="primary" onClick={() => setConfirming(r)}>View report</Button>
+                  ) : (
+                    <span className="max-w-xs text-right text-xs text-neutral-500">{STATUS_HELP[r.status] ?? "Not ready yet."}</span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {r.tests.map((t) => (
+                  <span key={t.id} className={`rounded-full px-2 py-0.5 text-[11px] ${t.status === "reported" ? "bg-emerald-50 text-emerald-700" : t.status === "cancelled" ? "bg-neutral-100 text-neutral-400 line-through" : "bg-neutral-100 text-neutral-600"}`}>
+                    {t.test_name} · {t.label} <span className="font-mono text-neutral-400">{t.order_no}</span>
+                  </span>
+                ))}
+              </div>
+              {r.printable && r.pending > 0 && (
+                <p className="mt-2 text-xs text-amber-700">{r.pending} test{r.pending === 1 ? " is" : "s are"} not verified yet and will not be on the printed report.</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirming && <IdentityCheck row={confirming} onCancel={() => setConfirming(null)} onConfirm={(method) => void open(confirming, method)} />}
+      {report && <ReportView report={report} onClose={() => setReport(null)} />}
+    </div>
+  );
+}
+
+function IdentityCheck({ row, onCancel, onConfirm }: { row: ReportSearchRow; onCancel: () => void; onConfirm: (method: string) => void }) {
+  const [method, setMethod] = useState("CNIC");
+  const [checked, setChecked] = useState(false);
+  return (
+    <Modal title="Check the patient's identity" onClose={onCancel} width="max-w-md">
+      <p className="mb-3 text-sm text-neutral-700">
+        Before handing over the report of <b>{row.patientName}</b> ({row.mrNo}), check that the person is the patient or authorised by them.
+      </p>
+      <div className="mb-3">
+        <Field label="Checked with">
+          <Select value={method} onChange={(e) => setMethod(e.target.value)}>
+            <option value="CNIC">CNIC / ID card</option>
+            <option value="Lab slip">Lab slip / invoice</option>
+            <option value="Phone on file">Phone number on file</option>
+            <option value="MR card">MR card</option>
+          </Select>
+        </Field>
+      </div>
+      <label className="mb-4 flex items-start gap-2 text-sm text-neutral-700">
+        <input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+        I have checked the patient&apos;s identity.
+      </label>
+      <div className="flex justify-end gap-2">
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" disabled={!checked} onClick={() => onConfirm(method)}>Open report</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ReportView({ report, onClose }: { report: LabReport; onClose: () => void }) {
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [printing, setPrinting] = useState(false);
+  const [copies, setCopies] = useState(report.request.print_count);
+  const [log, setLog] = useState<ReportLogRow[]>([]);
+
+  const loadLog = () => void listReportLog(report.request.id).then(setLog).catch(() => setLog([]));
+  useEffect(loadLog, [report.request.id]);
+
+  async function print() {
+    if (printing) return;
+    setPrinting(true);
+    try {
+      const r = await recordReportPrint(report.request.id);
+      setCopies(r.printCount);
+      await printDirect("a4", areaRef.current);
+      loadLog();
+    } catch (err) {
+      window.alert(`Could not print: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  const r = report;
+  return (
+    <Modal title={`Report ${r.request.lab_no}`} onClose={onClose} width="max-w-4xl">
+      <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
+        <div className="flex items-start justify-between border-b-2 border-neutral-800 pb-2">
+          <div>
+            <p className="text-xl font-bold leading-tight">{r.hospital.name}</p>
+            <p className="text-xs text-neutral-600">Department of Pathology / Laboratory</p>
+            {(r.hospital.address || r.hospital.phone) && <p className="text-xs text-neutral-600">{[r.hospital.address, r.hospital.phone].filter(Boolean).join(" · ")}</p>}
+            {r.hospital.registration && <p className="text-xs text-neutral-500">Reg. {r.hospital.registration}</p>}
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-bold tracking-wide">LABORATORY REPORT</p>
+            <p className="font-mono text-xs">Lab No {r.request.lab_no}</p>
+            <p className="font-mono text-xs">Invoice {r.request.invoice_no}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-neutral-300 py-2 text-xs">
+          <p><span className="text-neutral-500">Patient:</span> <b>{r.patient.name}</b></p>
+          <p><span className="text-neutral-500">MR No:</span> <span className="font-mono">{r.patient.mrNo}</span></p>
+          <p><span className="text-neutral-500">Age / Sex:</span> {[r.patient.age, r.patient.gender].filter(Boolean).join(" / ") || "—"}</p>
+          <p><span className="text-neutral-500">Referred by:</span> {r.referringDoctor ?? "Self"}</p>
+          <p><span className="text-neutral-500">Registered at:</span> {r.location}</p>
+          {r.request.external_ref && <p><span className="text-neutral-500">Center ref:</span> {r.request.external_ref}</p>}
+          <p><span className="text-neutral-500">Sample collected:</span> {r.request.sample_collected_at ?? "—"}</p>
+          <p><span className="text-neutral-500">Sample received:</span> {r.request.sample_received_at ?? "—"}</p>
+          <p><span className="text-neutral-500">Reported:</span> {r.reportDate ?? "—"}</p>
+          <p><span className="text-neutral-500">Order No(s):</span> <span className="font-mono">{r.tests.map((t) => t.order_no).join(", ")}</span></p>
+        </div>
+
+        <table className="mt-2 w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-neutral-400 text-[11px] uppercase tracking-wide text-neutral-600">
+              <th className="py-1 pr-2 font-semibold">Test</th>
+              <th className="py-1 pr-2 font-semibold">Sample</th>
+              <th className="py-1 pr-2 font-semibold">Result</th>
+              <th className="py-1 pr-2 font-semibold">Unit</th>
+              <th className="py-1 pr-2 font-semibold">Reference range</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.tests.map((t) => {
+              const abnormal = t.flag === "H" || t.flag === "L";
+              return (
+                <tr key={t.id} className="border-b border-neutral-100 align-top">
+                  <td className="py-1.5 pr-2 font-medium">{t.test_name}</td>
+                  <td className="py-1.5 pr-2 text-neutral-600">{t.sample_type ?? "—"}</td>
+                  <td className={`py-1.5 pr-2 tabular-nums ${abnormal ? "font-bold" : ""}`}>{t.result_value}{abnormal ? ` ${t.flag === "H" ? "H ↑" : "L ↓"}` : ""}</td>
+                  <td className="py-1.5 pr-2">{t.unit ?? ""}</td>
+                  <td className="py-1.5 pr-2">{t.ref_range ?? ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {r.pendingTests.length > 0 && (
+          <p className="mt-2 text-xs italic text-neutral-600">
+            Not included (not yet verified): {r.pendingTests.map((t) => `${t.test_name} (${t.label})`).join(", ")}. A complete report will follow.
+          </p>
+        )}
+
+        <div className="mt-6 flex items-end justify-between gap-6 text-xs">
+          <div>
+            {[...new Map(r.tests.map((t) => [`${t.verified_by_name}|${t.verified_by_license}`, t])).values()].map((t) => (
+              <p key={`${t.verified_by_name}${t.verified_by_license}`}>
+                Verified by <b>{t.verified_by_name ?? "—"}</b>{t.verified_by_license ? `, ${t.verified_by_license}` : ""}
+              </p>
+            ))}
+            <p className="text-neutral-500">Electronically verified report; no signature required.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-neutral-500">Verification code</p>
+            <p className="font-mono text-sm font-semibold">{r.verificationCode}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
+        <span className="mr-auto text-xs text-neutral-500">{copies > 0 ? `Printed ${copies} time${copies === 1 ? "" : "s"}` : "Not printed yet"}</span>
+        <Button onClick={onClose}><ArrowLeft size={14} className="mr-1" />Back to results</Button>
+        <Button variant="primary" onClick={() => void print()} disabled={printing}>
+          <Printer size={14} className="mr-1" />{printing ? "Printing…" : copies > 0 ? "Print again" : "Print report"}
+        </Button>
+      </div>
+      {log.length > 0 && (
+        <details className="mt-3 text-xs text-neutral-600 print:hidden">
+          <summary className="cursor-pointer">Access log ({log.length})</summary>
+          <ul className="mt-1 space-y-0.5">
+            {log.map((l, i) => <li key={i}>{l.created_at.replace("T", " ").slice(0, 19)} · {l.action} · {l.user_name ?? "—"}{l.details ? ` · ${l.details}` : ""}</li>)}
+          </ul>
+        </details>
+      )}
+    </Modal>
+  );
+}
