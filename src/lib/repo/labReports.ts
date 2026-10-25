@@ -19,6 +19,7 @@ import { localDateTime } from "../localDate";
 import { staffRepo } from "./staff";
 import { hospitalLabRepo, hospitalPatientsRepo } from "./hospital";
 import { hasPermission } from "../moduleAccess";
+import { raiseCriticalForLabOrder } from "./quality";
 import { LAB_PROCESS_ROLES, LAB_REGISTER_ROLES, LAB_VERIFY_ROLES } from "../../config/hospitalStaff";
 import type { Staff } from "../types";
 import type { CollectionCenter, HospitalLabOrder, LabComponent, LabRequest, RegistrationLocation } from "../types-hospital";
@@ -239,7 +240,8 @@ export async function enterLabResult(orderId: string, r: LabResultInput): Promis
   }
 }
 
-/** A pathologist (or HoD / full-access login) verifies and releases a result. */
+/** A pathologist (or HoD / full-access login) verifies and releases a result.
+ * Critical values raise a pending critical-result alert (MSDS COP-6). */
 export async function verifyLabResult(orderId: string): Promise<void> {
   const caps = await need("verify", "Only a pathologist can verify and release results.");
   const o = await labOrder(orderId);
@@ -251,6 +253,8 @@ export async function verifyLabResult(orderId: string): Promise<void> {
     status: "reported", reported_at: now, verified_at: now,
     verified_by: useAuthStore.getState().currentUser?.id ?? null, verified_by_name: staff?.name ?? caps.userName, verified_by_license: license,
   });
+  // A critical value waits as a pending alert until someone records telling the clinician.
+  await raiseCriticalForLabOrder(orderId, staff?.name ?? caps.userName);
 }
 
 /** A verifier sends a result back to the lab to be corrected (not released). */

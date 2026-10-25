@@ -1337,6 +1337,68 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+fn schema_sql_v54() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_er_triage (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, episode_id TEXT NOT NULL, patient_id TEXT NOT NULL, triaged_at TEXT NOT NULL,
+        triaged_by_name TEXT, chief_complaint TEXT NOT NULL, pulse INTEGER, sbp INTEGER, dbp INTEGER, rr INTEGER, spo2 INTEGER,
+        temp_c REAL, gcs INTEGER, pain INTEGER, suggested_level INTEGER NOT NULL, level INTEGER NOT NULL, override_reason TEXT,
+        seen_at TEXT, seen_by_name TEXT, disposition TEXT, disposition_at TEXT, disposition_by_name TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_er_triage_episode ON hospital_er_triage (tenant_id, episode_id, triaged_at);
+    CREATE INDEX IF NOT EXISTS idx_er_triage_at ON hospital_er_triage (tenant_id, triaged_at);
+    CREATE TABLE IF NOT EXISTS hospital_mlc_cases (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, mlc_no TEXT NOT NULL, episode_id TEXT NOT NULL, patient_id TEXT NOT NULL,
+        arrived_at TEXT NOT NULL, brought_by TEXT, nature TEXT NOT NULL, history TEXT, registered_by_name TEXT,
+        police_station TEXT, police_informed_at TEXT, police_informed_by_name TEXT, police_officer TEXT, police_ref TEXT,
+        examined_at TEXT, examined_by_name TEXT, injuries TEXT, opinion TEXT, samples TEXT, samples_handed_to TEXT,
+        status TEXT NOT NULL DEFAULT 'open', report_issued_at TEXT, report_issued_to TEXT, report_issued_by_name TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_mlc_no ON hospital_mlc_cases (tenant_id, mlc_no);
+    CREATE INDEX IF NOT EXISTS idx_mlc_episode ON hospital_mlc_cases (tenant_id, episode_id);
+    CREATE TABLE IF NOT EXISTS hospital_critical_alerts (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, source TEXT NOT NULL, order_id TEXT, patient_id TEXT NOT NULL, episode_id TEXT,
+        test_name TEXT NOT NULL, value TEXT NOT NULL, detected_at TEXT NOT NULL, detected_by_name TEXT, status TEXT NOT NULL DEFAULT 'pending',
+        notified_to TEXT, notified_at TEXT, notified_by_name TEXT, method TEXT, read_back INTEGER NOT NULL DEFAULT 0, action_taken TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_critical_status ON hospital_critical_alerts (tenant_id, status, detected_at);
+    CREATE INDEX IF NOT EXISTS idx_critical_order ON hospital_critical_alerts (tenant_id, source, order_id);
+    CREATE INDEX IF NOT EXISTS idx_critical_episode ON hospital_critical_alerts (tenant_id, episode_id);
+    CREATE TABLE IF NOT EXISTS hospital_complaints (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, complaint_no TEXT NOT NULL, received_at TEXT NOT NULL, channel TEXT NOT NULL,
+        complainant_name TEXT NOT NULL, complainant_phone TEXT, relation TEXT, patient_id TEXT, episode_id TEXT, department TEXT,
+        category TEXT NOT NULL, description TEXT NOT NULL, severity TEXT NOT NULL, received_by_name TEXT, assigned_to TEXT,
+        acknowledged_at TEXT, acknowledged_by_name TEXT, investigation TEXT, resolution TEXT, resolved_at TEXT, resolved_by_name TEXT,
+        complainant_informed INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', closed_at TEXT, closed_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_complaint_no ON hospital_complaints (tenant_id, complaint_no);
+    CREATE INDEX IF NOT EXISTS idx_complaints_status ON hospital_complaints (tenant_id, status, received_at);
+    CREATE TABLE IF NOT EXISTS hospital_incidents (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, incident_no TEXT NOT NULL, occurred_at TEXT NOT NULL, reported_at TEXT NOT NULL,
+        reporter_name TEXT, location TEXT NOT NULL, department TEXT, patient_id TEXT, episode_id TEXT, incident_type TEXT NOT NULL,
+        outcome_class TEXT NOT NULL, harm TEXT NOT NULL, description TEXT NOT NULL, immediate_action TEXT,
+        status TEXT NOT NULL DEFAULT 'reported', reviewed_by_name TEXT, reviewed_at TEXT, review_notes TEXT,
+        rca_due_on TEXT, rca_team TEXT, root_causes TEXT, rca_summary TEXT, rca_completed_at TEXT, closed_by_name TEXT, closed_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_incident_no ON hospital_incidents (tenant_id, incident_no);
+    CREATE INDEX IF NOT EXISTS idx_incidents_status ON hospital_incidents (tenant_id, status, occurred_at);
+    CREATE TABLE IF NOT EXISTS hospital_capa (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, capa_no TEXT NOT NULL, source TEXT NOT NULL, source_id TEXT, problem TEXT NOT NULL,
+        action_type TEXT NOT NULL, action TEXT NOT NULL, owner_name TEXT NOT NULL, due_on TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+        raised_by_name TEXT, done_at TEXT, done_by_name TEXT, done_note TEXT, verified_at TEXT, verified_by_name TEXT, effectiveness TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_capa_no ON hospital_capa (tenant_id, capa_no);
+    CREATE INDEX IF NOT EXISTS idx_capa_status ON hospital_capa (tenant_id, status, due_on);
+    CREATE INDEX IF NOT EXISTS idx_capa_source ON hospital_capa (tenant_id, source, source_id);
+    "#
+}
+
 fn schema_sql_v53() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_bb_donors (
@@ -2749,6 +2811,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 53,
             description: "hospital_blood_bank",
             sql: schema_sql_v53(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 54,
+            description: "hospital_emergency_quality",
+            sql: schema_sql_v54(),
             kind: MigrationKind::Up,
         },
     ]

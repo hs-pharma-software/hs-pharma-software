@@ -624,3 +624,150 @@ export interface BbReaction extends TenantRow {
   authority_ref: string | null;
   recorded_by_name: string | null;
 }
+
+// ── Emergency and quality (v54) ───────────────────────────────────────────
+
+/** One triage assessment of an emergency visit; a re-triage adds another. */
+export interface ErTriage extends TenantRow {
+  episode_id: string;
+  patient_id: string;
+  triaged_at: string;
+  triaged_by_name: string | null;
+  chief_complaint: string;
+  pulse: number | null;
+  sbp: number | null;
+  dbp: number | null;
+  rr: number | null;
+  spo2: number | null;
+  temp_c: number | null;
+  gcs: number | null;
+  pain: number | null;
+  suggested_level: number;
+  level: number;
+  override_reason: string | null;
+  seen_at: string | null;
+  seen_by_name: string | null;
+  disposition: string | null;
+  disposition_at: string | null;
+  disposition_by_name: string | null;
+  notes: string | null;
+}
+
+export interface MlcCase extends TenantRow {
+  mlc_no: string;
+  episode_id: string;
+  patient_id: string;
+  arrived_at: string;
+  brought_by: string | null;
+  nature: string;
+  history: string | null;
+  registered_by_name: string | null;
+  police_station: string | null;
+  police_informed_at: string | null;
+  police_informed_by_name: string | null;
+  police_officer: string | null;
+  police_ref: string | null;
+  examined_at: string | null;
+  examined_by_name: string | null;
+  injuries: string | null;
+  opinion: string | null;
+  samples: string | null;
+  samples_handed_to: string | null;
+  status: "open" | "report_issued" | "closed";
+  report_issued_at: string | null;
+  report_issued_to: string | null;
+  report_issued_by_name: string | null;
+  notes: string | null;
+}
+
+export interface CriticalAlert extends TenantRow {
+  source: "lab" | "radiology" | "other";
+  order_id: string | null;
+  patient_id: string;
+  episode_id: string | null;
+  test_name: string;
+  value: string;
+  detected_at: string;
+  detected_by_name: string | null;
+  status: "pending" | "notified";
+  notified_to: string | null;
+  notified_at: string | null;
+  notified_by_name: string | null;
+  method: string | null;
+  read_back: number;
+  action_taken: string | null;
+}
+
+export interface Complaint extends TenantRow {
+  complaint_no: string;
+  received_at: string;
+  channel: string;
+  complainant_name: string;
+  complainant_phone: string | null;
+  relation: string | null;
+  patient_id: string | null;
+  episode_id: string | null;
+  department: string | null;
+  category: string;
+  description: string;
+  severity: string;
+  received_by_name: string | null;
+  assigned_to: string | null;
+  acknowledged_at: string | null;
+  acknowledged_by_name: string | null;
+  investigation: string | null;
+  resolution: string | null;
+  resolved_at: string | null;
+  resolved_by_name: string | null;
+  complainant_informed: number;
+  status: "open" | "acknowledged" | "resolved" | "closed";
+  closed_at: string | null;
+  closed_by_name: string | null;
+}
+
+export interface Incident extends TenantRow {
+  incident_no: string;
+  occurred_at: string;
+  reported_at: string;
+  /** Null when reported anonymously. */
+  reporter_name: string | null;
+  location: string;
+  department: string | null;
+  patient_id: string | null;
+  episode_id: string | null;
+  incident_type: string;
+  outcome_class: "near_miss" | "no_harm" | "adverse_event" | "sentinel";
+  harm: string;
+  description: string;
+  immediate_action: string | null;
+  status: "reported" | "under_review" | "rca" | "closed";
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  rca_due_on: string | null;
+  rca_team: string | null;
+  root_causes: string | null;
+  rca_summary: string | null;
+  rca_completed_at: string | null;
+  closed_by_name: string | null;
+  closed_at: string | null;
+}
+
+export interface Capa extends TenantRow {
+  capa_no: string;
+  source: "incident" | "complaint" | "audit" | "indicator" | "other";
+  source_id: string | null;
+  problem: string;
+  action_type: "corrective" | "preventive";
+  action: string;
+  owner_name: string;
+  due_on: string;
+  status: "open" | "done" | "verified";
+  raised_by_name: string | null;
+  done_at: string | null;
+  done_by_name: string | null;
+  done_note: string | null;
+  verified_at: string | null;
+  verified_by_name: string | null;
+  effectiveness: string | null;
+}

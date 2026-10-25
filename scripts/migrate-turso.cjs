@@ -333,6 +333,7 @@ const MIGRATIONS = [
   { version: 51, label: 'server audit log of writes from the web version', statements: rustSchemaStatements(51) },
   { version: 52, label: 'infection control: hand-hygiene audits, sterilization cycles and traceability', statements: rustSchemaStatements(52) },
   { version: 53, label: 'hospital blood bank: donors, units, requests, compatibility, issue, transfusion, reactions', statements: rustSchemaStatements(53) },
+  { version: 54, label: 'emergency triage, MLC register, critical results, complaints, incidents, CAPA', statements: rustSchemaStatements(54) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

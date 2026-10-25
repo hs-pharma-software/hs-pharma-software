@@ -1,5 +1,6 @@
 ﻿import type { LucideIcon } from "lucide-react";
 import {
+  ShieldAlert,
   Droplets,
   LayoutDashboard,
   FileText,
@@ -492,6 +493,8 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "OPD Queue", href: "/hospital/opd", moduleKey: "hospital_episodes" },
       { label: "Inpatients (IPD)", href: "/hospital/ipd", moduleKey: "hospital_episodes" },
       { label: "Emergency", href: "/hospital/emergency", moduleKey: "hospital_episodes" },
+      { label: "ER Board", href: "/hospital/emergency/board", moduleKey: "hospital_episodes" },
+      { label: "MLC Register", href: "/hospital/emergency/mlc", moduleKey: "hospital_episodes" },
       { label: "Admission Requests", href: "/hospital/admissions", moduleKey: "hospital_admissions" },
     ],
   },
@@ -520,6 +523,7 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Lab Reports", href: "/hospital/lab/reports", moduleKey: "hospital_lab_reports" },
       { label: "Performing Tests", href: "/hospital/lab/tests" },
       { label: "Collection Centers", href: "/hospital/lab/centers" },
+      { label: "Critical Results", href: "/hospital/lab/critical" },
     ],
   },
   { label: "Blood Bank", href: "/hospital/blood-bank", icon: Droplets, moduleKey: "hospital_blood_bank", onlyFor: ["hospital"] },
@@ -548,6 +552,7 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Sterilization (CSSD)", href: "/hospital/cssd", moduleKey: "hospital_cssd" },
     ],
   },
+  { label: "Quality & Safety", href: "/hospital/quality", icon: ShieldAlert, moduleKey: "hospital_quality", onlyFor: ["hospital"] },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
   {
     label: "Purchase Cell",

@@ -15,7 +15,7 @@ const find = (n: NavItem[], label: string) => n.find((i) => i.label === label);
 
 test("hospital sidebar: the tabs in the requested order (Reception and Doctor Desk after Dashboard)", () => {
   assert.deepEqual(top(nav()), [
-    "Dashboard", "Reception", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Infection Control", "Service Master", "Purchase Cell", "HR Department",
+    "Dashboard", "Reception", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Infection Control", "Quality & Safety", "Service Master", "Purchase Cell", "HR Department",
   ]);
 });
 
@@ -56,7 +56,7 @@ test("HR Department holds Staff", () => {
 
 test("the Hospital tab keeps the queue pages, now on their own routes", () => {
   const h = find(nav(), "Hospital")!;
-  assert.deepEqual(h.children!.map((c) => c.href), ["/hospital/profile", "/hospital/opd", "/hospital/ipd", "/hospital/emergency", "/hospital/admissions"]);
+  assert.deepEqual(h.children!.map((c) => c.href), ["/hospital/profile", "/hospital/opd", "/hospital/ipd", "/hospital/emergency", "/hospital/emergency/board", "/hospital/emergency/mlc", "/hospital/admissions"]);
 });
 
 test("no duplicate entries: labels unique per level, no link repeated across the whole menu", () => {

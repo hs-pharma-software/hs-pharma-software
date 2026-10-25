@@ -20,12 +20,12 @@ const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab
 
 export const DESIGNATIONS: Designation[] = [
   { key: "hod", label: "Head of Department (HoD)", prefix: "HOD", license: "PMDC", licenseRequired: true, doctor: true,
-    pages: ["hospital_dashboard", ...DOCTOR_PAGES, "hospital_episodes", "hospital_departments", "hospital_lab", "hospital_radiology", "hospital_surgery"] },
+    pages: ["hospital_dashboard", ...DOCTOR_PAGES, "hospital_episodes", "hospital_departments", "hospital_lab", "hospital_radiology", "hospital_surgery", "hospital_quality"] },
   { key: "consultant", label: "Consultant", prefix: "CON", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_specialist", label: "Medical Specialist", prefix: "MS", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_officer", label: "Medical Officer", prefix: "MO", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "nursing_superintendent", label: "Nursing Superintendent", prefix: "NS", license: "PNC", licenseRequired: true, doctor: false,
-    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes", "hospital_ipc"] },
+    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes", "hospital_ipc", "hospital_quality"] },
   { key: "infection_control_nurse", label: "Infection Control Nurse", prefix: "ICN", license: "PNC", licenseRequired: true, doctor: false,
     pages: ["hospital_ipc", "hospital_cssd", "hospital_patients", "hospital_episodes"] },
   { key: "cssd_supervisor", label: "CSSD Supervisor (releases sterile loads)", prefix: "CSS", license: null, licenseRequired: false, doctor: false,
@@ -49,6 +49,8 @@ export const DESIGNATIONS: Designation[] = [
   { key: "pharmacist", label: "Pharmacist", prefix: "PH", license: "LICENSE", licenseRequired: true, doctor: false,
     pages: ["hospital_episodes", "hospital_patients", "products", "suppliers"] },
   { key: "store_keeper", label: "Store Keeper", prefix: "SK", license: null, licenseRequired: false, doctor: false, pages: ["products", "suppliers", "tasks"] },
+  { key: "quality_manager", label: "Quality Manager / Patient Safety Officer", prefix: "QM", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_quality", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
   { key: "hr_officer", label: "HR Officer", prefix: "HR", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr"] },
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
@@ -67,6 +69,10 @@ export const CSSD_OPERATOR_ROLES = ["cssd_technician", "cssd_supervisor", "infec
 export const CSSD_RELEASE_ROLES = ["cssd_supervisor", "infection_control_nurse", "nursing_superintendent"];
 /** Blood bank (MSDS COP-2): screening, release to stock, compatibility testing and issue. */
 export const BLOOD_BANK_ROLES = ["blood_bank_technologist", "pathologist"];
+
+/** Quality and patient safety (MSDS PRE-4, CQI-3, ROM-5): review incidents,
+ * run root cause analyses, handle complaints and verify corrective actions. */
+export const QUALITY_ROLES = ["quality_manager", "nursing_superintendent", "hod"];
 
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];
