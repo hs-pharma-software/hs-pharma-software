@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { fullSchemaDb } from "./fullDb.ts";
+import { applySchema, fullSchemaDb } from "./fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { applyCatalogOwnership, cloneId, planCatalogOwnership, rollbackCatalogOwnership, type OwnDb } from "@/lib/catalogOwnership";
 import { useAuthStore } from "@/store/authStore";
@@ -45,6 +45,14 @@ function legacy(): DatabaseSync {
   return sql;
 }
 
+/** The later migrations (v30 on), which every database gets before today's
+ * product code reads it. From v32 the unowned (quarantined) rows are the shared
+ * pharma catalog: pharmacies see them, other businesses do not. */
+function upgrade(sql: DatabaseSync): DatabaseSync {
+  for (let v = 30; v <= 43; v++) applySchema(sql, v);
+  return sql;
+}
+
 function port(sql: DatabaseSync): OwnDb {
   return {
     async select(q, p = []) {
@@ -59,7 +67,7 @@ const one = <T>(sql: DatabaseSync, q: string, ...p: unknown[]) => sql.prepare(q)
 const as = (tenantId: string) =>
   useAuthStore.setState({
     currentUser: { id: "u", username: "u", displayName: "U", role: "owner", tenantId, permissions: null },
-    currentTenant: { id: tenantId, name: tenantId, subscriptionStatus: "active", subscriptionExpiresAt: null, allowedModules: [], maxStaffLogins: 1, maxInvoicesPerMonth: null, mrpDiscountPct: 0, sourceTenantId: null, businessType: "retail_pharmacy" },
+    currentTenant: { id: tenantId, name: tenantId, subscriptionStatus: "active", subscriptionExpiresAt: null, allowedModules: [], maxStaffLogins: 1, maxInvoicesPerMonth: null, mrpDiscountPct: 0, sourceTenantId: null, businessType: tenantId === T3 ? "restaurant" : "retail_pharmacy" },
   });
 
 async function migrate(sql: DatabaseSync) {
@@ -70,13 +78,15 @@ async function migrate(sql: DatabaseSync) {
   return { plan, counts, runId, db };
 }
 
-test("before the migration, legacy catalog rows are invisible to every tenant (fail closed)", async () => {
-  const sql = legacy();
+test("before the migration, legacy rows are only the shared pharma catalog: pharmacies read them, the restaurant does not", async () => {
+  const sql = upgrade(legacy());
   setTestDb(sql);
-  for (const t of [T1, T2, T3]) {
+  for (const t of [T1, T2]) {
     as(t);
-    assert.deepEqual(await productsRepo.list(), []);
+    assert.deepEqual((await productsRepo.list({ orderBy: "id" })).map((p) => [p.id, p.tenant_id]), [["P1", null], ["P2", null], ["P3", null], ["P4", null]]);
   }
+  as(T3);
+  assert.deepEqual(await productsRepo.list(), []);
 });
 
 test("single-tenant rows are assigned, shared rows copied, unused rows quarantined", async () => {
@@ -112,15 +122,20 @@ test("single-tenant rows are assigned, shared rows copied, unused rows quarantin
   assert.ok(one<{ n: number }>(sql, `SELECT COUNT(*) n FROM catalog_ownership_log WHERE run_id = 'run-1'`).n > 10);
 });
 
-test("after the migration each tenant sees exactly its own catalog; the restaurant sees none of it", async () => {
+test("after the migration each pharmacy sees its own products plus the shared catalog, never another's; the restaurant sees none", async () => {
   const sql = legacy();
   await migrate(sql);
-  setTestDb(sql);
+  setTestDb(upgrade(sql));
+  const shared = ["P3", "P4"];
   as(T1);
-  assert.deepEqual((await productsRepo.list({ orderBy: "id" })).map((p) => p.id), ["P1", "P2"]);
+  assert.deepEqual((await productsRepo.list({ orderBy: "id" })).map((p) => p.id), ["P1", "P2", ...shared]);
   as(T2);
+  const mine = (await productsRepo.list({ orderBy: "id" })).map((p) => p.id);
+  assert.deepEqual(mine.sort(), [cloneId("P2", T2), ...shared].sort(), "T2 does not see T1's P1 / P2");
   const grid = await listProductsForGrid();
-  assert.deepEqual(grid.map((g) => [g.id, g.category_name, g.base_unit_name, g.sale_price]), [[cloneId("P2", T2), "Tablets", "PCS", 50]]);
+  const copy = grid.find((g) => g.id === cloneId("P2", T2))!;
+  assert.deepEqual([copy.category_name, copy.base_unit_name, copy.sale_price], ["Tablets", "PCS", 50]);
+  assert.ok(!grid.some((g) => g.id === "P1" || g.id === "P2"));
   as(T3);
   assert.deepEqual(await productsRepo.list(), []);
 });

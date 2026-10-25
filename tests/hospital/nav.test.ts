@@ -15,7 +15,7 @@ const find = (n: NavItem[], label: string) => n.find((i) => i.label === label);
 
 test("hospital sidebar: the tabs in the requested order (Reception and Doctor Desk after Dashboard)", () => {
   assert.deepEqual(top(nav()), [
-    "Dashboard", "Reception", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Radiology", "Service Master", "Purchase Cell", "HR Department",
+    "Dashboard", "Reception", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Radiology", "Surgery", "Service Master", "Purchase Cell", "HR Department",
   ]);
 });
 

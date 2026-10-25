@@ -20,7 +20,7 @@ const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab
 
 export const DESIGNATIONS: Designation[] = [
   { key: "hod", label: "Head of Department (HoD)", prefix: "HOD", license: "PMDC", licenseRequired: true, doctor: true,
-    pages: ["hospital_dashboard", ...DOCTOR_PAGES, "hospital_episodes", "hospital_departments", "hospital_lab", "hospital_radiology"] },
+    pages: ["hospital_dashboard", ...DOCTOR_PAGES, "hospital_episodes", "hospital_departments", "hospital_lab", "hospital_radiology", "hospital_surgery"] },
   { key: "consultant", label: "Consultant", prefix: "CON", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_specialist", label: "Medical Specialist", prefix: "MS", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_officer", label: "Medical Officer", prefix: "MO", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },

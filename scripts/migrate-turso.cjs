@@ -312,6 +312,8 @@ const MIGRATIONS = [
 
   { version: 42, label: 'central lab reports: requests, lab / invoice numbers, verification, collection centers, print log', statements: rustSchemaStatements(42) },
 
+  { version: 43, label: 'admission from the doctor desk, planned surgeries', statements: rustSchemaStatements(43) },
+
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
     ...[["ACON MALARIA", "3822.1900"], ["ONCALL EXTRA SUGAR STRIP", "3822.1900"], ["IV CANULA 22G", "9018.3990"], ["MECHICO FEEDER", "3924.9000"]].map(

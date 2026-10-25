@@ -84,6 +84,8 @@ export interface HospitalEpisode extends TenantRow {
   findings?: string | null;
   advice?: string | null;
   followup_date?: string | null;
+  /** The OPD visit an admission came from (v43). */
+  from_episode_id?: string | null;
 }
 
 /** A medicine a hospital doctor prescribes in an episode (v40). */
@@ -225,4 +227,21 @@ export interface LabRequest extends TenantRow {
   print_count: number;
   last_printed_at: string | null;
   notes: string | null;
+}
+
+export type SurgeryStatus = "planned" | "done" | "cancelled";
+
+/** A surgery planned for an admission (v43). */
+export interface SurgeryBooking extends TenantRow {
+  episode_id: string;
+  patient_id: string;
+  service_id: string;
+  surgery_name: string;
+  fee: number;
+  charge_id: string | null;
+  surgeon_id: string | null;
+  planned_date: string | null;
+  status: SurgeryStatus;
+  notes: string | null;
+  performed_at: string | null;
 }

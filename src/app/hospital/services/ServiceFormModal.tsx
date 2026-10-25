@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { hospitalServicesRepo, type HospitalService } from "@/lib/repo/hospital";
+import { hospitalDepartmentsRepo, hospitalServicesRepo, type HospitalService } from "@/lib/repo/hospital";
 import type { HospitalServiceCategory, HospitalServiceBillingUnit } from "@/lib/types-hospital";
 
 interface Props {
@@ -45,6 +45,13 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
   const [isActive, setIsActive] = useState(service ? Boolean(service.is_active) : true);
   const [notes, setNotes] = useState(service?.notes ?? "");
   const [saving, setSaving] = useState(false);
+  const [departments, setDepartments] = useState<string[]>([]);
+
+  useEffect(() => {
+    void hospitalDepartmentsRepo.list({ orderBy: "name ASC" }).then((ds) => setDepartments(ds.filter((d) => d.is_active).map((d) => d.name))).catch(() => setDepartments([]));
+  }, []);
+  // A department typed in before the list existed stays selectable.
+  const departmentOptions = department && !departments.includes(department) ? [department, ...departments] : departments;
 
   async function save() {
     if (!code.trim() || !name.trim()) return;
@@ -83,7 +90,10 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. OPD Consultation" />
         </Field>
         <Field label="Department">
-          <Input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="e.g. General Medicine, Surgery" />
+          <Select value={department} onChange={(e) => setDepartment(e.target.value)}>
+            <option value="">{departments.length ? "— Choose a department —" : "No departments yet (add them in Departments)"}</option>
+            {departmentOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+          </Select>
         </Field>
         <Field label="Category">
           <Select value={category} onChange={(e) => setCategory(e.target.value as HospitalServiceCategory)}>

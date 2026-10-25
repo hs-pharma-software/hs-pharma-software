@@ -106,6 +106,7 @@ export const SYNCABLE_TABLES = [
   "hospital_collection_centers",
   "hospital_lab_requests",
   "hospital_lab_report_log",
+  "hospital_surgery_bookings",
   // Clinic <-> pharmacy hand-over: shared by exactly two tenants (see OWNER_COLUMNS).
   "clinic_pharmacy_link",
   "pharmacy_rx_notifications",
@@ -216,6 +217,7 @@ export const TENANT_SCOPED_TABLES: string[] = [
   "hospital_collection_centers",
   "hospital_lab_requests",
   "hospital_lab_report_log",
+  "hospital_surgery_bookings",
   "clinic_pharmacy_link",
   "pharmacy_rx_notifications",
   "pharmacy_rx_items",

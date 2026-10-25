@@ -1278,6 +1278,36 @@ fn schema_sql_v34() -> &'static str {
     "#
 }
 
+/// Admission from the doctor's desk and planned surgeries (additive):
+/// - hospital_episodes.from_episode_id: the OPD visit an admission came from.
+/// - hospital_surgery_bookings: a surgery planned for an admission, with its type
+///   (an "ot" service of the Surgery tab), fee, surgeon, planned date and status.
+fn schema_sql_v43() -> &'static str {
+    r#"
+    ALTER TABLE hospital_episodes ADD COLUMN from_episode_id TEXT;
+    CREATE TABLE IF NOT EXISTS hospital_surgery_bookings (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        episode_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL,
+        service_id TEXT NOT NULL,
+        surgery_name TEXT NOT NULL,
+        fee REAL NOT NULL DEFAULT 0,
+        charge_id TEXT,
+        surgeon_id TEXT,
+        planned_date TEXT,
+        status TEXT NOT NULL DEFAULT 'planned',
+        notes TEXT,
+        performed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_surgery_episode ON hospital_surgery_bookings (tenant_id, episode_id);
+    CREATE INDEX IF NOT EXISTS idx_hosp_surgery_date ON hospital_surgery_bookings (tenant_id, status, planned_date)
+    "#
+}
+
 /// Central lab reports (additive, existing rows kept):
 /// - hospital_collection_centers: locations of the same hospital that register tests.
 /// - hospital_lab_requests: one patient order of one or more tests, with a Unique
@@ -2367,6 +2397,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 42,
             description: "lab_requests_reports_collection_centers",
             sql: schema_sql_v42(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 43,
+            description: "admissions_and_surgery_bookings",
+            sql: schema_sql_v43(),
             kind: MigrationKind::Up,
         },
     ]

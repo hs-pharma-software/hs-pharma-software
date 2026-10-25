@@ -45,6 +45,7 @@ import {
   ScanLine,
   Activity,
   Bed,
+  Scissors,
 } from "lucide-react";
 
 export interface NavChild {
@@ -520,6 +521,7 @@ const HOSPITAL_NAV: NavItem[] = [
     ],
   },
   { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },
+  { label: "Surgery", href: "/hospital/surgery", icon: Scissors, moduleKey: "hospital_surgery", onlyFor: ["hospital"] },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
   {
     label: "Purchase Cell",

@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Send, Trash2 } from "lucide-react";
+import { BedDouble, History, Send, Trash2 } from "lucide-react";
+import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
-import { hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, type HospitalPatient, type HospitalService } from "@/lib/repo/hospital";
+import { hospitalDepartmentsRepo, hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, type HospitalPatient, type HospitalService } from "@/lib/repo/hospital";
+import { admitFromVisit, getPatientHistory, listSurgeryTypes, type HistoryVisit } from "@/lib/repo/hospitalCare";
 import {
   staffForCurrentUser, listHospitalDoctors, listOpdQueue, saveConsultationNotes, listRx, saveRx, sendRxToPharmacy,
   orderInvestigation, listVisitOrders, type OpdQueueRow, type RxDraft,
@@ -105,7 +107,12 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
   const [sentAt, setSentAt] = useState<string | null>(null);
   const [orders, setOrders] = useState<VisitOrder[]>([]);
   const [services, setServices] = useState<HospitalService[]>([]);
-  const [serviceId, setServiceId] = useState("");
+  const [labId, setLabId] = useState("");
+  const [scanId, setScanId] = useState("");
+  const [visitCount, setVisitCount] = useState(0);
+  const [admittedAs, setAdmittedAs] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showAdmit, setShowAdmit] = useState(false);
   const [pharmacyId, setPharmacyId] = useState("");
   const [pharmacies, setPharmacies] = useState<{ id: string; name: string }[]>([]);
   const [term, setTerm] = useState("");
@@ -117,6 +124,9 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
     setEp(e);
     if (!e) return;
     setPatient(await hospitalPatientsRepo.get(e.patient_id));
+    const earlier = await hospitalEpisodesRepo.list({ where: "patient_id = ? AND id != ?", params: [e.patient_id, e.id] });
+    setVisitCount(earlier.length);
+    setAdmittedAs(earlier.find((x) => x.from_episode_id === e.id)?.episode_no ?? null);
     setNotes({ complaint: e.complaint ?? "", vitals: e.vitals ?? "", findings: e.findings ?? "", diagnosis: e.diagnosis ?? "", advice: e.advice ?? "", followup_date: e.followup_date ?? "" });
     const rx = await listRx(episodeId);
     setLines(rx.length ? rx.map((r) => ({ product_id: r.product_id, product_name: r.product_name, generic_name: r.generic_name, dose: r.dose, route: r.route, frequency: r.frequency, duration: r.duration, qty: r.qty, instructions: r.instructions })) : []);
@@ -171,7 +181,13 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
           </p>
           {patient?.allergies && <p className="mt-1 text-xs font-medium text-rose-600">Allergies: {patient.allergies}</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setShowHistory(true)} disabled={visitCount === 0} title={visitCount === 0 ? "First visit: no earlier history" : undefined}>
+            <History size={13} className="mr-1" /> History{visitCount > 0 ? ` (${visitCount})` : ""}
+          </Button>
+          {ep.type !== "ipd" && (admittedAs
+            ? <span className="self-center rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700">Admitted · {admittedAs}</span>
+            : <Button onClick={() => setShowAdmit(true)}><BedDouble size={13} className="mr-1" /> Admit</Button>)}
           {ep.consult_status !== "in_consultation" && ep.consult_status !== "done" && (
             <Button onClick={() => void run("start", () => saveConsultationNotes(ep.id, { consult_status: "in_consultation" }))}>Start</Button>
           )}
@@ -270,50 +286,263 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         </div>
       </div>
 
-      <div className={card}>
-        <h3 className="mb-3 text-sm font-semibold text-neutral-700">Lab &amp; radiology</h3>
-        <div className="mb-3 flex flex-wrap gap-2">
-          <div className="min-w-64 flex-1">
-            <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
-              <option value="">— Choose a test or scan —</option>
-              {services.filter((s) => s.category === "lab").length > 0 && (
-                <optgroup label="Lab (Performing Tests)">
-                  {services.filter((s) => s.category === "lab").map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}{s.sample_type ? ` (${s.sample_type})` : ""} · Rs {Number(s.rate).toFixed(0)}</option>
-                  ))}
-                </optgroup>
-              )}
-              {services.filter((s) => s.category === "imaging").length > 0 && (
-                <optgroup label="Radiology">
-                  {services.filter((s) => s.category === "imaging").map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} · Rs {Number(s.rate).toFixed(0)}</option>
-                  ))}
-                </optgroup>
-              )}
-            </Select>
-          </div>
-          <Button variant="primary" disabled={!serviceId || busy} onClick={() => void run("order", async () => { await orderInvestigation(ep.id, serviceId); setServiceId(""); })}>Order</Button>
+      <OrderSection title="Lab tests" kind="lab" card={card} busy={busy} orders={orders.filter((o) => o.kind === "lab")}
+        services={services.filter((s) => s.category === "lab")} value={labId} onChange={setLabId}
+        emptyHint="Add lab tests and their fees in Labs › Performing Tests."
+        onOrder={() => void run("order the test", async () => { await orderInvestigation(ep.id, labId); setLabId(""); })} />
+      <OrderSection title="Radiology" kind="imaging" card={card} busy={busy} orders={orders.filter((o) => o.kind !== "lab")}
+        services={services.filter((s) => s.category === "imaging")} value={scanId} onChange={setScanId}
+        emptyHint="Add radiology studies (X-ray, ultrasound, CT…) with their fees in Service Master, category Imaging / Radiology."
+        onOrder={() => void run("order the scan", async () => { await orderInvestigation(ep.id, scanId); setScanId(""); })} />
+
+      {showHistory && patient && <HistoryModal patientId={patient.id} excludeId={ep.id} name={patient.name} onClose={() => setShowHistory(false)} />}
+      {showAdmit && <AdmitModal episode={ep} onClose={() => setShowAdmit(false)} onDone={() => { setShowAdmit(false); void load(); onChanged(); }} />}
+    </div>
+  );
+}
+
+function OrderSection({ title, kind, card, busy, orders, services, value, onChange, onOrder, emptyHint }: {
+  title: string; kind: "lab" | "imaging"; card: string; busy: boolean; orders: VisitOrder[]; services: HospitalService[];
+  value: string; onChange: (id: string) => void; onOrder: () => void; emptyHint: string;
+}) {
+  return (
+    <div className={card}>
+      <h3 className="mb-3 text-sm font-semibold text-neutral-700">{title}</h3>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <div className="min-w-64 flex-1">
+          <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={services.length === 0}>
+            <option value="">{kind === "lab" ? "— Choose a lab test —" : "— Choose a radiology study —"}</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}{s.sample_type ? ` (${s.sample_type})` : ""} · Rs {Number(s.rate).toFixed(0)}</option>
+            ))}
+          </Select>
         </div>
-        {services.length === 0 && <p className="mb-2 text-xs text-neutral-400">Add lab tests in Labs › Performing Tests, and radiology studies (with their fees) in Service Master.</p>}
-        {orders.length === 0 ? <p className="text-sm text-neutral-400">Nothing ordered.</p> : (
-          <div className="flex flex-col divide-y divide-neutral-100 text-sm">
-            {orders.map((o) => {
-              const unpaid = o.fee > 0 && !o.paid;
-              return (
-                <div key={o.id} className="flex items-center justify-between gap-3 py-2">
-                  <div>
-                    <p className="font-medium">{o.name} <span className="text-xs font-normal text-neutral-400">{o.kind === "lab" ? "Lab" : "Radiology"} · {o.order_no}</span></p>
-                    {o.result && <p className="text-xs text-neutral-600">Result: {o.result}</p>}
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${unpaid ? "bg-rose-100 text-rose-700" : o.status === "reported" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
-                    {unpaid ? `Fee Rs ${o.fee.toFixed(0)} unpaid` : o.status === "reported" ? "Reported" : "Paid · in progress"}
-                  </span>
+        <Button variant="primary" disabled={!value || busy} onClick={onOrder}>{kind === "lab" ? "Order test" : "Order scan"}</Button>
+      </div>
+      {services.length === 0 && <p className="mb-2 text-xs text-neutral-400">{emptyHint}</p>}
+      {orders.length === 0 ? <p className="text-sm text-neutral-400">Nothing ordered.</p> : (
+        <div className="flex flex-col divide-y divide-neutral-100 text-sm">
+          {orders.map((o) => {
+            const unpaid = o.fee > 0 && !o.paid;
+            return (
+              <div key={o.id} className="flex items-center justify-between gap-3 py-2">
+                <div>
+                  <p className="font-medium">{o.name} <span className="text-xs font-normal text-neutral-400">{o.order_no}</span></p>
+                  {o.result && <p className="text-xs text-neutral-600">Result: {o.result}</p>}
                 </div>
-              );
-            })}
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${unpaid ? "bg-rose-100 text-rose-700" : o.status === "reported" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                  {unpaid ? `Fee Rs ${o.fee.toFixed(0)} unpaid` : o.status === "reported" ? "Reported" : "Paid · in progress"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const fmtDate = (d: string | null | undefined) =>
+  d ? new Date(d.length === 10 ? `${d}T00:00:00` : d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "";
+const TYPE_LABEL: Record<string, string> = { opd: "OPD", ipd: "Admission", emergency: "Emergency" };
+
+function HistoryModal({ patientId, excludeId, name, onClose }: { patientId: string; excludeId: string; name: string; onClose: () => void }) {
+  const [visits, setVisits] = useState<HistoryVisit[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    getPatientHistory(patientId, excludeId).then(setVisits).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [patientId, excludeId]);
+
+  const line = (label: string, value: string | null | undefined) => value?.trim()
+    ? <p className="text-xs"><span className="font-medium text-neutral-500">{label}: </span><span className="whitespace-pre-line text-neutral-800">{value}</span></p>
+    : null;
+
+  return (
+    <Modal title={`History · ${name}`} onClose={onClose} width="max-w-3xl">
+      {error && <p className="text-sm text-rose-600">Could not load the history: {error}</p>}
+      {!visits && !error && <p className="text-sm text-neutral-400">Loading…</p>}
+      {visits && visits.length === 0 && <p className="text-sm text-neutral-400">No earlier visits.</p>}
+      <div className="flex flex-col gap-4">
+        {visits?.map((v) => (
+          <div key={v.episode.id} className="rounded-xl border border-neutral-200 p-4">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm font-semibold">
+                {fmtDate(v.episode.date)} · {TYPE_LABEL[v.episode.type] ?? v.episode.type}
+                <span className="ml-2 font-mono text-[11px] font-normal text-neutral-400">{v.episode.episode_no}</span>
+              </p>
+              <p className="text-xs text-neutral-500">{[v.doctorName, v.episode.department].filter(Boolean).join(" · ")}</p>
+            </div>
+            <div className="flex flex-col gap-1">
+              {line("Complaint", v.episode.complaint)}
+              {line("Vitals", v.episode.vitals)}
+              {line("Examination", v.episode.findings)}
+              {line("Diagnosis", v.episode.diagnosis)}
+              {line("Advice", v.episode.advice)}
+              {v.episode.type === "ipd" && line("Admission", [v.episode.notes, v.episode.room_ward && `Ward ${v.episode.room_ward}`, v.episode.bed_no && `Bed ${v.episode.bed_no}`,
+                v.episode.discharge_date && `Discharged ${fmtDate(v.episode.discharge_date)}`].filter(Boolean).join(" · "))}
+            </div>
+            {v.prescriptions.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-semibold text-neutral-600">Prescription</p>
+                <ul className="flex flex-col gap-0.5 text-xs">
+                  {v.prescriptions.map((r) => (
+                    <li key={r.id}>
+                      <span className="font-medium">{r.product_name}</span>{" "}
+                      <span className="text-neutral-500">{[r.dose, r.frequency, r.duration && `${r.duration} days`, r.instructions].filter(Boolean).join(" · ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(v.labs.length > 0 || v.pendingLabs.length > 0) && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-semibold text-neutral-600">Lab results</p>
+                <table className="w-full text-xs">
+                  <tbody>
+                    {v.labs.map((l, i) => (
+                      <tr key={i} className="border-b border-neutral-50">
+                        <td className="py-0.5 pr-2">{l.test_name}</td>
+                        <td className={`py-0.5 pr-2 font-medium tabular-nums ${l.flag === "H" || l.flag === "L" ? "text-rose-600" : ""}`}>
+                          {l.result_value} {l.unit}{l.flag && l.flag !== "N" ? ` (${l.flag})` : ""}
+                        </td>
+                        <td className="py-0.5 text-neutral-400">{l.ref_range}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {v.pendingLabs.length > 0 && <p className="mt-1 text-xs text-neutral-400">Not reported yet: {v.pendingLabs.join(", ")}</p>}
+              </div>
+            )}
+            {(v.imaging.length > 0 || v.pendingImaging.length > 0) && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-semibold text-neutral-600">Radiology</p>
+                {v.imaging.map((r, i) => (
+                  <p key={i} className="text-xs">
+                    <span className="font-medium">{r.modality}{r.body_part ? ` · ${r.body_part}` : ""}:</span>{" "}
+                    <span className="whitespace-pre-line">{r.impression || r.findings}</span>
+                  </p>
+                ))}
+                {v.pendingImaging.length > 0 && <p className="mt-1 text-xs text-neutral-400">Not reported yet: {v.pendingImaging.join(", ")}</p>}
+              </div>
+            )}
+            {v.surgeries.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-semibold text-neutral-600">Surgery</p>
+                {v.surgeries.map((s, i) => (
+                  <p key={i} className="text-xs">
+                    <span className="font-medium">{s.surgery_name}</span>{" "}
+                    <span className="text-neutral-500">
+                      {s.status === "done" ? `done ${fmtDate(s.performed_at)}` : s.status === "cancelled" ? "cancelled" : `planned${s.planned_date ? ` for ${fmtDate(s.planned_date)}` : ""}`}
+                    </span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState(episode.diagnosis ?? "");
+  const [plan, setPlan] = useState<"ipd" | "surgery">("ipd");
+  const [department, setDepartment] = useState(episode.department ?? "");
+  const [wardRoom, setWardRoom] = useState("");
+  const [bedNo, setBedNo] = useState("");
+  const [surgeryId, setSurgeryId] = useState("");
+  const [plannedDate, setPlannedDate] = useState(localDate());
+  const [surgeonId, setSurgeonId] = useState(episode.doctor_id ?? "");
+  const [surgeries, setSurgeries] = useState<HospitalService[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [doctors, setDoctors] = useState<Staff[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void listSurgeryTypes().then(setSurgeries).catch(() => setSurgeries([]));
+    void hospitalDepartmentsRepo.list({ orderBy: "name ASC" }).then((ds) => setDepartments(ds.filter((d) => d.is_active).map((d) => d.name))).catch(() => setDepartments([]));
+    void listHospitalDoctors().then(setDoctors).catch(() => setDoctors([]));
+  }, []);
+
+  const surgery = surgeries.find((s) => s.id === surgeryId);
+  const deptOptions = department && !departments.includes(department) ? [department, ...departments] : departments;
+
+  async function save() {
+    setSaving(true);
+    try {
+      await admitFromVisit({
+        fromEpisodeId: episode.id, reason, plan, department: department || null, wardRoom, bedNo,
+        surgeryTypeId: plan === "surgery" ? surgeryId : null,
+        plannedDate: plan === "surgery" ? plannedDate || null : null,
+        surgeonId: plan === "surgery" ? surgeonId || null : null,
+      });
+      onDone();
+    } catch (e) {
+      window.alert(`Could not admit: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title="Admit patient" onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <Field label="Reason / details *">
+          <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why the patient is being admitted" autoFocus />
+        </Field>
+        <div>
+          <p className="mb-1 text-xs font-medium text-neutral-600">Plan</p>
+          <div className="flex gap-2">
+            {(["ipd", "surgery"] as const).map((p) => (
+              <button key={p} type="button" onClick={() => setPlan(p)}
+                className={`rounded-lg border px-4 py-2 text-sm font-medium ${plan === p ? "border-amber-500 bg-amber-50 text-amber-800" : "border-neutral-200 text-neutral-600 hover:bg-neutral-50"}`}>
+                {p === "ipd" ? "IPD (ward admission)" : "Surgery"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {plan === "surgery" && (
+          <div className="grid grid-cols-1 gap-3 rounded-xl bg-neutral-50 p-3 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <Field label="Type of surgery *">
+                <Select value={surgeryId} onChange={(e) => {
+                  setSurgeryId(e.target.value);
+                  const s = surgeries.find((x) => x.id === e.target.value);
+                  if (s?.department && departments.includes(s.department)) setDepartment(s.department);
+                }}>
+                  <option value="">{surgeries.length ? "— Choose the surgery —" : "No surgeries yet (the admin adds them in Surgery)"}</option>
+                  {surgeries.map((s) => <option key={s.id} value={s.id}>{s.name}{s.department ? ` · ${s.department}` : ""} · Rs {Number(s.rate).toLocaleString()}</option>)}
+                </Select>
+              </Field>
+              {surgery && <p className="mt-1 text-xs text-neutral-600">Fee Rs {Number(surgery.rate).toLocaleString()} goes on the admission bill.</p>}
+            </div>
+            <Field label="Planned date"><Input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} /></Field>
+            <Field label="Surgeon">
+              <Select value={surgeonId} onChange={(e) => setSurgeonId(e.target.value)}>
+                <option value="">— Not decided —</option>
+                {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}{d.designation ? ` · ${d.designation}` : ""}</option>)}
+              </Select>
+            </Field>
           </div>
         )}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Field label="Department">
+            <Select value={department} onChange={(e) => setDepartment(e.target.value)}>
+              <option value="">—</option>
+              {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+            </Select>
+          </Field>
+          <Field label="Ward / room"><Input value={wardRoom} onChange={(e) => setWardRoom(e.target.value)} placeholder="e.g. Surgical ward" /></Field>
+          <Field label="Bed no"><Input value={bedNo} onChange={(e) => setBedNo(e.target.value)} /></Field>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={() => void save()} disabled={saving || !reason.trim() || (plan === "surgery" && !surgeryId)}>
+            {saving ? "Admitting…" : "Admit"}
+          </Button>
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
