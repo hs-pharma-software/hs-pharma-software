@@ -174,7 +174,7 @@ export default function ReceptionPage() {
               {slip.doctor.department && <p><span className="text-neutral-500">Department:</span> {slip.doctor.department}</p>}
               <p><span className="text-neutral-500">Fee:</span> Rs {slip.visit.fee.toFixed(0)} {slip.visit.paid >= slip.visit.fee ? "· Paid" : "· Unpaid"}</p>
               <div className="pt-2 print:hidden">
-                <Button onClick={() => window.print()}><Printer size={14} className="mr-1" /> Print slip</Button>
+                <Button onClick={() => setReceiptFor(slip.visit.episode.id)}><Printer size={14} className="mr-1" /> Print slip</Button>
               </div>
             </div>
           ) : (

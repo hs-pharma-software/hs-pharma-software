@@ -38,7 +38,7 @@ function PublicReport() {
   if (!report) return <Message text="Loading the report…" />;
   return (
     <main className="min-h-screen bg-neutral-100 px-4 py-6 print:bg-white print:p-0">
-      <div className="mx-auto w-full max-w-[190mm] rounded-xl bg-white p-5 text-[13px] text-neutral-900 shadow-sm ring-1 ring-black/5 print:rounded-none print:p-0 print:shadow-none print:ring-0">
+      <div className="print-area mx-auto w-full max-w-[190mm] rounded-xl bg-white p-5 text-[13px] text-neutral-900 shadow-sm ring-1 ring-black/5 print:rounded-none print:p-0 print:shadow-none print:ring-0">
         <LabReportSheet report={report} qrUrl={null} />
       </div>
       <div className="mx-auto mt-3 flex w-full max-w-[190mm] flex-wrap items-center justify-between gap-2 text-xs text-neutral-500 print:hidden">
