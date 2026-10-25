@@ -46,3 +46,6 @@ tauri-*.log
 
 # Local database backups (patient and sales data): never commit
 backups/
+
+# Generated audit of live product data (scripts/categorize-products.cjs): never commit
+scripts/product-audit.json
