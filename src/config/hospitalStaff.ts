@@ -16,7 +16,7 @@ export interface Designation {
   pages: string[] | null;
 }
 
-const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab_reports", "hospital_radiology_reports"];
+const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab_reports", "hospital_radiology_reports", "hospital_medicines"];
 
 export const DESIGNATIONS: Designation[] = [
   { key: "hod", label: "Head of Department (HoD)", prefix: "HOD", license: "PMDC", licenseRequired: true, doctor: true,
@@ -25,7 +25,7 @@ export const DESIGNATIONS: Designation[] = [
   { key: "medical_specialist", label: "Medical Specialist", prefix: "MS", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_officer", label: "Medical Officer", prefix: "MO", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "nursing_superintendent", label: "Nursing Superintendent", prefix: "NS", license: "PNC", licenseRequired: true, doctor: false,
-    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes", "hospital_ipc", "hospital_quality"] },
+    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes", "hospital_ipc", "hospital_quality", "hospital_medicines"] },
   { key: "infection_control_nurse", label: "Infection Control Nurse", prefix: "ICN", license: "PNC", licenseRequired: true, doctor: false,
     pages: ["hospital_ipc", "hospital_cssd", "hospital_patients", "hospital_episodes"] },
   { key: "cssd_supervisor", label: "CSSD Supervisor (releases sterile loads)", prefix: "CSS", license: null, licenseRequired: false, doctor: false,
@@ -33,8 +33,8 @@ export const DESIGNATIONS: Designation[] = [
   { key: "cssd_technician", label: "CSSD Technician", prefix: "CST", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_cssd"] },
   { key: "head_nurse", label: "Head Nurse (department)", prefix: "HN", license: "PNC", licenseRequired: true, doctor: false,
-    pages: ["hospital_admissions", "hospital_patients", "hospital_episodes"] },
-  { key: "nurse", label: "Nurse", prefix: "NUR", license: "PNC", licenseRequired: true, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
+    pages: ["hospital_admissions", "hospital_patients", "hospital_episodes", "hospital_medicines"] },
+  { key: "nurse", label: "Nurse", prefix: "NUR", license: "PNC", licenseRequired: true, doctor: false, pages: ["hospital_patients", "hospital_episodes", "hospital_medicines"] },
   { key: "pathologist", label: "Pathologist (verifies lab reports)", prefix: "PATH", license: "PMDC", licenseRequired: true, doctor: false,
     pages: ["hospital_lab", "hospital_patients", "hospital_blood_bank"] },
   { key: "blood_bank_technologist", label: "Blood Bank Technologist", prefix: "BBT", license: "LICENSE", licenseRequired: false, doctor: false,
@@ -47,7 +47,7 @@ export const DESIGNATIONS: Designation[] = [
   { key: "radiographer", label: "Radiographer (Paramedic)", prefix: "RT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_radiology"] },
   { key: "paramedic", label: "Paramedic (other)", prefix: "PM", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
   { key: "pharmacist", label: "Pharmacist", prefix: "PH", license: "LICENSE", licenseRequired: true, doctor: false,
-    pages: ["hospital_episodes", "hospital_patients", "products", "suppliers"] },
+    pages: ["hospital_episodes", "hospital_patients", "hospital_medicines", "products", "suppliers"] },
   { key: "store_keeper", label: "Store Keeper", prefix: "SK", license: null, licenseRequired: false, doctor: false, pages: ["products", "suppliers", "tasks"] },
   { key: "quality_manager", label: "Quality Manager / Patient Safety Officer", prefix: "QM", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_quality", "hospital_facility", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
@@ -87,6 +87,9 @@ export const ROSTER_ROLES = ["hr_officer", "nursing_superintendent", "head_nurse
 export const APPRAISER_ROLES = ["hod", "nursing_superintendent", "head_nurse", "hr_officer"];
 /** Controlled documents: drafted by these, approved by the quality team (never by the author). */
 export const DOCUMENT_AUTHOR_ROLES = ["quality_manager", "nursing_superintendent", "hod", "hr_officer", "infection_control_nurse", "facility_manager", "pathologist"];
+
+/** Medicines management (MSDS MOM): the formulary, ADR assessment and controlled drug receipts. */
+export const PHARMACY_ROLES = ["pharmacist"];
 
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];

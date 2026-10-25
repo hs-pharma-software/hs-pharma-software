@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import {
   addMedicationOrder, listMedicationOrders, countersignOrder, verifyHighRiskOrder, stopMedicationOrder,
-  recordAdministration, voidAdministration, listAdministrations, type MedicationOrderInput,
+  recordAdministration, voidAdministration, listAdministrations, approveAntibiotic, reviewAntibiotic, onFormulary, type MedicationOrderInput,
 } from "@/lib/repo/medication";
+import { antibioticClass, ABX_LABEL, ABX_REVIEW_HOURS, ABX_REVIEW_OUTCOMES, RESERVE_APPROVAL_HOURS } from "@/config/medicines";
+import { AdrModal } from "../medicines/AdrModal";
 import { listHospitalDoctors } from "@/lib/repo/hospitalOpd";
 import { staffRepo } from "@/lib/repo/staff";
 import { highRiskGroup, PATIENT_IDENTIFIERS, ROUTES } from "@/config/highRiskMedicines";
@@ -26,10 +28,14 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
   const [mar, setMar] = useState<MarEntry[]>([]);
   const [newOrder, setNewOrder] = useState(false);
   const [giving, setGiving] = useState<HospitalRxItem | null>(null);
+  const [reviewing, setReviewing] = useState<HospitalRxItem | null>(null);
+  const [adr, setAdr] = useState<string | null>(null);
+  const [now, setNow] = useState(0);
   const load = async () => {
     const [o, m] = await Promise.all([listMedicationOrders(episode.id), listAdministrations(episode.id)]);
     setOrders(o);
     setMar(m);
+    setNow(Date.now());
   };
   useEffect(() => { void load().catch(() => undefined); }, [episode.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -54,13 +60,19 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
     <div className={card}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700"><Pill size={15} />Medication orders and administration</h2>
-        {episode.status === "open" && <Button onClick={() => setNewOrder(true)}>New order</Button>}
+        <div className="flex flex-wrap gap-1">
+          <Button variant="ghost" onClick={() => setAdr("")}>Report reaction</Button>
+          {episode.status === "open" && <Button onClick={() => setNewOrder(true)}>New order</Button>}
+        </div>
       </div>
       {active.length === 0 && <p className="text-sm text-neutral-400">No active medication orders.</p>}
       <div className="flex flex-col divide-y divide-neutral-100">
         {active.map((o) => {
           const last = lastGiven(o.id);
           const needsSign = o.order_source && o.order_source !== "written" && !o.countersigned_at;
+          const hoursOn = o.ordered_at && now ? (now - Date.parse(o.ordered_at)) / 3_600_000 : 0;
+          const needsApproval = o.abx_class === "reserve" && !o.abx_approved_at;
+          const reviewDue = (o.abx_class === "reserve" || o.abx_class === "watch") && !o.abx_reviewed_at && hoursOn >= ABX_REVIEW_HOURS;
           return (
             <div key={o.id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
               <div className="min-w-0">
@@ -72,6 +84,10 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
                   {o.high_risk && !o.verified_at ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">Not verified yet</span> : null}
                   {needsSign ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">{o.order_source} order · awaiting countersignature</span> : null}
                   {o.own_supply ? <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-neutral-600">Patient&apos;s own medicine</span> : null}
+                  {o.abx_class ? <span className="rounded-full bg-sky-100 px-1.5 py-0.5 font-medium text-sky-800">{ABX_LABEL[o.abx_class]} · {o.abx_indication}{o.abx_culture_sent ? " · culture sent" : " · no culture"}</span> : null}
+                  {needsApproval ? <span className={`rounded-full px-1.5 py-0.5 font-medium ${hoursOn > RESERVE_APPROVAL_HOURS ? "bg-rose-600 text-white" : "bg-amber-100 text-amber-800"}`}>Consultant approval {hoursOn > RESERVE_APPROVAL_HOURS ? "overdue" : `needed within ${RESERVE_APPROVAL_HOURS} h`}</span> : null}
+                  {reviewDue ? <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">{ABX_REVIEW_HOURS} h antibiotic review due</span> : null}
+                  {o.non_formulary_reason ? <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-neutral-600">Non-formulary: {o.non_formulary_reason}</span> : null}
                 </div>
                 <p className="mt-0.5 text-[11px] text-neutral-400">
                   Ordered by {o.ordered_by_name} · {fmtWhen(o.ordered_at)}{o.received_by_name ? ` · taken by ${o.received_by_name}` : ""}
@@ -82,6 +98,9 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
               <div className="flex flex-wrap gap-1">
                 {o.high_risk && !o.verified_at ? <Button variant="ghost" onClick={() => void act("verify", () => verifyHighRiskOrder(o.id))}>Verify</Button> : null}
                 {needsSign ? <Button variant="ghost" onClick={() => void act("countersign", () => countersignOrder(o.id))}>Countersign</Button> : null}
+                {needsApproval ? <Button variant="ghost" onClick={() => void act("approve", () => approveAntibiotic(o.id))}>Approve</Button> : null}
+                {o.abx_class === "reserve" || o.abx_class === "watch" ? <Button variant="ghost" onClick={() => setReviewing(o)}>Review</Button> : null}
+                <Button variant="ghost" onClick={() => setAdr(`${o.product_name} ${o.dose} ${o.route}`)}>Reaction</Button>
                 <Button variant="primary" onClick={() => setGiving(o)}>Give / record</Button>
                 <Button variant="ghost" onClick={() => { const r = ask(`Stop ${o.product_name}? Reason:`); if (r) void act("stop", () => stopMedicationOrder(o.id, r)); }}>Stop</Button>
               </div>
@@ -123,6 +142,8 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
 
       {newOrder && <OrderModal episode={episode} onClose={() => setNewOrder(false)} onSaved={() => { setNewOrder(false); void load(); }} />}
       {giving && <GiveModal order={giving} onClose={() => setGiving(null)} onSaved={() => { setGiving(null); void load(); }} />}
+      {reviewing && <ReviewModal order={reviewing} onClose={() => setReviewing(null)} onSaved={() => { setReviewing(null); void load(); }} />}
+      {adr !== null && <AdrModal episode={episode} drug={adr} onClose={() => setAdr(null)} onSaved={() => { setAdr(null); window.alert("Reaction reported to the pharmacist."); }} />}
     </div>
   );
 }
@@ -134,6 +155,14 @@ function OrderModal({ episode, onClose, onSaved }: { episode: HospitalEpisode; o
   useEffect(() => { void listHospitalDoctors().then(setDoctors).catch(() => setDoctors([])); }, []);
   const set = (p: Partial<MedicationOrderInput>) => setO((x) => ({ ...x, ...p }));
   const group = highRiskGroup(o.product_name, o.generic_name);
+  const abx = antibioticClass(o.product_name, o.generic_name);
+  const [formulary, setFormulary] = useState<boolean | null>(null);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (o.product_name.trim()) void onFormulary(o.product_name, o.generic_name).then(setFormulary).catch(() => setFormulary(null));
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [o.product_name, o.generic_name]);
 
   async function save() {
     setBusy(true);
@@ -177,6 +206,18 @@ function OrderModal({ episode, onClose, onSaved }: { episode: HospitalEpisode; o
           )}
           <div className="sm:col-span-2"><Field label="Instructions"><Input id="o-instr" value={o.instructions ?? ""} onChange={(e) => set({ instructions: e.target.value })} placeholder="e.g. after meals, dilute in 100 mL NS" /></Field></div>
         </div>
+        {abx && (
+          <div className="grid grid-cols-1 gap-3 rounded-xl bg-sky-50 p-3 sm:grid-cols-2">
+            <p className="text-xs font-medium text-sky-800 sm:col-span-2">{ABX_LABEL[abx]}{abx === "reserve" ? `: a consultant approves within ${RESERVE_APPROVAL_HOURS} hours` : abx === "watch" ? `: reviewed at ${ABX_REVIEW_HOURS} hours` : ""}</p>
+            <Field label="Indication" required><Input id="o-ind" value={o.abxIndication ?? ""} onChange={(e) => set({ abxIndication: e.target.value })} placeholder="e.g. community-acquired pneumonia; surgical prophylaxis" /></Field>
+            <Field label="Culture sent before the first dose?" required>
+              <Select id="o-cult" value={o.cultureSent == null ? "" : o.cultureSent ? "yes" : "no"} onChange={(e) => set({ cultureSent: e.target.value === "" ? null : e.target.value === "yes" })}>
+                <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
+              </Select>
+            </Field>
+          </div>
+        )}
+        {formulary === false && <Field label="Not on the hospital formulary: reason" required><Input id="o-nf" value={o.nonFormularyReason ?? ""} onChange={(e) => set({ nonFormularyReason: e.target.value })} /></Field>}
         <label className="flex items-center gap-2 text-sm"><input id="o-own" type="checkbox" checked={Boolean(o.ownSupply)} onChange={(e) => set({ ownSupply: e.target.checked })} />Patient&apos;s own medicine brought from outside</label>
         <label className="flex items-center gap-2 text-sm"><input id="o-hr" type="checkbox" checked={Boolean(group) || Boolean(o.highRisk)} disabled={Boolean(group)} onChange={(e) => set({ highRisk: e.target.checked })} />High-risk medicine{group ? ` (on the hospital list: ${group})` : ""}</label>
         {o.source !== "written" && <p className="text-xs text-amber-700">Read the order back to the doctor. It stays marked until the doctor countersigns it.</p>}
@@ -252,6 +293,27 @@ function GiveModal({ order, onClose, onSaved }: { order: HospitalRxItem; onClose
         )}
         <div className="w-60"><Field label="Time (empty = now)"><Input id="g-at" type="datetime-local" value={givenAt} onChange={(e) => setGivenAt(e.target.value)} /></Field></div>
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void save()} disabled={busy}>Record</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
+function ReviewModal({ order, onClose, onSaved }: { order: HospitalRxItem; onClose: () => void; onSaved: () => void }) {
+  const [outcome, setOutcome] = useState("");
+  const [note, setNote] = useState("");
+  const save = async () => {
+    try { await reviewAntibiotic(order.id, outcome, note); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+  };
+  return (
+    <Modal title={`Antibiotic review · ${order.product_name}`} onClose={onClose} width="max-w-lg">
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-neutral-500">Indication: {order.abx_indication}. {order.abx_reviewed_at ? `Last review: ${order.abx_review_outcome}` : "Not reviewed yet."}</p>
+        <Field label="Decision" required>
+          <Select id="rv-out" value={outcome} onChange={(e) => setOutcome(e.target.value)}><option value="">Choose…</option>{ABX_REVIEW_OUTCOMES.map((x) => <option key={x}>{x}</option>)}</Select>
+        </Field>
+        <Field label="Culture result / clinical reason" required><Input id="rv-note" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        {outcome && !outcome.startsWith("Continue") && <p className="text-xs text-amber-700">This stops the current order. Write the new antibiotic as a new order.</p>}
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void save()}>Record review</Button></div>
       </div>
     </Modal>
   );

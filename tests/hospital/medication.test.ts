@@ -45,7 +45,7 @@ async function setup() {
   const { admission } = await admitFromVisit({ fromEpisodeId: visit.id, reason: "DKA", plan: "ipd", department: "Medicine" });
   return { consultant, mo, nurse, nurse2, pharmacist, receptionist, patient, visit, admission };
 }
-const CEFTRIAXONE = { product_name: "Ceftriaxone 1g inj", generic_name: "Ceftriaxone", dose: "1 g", route: "IV", frequency: "BD (twice a day)", duration: "5 days" };
+const CEFTRIAXONE = { product_name: "Ceftriaxone 1g inj", generic_name: "Ceftriaxone", dose: "1 g", route: "IV", frequency: "BD (twice a day)", duration: "5 days", abxIndication: "Community-acquired pneumonia", cultureSent: true };
 const INSULIN = { product_name: "Insulin Regular (Humulin R)", generic_name: "Insulin human", dose: "6 units", route: "SC", frequency: "TDS (before meals)", duration: "Until review" };
 
 beforeEach(() => {

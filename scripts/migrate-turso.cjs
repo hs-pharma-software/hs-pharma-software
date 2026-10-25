@@ -335,6 +335,7 @@ const MIGRATIONS = [
   { version: 53, label: 'hospital blood bank: donors, units, requests, compatibility, issue, transfusion, reactions', statements: rustSchemaStatements(53) },
   { version: 54, label: 'emergency triage, MLC register, critical results, complaints, incidents, CAPA', statements: rustSchemaStatements(54) },
   { version: 55, label: 'equipment and maintenance, licences, drills, staff training / credentials / appraisals, duty roster, controlled documents', statements: rustSchemaStatements(55) },
+  { version: 56, label: 'medication management: formulary, antibiotic stewardship, adverse drug reactions, controlled drugs, medicine fridges', statements: rustSchemaStatements(56) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

@@ -128,6 +128,16 @@ export interface HospitalRxItem extends TenantRow {
   verified_at?: string | null;
   /** The patient's own medicine brought from outside (MOM-3 Ind. 71). */
   own_supply?: number | null;
+  // Antibiotic stewardship and the formulary (v56).
+  abx_class?: "reserve" | "watch" | "access" | null;
+  abx_indication?: string | null;
+  abx_culture_sent?: number | null;
+  abx_approved_by_name?: string | null;
+  abx_approved_at?: string | null;
+  abx_reviewed_by_name?: string | null;
+  abx_reviewed_at?: string | null;
+  abx_review_outcome?: string | null;
+  non_formulary_reason?: string | null;
 }
 
 /** Fee fields of a lab / radiology order (v40): an order with a fee can only be
@@ -908,4 +918,74 @@ export interface ControlledDocument extends TenantRow {
   effective_on: string | null;
   review_due_on: string | null;
   supersedes_id: string | null;
+}
+
+// ── Medication management (v56) ───────────────────────────────────────────
+
+export interface FormularyItem extends TenantRow {
+  generic_name: string;
+  strength_form: string | null;
+  category: string | null;
+  /** Prescribed only with approval (for example reserve antibiotics). */
+  restricted: number;
+  status: "active" | "removed";
+  approval_ref: string | null;
+  notes: string | null;
+  added_by_name: string | null;
+}
+
+export interface AdrReport extends TenantRow {
+  report_no: string;
+  patient_id: string;
+  episode_id: string | null;
+  suspected_drug: string;
+  other_drugs: string | null;
+  started_on: string | null;
+  onset_at: string;
+  reaction: string;
+  serious: number;
+  seriousness: string | null;
+  action_taken: string | null;
+  outcome: string | null;
+  dechallenge: string | null;
+  rechallenge: string | null;
+  reporter_name: string | null;
+  causality: string | null;
+  assessment: string | null;
+  assessed_by_name: string | null;
+  assessed_at: string | null;
+  drap_reported_on: string | null;
+  drap_ref: string | null;
+  status: "reported" | "assessed" | "submitted";
+}
+
+export interface CdEntry extends TenantRow {
+  location: string;
+  drug: string;
+  entry_type: "receipt" | "administered" | "wasted" | "returned" | "count";
+  /** Change in stock: positive in, negative out; 0 for a count. */
+  qty: number;
+  balance_after: number;
+  /** A stock count: what was physically counted. */
+  counted_qty: number | null;
+  patient_id: string | null;
+  episode_id: string | null;
+  order_id: string | null;
+  entry_at: string;
+  by_name: string | null;
+  witness_staff_id: string | null;
+  witness_name: string | null;
+  reference: string | null;
+  note: string | null;
+}
+
+export interface FridgeLog extends TenantRow {
+  fridge: string;
+  reading_at: string;
+  temp_c: number;
+  min_c: number | null;
+  max_c: number | null;
+  in_range: number;
+  action_taken: string | null;
+  by_name: string | null;
 }

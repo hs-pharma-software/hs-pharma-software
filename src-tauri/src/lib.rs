@@ -1337,6 +1337,48 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+fn schema_sql_v56() -> &'static str {
+    r#"
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_class TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_indication TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_culture_sent INTEGER;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_approved_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_approved_at TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_reviewed_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_reviewed_at TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN abx_review_outcome TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN non_formulary_reason TEXT;
+    CREATE TABLE IF NOT EXISTS hospital_formulary (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, generic_name TEXT NOT NULL, strength_form TEXT, category TEXT, restricted INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active', approval_ref TEXT, notes TEXT, added_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_formulary ON hospital_formulary (tenant_id, status, generic_name);
+    CREATE TABLE IF NOT EXISTS hospital_adr_reports (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, report_no TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT, suspected_drug TEXT NOT NULL,
+        other_drugs TEXT, started_on TEXT, onset_at TEXT NOT NULL, reaction TEXT NOT NULL, serious INTEGER NOT NULL DEFAULT 0, seriousness TEXT,
+        action_taken TEXT, outcome TEXT, dechallenge TEXT, rechallenge TEXT, reporter_name TEXT, causality TEXT, assessment TEXT,
+        assessed_by_name TEXT, assessed_at TEXT, drap_reported_on TEXT, drap_ref TEXT, status TEXT NOT NULL DEFAULT 'reported',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_adr_no ON hospital_adr_reports (tenant_id, report_no);
+    CREATE INDEX IF NOT EXISTS idx_adr_status ON hospital_adr_reports (tenant_id, status, onset_at);
+    CREATE TABLE IF NOT EXISTS hospital_cd_register (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, location TEXT NOT NULL, drug TEXT NOT NULL, entry_type TEXT NOT NULL, qty REAL NOT NULL,
+        balance_after REAL NOT NULL, counted_qty REAL, patient_id TEXT, episode_id TEXT, order_id TEXT, entry_at TEXT NOT NULL, by_name TEXT,
+        witness_staff_id TEXT, witness_name TEXT, reference TEXT, note TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_cd_register ON hospital_cd_register (tenant_id, location, drug, entry_at);
+    CREATE TABLE IF NOT EXISTS hospital_fridge_logs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, fridge TEXT NOT NULL, reading_at TEXT NOT NULL, temp_c REAL NOT NULL, min_c REAL, max_c REAL,
+        in_range INTEGER NOT NULL, action_taken TEXT, by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_fridge_logs ON hospital_fridge_logs (tenant_id, fridge, reading_at);
+    "#
+}
+
 fn schema_sql_v55() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_equipment (
@@ -2889,6 +2931,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 55,
             description: "hospital_facility_hr_documents",
             sql: schema_sql_v55(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 56,
+            description: "hospital_medication_management",
+            sql: schema_sql_v56(),
             kind: MigrationKind::Up,
         },
     ]

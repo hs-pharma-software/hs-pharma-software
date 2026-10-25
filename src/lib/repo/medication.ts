@@ -13,6 +13,7 @@ import { hospitalEpisodesRepo } from "./hospital";
 import { currentActor, roleAllowed, type Actor } from "./medicalRecord";
 import { DOCTOR_CATEGORIES } from "../../config/hospitalStaff";
 import { highRiskGroup, PATIENT_IDENTIFIERS } from "../../config/highRiskMedicines";
+import { antibioticClass, RESERVE_APPROVAL_HOURS, ABX_REVIEW_OUTCOMES } from "../../config/medicines";
 import type { HospitalEpisode, HospitalRxItem, MarEntry } from "../types-hospital";
 
 export const marRepo = createTenantRepo<MarEntry>("hospital_mar_entries", {
@@ -72,6 +73,23 @@ export interface MedicationOrderInput {
   ownSupply?: boolean;
   /** Mark high-risk even if the medicine is not on the list. */
   highRisk?: boolean;
+  /** An antibiotic: what it is for (MOM antibiotic policy). */
+  abxIndication?: string | null;
+  /** An antibiotic: whether a culture was sent before the first dose. */
+  cultureSent?: boolean | null;
+  /** A medicine not on the hospital formulary: why it is needed. */
+  nonFormularyReason?: string | null;
+}
+
+/** Whether a medicine is on the hospital's active formulary; null when no formulary is set up yet. */
+export async function onFormulary(name: string, generic?: string | null): Promise<boolean | null> {
+  const rows = await dbSelect<{ generic_name: string }>(
+    `SELECT generic_name FROM hospital_formulary WHERE tenant_id = ? AND status = 'active' AND deleted_at IS NULL`,
+    [requireCurrentTenantId()]
+  );
+  if (!rows.length) return null;
+  const text = `${name} ${generic ?? ""}`.toLowerCase();
+  return rows.some((r) => text.includes(r.generic_name.toLowerCase()));
 }
 
 /** Writes an inpatient medication order: medicine, dose, route, frequency and
@@ -97,6 +115,12 @@ export async function addMedicationOrder(episodeId: string, o: MedicationOrderIn
     receivedBy = stamp(a);
   }
   const group = highRiskGroup(o.product_name, o.generic_name);
+  const abx = antibioticClass(o.product_name, o.generic_name);
+  if (abx && !o.abxIndication?.trim()) throw new Error("Write the indication for this antibiotic (the infection being treated, or prophylaxis).");
+  if (abx && o.cultureSent == null) throw new Error("Say whether a culture was sent before the first dose of this antibiotic.");
+  if ((await onFormulary(o.product_name, o.generic_name)) === false && !o.nonFormularyReason?.trim()) {
+    throw new Error("This medicine is not on the hospital formulary. Give the reason a non-formulary medicine is needed.");
+  }
   const ts = nowIso();
   const row: HospitalRxItem = {
     id: newId(), tenant_id: requireCurrentTenantId(), episode_id: ep.id, product_id: o.product_id ?? null, product_name: o.product_name.trim(),
@@ -105,7 +129,11 @@ export async function addMedicationOrder(episodeId: string, o: MedicationOrderIn
     order_type: "inpatient", ordered_by: prescriberId, ordered_by_name: prescriberName, ordered_at: ts, order_status: "active",
     stopped_at: null, stopped_by_name: null, stop_reason: null, high_risk: group || o.highRisk ? 1 : 0, order_source: source,
     received_by_name: receivedBy, countersigned_by_name: null, countersigned_at: null, verified_by_name: null, verified_at: null,
-    own_supply: o.ownSupply ? 1 : 0, created_at: ts, updated_at: ts, deleted_at: null,
+    own_supply: o.ownSupply ? 1 : 0,
+    abx_class: abx, abx_indication: abx ? o.abxIndication!.trim() : null, abx_culture_sent: abx ? (o.cultureSent ? 1 : 0) : null,
+    abx_approved_by_name: null, abx_approved_at: null, abx_reviewed_by_name: null, abx_reviewed_at: null, abx_review_outcome: null,
+    non_formulary_reason: o.nonFormularyReason?.trim() || null,
+    created_at: ts, updated_at: ts, deleted_at: null,
   };
   const cols = Object.keys(row);
   try {
@@ -148,6 +176,34 @@ export async function verifyHighRiskOrder(orderId: string): Promise<HospitalRxIt
   return patch(orderId, { verified_by_name: stamp(a), verified_at: nowIso() });
 }
 
+/** A consultant / HoD / specialist other than the prescriber approves a reserve antibiotic. */
+export async function approveAntibiotic(orderId: string): Promise<HospitalRxItem> {
+  const o = await getOrder(orderId);
+  if (o.abx_class !== "reserve") throw new Error("Only reserve antibiotics need approval.");
+  if (o.abx_approved_at) throw new Error("Already approved.");
+  if (o.order_status !== "active") throw new Error("This order is stopped.");
+  const a = await currentActor();
+  if (!roleAllowed(["senior_doctor"], a)) throw new Error("A consultant, medical specialist or HoD approves reserve antibiotics.");
+  const me = a.userId ? (await staffRepo.list({ where: "user_id = ?", params: [a.userId] }))[0] ?? null : null;
+  if (me && me.id === o.ordered_by) throw new Error("A reserve antibiotic is approved by a senior doctor other than the prescriber.");
+  return patch(orderId, { abx_approved_by_name: stamp(a), abx_approved_at: nowIso() });
+}
+
+/** The doctor's antibiotic review (at 72 hours): continue, de-escalate, switch to oral or stop. */
+export async function reviewAntibiotic(orderId: string, outcome: string, note: string): Promise<HospitalRxItem> {
+  const o = await getOrder(orderId);
+  if (o.abx_class !== "reserve" && o.abx_class !== "watch") throw new Error("Reviews are recorded for Watch and Reserve antibiotics.");
+  if (o.order_status !== "active") throw new Error("This order is stopped.");
+  const a = await currentActor();
+  if (!roleAllowed(["doctor"], a)) throw new Error("A doctor reviews the antibiotic.");
+  if (!(ABX_REVIEW_OUTCOMES as readonly string[]).includes(outcome)) throw new Error("Choose the outcome of the review.");
+  if (!note?.trim()) throw new Error("Note the culture result or the clinical reason.");
+  const saved = await patch(orderId, { abx_reviewed_by_name: stamp(a), abx_reviewed_at: nowIso(), abx_review_outcome: `${outcome}: ${note.trim()}` });
+  return outcome.startsWith("Stop") || outcome.startsWith("De-escalate") || outcome.startsWith("Switch")
+    ? stopMedicationOrder(orderId, `Antibiotic review: ${outcome}. ${note.trim()}`)
+    : saved;
+}
+
 export async function stopMedicationOrder(orderId: string, reason: string): Promise<HospitalRxItem> {
   if (!reason?.trim()) throw new Error("Give the reason for stopping the medicine.");
   const o = await getOrder(orderId);
@@ -187,6 +243,10 @@ export async function recordAdministration(orderId: string, x: AdministrationInp
   if (!["given", "held", "refused", "missed"].includes(x.status)) throw new Error("Choose given, held, refused or missed.");
 
   let second: { id: string; name: string } | null = null;
+  if (x.status === "given" && o.abx_class === "reserve" && !o.abx_approved_at && o.ordered_at
+      && at.getTime() - Date.parse(o.ordered_at) > RESERVE_APPROVAL_HOURS * 3_600_000) {
+    throw new Error(`This reserve antibiotic has not been approved by a consultant within ${RESERVE_APPROVAL_HOURS} hours. Ask for approval before the next dose.`);
+  }
   if (x.status === "given") {
     const [i1, i2] = x.identifiers ?? ["", ""];
     if (!PATIENT_IDENTIFIERS.includes(i1) || !PATIENT_IDENTIFIERS.includes(i2) || i1 === i2) {

@@ -14,6 +14,7 @@ import { bloodIndicators } from "./bloodBank";
 import { listLicences, listEquipment, drillSchedule } from "./facility";
 import { staffHrStatus, rosterRange, isClinical } from "./hrRecords";
 import { requiredDocumentStatus } from "./documents";
+import { medicineIndicators, stewardshipList } from "./medicines";
 
 export const MSDS_AREAS: [string, string][] = [
   ["AAC", "Access, assessment and continuity of care"],
@@ -42,6 +43,8 @@ export async function complianceSnapshot(today: string = localDate()): Promise<{
   const range = { from, to: today };
   const checks: ComplianceCheck[] = [];
   const add = (c: ComplianceCheck) => checks.push(c);
+  let medP: ReturnType<typeof medicineIndicators> | null = null;
+  const med = () => (medP ??= medicineIndicators(range, today));
   /** Runs one check; a register that cannot be read (for example an older database) shows as no data. */
   const run = async (area: string, label: string, href: string, f: () => Promise<Omit<ComplianceCheck, "area" | "label" | "href">>) => {
     try { add({ area, label, href, ...(await f()) }); } catch { add({ area, label, href, state: "no_data", detail: "This register could not be read." }); }
@@ -83,6 +86,44 @@ export async function complianceSnapshot(today: string = localDate()): Promise<{
     const b = await bloodIndicators(range);
     if (!b.transfused) return { state: "no_data", detail: `No transfusions in the last ${WINDOW_DAYS} days.` };
     return { state: b.seriousNotReported ? "attention" : "ok", detail: `${b.transfused} units transfused, ${b.reactions} reactions.${b.seriousNotReported ? ` ${b.seriousNotReported} serious reaction(s) not reported.` : ""}` };
+  });
+
+  await run("MOM", "Hospital formulary in use", "/hospital/medicines", async () => {
+    const m = await med();
+    if (!m.formularyItems) return { state: "attention", detail: "No formulary entered. Orders are not checked against an approved medicines list." };
+    return { state: "ok", detail: `${m.formularyItems} medicines on the formulary. ${m.nonFormularyOrders} of ${m.ordersTotal} orders in ${WINDOW_DAYS} days were non-formulary, each with a reason.` };
+  });
+
+  await run("MOM", "Reserve antibiotics approved and antibiotics reviewed at 72 hours", "/hospital/medicines", async () => {
+    const m = await med();
+    const now = await stewardshipList();
+    const overdue = now.filter((o) => o.approval_overdue).length;
+    const due = now.filter((o) => o.review_due).length;
+    if (!m.antibioticOrders && !now.length) return { state: "no_data", detail: `No antibiotic orders in ${WINDOW_DAYS} days.` };
+    return {
+      state: overdue || due ? "attention" : "ok",
+      detail: `Reserve approved within 24 h: ${m.reserveApprovedInTimePct ?? "—"}%. Reviewed by 72 h: ${m.reviewedBy72hPct ?? "—"}%. Culture before the first dose: ${m.cultureBeforePct ?? "—"}%.${overdue ? ` ${overdue} reserve order(s) without approval now.` : ""}${due ? ` ${due} review(s) due now.` : ""}`,
+    };
+  });
+
+  await run("MOM", "Adverse drug reactions reported", "/hospital/medicines", async () => {
+    const m = await med();
+    if (!m.adrReports) return { state: "attention", detail: `No adverse drug reactions reported in ${WINDOW_DAYS} days. A hospital this size reporting none usually means reactions are not being reported.` };
+    return { state: m.adrSeriousNotSent ? "attention" : "ok", detail: `${m.adrReports} reported, ${m.adrSerious} serious.${m.adrSeriousNotSent ? ` ${m.adrSeriousNotSent} serious report(s) not sent to DRAP in time.` : ""}` };
+  });
+
+  await run("MOM", "Controlled drug counts match the register", "/hospital/medicines", async () => {
+    const m = await med();
+    return m.cdDiscrepancies ? { state: "attention", detail: `${m.cdDiscrepancies} drug(s) whose last count did not match the register.` } : { state: "ok", detail: "Every last count matched the register." };
+  });
+
+  await run("MOM", "Medicine fridges checked and in range", "/hospital/medicines", async () => {
+    const m = await med();
+    if (!m.fridgeReadings && !m.fridgesWithoutReading7d.length) return { state: "no_data", detail: "No fridge temperature readings recorded." };
+    return {
+      state: m.fridgeOutOfRange || m.fridgesWithoutReading7d.length ? "attention" : "ok",
+      detail: `${m.fridgeReadings} readings, ${m.fridgeOutOfRange} out of range.${m.fridgesWithoutReading7d.length ? ` No reading in 7 days: ${list(m.fridgesWithoutReading7d)}.` : ""}`,
+    };
   });
 
   await run("PRE", "Complaints acknowledged and resolved on time", "/hospital/quality", async () => {
