@@ -4,21 +4,22 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { REQUIRED_SCHEMA_VERSION, sharedSchemaStatus, type SchemaStatus } from "@/lib/schemaVersion";
 
-/** Tells the owner / full-access users of the web version when the shared
- * database is older than this code, before a save fails on a missing column.
- * Checked once per session; other pages keep working. */
+/** Tells the Super Admin when the shared database is older than this code,
+ * before a save fails on a missing column. Running the migration is the
+ * Super Admin's job, so businesses (hospital, clinic, pharmacy logins) never
+ * see it. Checked once per session; other pages keep working. */
 export function SchemaBanner() {
   const user = useAuthStore((s) => s.currentUser);
   const [status, setStatus] = useState<SchemaStatus | null>(null);
   const [hidden, setHidden] = useState(false);
-  const fullAccess = Boolean(user) && (user!.role !== "staff" || user!.permissions === null);
+  const superAdmin = user?.role === "super_admin";
 
   useEffect(() => {
-    if (!fullAccess) return;
+    if (!superAdmin) return;
     void sharedSchemaStatus().then(setStatus).catch(() => setStatus(null));
-  }, [fullAccess]);
+  }, [superAdmin]);
 
-  if (!fullAccess || hidden || !status || status.state === "ok") return null;
+  if (!superAdmin || hidden || !status || status.state === "ok") return null;
   return (
     <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900">
       <span className="font-semibold">Database update needed.</span>
