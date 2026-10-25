@@ -254,7 +254,11 @@ export async function verifyLabResult(orderId: string): Promise<void> {
     verified_by: useAuthStore.getState().currentUser?.id ?? null, verified_by_name: staff?.name ?? caps.userName, verified_by_license: license,
   });
   // A critical value waits as a pending alert until someone records telling the clinician.
-  await raiseCriticalForLabOrder(orderId, staff?.name ?? caps.userName);
+  try {
+    await raiseCriticalForLabOrder(orderId, staff?.name ?? caps.userName);
+  } catch (e) {
+    throw new Error(`The result is verified and released, but the critical-result check could not run (${e instanceof Error ? e.message : String(e)}). If the value is critical, tell the doctor directly.`);
+  }
 }
 
 /** A verifier sends a result back to the lab to be corrected (not released). */
