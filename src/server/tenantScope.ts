@@ -37,8 +37,11 @@ export const MAILBOX_OWNERS: Record<string, string[]> = {
   pharmacy_rx_notifications: ["pharmacy_tenant_id", "clinic_tenant_id"],
   pharmacy_rx_items: ["pharmacy_tenant_id", "clinic_tenant_id"],
 };
-/** Global settings the app reads for every business (AI assistant). */
-export const GLOBAL_READABLE_SETTINGS = ["billori_api_key", "billori_model"];
+/** Global settings the app reads for every business. The AI keys are not among
+ * them: the server calls the AI service itself (src/server/ai.ts). */
+export const GLOBAL_READABLE_SETTINGS = ["billori_model"];
+/** The business's own settings that stay on the server. */
+export const SERVER_ONLY_SETTINGS = ["ai_gemini_api_key"];
 /** Readable by everyone, unfiltered. */
 const OPEN_READ = new Set(["subscription_plans", "schema_migrations"]);
 /** Local-only bookkeeping of the desktop app. */
@@ -98,7 +101,9 @@ function businessCondition(t: string, s: Scope, schema: Schema): string | null {
   if (OPEN_READ.has(t)) return null;
   if (DESKTOP_ONLY.has(t)) throw new ScopeError(`Table ${t} is not available.`);
   if (t === "tenants") return `(id = ${q(s.tenantId)} OR business_type = 'hospital_pharmacy'${s.linkedPharmacies.length ? ` OR id IN (${list(s.linkedPharmacies)})` : ""})`;
-  if (t === "settings") return `(substr(key, 1, ${s.tenantId.length + 2}) = ${q(`${s.tenantId}::`)} OR key IN (${list(GLOBAL_READABLE_SETTINGS)}))`;
+  if (t === "settings") {
+    return `((substr(key, 1, ${s.tenantId.length + 2}) = ${q(`${s.tenantId}::`)} AND key NOT IN (${list(SERVER_ONLY_SETTINGS.map((k) => `${s.tenantId}::${k}`))})) OR key IN (${list(GLOBAL_READABLE_SETTINGS)}))`;
+  }
   if (MAILBOX_OWNERS[t]) return `(${MAILBOX_OWNERS[t].map((c) => `${c} = ${q(s.tenantId)}`).join(" OR ")})`;
   if (SHARED_CATALOG.has(t)) {
     const parts = [`tenant_id = ${q(s.tenantId)}`];

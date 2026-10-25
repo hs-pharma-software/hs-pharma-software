@@ -66,9 +66,14 @@ With the server layer switched on:
 `npm run test:scoped` runs the whole test suite with every statement rewritten
 exactly as the server does; it must pass before the rules are changed.
 
-**Known exposure, unchanged:** the AI assistant's API key is a global setting
-that every business's browser reads, because the assistant calls the AI
-service from the page. Moving those calls to the server would remove it.
+- **The AI assistant's key stays on the server.** The assistant's calls go
+  to `/api/ai`, and the server adds the key (the business's own, or the
+  global one the Super Admin set) and calls Gemini. Business logins can no
+  longer read `billori_api_key` or their own `ai_gemini_api_key` from the
+  settings. Each login is limited to 30 assistant calls a minute. Once server
+  mode is on, **create a new Gemini key** in Google AI Studio, save it on the
+  Super Admin's Billori page and delete the old one: the old key was readable
+  by every business before.
 
 The desktop app is unchanged. It keeps its local database and its own sync
 token (built in by the release workflow).

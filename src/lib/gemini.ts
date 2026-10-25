@@ -1,21 +1,14 @@
 import { getSetting, getGlobalSetting } from "./repo/settings";
+import { SERVER_DB, serverJson } from "./serverMode";
+import { isTauriShell } from "./platform";
+import {
+  GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL,
+} from "../config/aiModels";
 
-export const GEMINI_KEY_SETTING = "ai_gemini_api_key";
-export const GEMINI_MODEL_SETTING = "ai_gemini_model";
+export { GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL };
 
-/** Global (admin-level) keys — no tenant prefix, shared across all tenants. */
-export const BILLORI_KEY_SETTING = "billori_api_key";
-export const BILLORI_MODEL_SETTING = "billori_model";
-/** Per-tenant enable/disable toggle for the Billori assistant. */
-export const BILLORI_ENABLED_SETTING = "billori_enabled";
-
-/** Text models offered in Settings. */
-export const GEMINI_MODELS = [
-  { id: "gemini-3.8-flash",      label: "Gemini 3.8 Flash (recommended)" },
-  { id: "gemini-3.6-flash",      label: "Gemini 3.6 Flash" },
-  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (fastest, highest free limits)" },
-];
-export const DEFAULT_GEMINI_MODEL = GEMINI_MODELS[0].id;
+/** The web version through the server: the server holds the key and calls Gemini (src/server/ai.ts). */
+const viaServer = () => SERVER_DB && !isTauriShell();
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -66,6 +59,7 @@ export interface GeminiResult {
 /** True when the Billori assistant has a usable key (global or tenant-own)
  * and is not explicitly disabled by this tenant. */
 export async function hasAiKey(): Promise<boolean> {
+  if (viaServer()) return (await serverJson<{ available: boolean }>("/api/ai/").catch(() => ({ available: false }))).available;
   const enabled = await getSetting(BILLORI_ENABLED_SETTING);
   if (enabled === "false") return false;
   const tenantKey = (await getSetting(GEMINI_KEY_SETTING)) ?? "";
@@ -122,25 +116,31 @@ async function httpPost(url: string, apiKey: string, body: string, signal: Abort
 
 /** One generateContent call — works in both Tauri desktop and browser preview. */
 export async function geminiGenerate(req: GeminiRequest, timeoutMs = 60_000, modelOverride?: string): Promise<GeminiResult> {
-  const { apiKey, model } = await geminiConfig();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let res: { ok: boolean; status: number; text(): Promise<string> };
-  try {
-    res = await httpPost(
-      `${BASE}/${modelOverride ?? model}:generateContent`,
-      apiKey,
-      JSON.stringify(req),
-      controller.signal,
-    );
-  } catch (e) {
-    if (controller.signal.aborted) throw new Error("Gemini took too long to answer. Try again.");
-    throw new Error(`Could not reach Gemini. Check the internet connection. (${e instanceof Error ? e.message : String(e)})`);
-  } finally {
-    clearTimeout(timer);
+  let status: number;
+  let body: string;
+  if (viaServer()) {
+    ({ status, body } = await serverJson<{ status: number; body: string }>("/api/ai/", { request: req, model: modelOverride, timeoutMs }));
+  } else {
+    const { apiKey, model } = await geminiConfig();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await httpPost(
+        `${BASE}/${modelOverride ?? model}:generateContent`,
+        apiKey,
+        JSON.stringify(req),
+        controller.signal,
+      );
+      status = res.status;
+      body = await res.text();
+    } catch (e) {
+      if (controller.signal.aborted) throw new Error("Gemini took too long to answer. Try again.");
+      throw new Error(`Could not reach Gemini. Check the internet connection. (${e instanceof Error ? e.message : String(e)})`);
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  const body = await res.text();
-  if (!res.ok) throw new Error(errorMessage(res.status, body));
+  if (status < 200 || status >= 300) throw new Error(errorMessage(status, body));
 
   const data = JSON.parse(body) as {
     candidates?: { content?: GeminiContent; finishReason?: string }[];

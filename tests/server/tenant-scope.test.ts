@@ -24,6 +24,8 @@ function seed() {
   ins("settings", { key: "hosp-a::hospital.profile", value: "A", updated_at: NOW });
   ins("settings", { key: "hosp-b::hospital.profile", value: "B", updated_at: NOW });
   ins("settings", { key: "billori_api_key", value: "k", updated_at: NOW });
+  ins("settings", { key: "billori_model", value: "m", updated_at: NOW });
+  ins("settings", { key: "hosp-a::ai_gemini_api_key", value: "own-k", updated_at: NOW });
   ins("settings", { key: "secret_global", value: "s", updated_at: NOW });
   schema = new Map();
   for (const r of db.prepare(`SELECT m.name AS t, p.name AS c FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = 'table'`).all() as { t: string; c: string }[]) {
@@ -89,12 +91,13 @@ test("mailbox, settings and the tenant list", () => {
   assert.equal(run("SELECT * FROM pharmacy_rx_notifications", [], { ...A, tenantId: "hosp-b" }).length, 0, "an outsider does not");
   assert.throws(() => exec("UPDATE pharmacy_rx_notifications SET clinic_tenant_id = 'hosp-b'", [], X), /cannot be changed/);
 
-  assert.deepEqual(run("SELECT key FROM settings ORDER BY key").map((r) => r.key), ["billori_api_key", "hosp-a::hospital.profile"], "own keys and the global keys the app reads");
+  assert.deepEqual(run("SELECT key FROM settings ORDER BY key").map((r) => r.key), ["billori_model", "hosp-a::hospital.profile"], "own keys and the global keys the app reads; never an AI key");
   assert.throws(() => exec("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", ["hosp-b::hospital.profile", "x", NOW]), /own business's settings/);
   exec("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", ["hosp-a::hospital.profile", "A2", NOW]);
   assert.equal((db.prepare("SELECT value FROM settings WHERE key = 'hosp-a::hospital.profile'").get() as { value: string }).value, "A2");
   assert.equal(exec("UPDATE settings SET value = 'x' WHERE key = ?", ["hosp-b::hospital.profile"]), 0);
-  assert.equal(exec("UPDATE settings SET value = 'x' WHERE key = ?", ["billori_api_key"]), 0, "global settings are read-only");
+  assert.equal(exec("UPDATE settings SET value = 'x' WHERE key = ?", ["billori_model"]), 0, "global settings are read-only");
+  assert.equal(exec("UPDATE settings SET value = 'x' WHERE key = ?", ["billori_api_key"]), 0);
 
   assert.deepEqual(names(run("SELECT * FROM tenants")), ["hosp-a", "pharm-x"], "own record and hospital pharmacies only");
 });
