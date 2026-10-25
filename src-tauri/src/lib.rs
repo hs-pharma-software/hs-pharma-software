@@ -1301,6 +1301,18 @@ fn schema_sql_v44() -> &'static str {
 /// looked up by that visit. Also the v1 indexes the shared Turso database never
 /// received (its first schema was created by migrate-turso.cjs, not v1); on a
 /// desktop database they already exist and these are no-ops.
+/// Admission confirmation: an admission made from a visit (consultant, or a
+/// referral from Emergency) waits for the Head Nurse of its department (or the
+/// Nursing Superintendent). Empty on older and direct admissions.
+fn schema_sql_v47() -> &'static str {
+    r#"
+    ALTER TABLE hospital_episodes ADD COLUMN admission_status TEXT;
+    ALTER TABLE hospital_episodes ADD COLUMN admission_confirmed_by TEXT;
+    ALTER TABLE hospital_episodes ADD COLUMN admission_confirmed_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hosp_episodes_admission ON hospital_episodes (tenant_id, admission_status) WHERE admission_status IS NOT NULL
+    "#
+}
+
 fn schema_sql_v46() -> &'static str {
     r#"
     CREATE INDEX IF NOT EXISTS idx_hosp_episodes_from ON hospital_episodes (tenant_id, from_episode_id) WHERE from_episode_id IS NOT NULL;
@@ -2461,6 +2473,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 46,
             description: "admission_source_index_and_shared_db_indexes",
             sql: schema_sql_v46(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 47,
+            description: "admission_confirmation_by_head_nurse",
+            sql: schema_sql_v47(),
             kind: MigrationKind::Up,
         },
     ]

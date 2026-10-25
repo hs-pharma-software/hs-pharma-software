@@ -7,11 +7,12 @@ import { localDate, localDateTime } from "../localDate";
 import { staffRepo } from "./staff";
 import { getSetting } from "./settings";
 import { useAuthStore } from "../../store/authStore";
+import { ADMISSION_CONFIRM_ALL_ROLES, ADMISSION_CONFIRM_DEPT_ROLES } from "../../config/hospitalStaff";
 import {
   hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo, addCharge, deleteCharge, listChargesForEpisode, listPaymentsForEpisode,
 } from "./hospital";
 import { invoicesRepo, nextInvoiceNo } from "./invoices";
-import type { HospitalCharge, HospitalEpisode, HospitalPatient, HospitalPayment, HospitalRxItem, HospitalService, SurgeryBooking } from "../types-hospital";
+import type { AdmissionStatus, HospitalCharge, HospitalEpisode, HospitalPatient, HospitalPayment, HospitalRxItem, HospitalService, SurgeryBooking } from "../types-hospital";
 import type { Invoice } from "../types2";
 import { SURGERY_CHARGES, breakdownTotal, chargeLabel, cleanBreakdown, parseBreakdown, type SurgeryFeeBreakdown } from "../../config/surgeryCharges";
 
@@ -96,8 +97,8 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
   if (visit.type === "ipd") throw new Error("This is already an admission.");
   const reason = input.reason?.trim();
   if (!reason) throw new Error("Enter the reason for admission.");
-  // One admission per visit: a readmission starts from a new visit.
-  const fromThisVisit = await hospitalEpisodesRepo.list({ where: "from_episode_id = ?", params: [visit.id] });
+  // One admission per visit (a declined one does not count): a readmission starts from a new visit.
+  const fromThisVisit = await hospitalEpisodesRepo.list({ where: "from_episode_id = ? AND status != 'cancelled'", params: [visit.id] });
   if (fromThisVisit.length) throw new Error(`This visit was already admitted as ${fromThisVisit[0].episode_no}. Book a new visit for a readmission.`);
   const already = await hospitalEpisodesRepo.list({ where: "patient_id = ? AND type = 'ipd' AND status = 'open'", params: [visit.patient_id] });
   if (already.length) throw new Error(`This patient is already admitted (${already[0].episode_no}).`);
@@ -115,13 +116,16 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
     }
   }
 
+  const department = input.department?.trim() || surgery?.department || visit.department;
+  if (!department) throw new Error("Choose the department the patient is admitted to: its Head Nurse confirms the admission.");
+
   const today = localDate();
   const admission = await hospitalEpisodesRepo.create({
     episode_no: await nextEpisodeNo("ipd", today),
     type: "ipd",
     patient_id: visit.patient_id,
     doctor_id: input.surgeonId || visit.doctor_id,
-    department: input.department?.trim() || surgery?.department || visit.department,
+    department,
     date: today,
     time: localDateTime().slice(11),
     status: "open",
@@ -133,10 +137,11 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
     notes: `${input.plan === "surgery" ? "Admitted for surgery" : "Admitted"}: ${reason}`,
     from_episode_id: visit.id,
     consult_status: "done",
+    admission_status: "pending",
   });
   await hospitalEpisodesRepo.update(visit.id, {
     consult_status: "done",
-    notes: [visit.notes, `Admitted as ${admission.episode_no}`].filter(Boolean).join("\n"),
+    notes: [visit.notes, `Admitted as ${admission.episode_no} to ${department} (awaiting Head Nurse confirmation)`].filter(Boolean).join("\n"),
   });
 
   let booking: SurgeryBooking | null = null;
@@ -355,4 +360,129 @@ export async function getVisitReceipt(episodeId: string): Promise<VisitReceipt> 
     hospital,
     episode, patient, doctorName: doctor?.name ?? null, charges, payments, total, paid, due: round(total - paid),
   };
+}
+
+// ── Admission confirmation (Head Nurse) ─────────────────────────────────
+
+const sameDept = (a: string | null | undefined, b: string | null | undefined) =>
+  Boolean(a?.trim()) && (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+
+export interface ConfirmScope {
+  /** Every department: owner / full-access users and the Nursing Superintendent. */
+  all: boolean;
+  /** A Head Nurse's own department. */
+  department: string | null;
+  staffId: string | null;
+  staffName: string | null;
+}
+
+/** Who may confirm admissions, and for which department. */
+export async function admissionConfirmScope(): Promise<ConfirmScope> {
+  const u = useAuthStore.getState().currentUser;
+  const staff = u ? (await staffRepo.list({ where: "user_id = ?", params: [u.id] }))[0] ?? null : null;
+  const full = !u || u.role !== "staff" || u.permissions === null;
+  const cat = staff?.staff_category ?? "";
+  const who = { staffId: staff?.id ?? null, staffName: staff?.name ?? u?.displayName ?? null };
+  if (full || ADMISSION_CONFIRM_ALL_ROLES.includes(cat)) return { all: true, department: null, ...who };
+  if (ADMISSION_CONFIRM_DEPT_ROLES.includes(cat) && staff?.department) return { all: false, department: staff.department, ...who };
+  return { all: false, department: null, ...who };
+}
+
+export interface AdmissionRequestRow {
+  id: string;
+  episode_no: string;
+  department: string | null;
+  admission_status: string;
+  created_at: string;
+  notes: string | null;
+  room_ward: string | null;
+  bed_no: string | null;
+  admission_confirmed_at: string | null;
+  confirmed_by_name: string | null;
+  patient_name: string;
+  mr_no: string;
+  gender: string | null;
+  doctor_name: string | null;
+  from_episode_no: string | null;
+  from_type: string | null;
+  surgery_name: string | null;
+}
+
+/** Admissions waiting for (or given) confirmation; a Head Nurse sees her or his own department only. */
+export async function listAdmissionRequests(status: AdmissionStatus = "pending"): Promise<AdmissionRequestRow[]> {
+  const scope = await admissionConfirmScope();
+  if (!scope.all && !scope.department) return [];
+  const params: unknown[] = [requireCurrentTenantId(), status];
+  let deptClause = "";
+  if (!scope.all) {
+    deptClause = "AND LOWER(TRIM(e.department)) = LOWER(TRIM(?))";
+    params.push(scope.department);
+  }
+  return dbSelect<AdmissionRequestRow>(
+    `SELECT e.id, e.episode_no, e.department, e.admission_status, e.created_at, e.notes, e.room_ward, e.bed_no, e.admission_confirmed_at,
+            c.name AS confirmed_by_name, p.name AS patient_name, p.mr_no, p.gender, d.name AS doctor_name,
+            f.episode_no AS from_episode_no, f.type AS from_type,
+            (SELECT b.surgery_name FROM hospital_surgery_bookings b WHERE b.episode_id = e.id AND b.deleted_at IS NULL AND b.status != 'cancelled' LIMIT 1) AS surgery_name
+     FROM hospital_episodes e
+     JOIN hospital_patients p ON p.id = e.patient_id
+     LEFT JOIN staff d ON d.id = e.doctor_id
+     LEFT JOIN staff c ON c.id = e.admission_confirmed_by
+     LEFT JOIN hospital_episodes f ON f.id = e.from_episode_id
+     WHERE e.tenant_id = ? AND e.deleted_at IS NULL AND e.type = 'ipd' AND e.admission_status = ? ${deptClause}
+     ORDER BY e.created_at ${status === "pending" ? "ASC" : "DESC"}
+     LIMIT 200`,
+    params
+  );
+}
+
+async function pendingAdmissionInScope(episodeId: string): Promise<{ admission: HospitalEpisode; scope: ConfirmScope }> {
+  const admission = await hospitalEpisodesRepo.get(episodeId);
+  if (!admission || admission.type !== "ipd") throw new Error("Admission not found.");
+  if (admission.admission_status !== "pending") throw new Error("This admission is not waiting for confirmation.");
+  const scope = await admissionConfirmScope();
+  if (!scope.all && !(scope.department && sameDept(scope.department, admission.department))) {
+    throw new Error(`Only the Head Nurse of ${admission.department ?? "the department"} or the Nursing Superintendent can confirm this admission.`);
+  }
+  return { admission, scope };
+}
+
+/** The Head Nurse accepts the patient into the department and allots the ward / room and bed. */
+export async function confirmAdmission(episodeId: string, place: { wardRoom?: string | null; bedNo?: string | null } = {}): Promise<HospitalEpisode> {
+  const { admission, scope } = await pendingAdmissionInScope(episodeId);
+  const wardRoom = place.wardRoom?.trim() || admission.room_ward;
+  const bedNo = place.bedNo?.trim() || admission.bed_no;
+  if (!wardRoom || !bedNo) throw new Error("Enter the ward / room and bed the patient is given.");
+  const saved = await hospitalEpisodesRepo.update(episodeId, {
+    admission_status: "confirmed", room_ward: wardRoom, bed_no: bedNo,
+    admission_confirmed_by: scope.staffId, admission_confirmed_at: localDateTime(),
+    notes: [admission.notes, `Admission confirmed by ${scope.staffName ?? "the nursing staff"}`].filter(Boolean).join("\n"),
+  });
+  return saved!;
+}
+
+/** The department cannot take the patient (e.g. no bed free). The admission is
+ * cancelled with the reason, its planned surgery and invoice are cancelled, and
+ * the visit can be admitted again (for example to another department). */
+export async function declineAdmission(episodeId: string, reason: string): Promise<void> {
+  if (!reason?.trim()) throw new Error("Say why the admission is not accepted.");
+  const { admission, scope } = await pendingAdmissionInScope(episodeId);
+  const surgeries = await surgeryBookingsRepo.list({ where: "episode_id = ? AND status = 'planned'", params: [episodeId] });
+  const surgeryInvoices = new Set(surgeries.map((b) => b.invoice_id).filter(Boolean));
+  const surgeryCharges = new Set(surgeries.map((b) => b.charge_id).filter(Boolean));
+  const other = (await listChargesForEpisode(episodeId)).filter((c) => !(c.invoice_id && surgeryInvoices.has(c.invoice_id)) && !surgeryCharges.has(c.id));
+  if (other.length) throw new Error("This admission already has other charges on its bill. Remove them in Episodes first, or confirm the admission.");
+  for (const b of surgeries) await cancelSurgery(b.id, `Admission not accepted: ${reason.trim()}`);
+  await hospitalEpisodesRepo.update(episodeId, {
+    admission_status: "declined", status: "cancelled",
+    admission_confirmed_by: scope.staffId, admission_confirmed_at: localDateTime(),
+    notes: [admission.notes, `Not accepted by ${scope.staffName ?? "the nursing staff"}: ${reason.trim()}`].filter(Boolean).join("\n"),
+  });
+  if (admission.from_episode_id) {
+    const visit = await hospitalEpisodesRepo.get(admission.from_episode_id);
+    if (visit) {
+      await hospitalEpisodesRepo.update(visit.id, {
+        notes: [visit.notes, `Admission ${admission.episode_no} not accepted by ${admission.department}: ${reason.trim()}`].filter(Boolean).join("\n"),
+      });
+    }
+  }
 }

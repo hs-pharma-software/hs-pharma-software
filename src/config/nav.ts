@@ -491,6 +491,7 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "OPD Queue", href: "/hospital/opd", moduleKey: "hospital_episodes" },
       { label: "Inpatients (IPD)", href: "/hospital/ipd", moduleKey: "hospital_episodes" },
       { label: "Emergency", href: "/hospital/emergency", moduleKey: "hospital_episodes" },
+      { label: "Admission Requests", href: "/hospital/admissions", moduleKey: "hospital_admissions" },
     ],
   },
   { label: "Patient", href: "/hospital/patients", icon: UserRoundPlus, moduleKey: "hospital_patients", onlyFor: ["hospital"] },

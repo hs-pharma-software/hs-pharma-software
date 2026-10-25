@@ -49,7 +49,7 @@ test("the schema checker: a v42 database lacks exactly v43+ (from_episode_id amo
   const asQuery = (db: ReturnType<typeof fullSchemaDb>) => async (sql: string) => db.prepare(sql).all() as Record<string, unknown>[];
   const old = schema.compare(expected, await schema.liveSnapshot(asQuery(fullSchemaDb(42))));
   assert.equal(old.presentUpTo, 42);
-  assert.deepEqual(old.incomplete.map((v) => v.version), [43, 44, 45, 46]);
+  assert.deepEqual(old.incomplete.map((v) => v.version), Array.from({ length: schema.latestVersion() - 42 }, (_, i) => 43 + i));
   assert.ok(old.incomplete[0].missing.includes("column hospital_episodes.from_episode_id"));
   const current = schema.compare(expected, await schema.liveSnapshot(asQuery(fullSchemaDb())));
   assert.deepEqual(current.incomplete, []);

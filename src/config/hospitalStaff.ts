@@ -24,6 +24,10 @@ export const DESIGNATIONS: Designation[] = [
   { key: "consultant", label: "Consultant", prefix: "CON", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_specialist", label: "Medical Specialist", prefix: "MS", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_officer", label: "Medical Officer", prefix: "MO", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
+  { key: "nursing_superintendent", label: "Nursing Superintendent", prefix: "NS", license: "PNC", licenseRequired: true, doctor: false,
+    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes"] },
+  { key: "head_nurse", label: "Head Nurse (department)", prefix: "HN", license: "PNC", licenseRequired: true, doctor: false,
+    pages: ["hospital_admissions", "hospital_patients", "hospital_episodes"] },
   { key: "nurse", label: "Nurse", prefix: "NUR", license: "PNC", licenseRequired: true, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
   { key: "pathologist", label: "Pathologist (verifies lab reports)", prefix: "PATH", license: "PMDC", licenseRequired: true, doctor: false,
     pages: ["hospital_lab", "hospital_patients"] },
@@ -41,6 +45,11 @@ export const DESIGNATIONS: Designation[] = [
     pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports", "hospital_radiology_reports"] },
   { key: "other", label: "Other", prefix: "EMP", license: null, licenseRequired: false, doctor: false, pages: ["hospital_dashboard"] },
 ];
+
+/** Confirm admissions: the Head Nurse for their own department, the Nursing
+ * Superintendent for every department. */
+export const ADMISSION_CONFIRM_ALL_ROLES = ["nursing_superintendent"];
+export const ADMISSION_CONFIRM_DEPT_ROLES = ["head_nurse"];
 
 export const DOCTOR_CATEGORIES = DESIGNATIONS.filter((d) => d.doctor).map((d) => d.key);
 

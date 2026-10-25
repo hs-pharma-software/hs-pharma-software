@@ -63,6 +63,7 @@ export interface HospitalService extends TenantRow {
 }
 
 export type EpisodeType = "opd" | "ipd" | "emergency";
+export type AdmissionStatus = "pending" | "confirmed" | "declined";
 export type EpisodeStatus = "open" | "discharged" | "cancelled";
 
 export interface HospitalEpisode extends TenantRow {
@@ -90,6 +91,10 @@ export interface HospitalEpisode extends TenantRow {
   followup_date?: string | null;
   /** The OPD visit an admission came from (v43). */
   from_episode_id?: string | null;
+  /** Admission confirmation (v47): pending until the department Head Nurse confirms; null = not needed. */
+  admission_status?: AdmissionStatus | null;
+  admission_confirmed_by?: string | null;
+  admission_confirmed_at?: string | null;
 }
 
 /** A medicine a hospital doctor prescribes in an episode (v40). */

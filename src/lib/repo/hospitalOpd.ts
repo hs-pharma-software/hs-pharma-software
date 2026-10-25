@@ -56,6 +56,7 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
   if (!data.name?.trim()) throw new Error("Enter the name.");
   const licenseNo = (data.license_no ?? "").trim();
   if (d.licenseRequired && !licenseNo) throw new Error(`Enter the ${d.license === "PNC" ? "PNC" : d.license === "PMDC" ? "PMDC" : "licence"} number.`);
+  if (d.key === "head_nurse" && !data.department?.trim()) throw new Error("Choose the Head Nurse's department: admissions to it are confirmed by this Head Nurse.");
   const existing = id ? await staffRepo.get(id) : null;
   if (id && !existing) throw new Error("Staff member not found.");
   if (data.collection_center_id && !(await labRequestsRepoCenters(data.collection_center_id))) throw new Error("That collection center was not found.");

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, ArrowLeft, BedDouble } from "lucide-react";
+import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -46,6 +47,9 @@ export default function EpisodeDetailPage() {
   const [addingPayment, setAddingPayment] = useState(false);
 
   const [discharging, setDischarging] = useState(false);
+  const [admission, setAdmission] = useState<HospitalEpisode | null>(null);
+  const [declined, setDeclined] = useState<HospitalEpisode | null>(null);
+  const [showAdmit, setShowAdmit] = useState(false);
 
   async function reload() {
     if (!isTauri() || !id) return;
@@ -55,6 +59,11 @@ export default function EpisodeDetailPage() {
     ]);
     setEpisode(ep);
     setServices(svcList);
+    if (ep && ep.type !== "ipd") {
+      const fromHere = await hospitalEpisodesRepo.list({ where: "from_episode_id = ?", params: [ep.id] });
+      setAdmission(fromHere.find((x) => x.status !== "cancelled") ?? null);
+      setDeclined(fromHere.find((x) => x.admission_status === "declined") ?? null);
+    }
     if (ep?.patient_id) {
       const p = await hospitalPatientsRepo.get(ep.patient_id);
       setPatient(p);
@@ -178,6 +187,16 @@ export default function EpisodeDetailPage() {
             <Button variant="ghost" onClick={() => router.back()}>
               <ArrowLeft size={14} className="mr-1" /> Back
             </Button>
+            {episode.type !== "ipd" && <AdmissionBadge admission={admission} declined={declined} />}
+            {episode.type !== "ipd" && episode.status === "open" && !admission && (
+              <Button onClick={() => setShowAdmit(true)}>
+                <BedDouble size={14} className="mr-1" />
+                {episode.type === "emergency" ? "Admit / refer to department" : "Admit"}
+              </Button>
+            )}
+            {episode.type === "ipd" && episode.admission_status === "pending" && (
+              <span className="self-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">Awaiting Head Nurse of {episode.department}</span>
+            )}
             {episode.status === "open" && (
               <Button variant="danger" onClick={() => void handleDischarge()} disabled={discharging}>
                 <CheckCircle2 size={14} className="mr-1" />
@@ -187,6 +206,8 @@ export default function EpisodeDetailPage() {
           </>
         }
       />
+
+      {showAdmit && <AdmitModal episode={episode} onClose={() => setShowAdmit(false)} onDone={() => { setShowAdmit(false); void reload(); }} />}
 
       {/* Episode + Patient header */}
       <div className="rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-5 mb-4 grid grid-cols-2 md:grid-cols-4 gap-4">

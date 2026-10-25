@@ -80,6 +80,8 @@ export interface EpisodeListRow {
   department: string | null;
   date: string;
   diagnosis: string | null;
+  /** Admission confirmation (v47); null when not needed, absent on an older database. */
+  admission_status?: string | null;
   total_charges: number;
   total_paid: number;
 }
@@ -98,9 +100,9 @@ export async function listEpisodes(opts: {
   if (opts.date) { where.push("e.date = ?"); params.push(opts.date); }
   const limit = opts.limit ?? 100;
   return dbSelect<EpisodeListRow>(
-    `SELECT e.id, e.episode_no, e.type, e.status, e.patient_id,
-            p.name AS patient_name, p.mr_no,
-            e.doctor_id, e.department, e.date, e.diagnosis,
+    // e.* rather than a column list: works on a database from before newer
+    // episode columns (admission_status, v47) instead of failing every queue.
+    `SELECT e.*, p.name AS patient_name, p.mr_no,
             COALESCE((SELECT SUM(amount) FROM hospital_charges WHERE episode_id = e.id AND deleted_at IS NULL), 0) AS total_charges,
             COALESCE((SELECT SUM(CASE WHEN type = 'refund' THEN -amount ELSE amount END) FROM hospital_payments WHERE episode_id = e.id AND deleted_at IS NULL), 0) AS total_paid
      FROM hospital_episodes e

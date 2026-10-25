@@ -56,9 +56,9 @@ export default function EpisodesList({ type }: { type: string }) {
     {
       header: "Status",
       render: (r) => (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[r.status] ?? ""}`}>
-          {r.status}
-        </span>
+        r.admission_status === "pending" && r.status === "open"
+          ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800">awaiting Head Nurse</span>
+          : <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[r.status] ?? ""}`}>{r.status}</span>
       ),
     },
     { header: "Charges", render: (r) => <span className="font-mono text-xs">{r.total_charges.toFixed(0)}</span> },

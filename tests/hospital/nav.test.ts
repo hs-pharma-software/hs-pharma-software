@@ -56,7 +56,7 @@ test("HR Department holds Staff", () => {
 
 test("the Hospital tab keeps the queue pages, now on their own routes", () => {
   const h = find(nav(), "Hospital")!;
-  assert.deepEqual(h.children!.map((c) => c.href), ["/hospital/profile", "/hospital/opd", "/hospital/ipd", "/hospital/emergency"]);
+  assert.deepEqual(h.children!.map((c) => c.href), ["/hospital/profile", "/hospital/opd", "/hospital/ipd", "/hospital/emergency", "/hospital/admissions"]);
 });
 
 test("no duplicate entries: labels unique per level, no link repeated across the whole menu", () => {

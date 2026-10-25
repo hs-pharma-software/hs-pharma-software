@@ -326,6 +326,7 @@ const MIGRATIONS = [
   { version: 44, label: 'CBC panel results, lab report QR token, radiology study modality', statements: rustSchemaStatements(44) },
   { version: 45, label: 'surgery invoices: charge breakdown, invoice of a booked surgery', statements: rustSchemaStatements(45) },
   { version: 46, label: 'index of the visit an admission came from; v1 indexes the shared database lacked', statements: rustSchemaStatements(46) },
+  { version: 47, label: 'admission confirmation by the department Head Nurse', statements: rustSchemaStatements(47) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
