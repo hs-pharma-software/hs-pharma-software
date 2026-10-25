@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BedDouble, History, Send, Trash2 } from "lucide-react";
+import { BedDouble, FileText, History, Send, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,10 @@ import {
   orderInvestigation, listVisitOrders, type OpdQueueRow, type RxDraft,
 } from "@/lib/repo/hospitalOpd";
 import { getPharmacyLink, savePharmacyLink, listPharmacyTenants, searchProductsForPharmacy } from "@/lib/repo/clinic";
+import { getLabReport, type LabReport } from "@/lib/repo/labReports";
+import { getRadiologyReport, type RadiologyReport } from "@/lib/repo/radiology";
+import { LabReportModal } from "@/components/hospital/LabReportModal";
+import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal";
 import type { HospitalEpisode } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
 
@@ -111,6 +115,8 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
   const [scanId, setScanId] = useState("");
   const [visitCount, setVisitCount] = useState(0);
   const [admittedAs, setAdmittedAs] = useState<string | null>(null);
+  const [labReport, setLabReport] = useState<LabReport | null>(null);
+  const [scanReport, setScanReport] = useState<RadiologyReport | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showAdmit, setShowAdmit] = useState(false);
   const [pharmacyId, setPharmacyId] = useState("");
@@ -164,6 +170,21 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
       setBusy(false);
     }
   };
+
+  // The treating doctor opens the report of this visit's own order, so the
+  // patient's identity is already established.
+  async function viewReport(o: VisitOrder) {
+    try {
+      if (o.kind === "lab") {
+        if (!o.request_id) throw new Error("This test is not linked to a lab report.");
+        setLabReport(await getLabReport(o.request_id, { checked: true, method: `treating doctor, visit ${ep?.episode_no ?? ""}` }));
+      } else {
+        setScanReport(await getRadiologyReport(o.id));
+      }
+    } catch (e) {
+      window.alert(`Could not open the report: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   const setLine = (i: number, patch: Partial<RxDraft>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
@@ -289,21 +310,23 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
       <OrderSection title="Lab tests" kind="lab" card={card} busy={busy} orders={orders.filter((o) => o.kind === "lab")}
         services={services.filter((s) => s.category === "lab")} value={labId} onChange={setLabId}
         emptyHint="Add lab tests and their fees in Labs › Performing Tests."
-        onOrder={() => void run("order the test", async () => { await orderInvestigation(ep.id, labId); setLabId(""); })} />
+        onOrder={() => void run("order the test", async () => { await orderInvestigation(ep.id, labId); setLabId(""); })} onView={(o) => void viewReport(o)} />
       <OrderSection title="Radiology" kind="imaging" card={card} busy={busy} orders={orders.filter((o) => o.kind !== "lab")}
         services={services.filter((s) => s.category === "imaging")} value={scanId} onChange={setScanId}
         emptyHint="Add radiology studies (X-ray, ultrasound, CT…) with their fees in Service Master, category Imaging / Radiology."
-        onOrder={() => void run("order the scan", async () => { await orderInvestigation(ep.id, scanId); setScanId(""); })} />
+        onOrder={() => void run("order the scan", async () => { await orderInvestigation(ep.id, scanId); setScanId(""); })} onView={(o) => void viewReport(o)} />
 
       {showHistory && patient && <HistoryModal patientId={patient.id} excludeId={ep.id} name={patient.name} onClose={() => setShowHistory(false)} />}
+      {labReport && <LabReportModal report={labReport} onClose={() => setLabReport(null)} />}
+      {scanReport && <RadiologyReportModal report={scanReport} onClose={() => setScanReport(null)} />}
       {showAdmit && <AdmitModal episode={ep} onClose={() => setShowAdmit(false)} onDone={() => { setShowAdmit(false); void load(); onChanged(); }} />}
     </div>
   );
 }
 
-function OrderSection({ title, kind, card, busy, orders, services, value, onChange, onOrder, emptyHint }: {
+function OrderSection({ title, kind, card, busy, orders, services, value, onChange, onOrder, onView, emptyHint }: {
   title: string; kind: "lab" | "imaging"; card: string; busy: boolean; orders: VisitOrder[]; services: HospitalService[];
-  value: string; onChange: (id: string) => void; onOrder: () => void; emptyHint: string;
+  value: string; onChange: (id: string) => void; onOrder: () => void; onView: (o: VisitOrder) => void; emptyHint: string;
 }) {
   return (
     <div className={card}>
@@ -330,9 +353,14 @@ function OrderSection({ title, kind, card, busy, orders, services, value, onChan
                   <p className="font-medium">{o.name} <span className="text-xs font-normal text-neutral-400">{o.order_no}</span></p>
                   {o.result && <p className="text-xs text-neutral-600">Result: {o.result}</p>}
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${unpaid ? "bg-rose-100 text-rose-700" : o.status === "reported" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
-                  {unpaid ? `Fee Rs ${o.fee.toFixed(0)} unpaid` : o.status === "reported" ? "Reported" : "Paid · in progress"}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {o.status === "reported" && (
+                    <Button variant="ghost" onClick={() => onView(o)}><FileText size={13} className="mr-1" />View report</Button>
+                  )}
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${unpaid ? "bg-rose-100 text-rose-700" : o.status === "reported" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                    {unpaid ? `Fee Rs ${o.fee.toFixed(0)} unpaid` : o.status === "reported" ? "Reported" : "Paid · in progress"}
+                  </span>
+                </div>
               </div>
             );
           })}

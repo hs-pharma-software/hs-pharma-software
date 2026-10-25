@@ -387,14 +387,14 @@ export async function reportImaging(orderId: string, r: { findings: string | nul
 }
 
 /** Lab and radiology orders of one visit (for the doctor's desk). */
-export async function listVisitOrders(episodeId: string): Promise<{ kind: OrderKind; id: string; order_no: string; name: string; fee: number; paid: number; status: string; result: string | null }[]> {
+export async function listVisitOrders(episodeId: string): Promise<{ kind: OrderKind; id: string; order_no: string; name: string; fee: number; paid: number; status: string; result: string | null; request_id: string | null }[]> {
   const t = requireCurrentTenantId();
   return dbSelect(
     `SELECT 'lab' AS kind, id, order_no, test_name AS name, COALESCE(fee, 0) AS fee, COALESCE(paid, 0) AS paid, status,
-            CASE WHEN status != 'reported' OR result_value IS NULL THEN NULL ELSE result_value || COALESCE(' ' || unit, '') END AS result
+            CASE WHEN status != 'reported' OR result_value IS NULL THEN NULL ELSE result_value || COALESCE(' ' || unit, '') END AS result, request_id
      FROM hospital_lab_orders WHERE tenant_id = ? AND episode_id = ? AND deleted_at IS NULL
      UNION ALL
-     SELECT 'imaging' AS kind, id, order_no, modality AS name, COALESCE(fee, 0) AS fee, COALESCE(paid, 0) AS paid, status, impression AS result
+     SELECT 'imaging' AS kind, id, order_no, modality AS name, COALESCE(fee, 0) AS fee, COALESCE(paid, 0) AS paid, status, impression AS result, NULL AS request_id
      FROM hospital_imaging_orders WHERE tenant_id = ? AND episode_id = ? AND deleted_at IS NULL`,
     [t, episodeId, t, episodeId]
   );

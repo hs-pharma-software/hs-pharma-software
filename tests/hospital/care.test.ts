@@ -8,8 +8,9 @@ import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
 import { hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextMrNo, listChargesForEpisode } from "@/lib/repo/hospital";
-import { saveHospitalStaff, bookOpdVisit, saveConsultationNotes, saveRx, orderInvestigation, payOrderFee, reportLabResult, reportImaging } from "@/lib/repo/hospitalOpd";
-import { verifyLabResult } from "@/lib/repo/labReports";
+import { saveHospitalStaff, bookOpdVisit, saveConsultationNotes, saveRx, orderInvestigation, payOrderFee, reportLabResult, reportImaging, listVisitOrders } from "@/lib/repo/hospitalOpd";
+import { verifyLabResult, getLabReport } from "@/lib/repo/labReports";
+import { getRadiologyReport } from "@/lib/repo/radiology";
 import {
   listSurgeryTypes, saveSurgeryType, admitFromVisit, listSurgeryBookings, markSurgeryDone, cancelSurgery, getPatientHistory,
 } from "@/lib/repo/hospitalCare";
@@ -179,4 +180,34 @@ test("Surgery is in the hospital menu after Radiology; the HoD may open it, a co
   assert.ok(hod.includes("Surgery"));
   const con = visibleNavFor("hospital", null, designation("consultant")!.pages).map((n) => n.label);
   assert.ok(!con.includes("Surgery"));
+});
+
+test("doctor desk: a reported test or scan of the visit opens its report for the treating doctor", async () => {
+  const dr = await doctor();
+  const p = await patient();
+  const { episode } = await bookOpdVisit({ patientId: p.id, doctorId: dr.id });
+  const hb = await hospitalServicesRepo.create({ code: "HB", name: "Haemoglobin", department: "Lab", category: "lab", billing_unit: "test", rate: 300, is_active: 1, notes: null });
+  const xr = await hospitalServicesRepo.create({ code: "XR", name: "Chest X-Ray", department: "Radiology", category: "imaging", billing_unit: "test", rate: 1200, is_active: 1, notes: null });
+  const lab = await orderInvestigation(episode.id, hb.id);
+  const rad = await orderInvestigation(episode.id, xr.id);
+  await payOrderFee("lab", lab.order.id, "cash");
+  await payOrderFee("imaging", rad.order.id, "cash");
+  await reportLabResult(lab.order.id, { result_value: "10.1", unit: "g/dL", ref_range: "13-17", flag: "L" });
+  await verifyLabResult(lab.order.id);
+  await reportImaging(rad.order.id, { findings: "No consolidation", impression: "Normal chest", radiologist: "Dr R" });
+
+  const orders = await listVisitOrders(episode.id);
+  const labRow = orders.find((o) => o.kind === "lab")!;
+  assert.ok(labRow.request_id, "the lab test carries its lab request");
+  assert.equal(orders.find((o) => o.kind === "imaging")!.request_id, null);
+
+  // The consultant's own login: Doctor Desk pages only.
+  useAuthStore.setState({
+    currentUser: { id: "dr-user", username: "dr", displayName: "Dr Ayesha Khan", role: "staff", tenantId: H, permissions: designation("consultant")!.pages },
+  });
+  const report = await getLabReport(labRow.request_id!, { checked: true, method: `treating doctor, visit ${episode.episode_no}` });
+  assert.deepEqual(report.tests.map((t) => [t.test_name, t.result_value, t.flag]), [["Haemoglobin", "10.1", "L"]]);
+  assert.equal(report.patient.name, "Bilal Ahmed");
+  const scan = await getRadiologyReport(rad.order.id);
+  assert.equal(scan.order.impression, "Normal chest");
 });
