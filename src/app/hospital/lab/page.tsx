@@ -14,7 +14,8 @@ import {
   labCapabilities, listLabWorklist, receiveSample, enterLabResult, verifyLabResult, returnLabResult, cancelLabTest, testStatusLabel,
   type LabCapabilities, type WorklistRow, type WorklistView,
 } from "@/lib/repo/labReports";
-import type { OrderPriority, HospitalService, HospitalEpisode, HospitalLabOrder, LabRequest } from "@/lib/types-hospital";
+import { panelFor, flagFor, rangeForSex, parseComponents, summarizeComponents, type PanelParam } from "@/config/labPanels";
+import type { OrderPriority, HospitalService, HospitalEpisode, HospitalLabOrder, LabComponent, LabRequest } from "@/lib/types-hospital";
 
 const VIEWS: { key: WorklistView; label: string }[] = [
   { key: "active", label: "In progress" },
@@ -142,7 +143,7 @@ export default function LabOrdersPage() {
                               {t.status === "reported" && t.verified_by_name && <span className="mt-0.5 block text-[11px] text-neutral-500">{t.verified_by_name}</span>}
                             </td>
                             <td className="py-1.5 pr-2 tabular-nums">
-                              {showResult && t.result_value ? `${t.result_value} ${t.unit ?? ""}${t.flag && t.flag !== "N" ? ` (${t.flag})` : ""}` : "—"}
+                              {!showResult || !t.result_value ? "—" : t.components ? <PanelResult json={t.components} /> : `${t.result_value} ${t.unit ?? ""}${t.flag && t.flag !== "N" ? ` (${t.flag})` : ""}`}
                             </td>
                             <td className="py-1.5 text-right">
                               <div className="flex flex-wrap justify-end gap-1">
@@ -285,7 +286,133 @@ function NewLabOrder({ patients, onClose, onSaved }: { patients: HospitalPatient
   );
 }
 
+/** A panel result in the worklist: the abnormal values, and every parameter on
+ * demand (so the pathologist sees them all before verifying). */
+function PanelResult({ json }: { json: string }) {
+  const parts = parseComponents(json);
+  return (
+    <details>
+      <summary className="cursor-pointer">
+        {summarizeComponents(parts.filter((c) => c.flag === "H" || c.flag === "L")) || "All in range"} <span className="text-xs text-neutral-400">({parts.length} parameters)</span>
+      </summary>
+      <table className="mt-1 text-xs">
+        <tbody>
+          {parts.map((c) => (
+            <tr key={c.key}>
+              <td className="pr-3 text-neutral-600">{c.name}</td>
+              <td className={`pr-2 font-medium ${c.flag === "H" || c.flag === "L" ? "text-rose-600" : ""}`}>{c.value}{c.flag === "H" || c.flag === "L" ? ` ${c.flag}` : ""}</td>
+              <td className="pr-2 text-neutral-500">{c.unit}</td>
+              <td className="text-neutral-400">{c.ref_range}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
 function ResultModal({ order, onClose, onSaved }: { order: HospitalLabOrder; onClose: () => void; onSaved: () => void }) {
+  const panel = panelFor(order.test_name);
+  if (panel) return <PanelResultModal order={order} panel={panel} onClose={onClose} onSaved={onSaved} />;
+  return <SingleResultModal order={order} onClose={onClose} onSaved={onSaved} />;
+}
+
+type PanelRow = { key: string; name: string; group: string | null; value: string; unit: string; range: string; flag: "N" | "H" | "L" | ""; auto: boolean };
+
+/** CBC and other panels: one line per parameter with its default unit and
+ * range; the flag follows the value and the patient's sex unless changed. */
+function PanelResultModal({ order, panel, onClose, onSaved }: { order: HospitalLabOrder; panel: PanelParam[]; onClose: () => void; onSaved: () => void }) {
+  const [gender, setGender] = useState<string | null>(null);
+  const [rows, setRows] = useState<PanelRow[]>(() => {
+    const saved = new Map(parseComponents(order.components).map((c) => [c.key, c]));
+    return panel.map((p) => {
+      const c = saved.get(p.key);
+      return { key: p.key, name: p.name, group: p.group, value: c?.value ?? "", unit: c?.unit ?? p.unit, range: c?.ref_range ?? p.range, flag: c?.flag ?? "", auto: !c };
+    });
+  });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    void hospitalPatientsRepo.get(order.patient_id).then((p) => setGender(p?.gender ?? null)).catch(() => setGender(null));
+  }, [order.patient_id]);
+
+  const flagOf = (r: PanelRow) => (r.auto ? flagFor(r.value, r.range, gender) ?? "" : r.flag);
+  const set = (i: number, patch: Partial<PanelRow>) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const filled = rows.filter((r) => r.value.trim());
+
+  async function save() {
+    if (!filled.length || saving) return;
+    setSaving(true);
+    try {
+      const components: LabComponent[] = filled.map((r) => {
+        const flag = flagOf(r);
+        return { key: r.key, name: r.name, group: r.group, value: r.value.trim(), unit: r.unit.trim() || null, ref_range: r.range.trim() || null, flag: flag || null };
+      });
+      await enterLabResult(order.id, { result_value: summarizeComponents(components), unit: null, ref_range: null, flag: "N", components });
+      onSaved();
+    } catch (e) {
+      fail("save the result", e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={`Result: ${order.test_name}`} onClose={onClose} width="max-w-3xl">
+      <p className="mb-2 text-xs text-neutral-500">
+        Enter the analyser values. H / L is set from the reference range{gender ? ` for ${gender.toLowerCase()} patients` : ""}; choose a flag to override it. Empty lines are left off the report.
+      </p>
+      <div className="mb-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-neutral-100 text-left text-xs text-neutral-500">
+            <th className="pb-1 pr-2 font-medium">Parameter</th><th className="pb-1 pr-2 font-medium">Result</th><th className="pb-1 pr-2 font-medium">Unit</th>
+            <th className="pb-1 pr-2 font-medium">Reference range</th><th className="pb-1 font-medium">Flag</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const flag = flagOf(r);
+              const forSex = gender ? rangeForSex(r.range, gender) : null;
+              return [
+                r.group && r.group !== rows[i - 1]?.group
+                  ? <tr key={`g-${r.key}`}><td colSpan={5} className="pb-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{r.group}</td></tr>
+                  : null,
+                <tr key={r.key} className="border-b border-neutral-50">
+                  <td className="py-1 pr-2">{r.name}</td>
+                  <td className="py-1 pr-2">
+                    <Input id={`res-${r.key}`} value={r.value} onChange={(e) => set(i, { value: e.target.value })} autoFocus={i === 0} inputMode="decimal"
+                      className={`w-24 tabular-nums ${flag === "H" || flag === "L" ? "font-semibold text-rose-600" : ""}`} />
+                  </td>
+                  <td className="py-1 pr-2"><Input value={r.unit} onChange={(e) => set(i, { unit: e.target.value })} className="w-24" /></td>
+                  <td className="py-1 pr-2">
+                    <Input value={r.range} onChange={(e) => set(i, { range: e.target.value })} className="w-44" />
+                    {forSex && forSex !== r.range.trim() && <span className="block text-[11px] text-neutral-400">Used: {forSex}</span>}
+                  </td>
+                  <td className="py-1">
+                    <Select value={r.auto ? "auto" : r.flag} className="w-28"
+                      onChange={(e) => set(i, e.target.value === "auto" ? { auto: true } : { auto: false, flag: e.target.value as PanelRow["flag"] })}>
+                      <option value="auto">{r.auto && flag ? `Auto (${flag})` : "Auto"}</option>
+                      <option value="N">Normal</option>
+                      <option value="H">High</option>
+                      <option value="L">Low</option>
+                    </Select>
+                  </td>
+                </tr>,
+              ];
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mb-3 text-xs text-neutral-500">The result is saved as &ldquo;Awaiting Verification&rdquo;. It is released to the patient only after a pathologist verifies it.</p>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !filled.length}>
+          {saving ? "Saving…" : `Save ${filled.length} parameter${filled.length === 1 ? "" : "s"}`}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function SingleResultModal({ order, onClose, onSaved }: { order: HospitalLabOrder; onClose: () => void; onSaved: () => void }) {
   const [value, setValue] = useState(order.result_value ?? "");
   const [unit, setUnit] = useState(order.unit ?? "");
   const [range, setRange] = useState(order.ref_range ?? "");

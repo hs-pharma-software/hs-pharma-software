@@ -520,7 +520,18 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Collection Centers", href: "/hospital/lab/centers" },
     ],
   },
-  { label: "Radiology", href: "/hospital/radiology", icon: ScanLine, moduleKey: "hospital_radiology", onlyFor: ["hospital"] },
+  {
+    label: "Radiology",
+    href: "/hospital/radiology",
+    icon: ScanLine,
+    moduleKey: "hospital_radiology",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Radiology Orders", href: "/hospital/radiology", moduleKey: "hospital_radiology_orders" },
+      { label: "Performing Images", href: "/hospital/radiology/studies" },
+      { label: "Radiology Reports", href: "/hospital/radiology/reports", moduleKey: "hospital_radiology_reports" },
+    ],
+  },
   { label: "Surgery", href: "/hospital/surgery", icon: Scissors, moduleKey: "hospital_surgery", onlyFor: ["hospital"] },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
   {

@@ -20,7 +20,7 @@ import {
 import { getPharmacyLink, postToPharmacyMailbox } from "./clinic";
 import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, formatEmployeeId } from "../../config/hospitalStaff";
 import type { Staff } from "../types";
-import { createLabRequest, enterLabResult, labCapabilities, labRequestsRepo, collectionCentersRepo } from "./labReports";
+import { createLabRequest, enterLabResult, labCapabilities, labRequestsRepo, collectionCentersRepo, type LabResultInput } from "./labReports";
 
 const labRequestsRepoCenters = (id: string) => collectionCentersRepo.get(id);
 import type { HospitalEpisode, HospitalRxItem, HospitalLabOrder, HospitalImagingOrder, HospitalService, LabRequest, PaymentMethod } from "../types-hospital";
@@ -373,7 +373,7 @@ export async function listUnpaidOrders(): Promise<UnpaidOrderRow[]> {
 
 /** Enters a lab result (refused while the fee is unpaid). The result is not
  * released: it waits for a pathologist's verification (see labReports.ts). */
-export async function reportLabResult(orderId: string, r: { result_value: string; unit: string | null; ref_range: string | null; flag: "N" | "H" | "L" }): Promise<void> {
+export async function reportLabResult(orderId: string, r: LabResultInput): Promise<void> {
   await enterLabResult(orderId, r);
 }
 

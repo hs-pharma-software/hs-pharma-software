@@ -53,7 +53,7 @@ async function hire(name: string, staff_category: string, license_no: string | n
 let cbc: string, sugar: string;
 
 beforeEach(async () => {
-  sql = fullSchemaDb(42);
+  sql = fullSchemaDb();
   setTestDb(sql);
   insert("subscription_plans", { id: "plan", name: "Plan", max_staff_logins: 20, price: 0 });
   insert("tenants", { id: H, name: "Test Hospital Sargodha", business_type: "hospital", subscription_plan_id: "plan" });
@@ -291,6 +291,7 @@ test("10. existing billing, registration and doctor orders keep working; existin
   row("hospital_lab_orders", { id: "o-old", tenant_id: H, order_no: "LAB-20261001-0001", patient_id: "p-old", test_name: "Hb", status: "reported", result_value: "12", ordered_at: TODAY, reported_at: "2026-10-01 10:00" });
   row("hospital_lab_orders", { id: "o-wait", tenant_id: H, order_no: "LAB-20261001-0002", patient_id: "p-old", test_name: "TSH", status: "pending", ordered_at: TODAY });
   applySchema(old, 42);
+  for (const v of [43, 44]) applySchema(old, v);
   const reqs = old.prepare(`SELECT id, lab_no FROM hospital_lab_requests ORDER BY lab_no`).all() as { id: string; lab_no: string }[];
   assert.deepEqual(reqs.map((r) => r.lab_no), ["LN-LAB-20261001-0001", "LN-LAB-20261001-0002"]);
   const migrated = old.prepare(`SELECT status, verified_by_name, verified_at, request_id FROM hospital_lab_orders WHERE id = 'o-old'`).get() as Record<string, unknown>;

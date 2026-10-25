@@ -15,6 +15,7 @@ import {
 import type { PaymentMethod } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
 import PatientFormModal from "../patients/PatientFormModal";
+import { ReceiptModal } from "./ReceiptModal";
 
 const STATUS_LABEL: Record<string, string> = { waiting: "Waiting", in_consultation: "With doctor", done: "Seen" };
 const STATUS_COLOR: Record<string, string> = {
@@ -38,6 +39,7 @@ export default function ReceptionPage() {
   const [booking, setBooking] = useState(false);
   const [slip, setSlip] = useState<{ visit: BookedVisit; patient: HospitalPatient; doctor: Staff } | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
 
   async function reload() {
     if (!isTauri()) return;
@@ -198,7 +200,12 @@ export default function ReceptionPage() {
                       <td className="py-1.5 pr-2">{q.patient_name}<div className="font-mono text-[11px] text-neutral-400">{q.episode_no}</div></td>
                       <td className="py-1.5 pr-2 text-neutral-600">{q.doctor_name ?? "—"}</td>
                       <td className="py-1.5 pr-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[q.consult_status ?? "waiting"] ?? ""}`}>{STATUS_LABEL[q.consult_status ?? "waiting"] ?? q.consult_status}</span></td>
-                      <td className={`py-1.5 text-right tabular-nums ${q.charges - q.paid > 0 ? "font-medium text-rose-600" : "text-neutral-400"}`}>{(q.charges - q.paid).toFixed(0)}</td>
+                      <td className="py-1.5 text-right">
+                        <button type="button" onClick={() => setReceiptFor(q.id)} title="Show the payment receipt"
+                          className={`rounded px-1.5 py-0.5 tabular-nums underline-offset-2 hover:bg-amber-50 hover:underline ${q.charges - q.paid > 0 ? "font-medium text-rose-600" : "text-neutral-500"}`}>
+                          {(q.charges - q.paid).toFixed(0)}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -228,6 +235,7 @@ export default function ReceptionPage() {
         </div>
       </div>
 
+      {receiptFor && <ReceiptModal episodeId={receiptFor} onClose={() => setReceiptFor(null)} onChanged={() => void reload()} />}
       {registering && (
         <PatientFormModal
           patient={null}

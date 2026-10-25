@@ -9,6 +9,7 @@ import { isTursoConfigured, pullAuthData } from "@/lib/sync/engine";
 import { Button } from "@/components/ui/Button";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
 import { LoginScreen } from "./LoginScreen";
+import { isPublicPath } from "@/lib/publicPaths";
 
 type GateState = "checking" | "setup" | "login" | "offline";
 
@@ -47,12 +48,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Landing page and already-logged-in: skip DB check
-    if (pathname === "/" || currentUser) return;
+    if (isPublicPath(pathname) || currentUser) return;
     void check();
   }, [pathname, currentUser, check]);
 
-  // Landing page is public — no auth needed
-  if (pathname === "/") return <>{children}</>;
+  // Landing page and online lab reports are public — no auth needed
+  if (isPublicPath(pathname)) return <>{children}</>;
 
   // Already logged in — show the app
   if (currentUser) {

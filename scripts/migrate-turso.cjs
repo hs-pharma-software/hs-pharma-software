@@ -313,6 +313,7 @@ const MIGRATIONS = [
   { version: 42, label: 'central lab reports: requests, lab / invoice numbers, verification, collection centers, print log', statements: rustSchemaStatements(42) },
 
   { version: 43, label: 'admission from the doctor desk, planned surgeries', statements: rustSchemaStatements(43) },
+  { version: 44, label: 'CBC panel results, lab report QR token, radiology study modality', statements: rustSchemaStatements(44) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

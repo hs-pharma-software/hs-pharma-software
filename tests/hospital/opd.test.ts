@@ -49,7 +49,7 @@ const service = (name: string, category: "lab" | "imaging" | "procedure", rate: 
   hospitalServicesRepo.create({ code: name.toUpperCase().replace(/\W/g, "").slice(0, 8), name, department: category === "lab" ? "Laboratory" : "Radiology", category, billing_unit: "test", rate, is_active: 1, notes: null });
 
 beforeEach(() => {
-  sql = fullSchemaDb(42);
+  sql = fullSchemaDb();
   setTestDb(sql);
   insert("subscription_plans", { id: "plan", name: "Plan", max_staff_logins: 10, price: 0 });
   for (const [id, type] of [[H, "hospital"], [H2, "hospital"], [PH, "hospital_pharmacy"]]) insert("tenants", { id, name: `${id} name`, business_type: type, subscription_plan_id: "plan" });
@@ -111,13 +111,13 @@ test("a login per role: receptionist sees Reception, a consultant the Doctor Des
   await assert.rejects(createStaffLogin(con.id, "x", "pass1234"), /already has a login/);
 
   const menu = (perms: string[] | null) => visibleNavFor("hospital", null, perms).map((i) => i.label);
-  assert.deepEqual(menu(JSON.parse(recUser.permissions!)), ["Reception", "Hospital", "Patient", "Episodes & Billing", "Labs"]);
+  assert.deepEqual(menu(JSON.parse(recUser.permissions!)), ["Reception", "Hospital", "Patient", "Episodes & Billing", "Labs", "Radiology"]);
   const recLabs = visibleNavFor("hospital", null, JSON.parse(recUser.permissions!)).find((i) => i.label === "Labs")!;
   assert.deepEqual(recLabs.children!.map((c) => c.label), ["Lab Reports"], "a receptionist only searches and prints reports");
   // At the front desk "Hospital" holds only the OPD / IPD / Emergency queues, not the hospital's profile.
   const recHospital = visibleNavFor("hospital", null, JSON.parse(recUser.permissions!)).find((i) => i.label === "Hospital")!;
   assert.deepEqual(recHospital.children!.map((c) => c.label), ["OPD Queue", "Inpatients (IPD)", "Emergency"]);
-  assert.deepEqual(menu(JSON.parse(conUser.permissions!)), ["Doctor Desk", "Patient", "Labs"], "doctors can look up lab reports");
+  assert.deepEqual(menu(JSON.parse(conUser.permissions!)), ["Doctor Desk", "Patient", "Labs", "Radiology"], "doctors can look up lab reports");
   assert.ok(menu(null).includes("HR Department"));
 
   // The doctor's own login finds their staff record (the Doctor Desk opens on their patients).

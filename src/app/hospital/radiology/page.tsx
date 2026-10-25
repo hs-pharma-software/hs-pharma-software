@@ -8,20 +8,16 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
-import { hospitalImagingRepo, hospitalPatientsRepo, nextOrderNo, type HospitalImagingOrder, type HospitalPatient } from "@/lib/repo/hospital";
+import { hospitalImagingRepo, hospitalPatientsRepo, type HospitalImagingOrder, type HospitalPatient } from "@/lib/repo/hospital";
+import { listImagingStudies, orderImaging } from "@/lib/repo/radiology";
 import { canProcess, reportImaging } from "@/lib/repo/hospitalOpd";
-import type { OrderPriority } from "@/lib/types-hospital";
-import { localDateTime } from "@/lib/localDate";
-
-const MODALITIES = ["X-Ray", "Ultrasound", "CT Scan", "MRI", "Echo", "ECG", "Mammography", "Fluoroscopy"];
+import type { HospitalService, OrderPriority } from "@/lib/types-hospital";
 const STATUS_COLOR: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
   performed: "bg-blue-100 text-blue-700",
   reported: "bg-emerald-100 text-emerald-700",
   cancelled: "bg-neutral-100 text-neutral-500",
 };
-
-const now = () => localDateTime();
 
 export default function RadiologyPage() {
   const [rows, setRows] = useState<HospitalImagingOrder[]>([]);
@@ -43,7 +39,7 @@ export default function RadiologyPage() {
   const columns: Column<HospitalImagingOrder>[] = [
     { header: "Order No", render: (r) => <span className="font-mono text-xs">{r.order_no}</span> },
     { header: "Patient", render: (r) => <span className="font-medium">{patientName(r.patient_id)}</span> },
-    { header: "Modality", render: (r) => r.modality },
+    { header: "Study", render: (r) => r.modality },
     { header: "Body Part", render: (r) => r.body_part ?? "—" },
     { header: "Priority", render: (r) => r.priority },
     { header: "Status", render: (r) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[r.status] ?? ""}`}>{r.status}</span> },
@@ -61,7 +57,7 @@ export default function RadiologyPage() {
   return (
     <div>
       <PageHeader
-        title="Radiology"
+        title="Radiology Orders"
         actions={
           <>
             <div className="flex rounded-lg overflow-hidden border border-neutral-200 text-sm">
@@ -83,33 +79,24 @@ export default function RadiologyPage() {
 }
 
 function NewOrder({ patients, onClose, onSaved }: { patients: HospitalPatient[]; onClose: () => void; onSaved: () => void }) {
+  const [studies, setStudies] = useState<HospitalService[]>([]);
   const [patientId, setPatientId] = useState("");
-  const [modality, setModality] = useState(MODALITIES[0]);
+  const [studyId, setStudyId] = useState("");
   const [bodyPart, setBodyPart] = useState("");
   const [priority, setPriority] = useState<OrderPriority>("routine");
   const [orderedBy, setOrderedBy] = useState("");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    void listImagingStudies().then(setStudies).catch(() => setStudies([]));
+  }, []);
+  const study = studies.find((s) => s.id === studyId);
+
   async function save() {
-    if (!patientId) return;
+    if (!patientId || !studyId) return;
     setSaving(true);
     try {
-      await hospitalImagingRepo.create({
-        order_no: await nextOrderNo("hospital_imaging_orders"),
-        episode_id: null,
-        patient_id: patientId,
-        modality,
-        body_part: bodyPart.trim() || null,
-        priority,
-        status: "pending",
-        findings: null,
-        impression: null,
-        radiologist: null,
-        ordered_by: orderedBy.trim() || null,
-        ordered_at: now(),
-        reported_at: null,
-        notes: null,
-      });
+      await orderImaging({ patientId, serviceId: studyId, bodyPart, priority, orderedBy });
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -129,12 +116,16 @@ function NewOrder({ patients, onClose, onSaved }: { patients: HospitalPatient[];
             </Select>
           </Field>
         </div>
-        <Field label="Modality">
-          <Select value={modality} onChange={(e) => setModality(e.target.value)}>
-            {MODALITIES.map((m) => <option key={m} value={m}>{m}</option>)}
-          </Select>
-        </Field>
-        <Field label="Body Part / Study"><Input value={bodyPart} onChange={(e) => setBodyPart(e.target.value)} placeholder="Chest PA, Abdomen…" /></Field>
+        <div className="md:col-span-2">
+          <Field label="Study *">
+            <Select value={studyId} onChange={(e) => setStudyId(e.target.value)}>
+              <option value="">{studies.length ? "— Choose a study —" : "No studies performed yet (Radiology › Performing Images)"}</option>
+              {studies.map((s) => <option key={s.id} value={s.id}>{s.name}{s.modality ? ` · ${s.modality}` : ""} · Rs {Number(s.rate).toFixed(0)}</option>)}
+            </Select>
+          </Field>
+          {study && <p className="mt-1 text-xs text-neutral-500">{Number(study.rate) > 0 ? `Fee Rs ${Number(study.rate).toFixed(0)} goes on the patient's bill; the study can be reported once Reception takes it.` : "No fee for this study."}</p>}
+        </div>
+        <Field label="Body part / side"><Input value={bodyPart} onChange={(e) => setBodyPart(e.target.value)} placeholder="e.g. Left knee" /></Field>
         <Field label="Priority">
           <Select value={priority} onChange={(e) => setPriority(e.target.value as OrderPriority)}>
             <option value="routine">Routine</option>
@@ -146,7 +137,7 @@ function NewOrder({ patients, onClose, onSaved }: { patients: HospitalPatient[];
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId}>{saving ? "Saving…" : "Place Order"}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId || !studyId}>{saving ? "Saving…" : "Place Order"}</Button>
       </div>
     </Modal>
   );

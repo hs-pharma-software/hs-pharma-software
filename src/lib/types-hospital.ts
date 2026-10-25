@@ -56,6 +56,8 @@ export interface HospitalService extends TenantRow {
   unit?: string | null;
   ref_range?: string | null;
   turnaround_hours?: number | null;
+  /** Radiology study modality in Performing Images (v44): X-Ray, Ultrasound, CT... */
+  modality?: string | null;
 }
 
 export type EpisodeType = "opd" | "ipd" | "emergency";
@@ -170,6 +172,8 @@ export interface HospitalLabOrder extends TenantRow, OrderFee {
   verified_by_name?: string | null;
   verified_by_license?: string | null;
   verified_at?: string | null;
+  /** Results of a test with several parameters (CBC), JSON LabComponent[] (v44). */
+  components?: string | null;
   result_value: string | null;
   unit: string | null;
   ref_range: string | null;
@@ -195,6 +199,17 @@ export interface HospitalImagingOrder extends TenantRow, OrderFee {
   ordered_at: string;
   reported_at: string | null;
   notes: string | null;
+}
+
+/** One parameter of a panel test result (Hb, TLC, platelets... of a CBC). */
+export interface LabComponent {
+  key: string;
+  name: string;
+  group: string | null;
+  value: string;
+  unit: string | null;
+  ref_range: string | null;
+  flag: "N" | "H" | "L" | null;
 }
 
 export type LabTestStatus = "pending" | "collected" | "processing" | "awaiting_verification" | "reported" | "cancelled" | "superseded";
@@ -227,6 +242,8 @@ export interface LabRequest extends TenantRow {
   print_count: number;
   last_printed_at: string | null;
   notes: string | null;
+  /** Random token in the report QR code for the online copy (v44). */
+  public_token?: string | null;
 }
 
 export type SurgeryStatus = "planned" | "done" | "cancelled";

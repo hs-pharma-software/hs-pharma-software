@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { StaffFormModal } from "@/components/staff/StaffFormModal";
+import { StaffPermissionsModal } from "@/components/staff/StaffPermissionsModal";
 import { staffRepo } from "@/lib/repo/staff";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { Staff } from "@/lib/types";
@@ -18,6 +19,9 @@ export default function StaffPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
   const isHospital = useAuthStore((st) => businessType(st.currentTenant?.businessType).id === "hospital");
+  // Only the owner or a full-access login may change what other logins can open.
+  const canSetPermissions = useAuthStore((st) => st.currentUser?.role !== "staff" || st.currentUser?.permissions === null);
+  const [permsFor, setPermsFor] = useState<Staff | null>(null);
 
   async function reload() {
     if (!isTauri()) return;
@@ -48,6 +52,19 @@ export default function StaffPage() {
     { header: "CNIC", render: (s) => s.cnic ?? "\u2014" },
     { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "\u2014" },
     { header: "Basic Pay", render: (s) => s.basic_pay.toFixed(2) },
+    {
+      header: "",
+      render: (s: Staff) => (
+        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" onClick={() => { setEditing(s); setModalOpen(true); }}>Edit</Button>
+          {isHospital && canSetPermissions && (
+            <Button variant="ghost" disabled={!s.user_id} title={s.user_id ? undefined : "Give this staff member a login first (Edit)"} onClick={() => setPermsFor(s)}>
+              Permissions
+            </Button>
+          )}
+        </div>
+      ),
+    },
   ];
 
   const tauriReady = useIsTauri();
@@ -96,6 +113,7 @@ export default function StaffPage() {
         />
       )}
 
+      {permsFor && <StaffPermissionsModal staff={permsFor} onClose={() => setPermsFor(null)} onSaved={() => setPermsFor(null)} />}
       {modalOpen && (
         <StaffFormModal
           staff={editing}

@@ -18,7 +18,7 @@ function login() {
 }
 
 beforeEach(() => {
-  setTestDb(fullSchemaDb(42));
+  setTestDb(fullSchemaDb());
   login();
 });
 

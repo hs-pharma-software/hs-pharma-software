@@ -1282,6 +1282,18 @@ fn schema_sql_v34() -> &'static str {
 /// - hospital_episodes.from_episode_id: the OPD visit an admission came from.
 /// - hospital_surgery_bookings: a surgery planned for an admission, with its type
 ///   (an "ot" service of the Surgery tab), fee, surgeon, planned date and status.
+/// v44: lab results with several parameters (CBC panel) as JSON, a random
+/// token per lab request for the online report behind the QR code, and the
+/// modality of a radiology study in Performing Images.
+fn schema_sql_v44() -> &'static str {
+    r#"
+    ALTER TABLE hospital_lab_orders ADD COLUMN components TEXT;
+    ALTER TABLE hospital_lab_requests ADD COLUMN public_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hosp_lab_req_public_token ON hospital_lab_requests (public_token) WHERE public_token IS NOT NULL;
+    ALTER TABLE hospital_services ADD COLUMN modality TEXT
+    "#
+}
+
 fn schema_sql_v43() -> &'static str {
     r#"
     ALTER TABLE hospital_episodes ADD COLUMN from_episode_id TEXT;
@@ -2403,6 +2415,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 43,
             description: "admissions_and_surgery_bookings",
             sql: schema_sql_v43(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 44,
+            description: "cbc_panel_report_qr_radiology_studies",
+            sql: schema_sql_v44(),
             kind: MigrationKind::Up,
         },
     ]

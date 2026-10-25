@@ -16,7 +16,7 @@ export interface Designation {
   pages: string[] | null;
 }
 
-const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab_reports"];
+const DOCTOR_PAGES = ["hospital_doctor_desk", "hospital_patients", "hospital_lab_reports", "hospital_radiology_reports"];
 
 export const DESIGNATIONS: Designation[] = [
   { key: "hod", label: "Head of Department (HoD)", prefix: "HOD", license: "PMDC", licenseRequired: true, doctor: true,
@@ -38,7 +38,7 @@ export const DESIGNATIONS: Designation[] = [
   { key: "hr_officer", label: "HR Officer", prefix: "HR", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr"] },
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports"] },
+    pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports", "hospital_radiology_reports"] },
   { key: "other", label: "Other", prefix: "EMP", license: null, licenseRequired: false, doctor: false, pages: ["hospital_dashboard"] },
 ];
 

@@ -1,11 +1,16 @@
-/** Patient history across visits, admission from the doctor's desk, and
- * surgeries (types with fees in the Surgery tab, bookings on admissions). */
+/** Patient history across visits, admission from the doctor's desk,
+ * surgeries (types with fees in the Surgery tab, bookings on admissions), and
+ * the payment receipt of a visit. */
 import { dbSelect } from "../db";
 import { createTenantRepo, requireCurrentTenantId } from "./base";
 import { localDate, localDateTime } from "../localDate";
 import { staffRepo } from "./staff";
-import { hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo, addCharge, deleteCharge } from "./hospital";
-import type { HospitalEpisode, HospitalRxItem, HospitalService, SurgeryBooking } from "../types-hospital";
+import { getSetting } from "./settings";
+import { useAuthStore } from "../../store/authStore";
+import {
+  hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo, addCharge, deleteCharge, listChargesForEpisode, listPaymentsForEpisode,
+} from "./hospital";
+import type { HospitalCharge, HospitalEpisode, HospitalPatient, HospitalPayment, HospitalRxItem, HospitalService, SurgeryBooking } from "../types-hospital";
 
 export const surgeryBookingsRepo = createTenantRepo<SurgeryBooking>("hospital_surgery_bookings", {
   refs: [["episode_id", "hospital_episodes", "Admission"], ["patient_id", "hospital_patients", "Patient"], ["service_id", "hospital_services", "Surgery"]],
@@ -226,4 +231,49 @@ export async function getPatientHistory(patientId: string, excludeEpisodeId?: st
     });
   }
   return out;
+}
+
+// ── Payment receipt ───────────────────────────────────────────────────────
+
+export interface VisitReceipt {
+  hospital: { name: string; address: string | null; phone: string | null };
+  episode: HospitalEpisode;
+  patient: HospitalPatient | null;
+  doctorName: string | null;
+  charges: HospitalCharge[];
+  payments: HospitalPayment[];
+  total: number;
+  paid: number;
+  due: number;
+}
+
+/** Everything on a visit's bill: charges, payments (refunds count against
+ * them) and what is still due. */
+export async function getVisitReceipt(episodeId: string): Promise<VisitReceipt> {
+  const episode = await hospitalEpisodesRepo.get(episodeId);
+  if (!episode) throw new Error("Visit not found in this hospital.");
+  const [patient, doctor, charges, payments, profileJson] = await Promise.all([
+    hospitalPatientsRepo.get(episode.patient_id),
+    episode.doctor_id ? staffRepo.get(episode.doctor_id) : Promise.resolve(null),
+    listChargesForEpisode(episode.id),
+    listPaymentsForEpisode(episode.id),
+    getSetting("hospital.profile"),
+  ]);
+  let profile: { name?: string; address?: string; phone?: string; city?: string } = {};
+  try {
+    profile = JSON.parse(profileJson ?? "{}");
+  } catch {
+    profile = {};
+  }
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const total = round(charges.reduce((a, c) => a + Number(c.amount), 0));
+  const paid = round(payments.reduce((a, p) => a + (p.type === "refund" ? -1 : 1) * Number(p.amount), 0));
+  return {
+    hospital: {
+      name: profile.name || useAuthStore.getState().currentTenant?.name || "Hospital",
+      address: [profile.address, profile.city].filter(Boolean).join(", ") || null,
+      phone: profile.phone || null,
+    },
+    episode, patient, doctorName: doctor?.name ?? null, charges, payments, total, paid, due: round(total - paid),
+  };
 }

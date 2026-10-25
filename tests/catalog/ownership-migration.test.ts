@@ -49,7 +49,7 @@ function legacy(): DatabaseSync {
  * product code reads it. From v32 the unowned (quarantined) rows are the shared
  * pharma catalog: pharmacies see them, other businesses do not. */
 function upgrade(sql: DatabaseSync): DatabaseSync {
-  for (let v = 30; v <= 43; v++) applySchema(sql, v);
+  for (let v = 30; v <= 44; v++) applySchema(sql, v);
   return sql;
 }
 

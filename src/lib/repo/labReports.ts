@@ -22,7 +22,8 @@ import { getSetting } from "./settings";
 import { hasPermission } from "../moduleAccess";
 import { LAB_PROCESS_ROLES, LAB_REGISTER_ROLES, LAB_VERIFY_ROLES } from "../../config/hospitalStaff";
 import type { Staff } from "../types";
-import type { CollectionCenter, HospitalLabOrder, LabRequest, RegistrationLocation } from "../types-hospital";
+import { parseComponents } from "../../config/labPanels";
+import type { CollectionCenter, HospitalLabOrder, HospitalPatient, LabComponent, LabRequest, RegistrationLocation } from "../types-hospital";
 
 export const labRequestsRepo = createTenantRepo<LabRequest>("hospital_lab_requests", {
   refs: [["patient_id", "hospital_patients", "Patient"]],
@@ -202,15 +203,36 @@ export async function receiveSample(requestId: string): Promise<void> {
 }
 
 /** Lab staff enter a result. It is not released: it waits for verification. */
-export async function enterLabResult(orderId: string, r: { result_value: string; unit: string | null; ref_range: string | null; flag: "N" | "H" | "L" }): Promise<void> {
+export interface LabResultInput {
+  result_value: string;
+  unit: string | null;
+  ref_range: string | null;
+  flag: "N" | "H" | "L";
+  /** A panel test (CBC): one entry per parameter. The overall flag is worked
+   * out from them. */
+  components?: LabComponent[] | null;
+}
+
+export async function enterLabResult(orderId: string, r: LabResultInput): Promise<void> {
   await need("process", "Only lab staff can enter results.");
   const o = await labOrder(orderId);
   if (Number(o.fee) > 0 && Number(o.paid) !== 1) throw new Error("The fee for this test is not paid yet. Reception must take the fee first.");
   if (o.status === "reported") throw new Error("This result is already verified and released. Ask a pathologist to return it for correction.");
   if (o.status === "cancelled" || o.status === "superseded") throw new Error("This test is cancelled.");
-  if (!r.result_value?.trim()) throw new Error("Enter the result.");
+  const parts = r.components ? r.components.filter((c) => String(c.value ?? "").trim()) : null;
+  if (parts && !parts.length) throw new Error("Enter at least one parameter.");
+  if (!parts && !r.result_value?.trim()) throw new Error("Enter the result.");
+  const result = parts
+    ? {
+        components: JSON.stringify(parts.map((c) => ({ ...c, value: String(c.value).trim() }))),
+        result_value: r.result_value?.trim() || `${parts.length} parameters`,
+        unit: null,
+        ref_range: null,
+        flag: (parts.some((c) => c.flag === "H") ? "H" : parts.some((c) => c.flag === "L") ? "L" : "N") as "N" | "H" | "L",
+      }
+    : { components: null, result_value: r.result_value.trim(), unit: r.unit, ref_range: r.ref_range, flag: r.flag };
   await hospitalLabRepo.update(orderId, {
-    result_value: r.result_value.trim(), unit: r.unit, ref_range: r.ref_range, flag: r.flag,
+    ...result,
     status: "awaiting_verification", result_entered_by: useAuthStore.getState().currentUser?.id ?? null, result_entered_at: localDateTime(),
   });
   if (o.request_id) {
@@ -422,11 +444,15 @@ export interface LabReport {
   tests: {
     id: string; order_no: string; test_name: string; sample_type: string | null; result_value: string | null; unit: string | null;
     ref_range: string | null; flag: string | null; verified_by_name: string | null; verified_by_license: string | null; verified_at: string | null;
+    /** Parameters of a panel test (CBC); empty for a single-value test. */
+    components: LabComponent[];
   }[];
   pendingTests: { order_no: string; test_name: string; label: string }[];
   reportDate: string | null;
   verificationCode: string;
   status: string;
+  /** Token of the online copy (QR code); null while nothing is verified. */
+  publicToken: string | null;
 }
 
 function hashCode(s: string): string {
@@ -450,29 +476,79 @@ async function logAction(requestId: string, action: "view" | "print" | "reprint"
 
 /** Opens a report for viewing / printing. Requires the search permission and a
  * confirmed patient identity check; the view is logged. Only verified results
- * are included; tests still in progress are listed as pending, without values. */
+ * are included; tests still in progress are listed as pending, without values.
+ * The first time a report has a verified result it gets the token of its
+ * online copy (QR code). */
 export async function getLabReport(requestId: string, identity: { checked: boolean; method?: string }): Promise<LabReport> {
   await need("search", "You do not have permission to open lab reports.");
   if (!identity.checked) throw new Error("Confirm the patient's identity (CNIC, phone or MR number) before opening the report.");
   const req = await labRequestsRepo.get(requestId);
   if (!req) throw new Error("Lab order not found.");
-  const patient = await hospitalPatientsRepo.get(req.patient_id);
-  const center = req.collection_center_id ? await collectionCentersRepo.get(req.collection_center_id) : null;
-  const ep = req.episode_id ? await hospitalEpisodesRepo.get(req.episode_id) : null;
-  const doctorName = req.referring_doctor ?? (ep?.doctor_id ? (await staffRepo.get(ep.doctor_id))?.name ?? null : null);
-  const tests = await hospitalLabRepo.list({ where: "request_id = ?", params: [requestId], orderBy: "created_at ASC" });
+  const report = await assembleReport(requireCurrentTenantId(), req, useAuthStore.getState().currentTenant?.name ?? "Hospital");
+  if (report.tests.length && !req.public_token) {
+    const token = newReportToken();
+    await labRequestsRepo.update(req.id, { public_token: token });
+    report.publicToken = token;
+    report.request = { ...report.request, public_token: token };
+  }
+  await logAction(requestId, "view", identity.method ? `Identity checked by ${identity.method}` : "Identity checked");
+  return report;
+}
+
+/** 128 random bits as hex: the QR link cannot be worked out from the lab number. */
+export function newReportToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The online copy behind the report QR code. Needs no login: the random token
+ * is the key. Shows the verified results only, as on the printed report, and
+ * logs the view. */
+export async function getPublicLabReport(token: string): Promise<LabReport> {
+  const t = token.trim().toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(t)) throw new Error("This report link is not valid.");
+  const req = (await dbSelect<LabRequest>(`SELECT * FROM hospital_lab_requests WHERE public_token = ? AND deleted_at IS NULL`, [t]))[0];
+  if (!req) throw new Error("Report not found. It may have been withdrawn by the laboratory.");
+  const tenant = (await dbSelect<{ name: string }>(`SELECT name FROM tenants WHERE id = ?`, [req.tenant_id]))[0];
+  const report = await assembleReport(req.tenant_id, req, tenant?.name ?? "Hospital");
+  if (!report.tests.length) throw new Error("No verified result on this report yet.");
+  const ts = nowIso();
+  await dbExecute(
+    `INSERT INTO hospital_lab_report_log (id, tenant_id, request_id, action, user_id, user_name, location_id, details, created_at, updated_at)
+     VALUES (?, ?, ?, 'view', NULL, 'Online (QR code)', NULL, 'Opened from the report QR code', ?, ?)`,
+    [newId(), req.tenant_id, req.id, ts, ts]
+  );
+  return report;
+}
+
+/** Builds the report of a request of hospital `tenantId` with plain queries,
+ * so the online copy works without a signed-in user. */
+async function assembleReport(tenantId: string, req: LabRequest, tenantName: string): Promise<LabReport> {
+  const one = async <T>(sql: string, params: unknown[]): Promise<T | null> => (await dbSelect<T>(sql, params))[0] ?? null;
+  const patient = await one<HospitalPatient>(`SELECT * FROM hospital_patients WHERE id = ? AND tenant_id = ?`, [req.patient_id, tenantId]);
+  const center = req.collection_center_id
+    ? await one<CollectionCenter>(`SELECT * FROM hospital_collection_centers WHERE id = ? AND tenant_id = ?`, [req.collection_center_id, tenantId])
+    : null;
+  const ep = req.episode_id
+    ? await one<{ department: string | null; doctor_id: string | null }>(`SELECT department, doctor_id FROM hospital_episodes WHERE id = ? AND tenant_id = ?`, [req.episode_id, tenantId])
+    : null;
+  const doctorName = req.referring_doctor
+    ?? (ep?.doctor_id ? (await one<{ name: string }>(`SELECT name FROM staff WHERE id = ? AND tenant_id = ?`, [ep.doctor_id, tenantId]))?.name ?? null : null);
+  const tests = await dbSelect<HospitalLabOrder>(
+    `SELECT * FROM hospital_lab_orders WHERE tenant_id = ? AND request_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
+    [tenantId, req.id]
+  );
   const released = tests.filter((t) => t.status === "reported");
   const pending = tests.filter((t) => t.status !== "reported" && t.status !== "cancelled" && t.status !== "superseded");
 
   let profile: { name?: string; address?: string; phone?: string; registration_no?: string; city?: string } = {};
   try {
-    profile = JSON.parse((await getSetting("hospital.profile")) ?? "{}");
+    profile = JSON.parse((await getSetting("hospital.profile", tenantId)) ?? "{}");
   } catch {
     profile = {};
   }
-  const tenantName = useAuthStore.getState().currentTenant?.name ?? "Hospital";
   const reportDate = released.map((t) => t.verified_at ?? t.reported_at ?? "").sort().pop() || null;
-  await logAction(requestId, "view", identity.method ? `Identity checked by ${identity.method}` : "Identity checked");
 
   return {
     request: req,
@@ -495,11 +571,13 @@ export async function getLabReport(requestId: string, identity: { checked: boole
     tests: released.map((t) => ({
       id: t.id, order_no: t.order_no, test_name: t.test_name, sample_type: t.sample_type ?? null, result_value: t.result_value, unit: t.unit,
       ref_range: t.ref_range, flag: t.flag, verified_by_name: t.verified_by_name ?? null, verified_by_license: t.verified_by_license ?? null, verified_at: t.verified_at ?? null,
+      components: parseComponents(t.components),
     })),
     pendingTests: pending.map((t) => ({ order_no: t.order_no, test_name: t.test_name, label: testStatusLabel(t) })),
     reportDate,
     verificationCode: `${req.lab_no}/${hashCode(`${req.lab_no}|${released.map((t) => `${t.id}:${t.verified_at}`).join(",")}`)}`,
     status: requestStatusLabel(tests, req.print_count),
+    publicToken: released.length ? req.public_token ?? null : null,
   };
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { isPublicPath } from "@/lib/publicPaths";
 import { useAuthStore } from "@/store/authStore";
 import { AppShell } from "./AppShell";
 import { SuperAdminShell } from "./SuperAdminShell";
@@ -17,13 +18,13 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
   const isSuperAdmin = role === "super_admin";
 
   useEffect(() => {
-    if (pathname === "/") return;
+    if (isPublicPath(pathname)) return;
     if (isSuperAdmin && !isAdminRoute) router.replace("/admin");
     if (!isSuperAdmin && isAdminRoute) router.replace("/dashboard");
   }, [pathname, isSuperAdmin, isAdminRoute, router]);
 
   // Landing page \u2014 no shell, no sidebar
-  if (pathname === "/") return <>{children}</>;
+  if (isPublicPath(pathname)) return <>{children}</>;
 
   if (isSuperAdmin) {
     return <SuperAdminShell>{children}</SuperAdminShell>;
