@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { hospitalEpisodesRepo, hospitalPatientsRepo, type HospitalPatient } from "@/lib/repo/hospital";
 import { surgeryBookingsRepo } from "@/lib/repo/hospitalCare";
 import { surgeryForms } from "@/lib/repo/medicalRecord";
+import { availableSets, recordSetUsage, usageForSurgery, type AvailableSet, type UsageRow } from "@/lib/repo/cssd";
+import { Select } from "@/components/ui/Field";
 import { FormEditor, FormStatusPill, fmtWhen } from "./FormEditor";
 import { VisitChecklist, VitalsPanel } from "./EpisodeRecord";
 import type { FormDef } from "@/config/forms";
@@ -23,7 +25,7 @@ export function TheatreRecord({ bookingId, onClose }: { bookingId: string; onClo
   const [patient, setPatient] = useState<HospitalPatient | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [open, setOpen] = useState<{ key: string; record: FormRecord | null; canFinalize: boolean } | null>(null);
-  const [tab, setTab] = useState<"forms" | "checklist" | "monitoring">("forms");
+  const [tab, setTab] = useState<"forms" | "checklist" | "monitoring" | "sets">("forms");
 
   const loadForms = () => surgeryForms(bookingId).then(setRows).catch(() => setRows([]));
   useEffect(() => {
@@ -51,7 +53,7 @@ export function TheatreRecord({ bookingId, onClose }: { bookingId: string; onClo
             <span className={missing ? "text-amber-700" : "text-emerald-700"}>{missing ? `${missing} record(s) not signed yet` : "All records signed"}</span>
           </div>
           <div className="flex gap-1 text-sm">
-            {([["forms", "Assessments, consents and notes"], ["checklist", "Safety checklist"], ["monitoring", "Anaesthesia and recovery"]] as const).map(([k, l]) => (
+            {([["forms", "Assessments, consents and notes"], ["checklist", "Safety checklist"], ["monitoring", "Anaesthesia and recovery"], ["sets", "Sterile sets used"]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setTab(k)} className={`rounded-full px-3 py-1 ${tab === k ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>{l}</button>
             ))}
           </div>
@@ -95,6 +97,8 @@ export function TheatreRecord({ bookingId, onClose }: { bookingId: string; onClo
             </div>
           )}
 
+          {tab === "sets" && <SterileSets bookingId={booking.id} />}
+
           {open && (
             <FormEditor formKey={open.key} patient={patient} episode={episode} record={open.record} canFinalize={open.canFinalize} subjectId={booking.id}
               onClose={() => setOpen(null)} onSaved={() => void loadForms()} />
@@ -102,5 +106,45 @@ export function TheatreRecord({ bookingId, onClose }: { bookingId: string; onClo
         </div>
       )}
     </Modal>
+  );
+}
+
+/** Instrument sets used in this surgery, traced to their sterilization load (MSDS IPC-2 Ind. 91-92). */
+function SterileSets({ bookingId }: { bookingId: string }) {
+  const [used, setUsed] = useState<UsageRow[]>([]);
+  const [available, setAvailable] = useState<AvailableSet[]>([]);
+  const [itemId, setItemId] = useState("");
+  const load = async () => {
+    setUsed(await usageForSurgery(bookingId));
+    setAvailable(await availableSets());
+  };
+  useEffect(() => { void load().catch(() => undefined); }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function add() {
+    try {
+      await recordSetUsage(bookingId, itemId);
+      setItemId("");
+      await load();
+    } catch (e) {
+      window.alert(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <p className="text-xs text-neutral-500">Record each sterile set opened for this patient. Only sets from released, unexpired loads are offered; a recalled load lists this surgery for follow-up.</p>
+      <div className="flex flex-wrap gap-2">
+        <div className="min-w-72 flex-1">
+          <Select id="set-pick" value={itemId} onChange={(e) => setItemId(e.target.value)}>
+            <option value="">{available.length ? "— Choose a sterile set —" : "No released sets available"}</option>
+            {available.map((a) => <option key={a.id} value={a.id}>{a.set_name}{a.set_code ? ` (${a.set_code})` : ""} · load ${a.equipment_code} ${a.cycle_no} · expires ${a.expires_on}</option>)}
+          </Select>
+        </div>
+        <Button variant="primary" onClick={() => void add()} disabled={!itemId}>Record as used</Button>
+      </div>
+      {used.length === 0 ? <p className="text-neutral-400">No sets recorded.</p> : used.map((u) => (
+        <p key={u.id} className={`text-xs ${u.cycle_status === "recalled" ? "font-medium text-rose-700" : ""}`}>
+          {u.set_name}{u.set_code ? ` (${u.set_code})` : ""} · load {u.equipment_code} {u.cycle_no} · {fmtWhen(u.used_at)} · {u.recorded_by_name}{u.cycle_status === "recalled" ? " · LOAD RECALLED" : ""}
+        </p>
+      ))}
+    </div>
   );
 }

@@ -44,6 +44,8 @@ export interface FormDef {
   createRoles: RoleRef[];
   /** Who finalizes (signs). A countersignature form names the senior role here. */
   finalizeRoles: RoleRef[];
+  /** Who may read a register (staff health, investigations). Absent = anyone who may open the page. */
+  viewRoles?: RoleRef[];
   /** Saved entries are final at once (progress notes); changes are amendments. */
   finalOnSave?: boolean;
   /** Signature blocks printed at the foot (the author's digital stamp is always printed). */

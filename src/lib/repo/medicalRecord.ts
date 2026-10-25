@@ -90,7 +90,8 @@ async function episodeOf(patientId: string, episodeId: string | null, def: FormD
 
 export interface SaveFormInput {
   formKey: string;
-  patientId: string;
+  /** Required for patient forms; optional on a register entry (linked only when it is about a patient). */
+  patientId: string | null;
   episodeId?: string | null;
   data: FormData;
   /** Continue an existing draft. */
@@ -119,7 +120,8 @@ export async function saveForm(input: SaveFormInput): Promise<FormRecord> {
   const def = requireDef(input.formKey);
   const a = await currentActor();
   if (!roleAllowed(def.createRoles, a)) throw new Error(`Your designation cannot write the ${def.title}.`);
-  const ep = await episodeOf(input.patientId, input.episodeId ?? null, def);
+  if (!input.patientId && def.scope !== "register") throw new Error(`${def.title} belongs to a patient.`);
+  const ep = input.patientId ? await episodeOf(input.patientId, input.episodeId ?? null, def) : null;
   const subjectId = await subjectOf(def.subject, ep, input.subjectId);
   const data = cleanData(def, input.data);
   const t = requireCurrentTenantId();
@@ -127,7 +129,7 @@ export async function saveForm(input: SaveFormInput): Promise<FormRecord> {
 
   if (input.recordId) {
     const rec = await formRecordsRepo.get(input.recordId);
-    if (!rec || rec.form_key !== def.key || rec.patient_id !== input.patientId) throw new Error("Form not found.");
+    if (!rec || rec.form_key !== def.key || (rec.patient_id ?? null) !== (input.patientId ?? null)) throw new Error("Form not found.");
     if (rec.status !== "draft") throw new Error("This form is finalized. Use Correct to change it; the earlier values are kept.");
     if (!a.full && rec.created_by !== a.userId) throw new Error("Only the author can edit this draft.");
     return (await formRecordsRepo.update(rec.id, { data: JSON.stringify(data), summary: summaryOf(def, data), updated_by: a.userId, updated_by_name: stamp(a) }))!;
@@ -276,6 +278,17 @@ export async function listForms(filter: { patientId?: string; episodeId?: string
   if (filter.formKey) { where.push("form_key = ?"); params.push(filter.formKey); }
   if (!filter.includeVoided) where.push("status != 'voided'");
   return formRecordsRepo.list({ where: where.join(" AND "), params, orderBy: "created_at ASC" });
+}
+
+/** A department register's entries, newest first, for those allowed to read it. */
+export async function listRegister(formKey: string, opts: { includeVoided?: boolean; limit?: number } = {}): Promise<FormRecord[]> {
+  const def = requireDef(formKey);
+  if (def.viewRoles && !roleAllowed(def.viewRoles, await currentActor())) throw new Error(`The ${def.title} is restricted.`);
+  return formRecordsRepo.list({
+    where: `form_key = ?${opts.includeVoided ? "" : " AND status != 'voided'"}`,
+    params: [formKey],
+    orderBy: `created_at DESC LIMIT ${Math.max(1, Math.min(1000, opts.limit ?? 300))}`,
+  });
 }
 
 export async function listRevisions(recordId: string): Promise<FormRevision[]> {

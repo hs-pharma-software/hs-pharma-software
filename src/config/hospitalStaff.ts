@@ -25,7 +25,13 @@ export const DESIGNATIONS: Designation[] = [
   { key: "medical_specialist", label: "Medical Specialist", prefix: "MS", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "medical_officer", label: "Medical Officer", prefix: "MO", license: "PMDC", licenseRequired: true, doctor: true, pages: DOCTOR_PAGES },
   { key: "nursing_superintendent", label: "Nursing Superintendent", prefix: "NS", license: "PNC", licenseRequired: true, doctor: false,
-    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes"] },
+    pages: ["hospital_dashboard", "hospital_admissions", "hospital_patients", "hospital_episodes", "hospital_ipc"] },
+  { key: "infection_control_nurse", label: "Infection Control Nurse", prefix: "ICN", license: "PNC", licenseRequired: true, doctor: false,
+    pages: ["hospital_ipc", "hospital_cssd", "hospital_patients", "hospital_episodes"] },
+  { key: "cssd_supervisor", label: "CSSD Supervisor (releases sterile loads)", prefix: "CSS", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_cssd"] },
+  { key: "cssd_technician", label: "CSSD Technician", prefix: "CST", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_cssd"] },
   { key: "head_nurse", label: "Head Nurse (department)", prefix: "HN", license: "PNC", licenseRequired: true, doctor: false,
     pages: ["hospital_admissions", "hospital_patients", "hospital_episodes"] },
   { key: "nurse", label: "Nurse", prefix: "NUR", license: "PNC", licenseRequired: true, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
@@ -52,6 +58,13 @@ export const DESIGNATIONS: Designation[] = [
  * Superintendent for every department. */
 export const ADMISSION_CONFIRM_ALL_ROLES = ["nursing_superintendent"];
 export const ADMISSION_CONFIRM_DEPT_ROLES = ["head_nurse"];
+
+/** Sterilization (MSDS IPC-2): who runs cycles, who releases loads. A load is
+ * never released by the person who ran it. */
+export const CSSD_OPERATOR_ROLES = ["cssd_technician", "cssd_supervisor", "infection_control_nurse"];
+export const CSSD_RELEASE_ROLES = ["cssd_supervisor", "infection_control_nurse", "nursing_superintendent"];
+/** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
+export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];
 
 export const DOCTOR_CATEGORIES = DESIGNATIONS.filter((d) => d.doctor).map((d) => d.key);
 

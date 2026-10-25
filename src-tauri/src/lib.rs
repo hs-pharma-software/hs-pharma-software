@@ -1325,6 +1325,59 @@ fn schema_sql_v44() -> &'static str {
 /// Server audit log: every write the web version sends through the server
 /// (/api/db), with who sent it and the statement (never the values, which can
 /// hold patient data). Written by the server only; unused on the desktop.
+/// Infection prevention and control (MSDS IPC-1, IPC-2). Hand-hygiene
+/// observation audits by an IPC auditor (sessions of observed opportunities),
+/// kept apart from clinicians' own confirmations. Sterilization: autoclaves,
+/// cycles with physical / chemical / biological results, release by a
+/// verifier other than the operator, recall; the instrument sets of a load and
+/// the surgeries they were actually used in.
+fn schema_sql_v52() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_hh_sessions (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, department TEXT, area TEXT NOT NULL, session_date TEXT NOT NULL,
+        observer_id TEXT, observer_name TEXT, observer_role TEXT, status TEXT NOT NULL DEFAULT 'open', notes TEXT, closed_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hh_sessions ON hospital_hh_sessions (tenant_id, session_date);
+    CREATE TABLE IF NOT EXISTS hospital_hh_observations (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, profession TEXT NOT NULL, moment INTEGER NOT NULL,
+        action TEXT NOT NULL, gloves_misuse INTEGER NOT NULL DEFAULT 0, observed_at TEXT NOT NULL, recorded_by_name TEXT,
+        voided_at TEXT, void_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hh_obs_session ON hospital_hh_observations (tenant_id, session_id);
+    CREATE TABLE IF NOT EXISTS hospital_steril_equipment (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, location TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_steril_equipment_code ON hospital_steril_equipment (tenant_id, code);
+    CREATE TABLE IF NOT EXISTS hospital_steril_cycles (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, equipment_id TEXT NOT NULL, cycle_no TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT,
+        operator_id TEXT, operator_name TEXT, program TEXT, temperature_c REAL, pressure_kpa REAL, exposure_min REAL,
+        load_description TEXT, implant_load INTEGER NOT NULL DEFAULT 0,
+        physical_result TEXT, chemical_result TEXT, biological_result TEXT,
+        status TEXT NOT NULL DEFAULT 'awaiting_release', sterilized_on TEXT, expires_on TEXT,
+        released_by_id TEXT, released_by_name TEXT, released_at TEXT,
+        failure_reason TEXT, corrective_action TEXT, failed_by_name TEXT, failed_at TEXT,
+        recall_reason TEXT, recalled_by_name TEXT, recalled_at TEXT, reprocessed_in_cycle_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_steril_cycle_no ON hospital_steril_cycles (tenant_id, equipment_id, cycle_no);
+    CREATE INDEX IF NOT EXISTS idx_steril_cycles_status ON hospital_steril_cycles (tenant_id, status, started_at);
+    CREATE TABLE IF NOT EXISTS hospital_steril_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, cycle_id TEXT NOT NULL, set_code TEXT, set_name TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_steril_items_cycle ON hospital_steril_items (tenant_id, cycle_id);
+    CREATE TABLE IF NOT EXISTS hospital_steril_usage (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, item_id TEXT NOT NULL, cycle_id TEXT NOT NULL, booking_id TEXT NOT NULL,
+        patient_id TEXT NOT NULL, episode_id TEXT NOT NULL, used_at TEXT NOT NULL, recorded_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_steril_usage ON hospital_steril_usage (tenant_id, item_id, booking_id);
+    CREATE INDEX IF NOT EXISTS idx_steril_usage_cycle ON hospital_steril_usage (tenant_id, cycle_id)
+    "#
+}
+
 fn schema_sql_v51() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS server_audit_log (
@@ -2623,6 +2676,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 51,
             description: "server_audit_log",
             sql: schema_sql_v51(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 52,
+            description: "ipc_hand_hygiene_and_sterilization",
+            sql: schema_sql_v52(),
             kind: MigrationKind::Up,
         },
     ]

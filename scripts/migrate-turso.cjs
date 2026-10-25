@@ -331,6 +331,7 @@ const MIGRATIONS = [
   { version: 49, label: 'inpatient medication orders and the medication administration record', statements: rustSchemaStatements(49) },
   { version: 50, label: 'theatre and anaesthesia: records per surgery, anaesthesia / recovery monitoring', statements: rustSchemaStatements(50) },
   { version: 51, label: 'server audit log of writes from the web version', statements: rustSchemaStatements(51) },
+  { version: 52, label: 'infection control: hand-hygiene audits, sterilization cycles and traceability', statements: rustSchemaStatements(52) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

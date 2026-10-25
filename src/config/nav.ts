@@ -534,6 +534,18 @@ const HOSPITAL_NAV: NavItem[] = [
     ],
   },
   { label: "Surgery", href: "/hospital/surgery", icon: Scissors, moduleKey: "hospital_surgery", onlyFor: ["hospital"] },
+  {
+    label: "Infection Control",
+    href: "/hospital/ipc",
+    icon: ShieldCheck,
+    moduleKey: "hospital_infection",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Hand Hygiene", href: "/hospital/ipc", moduleKey: "hospital_ipc" },
+      { label: "IPC Registers", href: "/hospital/ipc/registers", moduleKey: "hospital_ipc" },
+      { label: "Sterilization (CSSD)", href: "/hospital/cssd", moduleKey: "hospital_cssd" },
+    ],
+  },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
   {
     label: "Purchase Cell",

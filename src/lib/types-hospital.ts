@@ -403,3 +403,94 @@ export interface MarEntry extends TenantRow {
   voided_by_name: string | null;
   void_reason: string | null;
 }
+
+// ── Infection prevention and control (v52) ──────────────────────────────
+
+/** A hand-hygiene observation session by an IPC auditor in one area. */
+export interface HhSession extends TenantRow {
+  department: string | null;
+  area: string;
+  session_date: string;
+  observer_id: string | null;
+  observer_name: string | null;
+  observer_role: string | null;
+  status: "open" | "closed";
+  notes: string | null;
+  closed_at: string | null;
+}
+
+/** One observed hand-hygiene opportunity (WHO moment 1-5). */
+export interface HhObservation extends TenantRow {
+  session_id: string;
+  profession: string;
+  moment: number;
+  action: "handrub" | "handwash" | "missed";
+  gloves_misuse: number;
+  observed_at: string;
+  recorded_by_name: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+export interface SterilEquipment extends TenantRow {
+  code: string;
+  name: string;
+  kind: "steam_autoclave" | "eto" | "plasma" | "dry_heat" | "other";
+  location: string | null;
+  is_active: number;
+  notes: string | null;
+}
+
+export type SterilCycleStatus = "awaiting_release" | "released" | "failed" | "recalled";
+
+/** One sterilization cycle (load) of an autoclave. */
+export interface SterilCycle extends TenantRow {
+  equipment_id: string;
+  cycle_no: string;
+  started_at: string;
+  ended_at: string | null;
+  operator_id: string | null;
+  operator_name: string | null;
+  program: string | null;
+  temperature_c: number | null;
+  pressure_kpa: number | null;
+  exposure_min: number | null;
+  load_description: string | null;
+  implant_load: number;
+  physical_result: "pass" | "fail" | null;
+  chemical_result: "pass" | "fail" | null;
+  biological_result: "pending" | "pass" | "fail" | "na" | null;
+  status: SterilCycleStatus;
+  sterilized_on: string | null;
+  expires_on: string | null;
+  released_by_id: string | null;
+  released_by_name: string | null;
+  released_at: string | null;
+  failure_reason: string | null;
+  corrective_action: string | null;
+  failed_by_name: string | null;
+  failed_at: string | null;
+  recall_reason: string | null;
+  recalled_by_name: string | null;
+  recalled_at: string | null;
+  reprocessed_in_cycle_id: string | null;
+}
+
+/** An instrument set in a load. */
+export interface SterilItem extends TenantRow {
+  cycle_id: string;
+  set_code: string | null;
+  set_name: string;
+  quantity: number;
+}
+
+/** A sterile set recorded as used in a surgery (traceability). */
+export interface SterilUsage extends TenantRow {
+  item_id: string;
+  cycle_id: string;
+  booking_id: string;
+  patient_id: string;
+  episode_id: string;
+  used_at: string;
+  recorded_by_name: string | null;
+}

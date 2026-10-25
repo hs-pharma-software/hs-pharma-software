@@ -51,7 +51,8 @@ function toShown(def: FormDef, values: FormData): FormData {
 
 export interface FormEditorProps {
   formKey: string;
-  patient: HospitalPatient;
+  /** null for a department register entry that is not about a patient. */
+  patient: HospitalPatient | null;
   episode: HospitalEpisode | null;
   /** An existing record; absent = a new one. */
   record?: FormRecord | null;
@@ -100,9 +101,9 @@ export function FormEditor({ formKey, patient, episode, record, canFinalize, sub
     }
   }
 
-  const save = () => act("save", () => saveForm({ formKey, patientId: patient.id, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null, subjectId: subjectId ?? rec?.subject_id ?? null }), def.finalOnSave);
+  const save = () => act("save", () => saveForm({ formKey, patientId: patient?.id ?? null, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null, subjectId: subjectId ?? rec?.subject_id ?? null }), def.finalOnSave);
   const finalize = () => act("sign", async () => {
-    const saved = await saveForm({ formKey, patientId: patient.id, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null, subjectId: subjectId ?? rec?.subject_id ?? null });
+    const saved = await saveForm({ formKey, patientId: patient?.id ?? null, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null, subjectId: subjectId ?? rec?.subject_id ?? null });
     return finalizeForm(saved.id);
   });
   const amend = () => act("save the correction", () => amendForm(rec!.id, toStored(def, values), reason));
@@ -121,7 +122,7 @@ export function FormEditor({ formKey, patient, episode, record, canFinalize, sub
     <Modal title={def.title} onClose={onClose} width="max-w-3xl">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-          <span><b className="text-neutral-800">{patient.name}</b> · {patient.mr_no}</span>
+          {patient ? <span><b className="text-neutral-800">{patient.name}</b> · {patient.mr_no}</span> : <span className="font-medium text-neutral-800">{def.department} register</span>}
           {episode && <span className="font-mono">{episode.episode_no}</span>}
           <span>MSDS {def.msds.join(", ")}</span>
           {rec && <FormStatusPill status={rec.status} />}
@@ -208,9 +209,13 @@ export function FormEditor({ formKey, patient, episode, record, canFinalize, sub
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-neutral-300 py-2 text-[11.5px]">
-                <p><span className="text-neutral-500">Patient:</span> <b>{patient.name}</b></p>
-                <p><span className="text-neutral-500">MR No:</span> <span className="font-mono">{patient.mr_no}</span></p>
-                <p><span className="text-neutral-500">Age / Sex:</span> {[patient.age_years != null ? `${patient.age_years} y` : null, patient.gender].filter(Boolean).join(" / ") || "—"}</p>
+                {patient ? (
+                  <>
+                    <p><span className="text-neutral-500">Patient:</span> <b>{patient.name}</b></p>
+                    <p><span className="text-neutral-500">MR No:</span> <span className="font-mono">{patient.mr_no}</span></p>
+                    <p><span className="text-neutral-500">Age / Sex:</span> {[patient.age_years != null ? `${patient.age_years} y` : null, patient.gender].filter(Boolean).join(" / ") || "—"}</p>
+                  </>
+                ) : <p><span className="text-neutral-500">Register:</span> <b>{def.department}</b></p>}
                 {episode && <p><span className="text-neutral-500">{episode.type === "ipd" ? "Admission" : "Visit"}:</span> <span className="font-mono">{episode.episode_no}</span>{episode.department ? ` · ${episode.department}` : ""}</p>}
               </div>
               <table className="mt-2 w-full">
