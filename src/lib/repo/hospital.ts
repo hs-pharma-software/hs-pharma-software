@@ -13,6 +13,7 @@ import type {
   HospitalImagingOrder,
 } from "../types-hospital";
 import { localDate } from "../localDate";
+import { invoicesRepo } from "./invoices";
 
 export type { HospitalDepartment, HospitalLabOrder, HospitalImagingOrder, HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
 
@@ -197,7 +198,39 @@ export async function addPayment(payment: Omit<HospitalPayment, "id" | "created_
   } catch (e) {
     throw friendlyDbError(e);
   }
+  await syncEpisodeInvoices(payment.episode_id);
   return { ...payment, tenant_id: tenantId, id, created_at: now, updated_at: now, deleted_at: null };
+}
+
+/** Keeps Paid / Balance of an admission's invoices (surgery invoices in
+ * Billing) in step with the payments taken on the admission: the net amount
+ * received goes to its invoices oldest first. */
+export async function syncEpisodeInvoices(episodeId: string): Promise<void> {
+  const tenantId = requireCurrentTenantId();
+  let invoices: { id: string; payable: number; paid: number }[];
+  try {
+    invoices = await dbSelect(
+      `SELECT id, payable, paid FROM invoices WHERE tenant_id = ? AND hospital_episode_id = ? AND deleted_at IS NULL ORDER BY created_at, invoice_no`,
+      [tenantId, episodeId]
+    );
+  } catch (e) {
+    // A database before v45 has no surgery invoices; the payment itself stands.
+    if (/no such column: hospital_episode_id/i.test(String(e instanceof Error ? e.message : e))) return;
+    throw e;
+  }
+  if (!invoices.length) return;
+  const rows = await dbSelect<{ paid: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN type = 'refund' THEN -amount ELSE amount END), 0) AS paid
+     FROM hospital_payments WHERE episode_id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+    [episodeId, tenantId]
+  );
+  let left = Math.max(0, rows[0]?.paid ?? 0);
+  for (const inv of invoices) {
+    const payable = Number(inv.payable) || 0;
+    const paid = Math.round(Math.min(payable, left) * 100) / 100;
+    left -= paid;
+    if (paid !== Number(inv.paid)) await invoicesRepo.update(inv.id, { paid, balance: Math.round((payable - paid) * 100) / 100 });
+  }
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────

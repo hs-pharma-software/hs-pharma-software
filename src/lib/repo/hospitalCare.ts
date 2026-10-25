@@ -10,7 +10,10 @@ import { useAuthStore } from "../../store/authStore";
 import {
   hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo, addCharge, deleteCharge, listChargesForEpisode, listPaymentsForEpisode,
 } from "./hospital";
+import { invoicesRepo, nextInvoiceNo } from "./invoices";
 import type { HospitalCharge, HospitalEpisode, HospitalPatient, HospitalPayment, HospitalRxItem, HospitalService, SurgeryBooking } from "../types-hospital";
+import type { Invoice } from "../types2";
+import { SURGERY_CHARGES, breakdownTotal, chargeLabel, cleanBreakdown, parseBreakdown, type SurgeryFeeBreakdown } from "../../config/surgeryCharges";
 
 export const surgeryBookingsRepo = createTenantRepo<SurgeryBooking>("hospital_surgery_bookings", {
   refs: [["episode_id", "hospital_episodes", "Admission"], ["patient_id", "hospital_patients", "Patient"], ["service_id", "hospital_services", "Surgery"]],
@@ -35,11 +38,16 @@ async function nextSurgeryCode(): Promise<string> {
   }
 }
 
-/** Adds or edits a surgery type with its fee. A blank code gets SURG-nnn. */
-export async function saveSurgeryType(id: string | null, s: { name: string; code?: string | null; department?: string | null; rate: number; notes?: string | null; is_active?: number }): Promise<HospitalService> {
+/** Adds or edits a surgery type with its fee. A blank code gets SURG-nnn.
+ * With a charge breakdown, the fee is the total of its charges. */
+export async function saveSurgeryType(id: string | null, s: {
+  name: string; code?: string | null; department?: string | null; rate?: number; breakdown?: Partial<SurgeryFeeBreakdown> | null; notes?: string | null; is_active?: number;
+}): Promise<HospitalService> {
   const name = s.name?.trim();
   if (!name) throw new Error("Enter the surgery name.");
-  if (!(Number(s.rate) >= 0)) throw new Error("The fee cannot be negative.");
+  const breakdown = s.breakdown ? cleanBreakdown(s.breakdown) : null;
+  const rate = breakdown ? breakdownTotal(breakdown) : Number(s.rate ?? 0);
+  if (!(rate >= 0)) throw new Error("The fee cannot be negative.");
   const clash = await dbSelect<{ id: string }>(
     `SELECT id FROM hospital_services WHERE tenant_id = ? AND category = 'ot' AND deleted_at IS NULL AND LOWER(TRIM(name)) = LOWER(?) AND id != ?`,
     [requireCurrentTenantId(), name, id ?? ""]
@@ -53,7 +61,8 @@ export async function saveSurgeryType(id: string | null, s: { name: string; code
     department: s.department?.trim() || existing?.department || "Surgery",
     category: "ot",
     billing_unit: "procedure",
-    rate: Number(s.rate) || 0,
+    rate: rate || 0,
+    fee_breakdown: breakdown ? JSON.stringify(breakdown) : null,
     notes: s.notes?.trim() || null,
     is_active: s.is_active ?? existing?.is_active ?? 1,
   };
@@ -74,6 +83,8 @@ export interface AdmitInput {
   surgeryTypeId?: string | null;
   plannedDate?: string | null;
   surgeonId?: string | null;
+  /** This patient's surgery charges; defaults to the surgery type's. */
+  charges?: Partial<SurgeryFeeBreakdown> | null;
 }
 
 /** Admits the patient of an OPD / emergency visit: opens an IPD admission
@@ -89,10 +100,12 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
   if (already.length) throw new Error(`This patient is already admitted (${already[0].episode_no}).`);
 
   let surgery: HospitalService | null = null;
+  let charges: SurgeryFeeBreakdown | null = null;
   if (input.plan === "surgery") {
     if (!input.surgeryTypeId) throw new Error("Choose the type of surgery.");
     surgery = await hospitalServicesRepo.get(input.surgeryTypeId);
     if (!surgery || surgery.category !== "ot" || !surgery.is_active) throw new Error("Choose a surgery from the Surgery list.");
+    charges = input.charges ? cleanBreakdown(input.charges) : parseBreakdown(surgery.fee_breakdown, surgery.rate);
     if (input.surgeonId) {
       const surgeon = await staffRepo.get(input.surgeonId);
       if (!surgeon) throw new Error("Surgeon not found.");
@@ -124,21 +137,86 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
   });
 
   let booking: SurgeryBooking | null = null;
-  if (surgery) {
-    const fee = Math.max(0, Number(surgery.rate) || 0);
-    const charge = fee > 0
-      ? await addCharge({
-          tenant_id: "", episode_id: admission.id, service_id: surgery.id, description: `Surgery: ${surgery.name}`, department: surgery.department,
-          category: "ot", qty: 1, rate: fee, discount_pct: 0, amount: 0, doctor_id: input.surgeonId || visit.doctor_id, performed_by: null,
-          charge_date: today, notes: null, invoice_id: null,
-        })
+  if (surgery && charges) {
+    const fee = breakdownTotal(charges);
+    const patient = await hospitalPatientsRepo.get(visit.patient_id);
+    // The invoice goes to Billing › Invoices Details; its lines are the
+    // admission charges that carry its id.
+    const invoice = fee > 0
+      ? await invoicesRepo.create({
+          invoice_no: await nextInvoiceNo(), date: today, inv_on: "credit", invoice_type: SURGERY_INVOICE_TYPE,
+          description: `Surgery: ${surgery.name} · ${admission.episode_no}`, salesman_id: null, customer_id: null,
+          customer_name: patient?.name ?? null, customer_phone: patient?.phone ?? null,
+          total: fee, charges: 0, discount_pct: 0, discount_rs: 0, tax_pct: 0, payable: fee, paid: 0, balance: fee,
+          is_return: 0, is_memorized: 0, is_quotation: 0, hospital_episode_id: admission.id,
+        } as Partial<Invoice>)
       : null;
+    const lines: HospitalCharge[] = [];
+    for (const c of SURGERY_CHARGES) {
+      const amount = charges[c.key];
+      if (!(amount > 0)) continue;
+      lines.push(await addCharge({
+        tenant_id: "", episode_id: admission.id, service_id: surgery.id, description: `${surgery.name}: ${chargeLabel(c.key, charges)}`, department: surgery.department,
+        category: c.category, qty: 1, rate: amount, discount_pct: 0, amount: 0, doctor_id: input.surgeonId || visit.doctor_id, performed_by: null,
+        charge_date: today, notes: null, invoice_id: invoice?.id ?? null,
+      }));
+    }
     booking = await surgeryBookingsRepo.create({
-      episode_id: admission.id, patient_id: visit.patient_id, service_id: surgery.id, surgery_name: surgery.name, fee, charge_id: charge?.id ?? null,
+      episode_id: admission.id, patient_id: visit.patient_id, service_id: surgery.id, surgery_name: surgery.name, fee, charge_id: lines[0]?.id ?? null,
+      fee_breakdown: JSON.stringify(charges), invoice_id: invoice?.id ?? null,
       surgeon_id: input.surgeonId || visit.doctor_id || null, planned_date: input.plannedDate || null, status: "planned", notes: reason, performed_at: null,
     });
   }
   return { admission, booking };
+}
+
+export const SURGERY_INVOICE_TYPE = "hospital_surgery";
+
+export interface SurgeryInvoice {
+  hospital: { name: string; address: string | null; phone: string | null };
+  invoice: Invoice;
+  admission: HospitalEpisode | null;
+  patient: HospitalPatient | null;
+  surgeonName: string | null;
+  surgery: { name: string; planned_date: string | null; status: string } | null;
+  lines: HospitalCharge[];
+}
+
+/** A surgery invoice with its lines, for viewing and printing. */
+export async function getSurgeryInvoice(invoiceId: string): Promise<SurgeryInvoice> {
+  const invoice = await invoicesRepo.get(invoiceId);
+  if (!invoice || invoice.deleted_at || invoice.invoice_type !== SURGERY_INVOICE_TYPE) throw new Error("Surgery invoice not found.");
+  const t = requireCurrentTenantId();
+  const [admission, lines, bookings] = await Promise.all([
+    invoice.hospital_episode_id ? hospitalEpisodesRepo.get(invoice.hospital_episode_id) : Promise.resolve(null),
+    dbSelect<HospitalCharge>(`SELECT * FROM hospital_charges WHERE tenant_id = ? AND invoice_id = ? AND deleted_at IS NULL ORDER BY created_at`, [t, invoice.id]),
+    surgeryBookingsRepo.list({ where: "invoice_id = ?", params: [invoice.id] }),
+  ]);
+  const booking = bookings[0] ?? null;
+  const [patient, surgeon] = await Promise.all([
+    admission ? hospitalPatientsRepo.get(admission.patient_id) : Promise.resolve(null),
+    booking?.surgeon_id ? staffRepo.get(booking.surgeon_id) : Promise.resolve(null),
+  ]);
+  return {
+    hospital: await hospitalHeader(),
+    invoice, admission, patient, surgeonName: surgeon?.name ?? null,
+    surgery: booking ? { name: booking.surgery_name, planned_date: booking.planned_date, status: booking.status } : null,
+    lines,
+  };
+}
+
+async function hospitalHeader(): Promise<{ name: string; address: string | null; phone: string | null }> {
+  let profile: { name?: string; address?: string; phone?: string; city?: string } = {};
+  try {
+    profile = JSON.parse((await getSetting("hospital.profile")) ?? "{}");
+  } catch {
+    profile = {};
+  }
+  return {
+    name: profile.name || useAuthStore.getState().currentTenant?.name || "Hospital",
+    address: [profile.address, profile.city].filter(Boolean).join(", ") || null,
+    phone: profile.phone || null,
+  };
 }
 
 // ── Surgeries ─────────────────────────────────────────────────────────────
@@ -176,7 +254,15 @@ export async function cancelSurgery(id: string, reason: string): Promise<void> {
   if (!b) throw new Error("Surgery not found.");
   if (b.status !== "planned") throw new Error("Only a planned surgery can be cancelled.");
   if (!reason.trim()) throw new Error("Say why the surgery is cancelled.");
-  if (b.charge_id) await deleteCharge(b.charge_id);
+  if (b.invoice_id) {
+    const lines = await dbSelect<{ id: string }>(
+      `SELECT id FROM hospital_charges WHERE tenant_id = ? AND invoice_id = ? AND deleted_at IS NULL`, [requireCurrentTenantId(), b.invoice_id]
+    );
+    for (const l of lines) await deleteCharge(l.id);
+    await invoicesRepo.remove(b.invoice_id, `Surgery cancelled: ${reason.trim()}`, "Surgery");
+  } else if (b.charge_id) {
+    await deleteCharge(b.charge_id);
+  }
   await surgeryBookingsRepo.update(id, { status: "cancelled", notes: [b.notes, `Cancelled: ${reason.trim()}`].filter(Boolean).join("\n") });
 }
 
@@ -252,28 +338,18 @@ export interface VisitReceipt {
 export async function getVisitReceipt(episodeId: string): Promise<VisitReceipt> {
   const episode = await hospitalEpisodesRepo.get(episodeId);
   if (!episode) throw new Error("Visit not found in this hospital.");
-  const [patient, doctor, charges, payments, profileJson] = await Promise.all([
+  const [patient, doctor, charges, payments, hospital] = await Promise.all([
     hospitalPatientsRepo.get(episode.patient_id),
     episode.doctor_id ? staffRepo.get(episode.doctor_id) : Promise.resolve(null),
     listChargesForEpisode(episode.id),
     listPaymentsForEpisode(episode.id),
-    getSetting("hospital.profile"),
+    hospitalHeader(),
   ]);
-  let profile: { name?: string; address?: string; phone?: string; city?: string } = {};
-  try {
-    profile = JSON.parse(profileJson ?? "{}");
-  } catch {
-    profile = {};
-  }
   const round = (n: number) => Math.round(n * 100) / 100;
   const total = round(charges.reduce((a, c) => a + Number(c.amount), 0));
   const paid = round(payments.reduce((a, p) => a + (p.type === "refund" ? -1 : 1) * Number(p.amount), 0));
   return {
-    hospital: {
-      name: profile.name || useAuthStore.getState().currentTenant?.name || "Hospital",
-      address: [profile.address, profile.city].filter(Boolean).join(", ") || null,
-      phone: profile.phone || null,
-    },
+    hospital,
     episode, patient, doctorName: doctor?.name ?? null, charges, payments, total, paid, due: round(total - paid),
   };
 }

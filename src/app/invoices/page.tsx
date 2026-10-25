@@ -19,6 +19,9 @@ import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
 import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice } from "@/lib/types2";
+import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
+
+const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
 
 export default function InvoicesPage() {
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
@@ -30,6 +33,7 @@ export default function InvoicesPage() {
     null
   );
   const [printing, setPrinting] = useState<typeof viewing>(null);
+  const [surgeryInvoice, setSurgeryInvoice] = useState<{ id: string; print: boolean } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
@@ -79,6 +83,7 @@ export default function InvoicesPage() {
   }
 
   async function openView(row: InvoiceListRow) {
+    if (isSurgery(row)) return setSurgeryInvoice({ id: row.id, print: false });
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     setViewing({ invoice: full, customerName: row.customer_name, salesmanName: row.salesman_name });
@@ -100,6 +105,7 @@ export default function InvoicesPage() {
   // Straight to the printer with the default template; no view dialog.
   async function printInvoice(row: InvoiceListRow) {
     if (printing) return;
+    if (isSurgery(row)) return setSurgeryInvoice({ id: row.id, print: true });
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     setPrinting({ invoice: full, customerName: row.customer_name, salesmanName: row.salesman_name });
@@ -129,13 +135,13 @@ export default function InvoicesPage() {
     { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
     { header: "Date", render: (r) => r.date },
     { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
-    { header: "Customer", render: (r) => r.customer_name },
+    { header: "Customer", render: (r) => isSurgery(r) ? <span>{r.customer_name} <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">Surgery</span></span> : r.customer_name },
     { header: "Total Bill", render: (r) => r.total.toFixed(2) },
     { header: "Paid", render: (r) => r.paid.toFixed(2) },
     { header: "Balance", render: (r) => r.balance.toFixed(2) },
     ...(fbrSettings ? [{
       header: "FBR",
-      render: (r: InvoiceListRow) => (
+      render: (r: InvoiceListRow) => isSurgery(r) ? <span className="text-xs text-neutral-400">—</span> : (
         <FbrCell
           row={r}
           submitting={submittingIds.has(r.id)}
@@ -157,7 +163,7 @@ export default function InvoicesPage() {
           >
             <Eye size={16} />
           </button>
-          {canEdit && (
+          {canEdit && !isSurgery(r) && (
             <button
               type="button"
               title="Edit"
@@ -176,7 +182,7 @@ export default function InvoicesPage() {
           >
             <Printer size={16} />
           </button>
-          {canDelete && (
+          {canDelete && !isSurgery(r) && (
             <button
               type="button"
               title="Delete"
@@ -222,6 +228,10 @@ export default function InvoicesPage() {
 
 
       {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setPrinting(null)} />}
+
+      {surgeryInvoice && (
+        <SurgeryInvoiceModal key={surgeryInvoice.id + String(surgeryInvoice.print)} invoiceId={surgeryInvoice.id} autoPrint={surgeryInvoice.print} onClose={() => setSurgeryInvoice(null)} />
+      )}
 
       {viewing && (
         <InvoiceViewModal

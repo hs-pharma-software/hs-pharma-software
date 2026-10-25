@@ -59,7 +59,21 @@ function replica(): DatabaseSync {
 const PHARMACY = ["tenants", "users", "products", "product_batches", "price_list", "customers", "suppliers", "invoices", "invoice_items", "purchases", "purchase_items", "cash_register_entries", "bank_ledger_entries", "expenses", "revenues", "staff"];
 const MONEY = ["total", "amount", "qty", "paid", "balance", "sale_price", "purchase_price"];
 
-function fingerprint(db: DatabaseSync) {
+/** Column names of a table. */
+const columnsOf = (db: DatabaseSync, t: string) => (db.prepare(`PRAGMA table_info("${t}")`).all() as { name: string }[]).map((c) => c.name);
+const ROW_TABLES = ["products", "product_batches", "invoices", "invoice_items"];
+
+/** Columns a migration added to the row tables must be empty on existing rows. */
+function newColumnsAreEmpty(db: DatabaseSync, before: Record<string, string[]>) {
+  for (const t of ROW_TABLES) {
+    for (const c of columnsOf(db, t).filter((c) => !before[t].includes(c))) {
+      const n = (db.prepare(`SELECT COUNT(*) AS n FROM "${t}" WHERE "${c}" IS NOT NULL`).get() as { n: number }).n;
+      assert.equal(n, 0, `new column ${t}.${c} is empty on existing rows`);
+    }
+  }
+}
+
+function fingerprint(db: DatabaseSync, rowColumns?: Record<string, string[]>) {
   const out: Record<string, unknown> = {};
   for (const t of PHARMACY) {
     const cols = (db.prepare(`PRAGMA table_info("${t}")`).all() as { name: string }[]).map((c) => c.name);
@@ -68,7 +82,11 @@ function fingerprint(db: DatabaseSync) {
     out[t] = db.prepare(`SELECT COUNT(*) AS rows ${sums.map((c) => `, ROUND(COALESCE(SUM("${c}"),0),2) AS sum_${c}`).join("")} FROM "${t}"`).get();
   }
   // Every column of every row too: a migration must not change existing data at all.
-  for (const t of ["products", "product_batches", "invoices", "invoice_items"]) out[`${t}_rows`] = db.prepare(`SELECT * FROM "${t}" ORDER BY id`).all();
+  // Compared on the columns the table had before the migration (see newColumnsAreEmpty).
+  for (const t of ROW_TABLES) {
+    const cols = (rowColumns?.[t] ?? columnsOf(db, t)).map((c) => `"${c}"`).join(", ");
+    out[`${t}_rows`] = db.prepare(`SELECT ${cols} FROM "${t}" ORDER BY id`).all();
+  }
   return out;
 }
 
@@ -76,7 +94,7 @@ function fingerprint(db: DatabaseSync) {
 function migrate(db: DatabaseSync): { applied: number; skipped: number; failed: string[] } {
   let applied = 0, skipped = 0;
   const failed: string[] = [];
-  for (const v of [34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44]) {
+  for (const v of [34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]) {
     for (const sql of statementsOf(v)) {
       try {
         db.exec(sql);
@@ -104,6 +122,7 @@ run("migration on a copy of the live database: pharmacy unchanged, all modules w
   const db = replica();
   setTestDb(db);
   const before = fingerprint(db);
+  const rowColumns = Object.fromEntries(ROW_TABLES.map((t) => [t, columnsOf(db, t)]));
 
   // What the busiest pharmacy's screens show before the migration.
   const busiest = db.prepare(`SELECT tenant_id, COUNT(*) AS n FROM invoices GROUP BY tenant_id ORDER BY n DESC LIMIT 1`).get() as { tenant_id: string; n: number } | undefined;
@@ -124,7 +143,8 @@ run("migration on a copy of the live database: pharmacy unchanged, all modules w
   const again = migrate(db);
   assert.deepEqual(again.failed, [], "second run: no failures");
 
-  assert.deepEqual(fingerprint(db), before, "pharmacy data is exactly as it was");
+  assert.deepEqual(fingerprint(db, rowColumns), before, "pharmacy data is exactly as it was");
+  newColumnsAreEmpty(db, rowColumns);
 
   for (const t of ["clinic_patients", "clinic_doctors", "clinic_appointments", "clinic_consultations", "clinic_prescriptions", "clinic_rx_items", "clinic_pharmacy_link", "pharmacy_rx_notifications", "pharmacy_rx_items", "hospital_patients", "hospital_services", "hospital_episodes", "hospital_charges", "hospital_payments", "hospital_departments", "hospital_lab_orders", "hospital_imaging_orders"]) {
     assert.ok((db.prepare(`PRAGMA table_info("${t}")`).all() as unknown[]).length > 0, `${t} exists`);

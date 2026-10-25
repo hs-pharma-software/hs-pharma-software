@@ -20,6 +20,8 @@ import { getRadiologyReport, type RadiologyReport } from "@/lib/repo/radiology";
 import { LabReportModal } from "@/components/hospital/LabReportModal";
 import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal";
 import type { HospitalEpisode } from "@/lib/types-hospital";
+import { parseBreakdown, EMPTY_BREAKDOWN } from "@/config/surgeryCharges";
+import { SurgeryChargesFields, draftFrom, draftToBreakdown, draftTotal, type ChargeDraft } from "@/components/hospital/SurgeryChargesFields";
 import type { Staff } from "@/lib/types";
 
 type Product = { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null };
@@ -482,6 +484,7 @@ function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; on
   const [surgeryId, setSurgeryId] = useState("");
   const [plannedDate, setPlannedDate] = useState(localDate());
   const [surgeonId, setSurgeonId] = useState(episode.doctor_id ?? "");
+  const [charges, setCharges] = useState<ChargeDraft>(() => draftFrom(EMPTY_BREAKDOWN));
   const [surgeries, setSurgeries] = useState<HospitalService[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [doctors, setDoctors] = useState<Staff[]>([]);
@@ -493,7 +496,6 @@ function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; on
     void listHospitalDoctors().then(setDoctors).catch(() => setDoctors([]));
   }, []);
 
-  const surgery = surgeries.find((s) => s.id === surgeryId);
   const deptOptions = department && !departments.includes(department) ? [department, ...departments] : departments;
 
   async function save() {
@@ -504,6 +506,7 @@ function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; on
         surgeryTypeId: plan === "surgery" ? surgeryId : null,
         plannedDate: plan === "surgery" ? plannedDate || null : null,
         surgeonId: plan === "surgery" ? surgeonId || null : null,
+        charges: plan === "surgery" ? draftToBreakdown(charges) : null,
       });
       onDone();
     } catch (e) {
@@ -537,13 +540,13 @@ function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; on
                 <Select value={surgeryId} onChange={(e) => {
                   setSurgeryId(e.target.value);
                   const s = surgeries.find((x) => x.id === e.target.value);
+                  setCharges(draftFrom(s ? parseBreakdown(s.fee_breakdown, s.rate) : EMPTY_BREAKDOWN));
                   if (s?.department && departments.includes(s.department)) setDepartment(s.department);
                 }}>
                   <option value="">{surgeries.length ? "— Choose the surgery —" : "No surgeries yet (the admin adds them in Surgery)"}</option>
                   {surgeries.map((s) => <option key={s.id} value={s.id}>{s.name}{s.department ? ` · ${s.department}` : ""} · Rs {Number(s.rate).toLocaleString()}</option>)}
                 </Select>
               </Field>
-              {surgery && <p className="mt-1 text-xs text-neutral-600">Fee Rs {Number(surgery.rate).toLocaleString()} goes on the admission bill.</p>}
             </div>
             <Field label="Planned date"><Input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} /></Field>
             <Field label="Surgeon">
@@ -552,6 +555,12 @@ function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; on
                 {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}{d.designation ? ` · ${d.designation}` : ""}</option>)}
               </Select>
             </Field>
+            {surgeryId && (
+              <div className="md:col-span-2">
+                <p className="mb-2 text-xs font-semibold text-neutral-700">Charges for this patient <span className="font-normal text-neutral-500">(each a line on the surgery invoice)</span></p>
+                <SurgeryChargesFields idPrefix="admit" value={charges} onChange={setCharges} />
+              </div>
+            )}
           </div>
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -566,7 +575,7 @@ function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpisode; on
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={saving || !reason.trim() || (plan === "surgery" && !surgeryId)}>
+          <Button variant="primary" onClick={() => void save()} disabled={saving || !reason.trim() || (plan === "surgery" && (!surgeryId || !(draftTotal(charges) > 0)))}>
             {saving ? "Admitting…" : "Admit"}
           </Button>
         </div>

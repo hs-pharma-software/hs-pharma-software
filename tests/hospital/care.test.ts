@@ -7,12 +7,13 @@ import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
-import { hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextMrNo, listChargesForEpisode } from "@/lib/repo/hospital";
+import { hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, nextMrNo, listChargesForEpisode, addPayment } from "@/lib/repo/hospital";
+import { invoicesRepo, listInvoicesForGrid } from "@/lib/repo/invoices";
 import { saveHospitalStaff, bookOpdVisit, saveConsultationNotes, saveRx, orderInvestigation, payOrderFee, reportLabResult, reportImaging, listVisitOrders } from "@/lib/repo/hospitalOpd";
 import { verifyLabResult, getLabReport } from "@/lib/repo/labReports";
 import { getRadiologyReport } from "@/lib/repo/radiology";
 import {
-  listSurgeryTypes, saveSurgeryType, admitFromVisit, listSurgeryBookings, markSurgeryDone, cancelSurgery, getPatientHistory,
+  getSurgeryInvoice, listSurgeryTypes, saveSurgeryType, admitFromVisit, listSurgeryBookings, markSurgeryDone, cancelSurgery, getPatientHistory,
 } from "@/lib/repo/hospitalCare";
 import { visibleNavFor } from "@/config/navFilter";
 import { designation } from "@/config/hospitalStaff";
@@ -85,7 +86,7 @@ test("admit for surgery: IPD admission linked to the visit, surgery booked, fee 
   assert.ok(booking);
   assert.deepEqual([booking.status, booking.fee, booking.surgery_name, booking.surgeon_id, booking.planned_date], ["planned", 85000, "Appendectomy", dr.id, TODAY]);
   const charges = await listChargesForEpisode(admission.id);
-  assert.deepEqual(charges.map((c) => [c.description, c.amount, c.category]), [["Surgery: Appendectomy", 85000, "ot"]]);
+  assert.deepEqual(charges.map((c) => [c.description, c.amount, c.category]), [["Appendectomy: Operation Fee", 85000, "ot"]], "a surgery saved with only a fee bills it as the operation fee");
   assert.equal(booking.charge_id, charges[0].id);
 
   await assert.rejects(admitFromVisit({ fromEpisodeId: visit.id, reason: "again", plan: "ipd" }), /already admitted/);
@@ -210,4 +211,54 @@ test("doctor desk: a reported test or scan of the visit opens its report for the
   assert.equal(report.patient.name, "Bilal Ahmed");
   const scan = await getRadiologyReport(rad.order.id);
   assert.equal(scan.order.impression, "Normal chest");
+});
+
+test("surgery charges: breakdown on the type, editable per patient, one bill line each, invoice in Billing that follows payments; cancel removes it", async () => {
+  const dr = await doctor();
+  const p = await patient();
+  const { episode: visit } = await bookOpdVisit({ patientId: p.id, doctorId: dr.id });
+  const type = await saveSurgeryType(null, {
+    name: "Fracture fixation", department: "Orthopedic Department",
+    breakdown: { operation_fee: 50000, ot_charges: 10000, paramedic_charges: 3000, anesthesia_charges: 8000, ot_medicine: 6000, room_type: "VIP Room", room_charges: 12000, indoor_medicine: 4000 },
+  });
+  assert.equal(type.rate, 93000, "the fee is the total of the charges");
+  await assert.rejects(saveSurgeryType(null, { name: "Bad", breakdown: { ot_charges: -1 } }), /OT Charges cannot be negative/);
+
+  // This patient gets a VVIP room and no indoor medicine.
+  const { admission, booking } = await admitFromVisit({
+    fromEpisodeId: visit.id, reason: "Fracture femur", plan: "surgery", surgeryTypeId: type.id, wardRoom: "Ortho", bedNo: "3",
+    charges: { operation_fee: 50000, ot_charges: 10000, paramedic_charges: 3000, anesthesia_charges: 8000, ot_medicine: 6000, room_type: "VVIP Room", room_charges: 20000, indoor_medicine: 0 },
+  });
+  assert.equal(booking!.fee, 97000);
+  const lines = await listChargesForEpisode(admission.id);
+  assert.deepEqual(lines.map((l) => [l.description, l.amount, l.category]), [
+    ["Fracture fixation: Operation Fee", 50000, "ot"],
+    ["Fracture fixation: OT Charges", 10000, "ot"],
+    ["Fracture fixation: Paramedics Charges", 3000, "nursing"],
+    ["Fracture fixation: Anesthesia Charges", 8000, "ot"],
+    ["Fracture fixation: OT Medicine", 6000, "pharmacy"],
+    ["Fracture fixation: Room Charges (VVIP Room)", 20000, "bed"],
+  ]);
+  assert.ok(lines.every((l) => l.invoice_id === booking!.invoice_id));
+
+  // The invoice is listed in Billing › Invoices Details.
+  const listed = (await listInvoicesForGrid()).find((r) => r.id === booking!.invoice_id)!;
+  assert.deepEqual([listed.invoice_type, listed.customer_name, listed.total, listed.paid, listed.balance], ["hospital_surgery", "Bilal Ahmed", 97000, 0, 97000]);
+  const inv = await getSurgeryInvoice(booking!.invoice_id!);
+  assert.equal(inv.lines.length, 6);
+  assert.equal(inv.admission?.episode_no, admission.episode_no);
+  assert.equal(inv.surgeonName, "Dr Ayesha Khan");
+
+  // Payments on the admission show on the invoice.
+  await addPayment({ tenant_id: "", episode_id: admission.id, type: "deposit", amount: 40000, method: "cash", reference: null, notes: null, received_at: TODAY });
+  let after = (await invoicesRepo.get(booking!.invoice_id!))!;
+  assert.deepEqual([after.paid, after.balance], [40000, 57000]);
+  await addPayment({ tenant_id: "", episode_id: admission.id, type: "payment", amount: 70000, method: "cash", reference: null, notes: null, received_at: TODAY });
+  after = (await invoicesRepo.get(booking!.invoice_id!))!;
+  assert.deepEqual([after.paid, after.balance], [97000, 0], "never more than the invoice");
+
+  await cancelSurgery(booking!.id, "Referred out");
+  assert.equal((await listChargesForEpisode(admission.id)).length, 0);
+  assert.ok((await invoicesRepo.get(booking!.invoice_id!))!.deleted_at, "invoice removed");
+  assert.ok(!(await listInvoicesForGrid()).some((r) => r.id === booking!.invoice_id));
 });

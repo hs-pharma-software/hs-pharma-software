@@ -201,6 +201,8 @@ export interface Invoice extends TenantRow {
   buyer_province: string | null;
   buyer_address: string | null;
   buyer_registration_type: string | null;
+  /** The hospital admission a surgery invoice bills (v45). */
+  hospital_episode_id?: string | null;
 }
 
 export interface InvoiceItem extends TenantRow {

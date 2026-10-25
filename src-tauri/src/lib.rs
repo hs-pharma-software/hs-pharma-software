@@ -1294,6 +1294,19 @@ fn schema_sql_v44() -> &'static str {
     "#
 }
 
+/// Surgery invoices: the charge breakdown of a surgery type and of a booked
+/// surgery (operation fee, OT, paramedics, anaesthesia, OT medicine, room,
+/// indoor medicine), the booking's invoice, and the admission an invoice bills.
+fn schema_sql_v45() -> &'static str {
+    r#"
+    ALTER TABLE hospital_services ADD COLUMN fee_breakdown TEXT;
+    ALTER TABLE hospital_surgery_bookings ADD COLUMN fee_breakdown TEXT;
+    ALTER TABLE hospital_surgery_bookings ADD COLUMN invoice_id TEXT;
+    ALTER TABLE invoices ADD COLUMN hospital_episode_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_invoices_hospital_episode ON invoices (tenant_id, hospital_episode_id) WHERE hospital_episode_id IS NOT NULL
+    "#
+}
+
 fn schema_sql_v43() -> &'static str {
     r#"
     ALTER TABLE hospital_episodes ADD COLUMN from_episode_id TEXT;
@@ -2421,6 +2434,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 44,
             description: "cbc_panel_report_qr_radiology_studies",
             sql: schema_sql_v44(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 45,
+            description: "surgery_invoices",
+            sql: schema_sql_v45(),
             kind: MigrationKind::Up,
         },
     ]

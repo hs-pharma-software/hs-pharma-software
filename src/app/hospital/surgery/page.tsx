@@ -10,6 +10,9 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { hospitalDepartmentsRepo, type HospitalService } from "@/lib/repo/hospital";
 import { listSurgeryTypes, saveSurgeryType, listSurgeryBookings, markSurgeryDone, cancelSurgery, type SurgeryRow } from "@/lib/repo/hospitalCare";
+import { parseBreakdown } from "@/config/surgeryCharges";
+import { SurgeryChargesFields, draftFrom, draftToBreakdown, draftTotal } from "@/components/hospital/SurgeryChargesFields";
+import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
 
 const STATUS_COLOR: Record<string, string> = {
   planned: "bg-amber-100 text-amber-700",
@@ -23,6 +26,7 @@ export default function SurgeryPage() {
   const [bookings, setBookings] = useState<SurgeryRow[]>([]);
   const [filter, setFilter] = useState<"" | "planned" | "done" | "cancelled">("planned");
   const [editing, setEditing] = useState<HospitalService | "new" | null>(null);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
 
   async function reload() {
     if (!isTauri()) return;
@@ -65,13 +69,16 @@ export default function SurgeryPage() {
     { header: "Status", render: (b) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[b.status] ?? ""}`}>{b.status}</span> },
     {
       header: "",
-      render: (b) => b.status !== "planned" ? null : (
+      render: (b) => (
         <div className="flex gap-1">
+          {b.invoice_id && b.status !== "cancelled" && <Button variant="ghost" onClick={() => setInvoiceId(b.invoice_id!)}>Invoice</Button>}
+          {b.status === "planned" && <>
           <Button variant="ghost" onClick={() => void act("mark the surgery done", () => markSurgeryDone(b.id))}>Mark done</Button>
           <Button variant="ghost" onClick={() => {
-            const reason = window.prompt(`Cancel ${b.surgery_name} for ${b.patient_name}? The fee is taken off the bill.\nReason:`);
+            const reason = window.prompt(`Cancel ${b.surgery_name} for ${b.patient_name}? Its charges and invoice are taken off the bill.\nReason:`);
             if (reason?.trim()) void act("cancel the surgery", () => cancelSurgery(b.id, reason));
           }}>Cancel</Button>
+          </>}
         </div>
       ),
     },
@@ -96,7 +103,7 @@ export default function SurgeryPage() {
       />
       {tab === "types" ? (
         <>
-          <p className="mb-3 text-xs text-neutral-500">Surgeries performed in this hospital. Doctors choose from this list when admitting a patient for surgery, and the fee goes on the admission bill.</p>
+          <p className="mb-3 text-xs text-neutral-500">Surgeries performed in this hospital. Doctors choose from this list when admitting a patient for surgery. Each charge goes on the admission bill, and the surgery invoice appears in Billing › Invoices Details.</p>
           <DataTable columns={typeColumns} rows={types} />
         </>
       ) : (
@@ -112,6 +119,7 @@ export default function SurgeryPage() {
           <DataTable columns={bookingColumns} rows={bookings} />
         </>
       )}
+      {invoiceId && <SurgeryInvoiceModal invoiceId={invoiceId} onClose={() => setInvoiceId(null)} />}
       {editing && <SurgeryTypeModal surgery={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
     </div>
   );
@@ -121,7 +129,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   const [name, setName] = useState(surgery?.name ?? "");
   const [code, setCode] = useState(surgery?.code ?? "");
   const [department, setDepartment] = useState(surgery?.department ?? "");
-  const [rate, setRate] = useState(surgery ? String(surgery.rate) : "");
+  const [charges, setCharges] = useState(() => draftFrom(parseBreakdown(surgery?.fee_breakdown, surgery?.rate ?? 0)));
   const [notes, setNotes] = useState(surgery?.notes ?? "");
   const [active, setActive] = useState(surgery ? Boolean(surgery.is_active) : true);
   const [departments, setDepartments] = useState<string[]>([]);
@@ -135,7 +143,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   async function save() {
     setSaving(true);
     try {
-      await saveSurgeryType(surgery?.id ?? null, { name, code, department, rate: Number(rate) || 0, notes, is_active: active ? 1 : 0 });
+      await saveSurgeryType(surgery?.id ?? null, { name, code, department, breakdown: draftToBreakdown(charges), notes, is_active: active ? 1 : 0 });
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -159,11 +167,8 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
             {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </Select>
         </Field>
-        <Field label="Fee (Rs) *">
-          <Input type="number" min="0" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0" />
-        </Field>
         <Field label="Notes">
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Includes OT, anaesthesia…" />
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Includes 2 days stay" />
         </Field>
         <Field label="Status">
           <Select value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
@@ -172,9 +177,13 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
           </Select>
         </Field>
       </div>
+      <p className="mb-2 text-xs font-semibold text-neutral-700">Charges</p>
+      <div className="mb-4">
+        <SurgeryChargesFields idPrefix="surgery-type" value={charges} onChange={setCharges} />
+      </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : surgery ? "Update" : "Add Surgery"}</Button>
+        <Button variant="primary" onClick={() => void save()} disabled={saving || !name.trim() || !(draftTotal(charges) > 0)}>{saving ? "Saving…" : surgery ? "Update" : "Add Surgery"}</Button>
       </div>
     </Modal>
   );

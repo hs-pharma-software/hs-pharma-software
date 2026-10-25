@@ -58,6 +58,8 @@ export interface HospitalService extends TenantRow {
   turnaround_hours?: number | null;
   /** Radiology study modality in Performing Images (v44): X-Ray, Ultrasound, CT... */
   modality?: string | null;
+  /** Surgery types: the charge breakdown as JSON (v45); see config/surgeryCharges. */
+  fee_breakdown?: string | null;
 }
 
 export type EpisodeType = "opd" | "ipd" | "emergency";
@@ -256,6 +258,10 @@ export interface SurgeryBooking extends TenantRow {
   surgery_name: string;
   fee: number;
   charge_id: string | null;
+  /** The charges this surgery is billed with, as JSON (v45). */
+  fee_breakdown?: string | null;
+  /** The surgery invoice in Billing (v45). */
+  invoice_id?: string | null;
   surgeon_id: string | null;
   planned_date: string | null;
   status: SurgeryStatus;
