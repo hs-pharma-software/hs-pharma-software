@@ -1,5 +1,6 @@
 ﻿import type { LucideIcon } from "lucide-react";
 import {
+  Droplets,
   LayoutDashboard,
   FileText,
   FileCheck2,
@@ -521,6 +522,7 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Collection Centers", href: "/hospital/lab/centers" },
     ],
   },
+  { label: "Blood Bank", href: "/hospital/blood-bank", icon: Droplets, moduleKey: "hospital_blood_bank", onlyFor: ["hospital"] },
   {
     label: "Radiology",
     href: "/hospital/radiology",

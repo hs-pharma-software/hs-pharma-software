@@ -1331,6 +1331,67 @@ fn schema_sql_v44() -> &'static str {
 /// cycles with physical / chemical / biological results, release by a
 /// verifier other than the operator, recall; the instrument sets of a load and
 /// the surgeries they were actually used in.
+/// Hospital blood bank (MSDS COP-2, CQI-2 Ind. 104; Punjab Blood Transfusion
+/// Safety Act 2016): donors and donations, blood units with screening and
+/// status through the chain (quarantine, available, reserved, issued,
+/// transfused, returned, discarded), requests, compatibility tests, issues
+/// and the bedside transfusion, and transfusion reactions with the report to
+/// the Authority.
+fn schema_sql_v53() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_bb_donors (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, donor_no TEXT NOT NULL, name TEXT NOT NULL, cnic TEXT, phone TEXT, gender TEXT,
+        dob TEXT, abo TEXT, rh TEXT, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_bb_donor_no ON hospital_bb_donors (tenant_id, donor_no);
+    CREATE TABLE IF NOT EXISTS hospital_bb_donations (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, donor_id TEXT NOT NULL, donated_at TEXT NOT NULL, donation_type TEXT NOT NULL,
+        hb REAL, weight_kg REAL, bp TEXT, pulse INTEGER, temperature_c REAL, questionnaire_ok INTEGER NOT NULL DEFAULT 0,
+        eligible INTEGER NOT NULL DEFAULT 0, deferral_reason TEXT, consent_signed INTEGER NOT NULL DEFAULT 0, for_patient_id TEXT,
+        screened_by_name TEXT, unit_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_bb_donations_donor ON hospital_bb_donations (tenant_id, donor_id);
+    CREATE TABLE IF NOT EXISTS hospital_bb_units (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, unit_no TEXT NOT NULL, source TEXT NOT NULL, donation_id TEXT,
+        supplier_name TEXT, supplier_unit_no TEXT, supplier_licence TEXT, component TEXT NOT NULL, abo TEXT, rh TEXT, volume_ml INTEGER,
+        collected_on TEXT NOT NULL, expires_on TEXT NOT NULL, tti_hbv TEXT, tti_hcv TEXT, tti_hiv TEXT, tti_syphilis TEXT, tti_malaria TEXT,
+        screened_by_name TEXT, storage TEXT, status TEXT NOT NULL DEFAULT 'quarantine', released_by_name TEXT, released_at TEXT,
+        discard_reason TEXT, discarded_at TEXT, discarded_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_bb_unit_no ON hospital_bb_units (tenant_id, unit_no);
+    CREATE INDEX IF NOT EXISTS idx_bb_units_status ON hospital_bb_units (tenant_id, status, component, expires_on);
+    CREATE TABLE IF NOT EXISTS hospital_bb_requests (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT NOT NULL, component TEXT NOT NULL,
+        units_requested INTEGER NOT NULL, urgency TEXT NOT NULL, indication TEXT NOT NULL, patient_abo TEXT, patient_rh TEXT,
+        requested_by TEXT, requested_by_name TEXT, requested_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', closed_at TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_bb_requests ON hospital_bb_requests (tenant_id, status, requested_at);
+    CREATE INDEX IF NOT EXISTS idx_bb_requests_episode ON hospital_bb_requests (tenant_id, episode_id);
+    CREATE TABLE IF NOT EXISTS hospital_bb_crossmatches (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, request_id TEXT NOT NULL, unit_id TEXT NOT NULL, result TEXT NOT NULL, method TEXT,
+        tested_by_name TEXT, tested_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_bb_xm_request ON hospital_bb_crossmatches (tenant_id, request_id);
+    CREATE TABLE IF NOT EXISTS hospital_bb_issues (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, request_id TEXT NOT NULL, unit_id TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT NOT NULL,
+        emergency_release INTEGER NOT NULL DEFAULT 0, authorized_by TEXT, issued_at TEXT NOT NULL, issued_by_name TEXT, received_by TEXT,
+        started_at TEXT, check_by_1 TEXT, check_by_2 TEXT, vitals_pre TEXT, vitals_15min TEXT, vitals_end TEXT, ended_at TEXT,
+        volume_ml INTEGER, outcome TEXT, returned_at TEXT, return_reason TEXT, recorded_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_bb_issue_unit ON hospital_bb_issues (tenant_id, unit_id) WHERE returned_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_bb_issues_episode ON hospital_bb_issues (tenant_id, episode_id);
+    CREATE TABLE IF NOT EXISTS hospital_bb_reactions (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, issue_id TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT NOT NULL,
+        onset_at TEXT NOT NULL, reaction_type TEXT NOT NULL, severity TEXT NOT NULL, symptoms TEXT NOT NULL, actions TEXT NOT NULL,
+        investigation TEXT, analysis TEXT, outcome TEXT, reported_to_authority INTEGER NOT NULL DEFAULT 0, authority_reported_at TEXT,
+        authority_ref TEXT, recorded_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_bb_reactions ON hospital_bb_reactions (tenant_id, onset_at)
+    "#
+}
+
 fn schema_sql_v52() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_hh_sessions (
@@ -2682,6 +2743,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 52,
             description: "ipc_hand_hygiene_and_sterilization",
             sql: schema_sql_v52(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 53,
+            description: "hospital_blood_bank",
+            sql: schema_sql_v53(),
             kind: MigrationKind::Up,
         },
     ]

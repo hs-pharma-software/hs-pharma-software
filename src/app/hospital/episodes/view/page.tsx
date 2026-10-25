@@ -6,6 +6,7 @@ import { Plus, Trash2, CheckCircle2, ArrowLeft, BedDouble } from "lucide-react";
 import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
 import { EpisodeRecord, VitalsPanel, VisitChecklist } from "@/components/hospital/record/EpisodeRecord";
 import { MedicationPanel } from "@/components/hospital/record/MedicationPanel";
+import { TransfusionPanel } from "@/components/hospital/record/TransfusionPanel";
 import { TheatreRecord } from "@/components/hospital/record/TheatreRecord";
 import { surgeryBookingsRepo } from "@/lib/repo/hospitalCare";
 import type { SurgeryBooking } from "@/lib/types-hospital";
@@ -259,6 +260,7 @@ export default function EpisodeDetailPage() {
             <EpisodeRecord patient={patient} episode={episode} />
             {episode.type !== "opd" && <VitalsPanel episode={episode} />}
             {episode.type !== "opd" && <MedicationPanel episode={episode} />}
+            {episode.type !== "opd" && <TransfusionPanel episode={episode} />}
           </div>
           <div className="flex flex-col gap-4">
             {surgeries.length > 0 && (

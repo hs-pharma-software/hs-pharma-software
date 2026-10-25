@@ -494,3 +494,133 @@ export interface SterilUsage extends TenantRow {
   used_at: string;
   recorded_by_name: string | null;
 }
+
+// ── Blood bank (v53) ─────────────────────────────────────────────────────
+
+export interface BbDonor extends TenantRow {
+  donor_no: string;
+  name: string;
+  cnic: string | null;
+  phone: string | null;
+  gender: string | null;
+  dob: string | null;
+  abo: string | null;
+  rh: string | null;
+  notes: string | null;
+}
+
+export interface BbDonation extends TenantRow {
+  donor_id: string;
+  donated_at: string;
+  donation_type: "Voluntary" | "Replacement" | "Autologous";
+  hb: number | null;
+  weight_kg: number | null;
+  bp: string | null;
+  pulse: number | null;
+  temperature_c: number | null;
+  questionnaire_ok: number;
+  eligible: number;
+  deferral_reason: string | null;
+  consent_signed: number;
+  for_patient_id: string | null;
+  screened_by_name: string | null;
+  unit_id: string | null;
+}
+
+export type BbUnitStatus = "quarantine" | "available" | "reserved" | "issued" | "transfused" | "discarded";
+
+export interface BbUnit extends TenantRow {
+  unit_no: string;
+  source: "donation" | "received";
+  donation_id: string | null;
+  supplier_name: string | null;
+  supplier_unit_no: string | null;
+  supplier_licence: string | null;
+  component: string;
+  abo: string | null;
+  rh: string | null;
+  volume_ml: number | null;
+  collected_on: string;
+  expires_on: string;
+  tti_hbv: string | null;
+  tti_hcv: string | null;
+  tti_hiv: string | null;
+  tti_syphilis: string | null;
+  tti_malaria: string | null;
+  screened_by_name: string | null;
+  storage: string | null;
+  status: BbUnitStatus;
+  released_by_name: string | null;
+  released_at: string | null;
+  discard_reason: string | null;
+  discarded_at: string | null;
+  discarded_by_name: string | null;
+}
+
+export interface BbRequest extends TenantRow {
+  patient_id: string;
+  episode_id: string;
+  component: string;
+  units_requested: number;
+  urgency: "Routine" | "Urgent" | "Emergency";
+  indication: string;
+  patient_abo: string | null;
+  patient_rh: string | null;
+  requested_by: string | null;
+  requested_by_name: string | null;
+  requested_at: string;
+  status: "open" | "fulfilled" | "cancelled";
+  closed_at: string | null;
+  notes: string | null;
+}
+
+export interface BbCrossmatch extends TenantRow {
+  request_id: string;
+  unit_id: string;
+  result: "compatible" | "incompatible";
+  method: string | null;
+  tested_by_name: string | null;
+  tested_at: string;
+}
+
+export interface BbIssue extends TenantRow {
+  request_id: string;
+  unit_id: string;
+  patient_id: string;
+  episode_id: string;
+  emergency_release: number;
+  authorized_by: string | null;
+  issued_at: string;
+  issued_by_name: string | null;
+  received_by: string | null;
+  started_at: string | null;
+  check_by_1: string | null;
+  check_by_2: string | null;
+  vitals_pre: string | null;
+  vitals_15min: string | null;
+  vitals_end: string | null;
+  ended_at: string | null;
+  volume_ml: number | null;
+  outcome: "Completed" | "Stopped (reaction)" | "Stopped (other)" | null;
+  returned_at: string | null;
+  return_reason: string | null;
+  recorded_by_name: string | null;
+}
+
+export interface BbReaction extends TenantRow {
+  issue_id: string;
+  patient_id: string;
+  episode_id: string;
+  onset_at: string;
+  reaction_type: string;
+  severity: string;
+  symptoms: string;
+  actions: string;
+  investigation: string | null;
+  analysis: string | null;
+  outcome: string | null;
+  reported_to_authority: number;
+  authority_reported_at: string | null;
+  authority_ref: string | null;
+  recorded_by_name: string | null;
+}

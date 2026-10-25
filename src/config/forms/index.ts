@@ -3,9 +3,10 @@ import type { FormDef } from "./types";
 import { MEDICAL_RECORD_FORMS } from "./medicalRecord";
 import { THEATRE_FORMS } from "./theatre";
 import { IPC_REGISTERS } from "./ipc";
+import { BLOOD_BANK_FORMS } from "./bloodBank";
 
 export * from "./types";
-export const FORMS: FormDef[] = [...MEDICAL_RECORD_FORMS, ...THEATRE_FORMS, ...IPC_REGISTERS];
+export const FORMS: FormDef[] = [...MEDICAL_RECORD_FORMS, ...THEATRE_FORMS, ...IPC_REGISTERS, ...BLOOD_BANK_FORMS];
 
 export function formDef(key: string): FormDef | null {
   return FORMS.find((f) => f.key === key) ?? null;

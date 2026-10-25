@@ -36,7 +36,9 @@ export const DESIGNATIONS: Designation[] = [
     pages: ["hospital_admissions", "hospital_patients", "hospital_episodes"] },
   { key: "nurse", label: "Nurse", prefix: "NUR", license: "PNC", licenseRequired: true, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
   { key: "pathologist", label: "Pathologist (verifies lab reports)", prefix: "PATH", license: "PMDC", licenseRequired: true, doctor: false,
-    pages: ["hospital_lab", "hospital_patients"] },
+    pages: ["hospital_lab", "hospital_patients", "hospital_blood_bank"] },
+  { key: "blood_bank_technologist", label: "Blood Bank Technologist", prefix: "BBT", license: "LICENSE", licenseRequired: false, doctor: false,
+    pages: ["hospital_blood_bank", "hospital_patients"] },
   { key: "lab_receptionist", label: "Lab Counter Receptionist", prefix: "LR", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
   { key: "collection_center_receptionist", label: "Collection Center Receptionist", prefix: "CCR", license: null, licenseRequired: false, doctor: false,
@@ -63,6 +65,9 @@ export const ADMISSION_CONFIRM_DEPT_ROLES = ["head_nurse"];
  * never released by the person who ran it. */
 export const CSSD_OPERATOR_ROLES = ["cssd_technician", "cssd_supervisor", "infection_control_nurse"];
 export const CSSD_RELEASE_ROLES = ["cssd_supervisor", "infection_control_nurse", "nursing_superintendent"];
+/** Blood bank (MSDS COP-2): screening, release to stock, compatibility testing and issue. */
+export const BLOOD_BANK_ROLES = ["blood_bank_technologist", "pathologist"];
+
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];
 
