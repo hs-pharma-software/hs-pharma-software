@@ -50,7 +50,9 @@ export const DESIGNATIONS: Designation[] = [
     pages: ["hospital_episodes", "hospital_patients", "products", "suppliers"] },
   { key: "store_keeper", label: "Store Keeper", prefix: "SK", license: null, licenseRequired: false, doctor: false, pages: ["products", "suppliers", "tasks"] },
   { key: "quality_manager", label: "Quality Manager / Patient Safety Officer", prefix: "QM", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_quality", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
+    pages: ["hospital_quality", "hospital_facility", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
+  { key: "facility_manager", label: "Facility Manager / Biomedical Engineer", prefix: "FM", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_facility"] },
   { key: "hr_officer", label: "HR Officer", prefix: "HR", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr"] },
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
@@ -73,6 +75,18 @@ export const BLOOD_BANK_ROLES = ["blood_bank_technologist", "pathologist"];
 /** Quality and patient safety (MSDS PRE-4, CQI-3, ROM-5): review incidents,
  * run root cause analyses, handle complaints and verify corrective actions. */
 export const QUALITY_ROLES = ["quality_manager", "nursing_superintendent", "hod"];
+
+/** Facility management and safety (MSDS FMS): equipment, maintenance, licences, drills. */
+export const FACILITY_ROLES = ["facility_manager"];
+/** Mock drills are also run by the quality team and the Nursing Superintendent. */
+export const DRILL_ROLES = ["facility_manager", "quality_manager", "nursing_superintendent"];
+/** Human resources (MSDS HRM): training records, credential verification, rosters, appraisals. */
+export const HR_ROLES = ["hr_officer"];
+export const TRAINING_ROLES = ["hr_officer", "nursing_superintendent", "quality_manager", "infection_control_nurse"];
+export const ROSTER_ROLES = ["hr_officer", "nursing_superintendent", "head_nurse", "hod"];
+export const APPRAISER_ROLES = ["hod", "nursing_superintendent", "head_nurse", "hr_officer"];
+/** Controlled documents: drafted by these, approved by the quality team (never by the author). */
+export const DOCUMENT_AUTHOR_ROLES = ["quality_manager", "nursing_superintendent", "hod", "hr_officer", "infection_control_nurse", "facility_manager", "pathologist"];
 
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];

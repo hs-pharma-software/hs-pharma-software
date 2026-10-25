@@ -755,7 +755,7 @@ export interface Incident extends TenantRow {
 
 export interface Capa extends TenantRow {
   capa_no: string;
-  source: "incident" | "complaint" | "audit" | "indicator" | "other";
+  source: "incident" | "complaint" | "audit" | "indicator" | "drill" | "other";
   source_id: string | null;
   problem: string;
   action_type: "corrective" | "preventive";
@@ -770,4 +770,142 @@ export interface Capa extends TenantRow {
   verified_at: string | null;
   verified_by_name: string | null;
   effectiveness: string | null;
+}
+
+// ── Facility, HR and documents (v55) ──────────────────────────────────────
+
+export interface Equipment extends TenantRow {
+  asset_no: string;
+  name: string;
+  category: string;
+  make: string | null;
+  model: string | null;
+  serial_no: string | null;
+  department: string | null;
+  location: string | null;
+  supplier: string | null;
+  purchased_on: string | null;
+  cost: number | null;
+  warranty_until: string | null;
+  amc_vendor: string | null;
+  amc_until: string | null;
+  is_critical: number;
+  ppm_interval_days: number | null;
+  calibration_interval_days: number | null;
+  status: "in_service" | "out_of_service" | "condemned";
+  condemned_on: string | null;
+  condemned_reason: string | null;
+  notes: string | null;
+}
+
+export interface EquipmentLog extends TenantRow {
+  equipment_id: string;
+  kind: "ppm" | "calibration" | "breakdown" | "repair";
+  performed_on: string;
+  performed_by: string | null;
+  result: "pass" | "fail" | null;
+  certificate_ref: string | null;
+  description: string | null;
+  /** A breakdown: the day the equipment was back in service. */
+  restored_on: string | null;
+  recorded_by_name: string | null;
+}
+
+export interface Licence extends TenantRow {
+  kind: string;
+  number: string | null;
+  issued_by: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  responsible: string | null;
+  document_ref: string | null;
+  notes: string | null;
+  /** The renewal that replaced this licence. */
+  superseded_by: string | null;
+  recorded_by_name: string | null;
+}
+
+export interface Drill extends TenantRow {
+  kind: string;
+  held_on: string;
+  shift: string | null;
+  location: string;
+  scenario: string | null;
+  participants: number | null;
+  response_min: number | null;
+  observations: string | null;
+  gaps: string | null;
+  conducted_by: string | null;
+  recorded_by_name: string | null;
+}
+
+export interface StaffTraining extends TenantRow {
+  staff_id: string;
+  kind: string;
+  title: string | null;
+  held_on: string;
+  valid_until: string | null;
+  hours: number | null;
+  provider: string | null;
+  certificate_ref: string | null;
+  recorded_by_name: string | null;
+}
+
+export interface StaffCredential extends TenantRow {
+  staff_id: string;
+  kind: string;
+  number: string | null;
+  issued_by: string | null;
+  valid_until: string | null;
+  verified_on: string | null;
+  verified_by_name: string | null;
+  verification_method: string | null;
+  document_ref: string | null;
+  notes: string | null;
+}
+
+export interface Appraisal extends TenantRow {
+  staff_id: string;
+  period_from: string;
+  period_to: string;
+  appraiser_name: string | null;
+  /** JSON: criterion key -> score 1-5. */
+  ratings: string | null;
+  overall: number | null;
+  strengths: string | null;
+  improvements: string | null;
+  goals: string | null;
+  status: "draft" | "final" | "acknowledged";
+  finalized_at: string | null;
+  staff_comments: string | null;
+  acknowledged_at: string | null;
+}
+
+export interface RosterEntry extends TenantRow {
+  staff_id: string;
+  duty_date: string;
+  shift: string;
+  department: string | null;
+  notes: string | null;
+  created_by_name: string | null;
+}
+
+export interface ControlledDocument extends TenantRow {
+  doc_no: string;
+  title: string;
+  kind: string;
+  department: string | null;
+  standard_key: string | null;
+  designation_key: string | null;
+  version: number;
+  status: "draft" | "approved" | "obsolete";
+  body: string | null;
+  file_ref: string | null;
+  change_note: string | null;
+  author_name: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  effective_on: string | null;
+  review_due_on: string | null;
+  supersedes_id: string | null;
 }

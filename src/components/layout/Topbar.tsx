@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { LanguageToggle } from "@/components/electric/LanguageSync";
 import Image from "next/image";
-import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut, Menu } from "lucide-react";
+import Link from "next/link";
+import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut, Menu, ClipboardCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
@@ -158,6 +159,15 @@ export function Topbar() {
                 <p className="mt-0.5 text-neutral-500">
                   {currentUser?.role === "super_admin" ? "Super Admin" : currentTenant?.name ?? "\u2014"}
                 </p>
+                {currentUser?.role === "staff" && currentTenant?.businessType === "hospital" && (
+                  <Link
+                    href="/my-appraisals"
+                    onClick={() => setShowAccount(false)}
+                    className="mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    <ClipboardCheck size={14} /> My appraisals
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => {

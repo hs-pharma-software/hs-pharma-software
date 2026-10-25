@@ -15,7 +15,7 @@ const find = (n: NavItem[], label: string) => n.find((i) => i.label === label);
 
 test("hospital sidebar: the tabs in the requested order (Reception and Doctor Desk after Dashboard)", () => {
   assert.deepEqual(top(nav()), [
-    "Dashboard", "Reception", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Infection Control", "Quality & Safety", "Service Master", "Purchase Cell", "HR Department",
+    "Dashboard", "Reception", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Infection Control", "Quality & Safety", "Facility", "Service Master", "Purchase Cell", "HR Department",
   ]);
 });
 
@@ -45,7 +45,7 @@ test("Purchase Cell sub-tabs, exact order, each keeping its existing pages", () 
 
 test("HR Department holds Staff", () => {
   const hr = find(nav(), "HR Department")!;
-  assert.deepEqual(kids(hr), ["Staff"]);
+  assert.deepEqual(kids(hr), ["Staff", "Staff Records"]);
   const staff = hr.children![0];
   assert.equal(staff.href, "/staff");
   assert.deepEqual((staff.children ?? []).map((c) => c.href), ["/staff", "/staff/ledger", "/staff/attendance"]);
@@ -94,7 +94,7 @@ test("permissions: a group key grants all its sub-tabs; a child key grants just 
 test("the subscription plan still limits the shared sub-tabs, not the hospital's own tabs", () => {
   const n = nav(["products", "banks"]);
   assert.deepEqual(kids(find(n, "Purchase Cell")), ["Products", "Banks"]);
-  assert.equal(find(n, "HR Department"), undefined, "staff is not in this plan");
+  assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records"], "shared Staff is not in this plan; the hospital's own Staff Records is");
   assert.ok(find(n, "Patient") && find(n, "Labs"), "hospital sections are not plan-limited");
 });
 

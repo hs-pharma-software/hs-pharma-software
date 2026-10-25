@@ -1337,6 +1337,72 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+fn schema_sql_v55() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_equipment (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, asset_no TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, make TEXT, model TEXT,
+        serial_no TEXT, department TEXT, location TEXT, supplier TEXT, purchased_on TEXT, cost REAL, warranty_until TEXT, amc_vendor TEXT,
+        amc_until TEXT, is_critical INTEGER NOT NULL DEFAULT 0, ppm_interval_days INTEGER, calibration_interval_days INTEGER,
+        status TEXT NOT NULL DEFAULT 'in_service', condemned_on TEXT, condemned_reason TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_equipment_asset ON hospital_equipment (tenant_id, asset_no);
+    CREATE INDEX IF NOT EXISTS idx_equipment_status ON hospital_equipment (tenant_id, status, department);
+    CREATE TABLE IF NOT EXISTS hospital_equipment_logs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, equipment_id TEXT NOT NULL, kind TEXT NOT NULL, performed_on TEXT NOT NULL,
+        performed_by TEXT, result TEXT, certificate_ref TEXT, description TEXT, restored_on TEXT, recorded_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_equipment_logs ON hospital_equipment_logs (tenant_id, equipment_id, kind, performed_on);
+    CREATE TABLE IF NOT EXISTS hospital_licences (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, number TEXT, issued_by TEXT, issued_on TEXT, expires_on TEXT,
+        responsible TEXT, document_ref TEXT, notes TEXT, superseded_by TEXT, recorded_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_licences ON hospital_licences (tenant_id, kind, expires_on);
+    CREATE TABLE IF NOT EXISTS hospital_drills (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, kind TEXT NOT NULL, held_on TEXT NOT NULL, shift TEXT, location TEXT NOT NULL,
+        scenario TEXT, participants INTEGER, response_min INTEGER, observations TEXT, gaps TEXT, conducted_by TEXT, recorded_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_drills ON hospital_drills (tenant_id, kind, held_on);
+    CREATE TABLE IF NOT EXISTS hospital_staff_training (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, staff_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT, held_on TEXT NOT NULL,
+        valid_until TEXT, hours REAL, provider TEXT, certificate_ref TEXT, recorded_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_training ON hospital_staff_training (tenant_id, staff_id, kind);
+    CREATE TABLE IF NOT EXISTS hospital_staff_credentials (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, staff_id TEXT NOT NULL, kind TEXT NOT NULL, number TEXT, issued_by TEXT,
+        valid_until TEXT, verified_on TEXT, verified_by_name TEXT, verification_method TEXT, document_ref TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_credentials ON hospital_staff_credentials (tenant_id, staff_id);
+    CREATE TABLE IF NOT EXISTS hospital_appraisals (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, staff_id TEXT NOT NULL, period_from TEXT NOT NULL, period_to TEXT NOT NULL,
+        appraiser_name TEXT, ratings TEXT, overall REAL, strengths TEXT, improvements TEXT, goals TEXT, status TEXT NOT NULL DEFAULT 'draft',
+        finalized_at TEXT, staff_comments TEXT, acknowledged_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_appraisals ON hospital_appraisals (tenant_id, staff_id, period_to);
+    CREATE TABLE IF NOT EXISTS hospital_duty_roster (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, staff_id TEXT NOT NULL, duty_date TEXT NOT NULL, shift TEXT NOT NULL, department TEXT,
+        notes TEXT, created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_duty_roster ON hospital_duty_roster (tenant_id, duty_date, department);
+    CREATE INDEX IF NOT EXISTS idx_duty_roster_staff ON hospital_duty_roster (tenant_id, staff_id, duty_date);
+    CREATE TABLE IF NOT EXISTS hospital_documents (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_no TEXT NOT NULL, title TEXT NOT NULL, kind TEXT NOT NULL, department TEXT,
+        standard_key TEXT, designation_key TEXT, version INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'draft', body TEXT, file_ref TEXT,
+        change_note TEXT, author_name TEXT, approved_by_name TEXT, approved_at TEXT, effective_on TEXT, review_due_on TEXT, supersedes_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_documents_no ON hospital_documents (tenant_id, doc_no, version);
+    CREATE INDEX IF NOT EXISTS idx_documents_status ON hospital_documents (tenant_id, status, review_due_on);
+    "#
+}
+
 fn schema_sql_v54() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_er_triage (
@@ -2817,6 +2883,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 54,
             description: "hospital_emergency_quality",
             sql: schema_sql_v54(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 55,
+            description: "hospital_facility_hr_documents",
+            sql: schema_sql_v55(),
             kind: MigrationKind::Up,
         },
     ]

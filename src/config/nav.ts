@@ -552,7 +552,19 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Sterilization (CSSD)", href: "/hospital/cssd", moduleKey: "hospital_cssd" },
     ],
   },
-  { label: "Quality & Safety", href: "/hospital/quality", icon: ShieldAlert, moduleKey: "hospital_quality", onlyFor: ["hospital"] },
+  {
+    label: "Quality & Safety",
+    href: "/hospital/quality",
+    icon: ShieldAlert,
+    moduleKey: "hospital_quality",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Incidents & Complaints", href: "/hospital/quality" },
+      { label: "Documents", href: "/hospital/quality/documents" },
+      { label: "MSDS Self-assessment", href: "/hospital/quality/compliance" },
+    ],
+  },
+  { label: "Facility", href: "/hospital/facility", icon: Wrench, moduleKey: "hospital_facility", onlyFor: ["hospital"] },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
   {
     label: "Purchase Cell",
@@ -577,7 +589,7 @@ const HOSPITAL_NAV: NavItem[] = [
     icon: UserCog,
     moduleKey: "hospital_hr",
     onlyFor: ["hospital"],
-    children: [shared("Staff", "staff")],
+    children: [shared("Staff", "staff"), { label: "Staff Records", href: "/hospital/hr" }],
   },
 ];
 

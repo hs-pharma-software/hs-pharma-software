@@ -187,5 +187,5 @@ export function minimumClass(type: string, harm: string): OutcomeClass | null {
 
 // ── CAPA ──────────────────────────────────────────────────────────────────
 
-export const CAPA_SOURCES = { incident: "Incident", complaint: "Complaint", audit: "Audit", indicator: "Quality indicator", other: "Other" } as const;
+export const CAPA_SOURCES = { incident: "Incident", complaint: "Complaint", audit: "Audit", indicator: "Quality indicator", drill: "Mock drill", other: "Other" } as const;
 export type CapaSource = keyof typeof CAPA_SOURCES;
