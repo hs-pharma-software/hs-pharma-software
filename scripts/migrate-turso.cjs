@@ -32,9 +32,9 @@ const env = fs.existsSync(envPath)
 //   node scripts/migrate-turso.cjs            every version (idempotent)
 //   node scripts/migrate-turso.cjs --from=34  only version 34 and later
 const FROM = Number((process.argv.find((a) => a.startsWith('--from=')) ?? '--from=0').split('=')[1]) || 0;
-const TURSO_URL   = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
-const TURSO_TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
-if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing NEXT_PUBLIC_TURSO_DATABASE_URL or NEXT_PUBLIC_TURSO_AUTH_TOKEN in .env.local'); process.exit(1); }
+const TURSO_URL   = ((env.TURSO_DATABASE_URL || env.NEXT_PUBLIC_TURSO_DATABASE_URL) ?? '').replace('libsql://', 'https://');
+const TURSO_TOKEN = (env.TURSO_AUTH_TOKEN || env.NEXT_PUBLIC_TURSO_AUTH_TOKEN) ?? '';
+if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (or the NEXT_PUBLIC_TURSO_* pair) in .env.local'); process.exit(1); }
 
 async function exec(sql) {
   const res = await fetch(`${TURSO_URL}/v2/pipeline`, {

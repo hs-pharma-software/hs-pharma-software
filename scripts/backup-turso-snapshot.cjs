@@ -25,10 +25,10 @@ const envPath = path.join(root, '.env.local');
 const env = fs.existsSync(envPath)
   ? Object.fromEntries(fs.readFileSync(envPath, 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l)).map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }))
   : {};
-const url = env.NEXT_PUBLIC_TURSO_DATABASE_URL;
-const authToken = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN;
+const url = (env.TURSO_DATABASE_URL || env.NEXT_PUBLIC_TURSO_DATABASE_URL);
+const authToken = (env.TURSO_AUTH_TOKEN || env.NEXT_PUBLIC_TURSO_AUTH_TOKEN);
 if (!url || !authToken) {
-  console.error('NEXT_PUBLIC_TURSO_DATABASE_URL / NEXT_PUBLIC_TURSO_AUTH_TOKEN missing in .env.local');
+  console.error('TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (or the NEXT_PUBLIC_TURSO_* pair) missing in .env.local');
   process.exit(1);
 }
 

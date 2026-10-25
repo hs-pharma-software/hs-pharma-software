@@ -9,11 +9,11 @@ const envPath = path.join(__dirname, '..', '..', '.env.local');
 const env = fs.existsSync(envPath)
   ? Object.fromEntries(fs.readFileSync(envPath, 'utf8').split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l)).map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }))
   : {};
-const URL_ = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
-const TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
+const URL_ = ((env.TURSO_DATABASE_URL || env.NEXT_PUBLIC_TURSO_DATABASE_URL) ?? '').replace('libsql://', 'https://');
+const TOKEN = (env.TURSO_AUTH_TOKEN || env.NEXT_PUBLIC_TURSO_AUTH_TOKEN) ?? '';
 
 function requireConfig() {
-  if (!URL_ || !TOKEN) throw new Error('Missing NEXT_PUBLIC_TURSO_DATABASE_URL or NEXT_PUBLIC_TURSO_AUTH_TOKEN in .env.local');
+  if (!URL_ || !TOKEN) throw new Error('Missing TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (or the NEXT_PUBLIC_TURSO_* pair) in .env.local');
 }
 
 function tursoHost() {

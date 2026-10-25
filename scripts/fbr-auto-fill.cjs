@@ -32,8 +32,8 @@ const env = fs.existsSync(envPath)
     )
   : {};
 
-const TURSO_URL   = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
-const TURSO_TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
+const TURSO_URL   = ((env.TURSO_DATABASE_URL || env.NEXT_PUBLIC_TURSO_DATABASE_URL) ?? '').replace('libsql://', 'https://');
+const TURSO_TOKEN = (env.TURSO_AUTH_TOKEN || env.NEXT_PUBLIC_TURSO_AUTH_TOKEN) ?? '';
 if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing Turso env vars'); process.exit(1); }
 
 async function query(sql, args = []) {
