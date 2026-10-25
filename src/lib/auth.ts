@@ -6,6 +6,7 @@ import { parseDeniedActions } from "./actionPermissions";
 import { isTauriShell } from "./platform";
 import { isTursoConfigured, pullAuthData } from "./sync/engine";
 import type { SubscriptionPlan, Tenant, UserAccount, UserRole } from "./types2";
+import { SERVER_DB, serverJson, ServerRequestError } from "./serverMode";
 
 /** Client-side password hashing (SHA-256, salted). There is no backend
  * server in this app's architecture \u2014 the desktop client talks directly to
@@ -101,6 +102,17 @@ export function tenantAllowedModules(tenant: Pick<Tenant, "allowed_modules">, pl
 /** Verifies credentials and returns the session to store. Throws
  * `AuthError` with a user-facing message on any failure. */
 export async function login(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
+  if (SERVER_DB) {
+    // The server checks the password and sets the session cookie; the page never sees the hash.
+    try {
+      await serverJson("/api/auth/login/", { username, password });
+    } catch (e) {
+      throw new AuthError(e instanceof ServerRequestError ? e.message : "Could not reach the server. Check the connection.");
+    }
+    const record = await findUserByUsername(username.trim());
+    if (!record) throw new AuthError("Incorrect username or password.");
+    return buildSession(record);
+  }
   let record = await checkCredentials(username, password);
   // Not matched locally: the login (or a password reset) may have been made
   // on another computer. Fetch the latest accounts from Turso and retry once.
@@ -136,6 +148,17 @@ export async function createUser(params: {
   displayName?: string | null;
   permissions?: string[] | null;
 }): Promise<UserAccount> {
+  if (SERVER_DB) {
+    try {
+      const { id } = await serverJson<{ id: string }>("/api/auth/users/", { ...params, tenantId: params.tenantId });
+      const created = await usersRepo.get(id);
+      if (!created) throw new AuthError("The login was created but could not be read back. Refresh the page.");
+      return created;
+    } catch (e) {
+      if (e instanceof AuthError) throw e;
+      throw new AuthError(e instanceof Error ? e.message : String(e));
+    }
+  }
   const existing = await findUserByUsername(params.username.trim());
   if (existing) throw new AuthError(`Username "${params.username}" is already taken.`);
 
@@ -164,6 +187,14 @@ export async function createUser(params: {
 }
 
 export async function changePassword(userId: string, newPassword: string): Promise<void> {
+  if (SERVER_DB) {
+    try {
+      await serverJson("/api/auth/password/", { userId, newPassword });
+    } catch (e) {
+      throw new AuthError(e instanceof Error ? e.message : String(e));
+    }
+    return;
+  }
   const salt = randomSalt();
   const hash = await hashPassword(newPassword, salt);
   await usersRepo.update(userId, { password_hash: hash, password_salt: salt });
@@ -205,4 +236,28 @@ export async function refreshSessionAccess(): Promise<void> {
     try { permissions = JSON.parse(row.permissions) as string[]; } catch { permissions = null; }
   }
   updateCurrentUserAccess({ permissions, deniedActions: parseDeniedActions(row.denied_actions) });
+}
+
+/** First-run setup: the Super Admin and the first business owner. Through the
+ * server on the web (allowed only while no login exists), locally otherwise. */
+export async function setupFirstLogins(
+  admin: { username: string; password: string },
+  owner: { username: string; password: string; displayName?: string | null; tenantId?: string }
+): Promise<void> {
+  if (SERVER_DB) {
+    try {
+      await serverJson("/api/auth/setup/", { admin, owner });
+    } catch (e) {
+      throw new AuthError(e instanceof Error ? e.message : String(e));
+    }
+    return;
+  }
+  await createUser({ username: admin.username, password: admin.password, role: "super_admin", tenantId: null });
+  await createUser({ username: owner.username, password: owner.password, role: "owner", tenantId: owner.tenantId ?? "tenant-default", displayName: owner.displayName ?? null });
+}
+
+/** Ends the server session too (web version through the server). */
+export async function serverLogout(): Promise<void> {
+  if (!SERVER_DB) return;
+  await serverJson("/api/auth/logout/", {}).catch(() => undefined);
 }

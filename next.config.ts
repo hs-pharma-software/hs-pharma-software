@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
     : {
         images: { unoptimized: true },
         trailingSlash: true,
+        // API routes (src/app/api/**/route.server.ts) exist only in the web
+        // build; the desktop static export above leaves them out.
+        pageExtensions: ["tsx", "ts", "jsx", "js", "server.ts"],
       }),
 };
 

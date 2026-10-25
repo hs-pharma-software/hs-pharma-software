@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
-import { createUser, login, AuthError } from "@/lib/auth";
+import { setupFirstLogins, login, AuthError } from "@/lib/auth";
 import { useAuthStore } from "@/store/authStore";
 
 /** Shown exactly once, right after migration v9 runs on a device that
@@ -31,14 +31,10 @@ export function SetupSuperAdmin({ onDone }: { onDone: () => void }) {
     }
     setSaving(true);
     try {
-      await createUser({ username: adminUsername, password: adminPassword, role: "super_admin", tenantId: null });
-      await createUser({
-        username: ownerUsername,
-        password: ownerPassword,
-        role: "owner",
-        tenantId: "tenant-default",
-        displayName: ownerDisplayName || null,
-      });
+      await setupFirstLogins(
+        { username: adminUsername, password: adminPassword },
+        { username: ownerUsername, password: ownerPassword, displayName: ownerDisplayName || null, tenantId: "tenant-default" }
+      );
       const { user, tenant } = await login(ownerUsername, ownerPassword);
       setSession(user, tenant);
       onDone();

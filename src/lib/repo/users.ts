@@ -1,4 +1,5 @@
 ﻿import { dbSelect } from "../db";
+import { SERVER_DB, serverJson } from "../serverMode";
 import { createRepo } from "./base";
 import type { UserAccount } from "../types2";
 
@@ -16,6 +17,8 @@ export async function findUserByUsername(username: string): Promise<UserAccount 
 }
 
 export async function anyUserExists(): Promise<boolean> {
+  // Before anyone has logged in, the web version asks the server (no session yet).
+  if (SERVER_DB) return !(await serverJson<{ needsSetup: boolean }>("/api/auth/setup/")).needsSetup;
   const rows = await dbSelect<{ n: number }>(`SELECT COUNT(*) as n FROM users WHERE deleted_at IS NULL`);
   return (rows[0]?.n ?? 0) > 0;
 }

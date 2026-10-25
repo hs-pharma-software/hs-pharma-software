@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from "react";
+import { SERVER_DB } from "./serverMode";
 
 /** True ONLY when running inside the Tauri desktop shell.
  * Used internally by db.ts (pick SQLite vs Turso) and outbox.ts.
@@ -16,6 +17,8 @@ export function isTauriShell(): boolean {
 export function isTauri(): boolean {
   if (typeof window === "undefined") return false;
   if (isTauriShell()) return true;
+  // Web version through the server: no token in the page, the database is still available.
+  if (SERVER_DB) return true;
   return Boolean(
     process.env.NEXT_PUBLIC_TURSO_DATABASE_URL &&
     process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN

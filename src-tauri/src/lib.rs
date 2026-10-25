@@ -1322,6 +1322,20 @@ fn schema_sql_v44() -> &'static str {
 /// surgery booking), and vital signs carry the phase (ward, during
 /// anaesthesia, recovery) with heart rhythm and airway for anaesthesia
 /// monitoring. All columns are nullable; existing rows are ward readings.
+/// Server audit log: every write the web version sends through the server
+/// (/api/db), with who sent it and the statement (never the values, which can
+/// hold patient data). Written by the server only; unused on the desktop.
+fn schema_sql_v51() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS server_audit_log (
+        id TEXT PRIMARY KEY, user_id TEXT, tenant_id TEXT, role TEXT, verb TEXT NOT NULL, tables TEXT,
+        statement TEXT, ip TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_server_audit_tenant ON server_audit_log (tenant_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_server_audit_user ON server_audit_log (user_id, created_at)
+    "#
+}
+
 fn schema_sql_v50() -> &'static str {
     r#"
     ALTER TABLE hospital_form_records ADD COLUMN subject_id TEXT;
@@ -2603,6 +2617,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 50,
             description: "theatre_anaesthesia_records",
             sql: schema_sql_v50(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 51,
+            description: "server_audit_log",
+            sql: schema_sql_v51(),
             kind: MigrationKind::Up,
         },
     ]

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Printer } from "lucide-react";
 import { getPublicLabReport, type LabReport } from "@/lib/repo/labReports";
+import { SERVER_DB, serverJson } from "@/lib/serverMode";
 import { LabReportSheet } from "@/components/hospital/LabReportSheet";
 
 /** Online copy of a lab report, opened from the QR code on the printed report.
@@ -26,7 +27,11 @@ function PublicReport() {
       setError("This link has no report in it. Scan the QR code on the report again.");
       return;
     }
-    getPublicLabReport(token).then(setReport).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    // Through the server, the report is built there: the page holds no database access.
+    (SERVER_DB
+      ? serverJson<{ report: LabReport }>(`/api/public/lab-report/?token=${encodeURIComponent(token)}`).then((r) => r.report)
+      : getPublicLabReport(token)
+    ).then(setReport).catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [token]);
 
   if (error) return <Message text={error} tone="error" />;

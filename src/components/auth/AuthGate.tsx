@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
 import { LoginScreen } from "./LoginScreen";
 import { isPublicPath } from "@/lib/publicPaths";
+import { SERVER_DB, SESSION_EXPIRED_EVENT, serverJson } from "@/lib/serverMode";
 
 type GateState = "checking" | "setup" | "login" | "offline";
 
@@ -45,6 +46,22 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (!exists) setState(synced ? "offline" : "setup");
     else setState("login");
   }, []);
+
+  // Web version through the server: a session the server ended (expired, login
+  // deactivated) logs out here, and a remembered session is checked on load.
+  const logout = useAuthStore((s) => s.logout);
+  useEffect(() => {
+    if (!SERVER_DB) return;
+    const onExpired = () => logout();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [logout]);
+  useEffect(() => {
+    if (!SERVER_DB || !currentUser) return;
+    serverJson<{ userId: string }>("/api/auth/me/")
+      .then((me) => { if (me.userId !== currentUser.id) logout(); })
+      .catch(() => undefined); // a 401 fires SESSION_EXPIRED_EVENT
+  }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Landing page and already-logged-in: skip DB check

@@ -1,5 +1,6 @@
 ﻿import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { SERVER_DB } from "../lib/serverMode";
 
 export type UserRole = "super_admin" | "owner" | "staff";
 
@@ -64,7 +65,11 @@ export const useAuthStore = create<AuthState>()(
       updateCurrentTenant: (currentTenant) => set({ currentTenant }),
       updateCurrentUserAccess: (access) =>
         set((s) => (s.currentUser ? { currentUser: { ...s.currentUser, ...access } } : {})),
-      logout: () => set({ currentUser: null, currentTenant: null }),
+      logout: () => {
+        // Web version through the server: end the server session (httpOnly cookie) too.
+        if (SERVER_DB && typeof window !== "undefined") void fetch("/api/auth/logout/", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+        set({ currentUser: null, currentTenant: null });
+      },
     }),
     { name: "pharmacy-auth-session" }
   )

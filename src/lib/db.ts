@@ -1,6 +1,18 @@
 ﻿import { isTauriShell as isTauri } from "./platform";
 import { createClient, type Client } from "@libsql/client/web";
 import { explainMissingTable } from "./dbErrors";
+import { SERVER_DB, serverJson } from "./serverMode";
+
+type ServerResult = { columns: string[]; rows: unknown[][]; rowsAffected: number; lastInsertRowid: number | null };
+
+/** Web version through the server: the statements go to /api/db with the session cookie. */
+async function viaServer(statements: { sql: string; args: unknown[] }[], batch: boolean): Promise<ServerResult[]> {
+  try {
+    return (await serverJson<{ results: ServerResult[] }>("/api/db/", { statements, batch })).results;
+  } catch (e) {
+    return explain(e);
+  }
+}
 
 // One database for the whole ecosystem (Pharmacy POS, Hospital, Clinic):
 // the existing Turso database, and on the desktop its local SQLite copy
@@ -48,6 +60,10 @@ export async function dbSelect<T = Record<string, unknown>>(sql: string, params:
     const db = await getTauriDb();
     return db.select<T[]>(sql, params).catch(explain);
   }
+  if (SERVER_DB) {
+    const [r] = await viaServer([{ sql, args: params }], false);
+    return r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, row[i]])) as T);
+  }
   // Browser / Vercel: query Turso directly
   const result = await getTursoClient().execute({ sql, args: params as never[] }).catch(explain);
   return result.rows.map((row) => {
@@ -64,6 +80,10 @@ export async function dbExecute(sql: string, params: unknown[] = []): Promise<{ 
     const db = await getTauriDb();
     return db.execute(sql, params).catch(explain);
   }
+  if (SERVER_DB) {
+    const [r] = await viaServer([{ sql, args: params }], false);
+    return { rowsAffected: r.rowsAffected, lastInsertId: r.lastInsertRowid ?? undefined };
+  }
   // Browser / Vercel: write to Turso directly
   const result = await getTursoClient().execute({ sql, args: params as never[] }).catch(explain);
   return {
@@ -79,6 +99,10 @@ export async function dbBatch(statements: { sql: string; params?: unknown[] }[])
   if (isTauri()) {
     const db = await getTauriDb();
     for (const s of statements) await db.execute(s.sql, s.params ?? []).catch(explain);
+    return;
+  }
+  if (SERVER_DB) {
+    await viaServer(statements.map((s) => ({ sql: s.sql, args: s.params ?? [] })), true);
     return;
   }
   await getTursoClient().batch(statements.map((s) => ({ sql: s.sql, args: (s.params ?? []) as never[] })), "write").catch(explain);
