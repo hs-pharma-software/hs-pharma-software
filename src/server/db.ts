@@ -4,7 +4,7 @@ import { createClient, type Client, type InStatement, type ResultSet } from "@li
 import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
 import { verifySession, readCookie } from "./session";
-import { analyzeSql, authorize, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
+import { analyzeSql, authorize, personalScope, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
 import { scopeStatement, ScopeError, type Schema } from "./tenantScope";
 import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
 
@@ -92,7 +92,9 @@ export async function runForCaller(caller: Caller, statements: ClientStatement[]
     let sql = s.sql;
     if (caller.role !== "super_admin") {
       try {
-        sql = scopeStatement(s.sql, s.args ?? [], { tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [] }, schema);
+        sql = scopeStatement(s.sql, s.args ?? [], {
+          tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [], personal: personalScope(caller),
+        }, schema);
       } catch (e) {
         if (e instanceof ScopeError) throw new HttpError(403, e.message);
         throw e;

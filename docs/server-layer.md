@@ -50,8 +50,18 @@ With the server layer switched on:
   The Super Admin is not rewritten.
 - **Hospital records are role-limited:** a staff login with no hospital section
   (for example a pharmacy cashier) cannot read or write `hospital_*` tables.
-  Finer per-table rules (staff health records, incident investigations) are
-  added as those registers are built.
+- **Staff HR records are limited further** (appraisals, credentials,
+  training):
+  - a login with the HR section reads and changes them for the whole hospital;
+  - a login with Quality & Safety reads them (the MSDS self-assessment needs
+    them) and records training, but cannot change appraisals or verify
+    credentials;
+  - every other staff login sees only their own records, and can change only
+    the acknowledgement of their own appraisal (status, date, comments).
+
+  Incidents, complaints and corrective actions stay readable by hospital staff
+  logins: every staff member can report an incident or complaint, and
+  anonymous incident reports store no name.
 
 `npm run test:scoped` runs the whole test suite with every statement rewritten
 exactly as the server does; it must pass before the rules are changed.
@@ -62,6 +72,20 @@ service from the page. Moving those calls to the server would remove it.
 
 The desktop app is unchanged. It keeps its local database and its own sync
 token (built in by the release workflow).
+
+## Rollout order
+
+Do these in order. Each step can be checked before the next.
+
+1. **Back up:** `node scripts/backup-turso-snapshot.cjs` (read-only; it verifies
+   itself). Keep the folder it prints; `backups/` is never committed.
+2. **Migrate:** `node scripts/migrate-turso.cjs --check`, then
+   `--from=<first missing version>`, then `node scripts/check-turso-schema.cjs`.
+   The schema banner on the site disappears once the database is up to date.
+3. **Switch on the server layer** (below), redeploy.
+4. **Run the live check** (below).
+5. **Rotate the Turso token** (step 6 below), redeploy, run the live check again.
+6. **Update the desktop installs** to a release built with the new token.
 
 ## Switching it on (Vercel)
 
@@ -93,6 +117,19 @@ token (built in by the release workflow).
    updated to a release built with the new one.
 
 ### Check it worked
+
+Run the read-only check against the live site. It only sends GET requests
+and one unauthenticated POST, and never prints a token:
+
+```
+node scripts/live-check.cjs https://<your-site>
+```
+
+It checks that every hospital page answers, that `/api/db` refuses a
+request without a session, that no Turso address or token is in the page's
+scripts, and that a QR report link opens without a login.
+
+By hand:
 
 - Open the site and log in.
 - In the browser's developer tools, search the loaded scripts for `turso`:

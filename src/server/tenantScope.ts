@@ -21,6 +21,8 @@ export interface Scope {
   sharedGroups: string[];
   /** Pharmacies this hospital / clinic has linked: their products are readable. */
   linkedPharmacies: string[];
+  /** Staff HR records limited to the caller's own (sqlPolicy.personalScope). */
+  personal?: { userId: string; readOwnOnly: string[]; writeOwnOnly: Record<string, string[]> };
 }
 
 /** table -> its columns (lower case). */
@@ -81,9 +83,18 @@ export function maskSql(sql: string): string {
   return out;
 }
 
+/** The caller's own staff record(s) in this business. */
+const ownStaff = (s: Scope) =>
+  `staff_id IN (SELECT id FROM staff WHERE tenant_id = ${q(s.tenantId)} AND user_id = ${q(s.personal!.userId)} AND deleted_at IS NULL)`;
+
 /** Rows of `table` this business may see (null = no filter). */
 function readCondition(table: string, s: Scope, schema: Schema): string | null {
   const t = table.toLowerCase();
+  const base = businessCondition(t, s, schema);
+  return base && s.personal?.readOwnOnly.includes(t) ? `(${base} AND ${ownStaff(s)})` : base;
+}
+
+function businessCondition(t: string, s: Scope, schema: Schema): string | null {
   if (OPEN_READ.has(t)) return null;
   if (DESKTOP_ONLY.has(t)) throw new ScopeError(`Table ${t} is not available.`);
   if (t === "tenants") return `(id = ${q(s.tenantId)} OR business_type = 'hospital_pharmacy'${s.linkedPharmacies.length ? ` OR id IN (${list(s.linkedPharmacies)})` : ""})`;
@@ -115,7 +126,7 @@ function writeCondition(table: string, s: Scope, schema: Schema): string {
   if (SHARED_CATALOG.has(t)) return readCondition(t, { ...s, linkedPharmacies: [] }, schema)!;
   const c = readCondition(t, s, schema);
   if (!c) throw new ScopeError(`Table ${t} cannot be changed.`);
-  return c;
+  return s.personal?.writeOwnOnly[t] ? `(${c} AND ${ownStaff(s)})` : c;
 }
 
 /** Top-level (paren depth 0) keyword positions in the masked SQL from `from`. */
@@ -210,6 +221,11 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
       if (/\btenant_id\s*=/i.test(assignments)) throw new ScopeError("Records cannot be moved to another business.");
       if (table === "users" && /\b(role|username)\s*=/i.test(assignments)) throw new ScopeError("A login's role and username are changed by the Super Admin.");
       if (MAILBOX_OWNERS[table] && MAILBOX_OWNERS[table].some((c) => new RegExp(`\\b${c}\\s*=`, "i").test(assignments))) throw new ScopeError("The businesses of a shared record cannot be changed.");
+      const own = s.personal?.writeOwnOnly[table];
+      if (own) {
+        const changed = [...assignments.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*=/g)].map((m) => m[1].toLowerCase());
+        if (changed.some((c) => !own.includes(c))) throw new ScopeError("On your own HR record you can only acknowledge an appraisal.");
+      }
     }
     const whereAt = topLevel(mask, bodyStart, /^WHERE\b/i);
     const tail = topLevel(mask, whereAt ? whereAt.index : bodyStart, /^(ORDER\s+BY|LIMIT|RETURNING)\b/i);

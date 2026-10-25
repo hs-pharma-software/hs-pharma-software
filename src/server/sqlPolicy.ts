@@ -76,6 +76,26 @@ const AUTH_ONLY_WRITES = new Set(["users"]);
 /** Device-only tables and internal tables are never reached from the browser. */
 const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log"]);
 
+/** Staff HR records (MSDS HRM): HR has them in full, the quality team reads
+ * them for the self-assessment, and everyone else sees only their own. */
+export const HR_PERSONAL_TABLES = ["hospital_appraisals", "hospital_staff_credentials", "hospital_staff_training"];
+/** What staff may change on their own HR record: acknowledging an appraisal. */
+export const OWN_RECORD_COLUMNS: Record<string, string[]> = { hospital_appraisals: ["status", "acknowledged_at", "staff_comments", "updated_at"] };
+
+export type HrAccess = "full" | "read" | "own";
+export function hrAccess(caller: Caller): HrAccess {
+  if (caller.role !== "staff" || !Array.isArray(caller.permissions)) return "full";
+  if (caller.permissions.includes("hospital_hr")) return "full";
+  return caller.permissions.includes("hospital_quality") ? "read" : "own";
+}
+
+/** Row limits for the statement rewrite (tenantScope.ts); undefined = none. */
+export function personalScope(caller: Caller): { userId: string; readOwnOnly: string[]; writeOwnOnly: Record<string, string[]> } | undefined {
+  const access = hrAccess(caller);
+  if (access === "full") return undefined;
+  return { userId: caller.userId, readOwnOnly: access === "own" ? HR_PERSONAL_TABLES : [], writeOwnOnly: OWN_RECORD_COLUMNS };
+}
+
 export type Decision = { ok: true } | { ok: false; reason: string };
 
 /** Whether a caller may run this statement. `knownTables` is the database's own table list. */
@@ -93,6 +113,14 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     return { ok: false, reason: "Your login has no access to hospital records." };
   }
   if (a.verb !== "select") {
+    const access = hrAccess(caller);
+    for (const t of a.tables) {
+      if (!HR_PERSONAL_TABLES.includes(t) || access === "full") continue;
+      // The quality team records training; staff acknowledge their own appraisal (columns and row checked by the rewrite).
+      if (access === "read" && t === "hospital_staff_training") continue;
+      if (a.verb === "update" && OWN_RECORD_COLUMNS[t]) continue;
+      return { ok: false, reason: "Staff HR records are changed by HR." };
+    }
     for (const t of a.tables) {
       if (SUPER_ADMIN_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "Only the Super Admin changes tenants and plans." };
       // Profile fields (name, permissions, active) are edited by owners / Super Admin; passwords are blocked above.
