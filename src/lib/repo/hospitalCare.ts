@@ -213,7 +213,7 @@ export async function getSurgeryInvoice(invoiceId: string): Promise<SurgeryInvoi
   };
 }
 
-async function hospitalHeader(): Promise<{ name: string; address: string | null; phone: string | null }> {
+export async function hospitalHeader(): Promise<{ name: string; address: string | null; phone: string | null }> {
   let profile: { name?: string; address?: string; phone?: string; city?: string } = {};
   try {
     profile = JSON.parse((await getSetting("hospital.profile")) ?? "{}");

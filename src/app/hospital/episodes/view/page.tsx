@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, CheckCircle2, ArrowLeft, BedDouble } from "lucide-react";
 import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
+import { EpisodeRecord, VitalsPanel, VisitChecklist } from "@/components/hospital/record/EpisodeRecord";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -243,6 +244,16 @@ export default function EpisodeDetailPage() {
           </div>
         )}
       </div>
+
+      {patient && (
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="flex flex-col gap-4 lg:col-span-2">
+            <EpisodeRecord patient={patient} episode={episode} />
+            {episode.type !== "opd" && <VitalsPanel episode={episode} />}
+          </div>
+          <VisitChecklist episodeId={episode.id} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Charges */}

@@ -21,3 +21,15 @@ export async function dbExecute(sql: string, params: unknown[] = []): Promise<{ 
   const r = db().prepare(sql).run(...norm(params));
   return { rowsAffected: Number(r.changes) };
 }
+
+export async function dbBatch(statements: { sql: string; params?: unknown[] }[]): Promise<void> {
+  const d = db();
+  d.exec("BEGIN");
+  try {
+    for (const s of statements) d.prepare(s.sql).run(...norm(s.params ?? []));
+    d.exec("COMMIT");
+  } catch (e) {
+    d.exec("ROLLBACK");
+    throw e;
+  }
+}

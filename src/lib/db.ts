@@ -71,3 +71,15 @@ export async function dbExecute(sql: string, params: unknown[] = []): Promise<{ 
     lastInsertId: result.lastInsertRowid !== undefined ? Number(result.lastInsertRowid) : undefined,
   };
 }
+
+/** Several writes that belong together (a record and its audit row), applied
+ * all or nothing on Turso (one write batch). On the desktop the SQL plugin
+ * cannot hold one transaction across calls, so they run in order there. */
+export async function dbBatch(statements: { sql: string; params?: unknown[] }[]): Promise<void> {
+  if (isTauri()) {
+    const db = await getTauriDb();
+    for (const s of statements) await db.execute(s.sql, s.params ?? []).catch(explain);
+    return;
+  }
+  await getTursoClient().batch(statements.map((s) => ({ sql: s.sql, args: (s.params ?? []) as never[] })), "write").catch(explain);
+}

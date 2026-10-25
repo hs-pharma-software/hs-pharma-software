@@ -39,6 +39,7 @@ export default function HospitalPatientsPage() {
     { header: "Phone", render: (r) => r.phone ?? "—" },
     { header: "Blood Grp", render: (r) => r.blood_group ?? "—" },
     { header: "City", render: (r) => r.city ?? "—" },
+    { header: "", render: (r) => <a href={`/hospital/patients/record?id=${r.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-medium text-amber-700 hover:underline">Record</a> },
     {
       header: "",
       render: (r) => (

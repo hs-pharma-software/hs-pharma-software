@@ -21,6 +21,7 @@ import { LabReportModal } from "@/components/hospital/LabReportModal";
 import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal";
 import type { HospitalEpisode } from "@/lib/types-hospital";
 import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
+import { VisitChecklist } from "@/components/hospital/record/EpisodeRecord";
 import type { Staff } from "@/lib/types";
 
 type Product = { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null };
@@ -207,6 +208,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
           {patient?.allergies && <p className="mt-1 text-xs font-medium text-rose-600">Allergies: {patient.allergies}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
+          <a href={`/hospital/patients/record?id=${ep.patient_id}`} className="inline-flex items-center rounded-full px-4 py-1.5 text-sm font-medium text-neutral-700 ring-1 ring-black/[0.06] hover:bg-neutral-50">Patient record</a>
           <Button onClick={() => setShowHistory(true)} disabled={visitCount === 0} title={visitCount === 0 ? "First visit: no earlier history" : undefined}>
             <History size={13} className="mr-1" /> History{visitCount > 0 ? ` (${visitCount})` : ""}
           </Button>
@@ -220,6 +222,8 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
           )}
         </div>
       </div>
+
+      <VisitChecklist episodeId={ep.id} />
 
       <div className={card}>
         <h3 className="mb-3 text-sm font-semibold text-neutral-700">Consultation</h3>

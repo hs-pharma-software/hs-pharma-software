@@ -1304,6 +1304,54 @@ fn schema_sql_v44() -> &'static str {
 /// Admission confirmation: an admission made from a visit (consultant, or a
 /// referral from Emergency) waits for the Head Nurse of its department (or the
 /// Nursing Superintendent). Empty on older and direct admissions.
+/// PHC MSDS medical record foundation. Forms (consents, care plans, notes,
+/// discharge, transfer ...) are versioned definitions in src/config/forms; a
+/// record holds one filled form for a patient (and visit / admission) or a
+/// department register entry. Finalized records change only through
+/// revisions (append-only, with reason). Checklist entries record a person
+/// affirming (self_confirmation) or observing (observation) a safety step;
+/// nothing is ever recorded as done without someone choosing it.
+fn schema_sql_v48() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_form_records (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+        form_key TEXT NOT NULL, form_version INTEGER NOT NULL, scope TEXT NOT NULL,
+        patient_id TEXT, episode_id TEXT, department TEXT,
+        status TEXT NOT NULL DEFAULT 'draft', data TEXT NOT NULL, summary TEXT,
+        unique_key TEXT,
+        created_by TEXT, created_by_name TEXT, updated_by TEXT, updated_by_name TEXT,
+        finalized_by TEXT, finalized_by_name TEXT, finalized_at TEXT, revision_no INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_forms_patient ON hospital_form_records (tenant_id, patient_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_hosp_forms_episode ON hospital_form_records (tenant_id, episode_id, form_key);
+    CREATE INDEX IF NOT EXISTS idx_hosp_forms_register ON hospital_form_records (tenant_id, form_key, status, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_forms_unique ON hospital_form_records (tenant_id, unique_key) WHERE unique_key IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS hospital_form_revisions (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, record_id TEXT NOT NULL, revision_no INTEGER NOT NULL,
+        action TEXT NOT NULL, status_before TEXT, data_before TEXT, reason TEXT,
+        user_id TEXT, user_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_form_revision ON hospital_form_revisions (tenant_id, record_id, revision_no);
+    CREATE TABLE IF NOT EXISTS hospital_checklist_entries (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, checklist_key TEXT NOT NULL, item_key TEXT NOT NULL,
+        kind TEXT NOT NULL, status TEXT NOT NULL, reason TEXT,
+        patient_id TEXT, episode_id TEXT, record_id TEXT, department TEXT,
+        user_id TEXT, user_name TEXT, user_role TEXT, recorded_at TEXT NOT NULL,
+        superseded_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_checklist_episode ON hospital_checklist_entries (tenant_id, episode_id, checklist_key);
+    CREATE INDEX IF NOT EXISTS idx_hosp_checklist_kind ON hospital_checklist_entries (tenant_id, kind, item_key, recorded_at);
+    CREATE TABLE IF NOT EXISTS hospital_vitals (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT NOT NULL,
+        recorded_at TEXT NOT NULL, bp_systolic INTEGER, bp_diastolic INTEGER, pulse INTEGER, resp_rate INTEGER,
+        temperature_c REAL, spo2 INTEGER, pain_score INTEGER, consciousness TEXT, blood_sugar REAL, weight_kg REAL, notes TEXT,
+        recorded_by TEXT, recorded_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_vitals_episode ON hospital_vitals (tenant_id, episode_id, recorded_at)
+    "#
+}
+
 fn schema_sql_v47() -> &'static str {
     r#"
     ALTER TABLE hospital_episodes ADD COLUMN admission_status TEXT;
@@ -2479,6 +2527,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 47,
             description: "admission_confirmation_by_head_nurse",
             sql: schema_sql_v47(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 48,
+            description: "msds_forms_checklists_vitals",
+            sql: schema_sql_v48(),
             kind: MigrationKind::Up,
         },
     ]

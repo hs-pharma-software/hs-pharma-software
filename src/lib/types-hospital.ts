@@ -273,3 +273,80 @@ export interface SurgeryBooking extends TenantRow {
   notes: string | null;
   performed_at: string | null;
 }
+
+// ── Medical record forms, checklists, vital signs (v48) ──────────────────
+
+export type FormStatus = "draft" | "final" | "amended" | "voided";
+
+/** One filled form (src/config/forms) for a patient and visit / admission, or a register entry. */
+export interface FormRecord extends TenantRow {
+  form_key: string;
+  form_version: number;
+  scope: "patient" | "register";
+  patient_id: string | null;
+  episode_id: string | null;
+  department: string | null;
+  status: FormStatus;
+  /** JSON of the field values. */
+  data: string;
+  summary: string | null;
+  unique_key: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
+  updated_by: string | null;
+  updated_by_name: string | null;
+  finalized_by: string | null;
+  finalized_by_name: string | null;
+  finalized_at: string | null;
+  revision_no: number;
+}
+
+/** Append-only history of a form record: finalize, amend (with the values before) and void. */
+export interface FormRevision extends TenantRow {
+  record_id: string;
+  revision_no: number;
+  action: "finalize" | "amend" | "void";
+  status_before: FormStatus | null;
+  data_before: string | null;
+  reason: string | null;
+  user_id: string | null;
+  user_name: string | null;
+}
+
+export interface ChecklistEntry extends TenantRow {
+  session_id: string;
+  checklist_key: string;
+  item_key: string;
+  kind: "self_confirmation" | "observation";
+  status: "completed" | "not_completed" | "na" | "pending";
+  reason: string | null;
+  patient_id: string | null;
+  episode_id: string | null;
+  record_id: string | null;
+  department: string | null;
+  user_id: string | null;
+  user_name: string | null;
+  user_role: string | null;
+  recorded_at: string;
+  /** A later entry that corrects this one. */
+  superseded_by: string | null;
+}
+
+export interface VitalSigns extends TenantRow {
+  patient_id: string;
+  episode_id: string;
+  recorded_at: string;
+  bp_systolic: number | null;
+  bp_diastolic: number | null;
+  pulse: number | null;
+  resp_rate: number | null;
+  temperature_c: number | null;
+  spo2: number | null;
+  pain_score: number | null;
+  consciousness: string | null;
+  blood_sugar: number | null;
+  weight_kg: number | null;
+  notes: string | null;
+  recorded_by: string | null;
+  recorded_by_name: string | null;
+}
