@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "migrate:turso": "node scripts/migrate-turso.cjs",
     "test": "node --import ./tests/register.mjs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test \"tests/**/*.test.ts\"",
-    "test:pra-live": "cross-env PRA_LIVE=1 npm test"
+    "test:pra-live": "cross-env PRA_LIVE=1 npm test",
+    "test:scoped": "cross-env TENANT_SCOPE=1 npm test"
   },
   "dependencies": {
     "@fontsource/noto-nastaliq-urdu": "^5.3.0",

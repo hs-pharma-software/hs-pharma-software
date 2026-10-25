@@ -62,6 +62,11 @@ export interface Caller {
   userId: string;
   role: "super_admin" | "owner" | "staff";
   tenantId: string | null;
+  /** Staff module permissions; null = full access. */
+  permissions?: string[] | null;
+  businessType?: string | null;
+  /** Pharmacies this hospital / clinic has linked (their products are readable). */
+  linkedPharmacies?: string[];
 }
 
 /** Only the Super Admin changes tenants and subscription plans (Admin screens). */
@@ -81,6 +86,11 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
   for (const t of a.tables) {
     if (NEVER.has(t) || t.startsWith("sqlite_")) return { ok: false, reason: `Table ${t} is not available.` };
     if (!knownTables.has(t)) return { ok: false, reason: `Unknown table ${t}.` };
+  }
+  // Hospital records are for logins with a hospital section (a pharmacy cashier's login has none).
+  if (caller.role === "staff" && Array.isArray(caller.permissions) && a.tables.some((t) => t.startsWith("hospital_"))
+      && !caller.permissions.some((p) => p.startsWith("hospital_"))) {
+    return { ok: false, reason: "Your login has no access to hospital records." };
   }
   if (a.verb !== "select") {
     for (const t of a.tables) {

@@ -5,6 +5,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
 import { verifySession, readCookie } from "./session";
 import { analyzeSql, authorize, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
+import { scopeStatement, ScopeError, type Schema } from "./tenantScope";
+import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -17,13 +19,22 @@ export function serverDb(): Client {
   return client;
 }
 
-let tables: { at: number; names: Set<string> } | null = null;
-/** The database's tables, refreshed every 5 minutes (a migration adds tables). */
+let cache: { at: number; names: Set<string>; schema: Schema } | null = null;
+/** The database's tables and their columns, refreshed every 5 minutes (a migration adds them). */
+async function schemaInfo(): Promise<{ names: Set<string>; schema: Schema }> {
+  if (cache && Date.now() - cache.at < 300_000) return cache;
+  const rs = await serverDb().execute(`SELECT m.name AS t, p.name AS c FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type IN ('table', 'view')`);
+  const schema: Schema = new Map();
+  for (const r of rs.rows) {
+    const t = String(r.t).toLowerCase();
+    if (!schema.has(t)) schema.set(t, new Set());
+    schema.get(t)!.add(String(r.c).toLowerCase());
+  }
+  cache = { at: Date.now(), names: new Set(schema.keys()), schema };
+  return cache;
+}
 export async function knownTables(): Promise<Set<string>> {
-  if (tables && Date.now() - tables.at < 300_000) return tables.names;
-  const rs = await serverDb().execute(`SELECT name FROM sqlite_master WHERE type IN ('table', 'view')`);
-  tables = { at: Date.now(), names: new Set(rs.rows.map((r) => String(r.name).toLowerCase())) };
-  return tables.names;
+  return (await schemaInfo()).names;
 }
 
 export class HttpError extends Error {
@@ -38,10 +49,28 @@ export class HttpError extends Error {
 export async function callerOf(req: Request): Promise<Caller> {
   const claims = verifySession(readCookie(req.headers.get("cookie")), serverConfig().sessionSecret);
   if (!claims) throw new HttpError(401, "Your session has ended. Log in again.");
-  const rs = await serverDb().execute({ sql: `SELECT id, role, tenant_id, is_active FROM users WHERE id = ? AND deleted_at IS NULL`, args: [claims.u] });
+  const rs = await serverDb().execute({
+    sql: `SELECT u.id, u.role, u.tenant_id, u.is_active, u.permissions, t.business_type,
+                 (SELECT group_concat(l.pharmacy_tenant_id) FROM clinic_pharmacy_link l WHERE l.clinic_tenant_id = u.tenant_id AND l.is_active = 1) AS linked
+          FROM users u LEFT JOIN tenants t ON t.id = u.tenant_id WHERE u.id = ? AND u.deleted_at IS NULL`,
+    args: [claims.u],
+  });
   const u = rs.rows[0];
   if (!u || !Number(u.is_active)) throw new HttpError(401, "This login is no longer active.");
-  return { userId: String(u.id), role: String(u.role) as Caller["role"], tenantId: u.tenant_id == null ? null : String(u.tenant_id) };
+  let permissions: string[] | null = null;
+  if (u.permissions != null && String(u.role) === "staff") {
+    try {
+      const p = JSON.parse(String(u.permissions));
+      permissions = Array.isArray(p) ? p.map(String) : [];
+    } catch {
+      permissions = [];
+    }
+  }
+  return {
+    userId: String(u.id), role: String(u.role) as Caller["role"], tenantId: u.tenant_id == null ? null : String(u.tenant_id),
+    permissions, businessType: u.business_type == null ? null : String(u.business_type),
+    linkedPharmacies: u.linked ? String(u.linked).split(",").filter(Boolean) : [],
+  };
 }
 
 export interface ClientStatement { sql: string; args?: unknown[] }
@@ -52,15 +81,26 @@ const MAX_STATEMENTS = 200;
 export async function runForCaller(caller: Caller, statements: ClientStatement[], batch: boolean, ip: string | null) {
   if (!Array.isArray(statements) || statements.length === 0) throw new HttpError(400, "No statement.");
   if (statements.length > MAX_STATEMENTS) throw new HttpError(400, "Too many statements in one request.");
-  const known = await knownTables();
+  const { names: known, schema } = await schemaInfo();
+  if (caller.role !== "super_admin" && !caller.tenantId) throw new HttpError(403, "This login is not attached to a business.");
   const checked = statements.map((s) => {
     if (typeof s?.sql !== "string" || (s.args != null && !Array.isArray(s.args))) throw new HttpError(400, "Malformed statement.");
     const a = analyzeSql(s.sql);
     const d = authorize(a, caller, known);
     if (!d.ok) throw new HttpError(403, d.reason);
-    return { s, a };
+    // Every statement of a business login is rewritten to stay inside that business (tenantScope.ts).
+    let sql = s.sql;
+    if (caller.role !== "super_admin") {
+      try {
+        sql = scopeStatement(s.sql, s.args ?? [], { tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [] }, schema);
+      } catch (e) {
+        if (e instanceof ScopeError) throw new HttpError(403, e.message);
+        throw e;
+      }
+    }
+    return { s, a, sql };
   });
-  const stmts: InStatement[] = checked.map(({ s }) => ({ sql: s.sql, args: (s.args ?? []).map(toArg) }));
+  const stmts: InStatement[] = checked.map(({ s, sql }) => ({ sql, args: (s.args ?? []).map(toArg) }));
   const results: ResultSet[] = batch || stmts.length > 1 ? await serverDb().batch(stmts, "write") : [await serverDb().execute(stmts[0])];
 
   const writes = checked.filter((c) => c.a.verb !== "select");

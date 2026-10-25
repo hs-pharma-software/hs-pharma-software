@@ -75,3 +75,14 @@ test("sessions: signed, expiring, tamper-proof; cookie is httpOnly", () => {
   assert.match(cookie, /Secure/);
   assert.equal(readCookie(`a=1; hs_session=${token}; b=2`), token);
 });
+
+test("a staff login without any hospital section cannot reach hospital records", () => {
+  const cashier: Caller = { userId: "u3", role: "staff", tenantId: "t1", permissions: ["invoices", "products"] };
+  const nurse: Caller = { userId: "u4", role: "staff", tenantId: "t1", permissions: ["hospital_patients", "hospital_episodes"] };
+  const full: Caller = { userId: "u5", role: "staff", tenantId: "t1", permissions: null };
+  const sql = "SELECT * FROM hospital_patients WHERE tenant_id = ?";
+  assert.equal(ok(sql, cashier).ok, false);
+  assert.equal(ok(sql, nurse).ok, true);
+  assert.equal(ok(sql, full).ok, true, "a staff login with full access");
+  assert.equal(ok("SELECT * FROM products WHERE tenant_id = ?", cashier).ok, true);
+});

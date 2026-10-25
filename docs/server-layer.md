@@ -32,11 +32,33 @@ With the server layer switched on:
 - **The public lab report (QR code) still opens without a login.** The server
   builds it from the report's random token.
 
-**Not yet (next step, 3b):** the server does not yet check that each
-statement only reaches rows of the user's own tenant, or role-based access to
-restricted tables (staff health records, incident investigations). A logged-in
-user who crafts SQL by hand could still read another tenant's rows. Strangers on
-the internet no longer can.
+- **Every statement of a business login is kept inside that business**
+  (`src/server/tenantScope.ts`). The server rewrites it before running it, so
+  nothing the query says can reach another business:
+  - every table read is replaced by a copy filtered to the caller's tenant;
+  - updates and deletes get the same condition added to their WHERE;
+  - inserts must carry the caller's own tenant;
+  - records cannot be moved to another business.
+
+  Shared by design, and allowed:
+  - the shared product catalogue for pharmacy businesses;
+  - a hospital or clinic reading its linked pharmacy's products (read-only);
+  - prescription mailbox rows between the two businesses involved;
+  - the caller's own settings, plus the global keys the app reads;
+  - the list of hospital pharmacies.
+
+  The Super Admin is not rewritten.
+- **Hospital records are role-limited:** a staff login with no hospital section
+  (for example a pharmacy cashier) cannot read or write `hospital_*` tables.
+  Finer per-table rules (staff health records, incident investigations) are
+  added as those registers are built.
+
+`npm run test:scoped` runs the whole test suite with every statement rewritten
+exactly as the server does; it must pass before the rules are changed.
+
+**Known exposure, unchanged:** the AI assistant's API key is a global setting
+that every business's browser reads, because the assistant calls the AI
+service from the page. Moving those calls to the server would remove it.
 
 The desktop app is unchanged. It keeps its local database and its own sync
 token (built in by the release workflow).
