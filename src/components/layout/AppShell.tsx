@@ -6,6 +6,7 @@ import { refreshSessionAccess } from "@/lib/auth";
 import { isTauri } from "@/lib/platform";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { SchemaBanner } from "./SchemaBanner";
 import { PageTransition } from "./PageTransition";
 import { GlobalShortcuts } from "./GlobalShortcuts";
 import { Calculator } from "./Calculator";
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {currentTenant && !subscriptionLocked && <PraBackground />}
       <LanguageSync />
       <Topbar />
+      {currentTenant && <SchemaBanner />}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* Mobile overlay — closes sidebar when tapped outside */}
         {sidebarMobileOpen && (

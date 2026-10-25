@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { applySchema, fullSchemaDb } from "./fullDb.ts";
+import { applySchema, fullSchemaDb, latestSchemaVersion } from "./fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { applyCatalogOwnership, cloneId, planCatalogOwnership, rollbackCatalogOwnership, type OwnDb } from "@/lib/catalogOwnership";
 import { useAuthStore } from "@/store/authStore";
@@ -49,7 +49,7 @@ function legacy(): DatabaseSync {
  * product code reads it. From v32 the unowned (quarantined) rows are the shared
  * pharma catalog: pharmacies see them, other businesses do not. */
 function upgrade(sql: DatabaseSync): DatabaseSync {
-  for (let v = 30; v <= 45; v++) applySchema(sql, v);
+  for (let v = 30; v <= latestSchemaVersion(); v++) applySchema(sql, v);
   return sql;
 }
 

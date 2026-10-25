@@ -7,6 +7,7 @@ export function explainMissingTable(err: unknown): Error | null {
   if (!what) return null;
   return new Error(
     `The database is not up to date: ${what} is missing. ` +
-      `Desktop app: close and reopen it. Web version: run "node scripts/migrate-turso.cjs" once. (${msg})`
+      `Desktop app: close and reopen it. Web version: the administrator backs up the shared database and applies its migrations ` +
+      `(node scripts/backup-turso-snapshot.cjs, then node scripts/migrate-turso.cjs --check to see what is missing). (${msg})`
   );
 }

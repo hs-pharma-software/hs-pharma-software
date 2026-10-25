@@ -16,6 +16,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { setTestDb } from "../shims/db.ts";
+import { latestSchemaVersion } from "../catalog/fullDb.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { savePatient, saveAppointment, saveConsultation, doctorsRepo, prescriptionsRepo, saveRxItems, getRxItems, listAppointments, patientsRepo } from "@/lib/repo/clinic";
 import {
@@ -94,7 +95,7 @@ function fingerprint(db: DatabaseSync, rowColumns?: Record<string, string[]>) {
 function migrate(db: DatabaseSync): { applied: number; skipped: number; failed: string[] } {
   let applied = 0, skipped = 0;
   const failed: string[] = [];
-  for (const v of [34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]) {
+  for (let v = 34; v <= latestSchemaVersion(); v++) {
     for (const sql of statementsOf(v)) {
       try {
         db.exec(sql);
@@ -195,4 +196,22 @@ run("migration on a copy of the live database: pharmacy unchanged, all modules w
   const [row] = await listEpisodes();
   assert.equal(row.total_charges, 1000);
   assert.equal(row.total_paid, 400);
+
+  // Admission from a real existing OPD visit of the live data (on the copy):
+  // the visit the patient came from is linked, the existing rows stay as they were.
+  const liveVisit = db.prepare(`SELECT id, tenant_id FROM hospital_episodes WHERE type = 'opd' AND deleted_at IS NULL AND tenant_id IS NOT NULL ORDER BY created_at LIMIT 1`).get() as { id: string; tenant_id: string } | undefined;
+  if (liveVisit) {
+    const episodesBefore = db.prepare(`SELECT * FROM hospital_episodes WHERE tenant_id = ? AND id != ? ORDER BY id`).all(liveVisit.tenant_id, liveVisit.id);
+    login(liveVisit.tenant_id, "hospital");
+    const { admitFromVisit, saveSurgeryType, getSurgeryInvoice } = await import("@/lib/repo/hospitalCare");
+    const surgery = await saveSurgeryType(null, { name: "Replica surgery", breakdown: { operation_fee: 1000, room_type: "VIP Room", room_charges: 500 } });
+    const { admission, booking } = await admitFromVisit({ fromEpisodeId: liveVisit.id, reason: "Rehearsal admission", plan: "surgery", surgeryTypeId: surgery.id });
+    assert.equal(admission.from_episode_id, liveVisit.id, "admission linked to the visit it came from");
+    assert.equal((await getSurgeryInvoice(booking!.invoice_id!)).lines.length, 2);
+    await addPayment({ tenant_id: "", episode_id: admission.id, type: "payment", amount: 1500, method: "cash", reference: null, notes: null, received_at: localDateTime() });
+    const discharged = await hospitalEpisodesRepo.update(admission.id, { status: "discharged", discharge_date: localDate() });
+    assert.equal(discharged!.status, "discharged");
+    const episodesAfter = db.prepare(`SELECT * FROM hospital_episodes WHERE tenant_id = ? AND id != ? AND id != ? ORDER BY id`).all(liveVisit.tenant_id, liveVisit.id, admission.id);
+    assert.deepEqual(episodesAfter, episodesBefore, "the hospital's other episodes are untouched");
+  }
 });

@@ -96,6 +96,9 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
   if (visit.type === "ipd") throw new Error("This is already an admission.");
   const reason = input.reason?.trim();
   if (!reason) throw new Error("Enter the reason for admission.");
+  // One admission per visit: a readmission starts from a new visit.
+  const fromThisVisit = await hospitalEpisodesRepo.list({ where: "from_episode_id = ?", params: [visit.id] });
+  if (fromThisVisit.length) throw new Error(`This visit was already admitted as ${fromThisVisit[0].episode_no}. Book a new visit for a readmission.`);
   const already = await hospitalEpisodesRepo.list({ where: "patient_id = ? AND type = 'ipd' AND status = 'open'", params: [visit.patient_id] });
   if (already.length) throw new Error(`This patient is already admitted (${already[0].episode_no}).`);
 

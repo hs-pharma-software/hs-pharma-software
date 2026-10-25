@@ -1297,6 +1297,21 @@ fn schema_sql_v44() -> &'static str {
 /// Surgery invoices: the charge breakdown of a surgery type and of a booked
 /// surgery (operation fee, OT, paramedics, anaesthesia, OT medicine, room,
 /// indoor medicine), the booking's invoice, and the admission an invoice bills.
+/// The admission made from a visit (hospital_episodes.from_episode_id, v43) is
+/// looked up by that visit. Also the v1 indexes the shared Turso database never
+/// received (its first schema was created by migrate-turso.cjs, not v1); on a
+/// desktop database they already exist and these are no-ops.
+fn schema_sql_v46() -> &'static str {
+    r#"
+    CREATE INDEX IF NOT EXISTS idx_hosp_episodes_from ON hospital_episodes (tenant_id, from_episode_id) WHERE from_episode_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_price_list_product ON price_list (product_id);
+    CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices (customer_id);
+    CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases (supplier_id);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON purchase_items (purchase_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_party ON ledger_adjustments (party_type, party_id)
+    "#
+}
+
 fn schema_sql_v45() -> &'static str {
     r#"
     ALTER TABLE hospital_services ADD COLUMN fee_breakdown TEXT;
@@ -2440,6 +2455,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 45,
             description: "surgery_invoices",
             sql: schema_sql_v45(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 46,
+            description: "admission_source_index_and_shared_db_indexes",
+            sql: schema_sql_v46(),
             kind: MigrationKind::Up,
         },
     ]

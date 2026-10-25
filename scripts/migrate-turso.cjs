@@ -1,13 +1,24 @@
 /**
  * migrate-turso.cjs
  *
- * Applies all SQLite schema migrations to the Turso cloud database.
- * Run this EVERY TIME you add a new migration to src-tauri/src/lib.rs.
+ * Applies the schema migrations (src-tauri/src/lib.rs) to the shared Turso
+ * database in .env.local. Run it, after a backup, EVERY TIME a migration is
+ * added and BEFORE pushing code that needs it (Vercel deploys on push).
  *
- *   node scripts/migrate-turso.cjs
+ *   node scripts/backup-turso-snapshot.cjs     first: a verified backup
+ *   node scripts/migrate-turso.cjs --check     read-only: target host + what is missing
+ *   node scripts/migrate-turso.cjs --from=43   apply version 43 and later
+ *   node scripts/migrate-turso.cjs             every version (idempotent)
+ *   node scripts/migrate-turso.cjs --target-file=copy.db   rehearse on a SQLite
+ *        copy (e.g. a backup's database.db) instead of Turso
  *
- * The script is idempotent — it uses IF NOT EXISTS / IF NOT EXISTS and
- * catches "duplicate column" errors, so re-running is always safe.
+ * Each version is checked first: a column / table / index that already exists
+ * is skipped, and the rest of the version runs as ONE atomic batch (all or
+ * nothing). Versions that rebuild a table (stopOnError) or have conditional
+ * steps run statement by statement as before. After each version the database
+ * is compared with the schema the code expects; only a version that verifies
+ * is recorded in schema_migrations. Exit code 1 if anything failed or is still
+ * missing. Credentials are never printed; only the host is.
  */
 
 // Reads credentials from .env.local (never commit tokens to git)
@@ -24,7 +35,6 @@ const FROM = Number((process.argv.find((a) => a.startsWith('--from=')) ?? '--fro
 const TURSO_URL   = (env.NEXT_PUBLIC_TURSO_DATABASE_URL ?? '').replace('libsql://', 'https://');
 const TURSO_TOKEN = env.NEXT_PUBLIC_TURSO_AUTH_TOKEN ?? '';
 if (!TURSO_URL || !TURSO_TOKEN) { console.error('Missing NEXT_PUBLIC_TURSO_DATABASE_URL or NEXT_PUBLIC_TURSO_AUTH_TOKEN in .env.local'); process.exit(1); }
-console.log(`Migrating ${new URL(TURSO_URL).host}${FROM ? ` (versions ${FROM} and later)` : ''}`);
 
 async function exec(sql) {
   const res = await fetch(`${TURSO_URL}/v2/pipeline`, {
@@ -315,6 +325,7 @@ const MIGRATIONS = [
   { version: 43, label: 'admission from the doctor desk, planned surgeries', statements: rustSchemaStatements(43) },
   { version: 44, label: 'CBC panel results, lab report QR token, radiology study modality', statements: rustSchemaStatements(44) },
   { version: 45, label: 'surgery invoices: charge breakdown, invoice of a booked surgery', statements: rustSchemaStatements(45) },
+  { version: 46, label: 'index of the visit an admission came from; v1 indexes the shared database lacked', statements: rustSchemaStatements(46) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
@@ -324,30 +335,158 @@ const MIGRATIONS = [
   ]},
 ];
 
-async function main() {
-  let ok = 0, skipped = 0, failed = 0;
-  for (const m of MIGRATIONS) {
-    if (m.version < FROM) continue;
-    process.stdout.write(`v${m.version} ${m.label} ... `);
-    let mOk = 0, mSkip = 0;
-    let prevApplied = false;
-    for (const stmt of m.statements) {
-      const sql = typeof stmt === 'string' ? stmt : stmt.sql;
-      if (typeof stmt === 'object' && stmt.once && !prevApplied) { mSkip++; continue; }
-      try {
-        const r = await exec(sql);
-        prevApplied = r !== 'skipped';
-        if (r === 'skipped') mSkip++; else mOk++;
-      } catch (err) {
-        console.error(`\n  ✗ FAILED: ${err.message}`);
-        failed++;
-        if (m.stopOnError) { console.error(`  stopped v${m.version} here so no data is dropped; fix the error and run again`); break; }
-      }
-    }
-    console.log(mSkip === m.statements.length ? 'already up to date' : `✓ (${mOk} applied, ${mSkip} skipped)`);
-    ok += mOk; skipped += mSkip;
-  }
-  console.log(`\nDone. ${ok} statements applied, ${skipped} skipped, ${failed} failed.`);
+const { createClient } = require('@libsql/client/web');
+const { expectedByVersion, liveSnapshot, compare, missingFor } = require('./lib/turso-schema.cjs');
+const { tursoQuery } = require('./lib/turso-http.cjs');
+
+/** The statements of a version that still have something to do on this schema. */
+function pending(statements, live) {
+  return statements.filter((sql) => {
+    const s = sql.replace(/\s+/g, ' ').trim();
+    let m = /^ALTER TABLE "?(\w+)"? ADD COLUMN "?(\w+)"?/i.exec(s);
+    if (m) return !(live.tables[m[1]] && m[2] in live.tables[m[1]]);
+    m = /^CREATE (?:UNIQUE )?INDEX (?:IF NOT EXISTS )?"?(\w+)"?/i.exec(s);
+    if (m) return !live.indexes.has(m[1]);
+    m = /^CREATE TABLE (?:IF NOT EXISTS )?"?(\w+)"?/i.exec(s);
+    if (m) return !live.tables[m[1]];
+    return true; // data changes and anything else run (they are written to be repeatable)
+  });
 }
 
-main().catch(console.error);
+async function recordVersion(query, version, label, source) {
+  await query(
+    `INSERT INTO schema_migrations (version, label, source, applied_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(version) DO UPDATE SET label = excluded.label, verified_at = excluded.applied_at`,
+    [version, label, source, new Date().toISOString()]
+  );
+}
+
+/** Where the statements go: Turso, or a SQLite file for a rehearsal. */
+function target() {
+  const fileArg = process.argv.find((a) => a.startsWith('--target-file='));
+  if (!fileArg) {
+      const client = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
+      return { name: `Turso ${new URL(TURSO_URL).host}`, query: tursoQuery, runOne: exec, batch: (stmts) => client.batch(stmts, 'write'), close: () => client.close() };
+  }
+  const { DatabaseSync } = require('node:sqlite');
+  const file = require('path').resolve(fileArg.slice('--target-file='.length));
+  const db = new DatabaseSync(file);
+  return {
+    name: `file ${file}`,
+    query: async (sql, args = []) => {
+      const st = db.prepare(sql);
+      if (st.columns().length) return st.all(...args);
+      st.run(...args);
+      return [];
+    },
+    runOne: async (sql) => {
+      try {
+        db.exec(sql);
+        return 'ok';
+      } catch (e) {
+        if (e.message.includes('duplicate column') || e.message.includes('already exists')) return 'skipped';
+        throw new Error(`SQL error: ${e.message}\nSQL: ${sql.trim().slice(0, 120)}`);
+      }
+    },
+    batch: async (stmts) => {
+      db.exec('BEGIN');
+      try {
+        for (const x of stmts) db.exec(x);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    },
+    close: () => db.close(),
+  };
+}
+
+async function main() {
+  const check = process.argv.includes('--check') || process.argv.includes('--dry-run');
+  const db = target();
+  console.log(`Target: ${db.name}`);
+  const expected = expectedByVersion();
+  const latest = expected.versions.at(-1).version;
+  const byVersion = new Map(expected.versions.map((v) => [v.version, v]));
+  let live = await liveSnapshot(db.query);
+  const before = compare(expected, live);
+  console.log(`Schema present up to v${before.presentUpTo}; the code needs v${latest}.`);
+  for (const v of before.incomplete) console.log(`  v${v.version} missing: ${v.missing.join(', ')}`);
+  if (check) {
+    console.log(before.incomplete.length
+      ? `\nRead-only check: nothing changed. To apply: node scripts/migrate-turso.cjs --from=${before.incomplete[0].version}`
+      : '\nUp to date. Nothing to do.');
+    process.exit(before.incomplete.length ? 3 : 0);
+  }
+
+  await db.query(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, label TEXT, source TEXT NOT NULL, applied_at TEXT NOT NULL, verified_at TEXT)`);
+  let applied = 0, skipped = 0, failed = 0;
+  const unverified = [];
+  let after;
+  try {
+    for (const m of MIGRATIONS) {
+      if (m.version < FROM) continue;
+      process.stdout.write(`v${m.version} ${m.label} ... `);
+      let vFailed = 0, vApplied = 0;
+      const legacy = m.stopOnError || m.statements.some((x) => typeof x !== 'string');
+      if (legacy) {
+        let prevApplied = false;
+        for (const stmt of m.statements) {
+          const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+          if (typeof stmt === 'object' && stmt.once && !prevApplied) { skipped++; continue; }
+          try {
+            const r = await db.runOne(sql);
+            prevApplied = r !== 'skipped';
+            if (r === 'skipped') skipped++; else { applied++; vApplied++; }
+          } catch (err) {
+            console.error(`\n  ✗ FAILED: ${err.message}`);
+            vFailed++;
+            if (m.stopOnError) { console.error(`  stopped v${m.version} here so no data is dropped; fix the error and run again`); break; }
+          }
+        }
+      } else {
+        const todo = pending(m.statements, live);
+        skipped += m.statements.length - todo.length;
+        if (todo.length) {
+          try {
+            await db.batch(todo); // one transaction: all statements or none
+            applied += todo.length;
+            vApplied = todo.length;
+          } catch (err) {
+            vFailed = todo.length;
+            console.error(`\n  ✗ FAILED, nothing of v${m.version} was applied (rolled back): ${err.message}`);
+          }
+        }
+      }
+      failed += vFailed;
+      live = await liveSnapshot(db.query);
+      const adds = byVersion.get(m.version);
+      const stillMissing = adds ? missingFor(adds, live, expected.final) : [];
+      if (vFailed || stillMissing.length) {
+        unverified.push(m.version);
+        console.log(`NOT complete${stillMissing.length ? ` (missing: ${stillMissing.join(', ')})` : ''}; not recorded`);
+      } else {
+        await recordVersion(db.query, m.version, m.label, vApplied ? 'applied' : 'verified-present');
+        console.log(vApplied ? `✓ applied ${vApplied}, verified` : 'already up to date, verified');
+      }
+    }
+  } finally {
+    after = compare(expected, live);
+    // Earlier versions are recorded too once their schema verifies, marked
+    // "schema-verified" (not "applied": this run did not apply them).
+    const recorded = new Set((await db.query(`SELECT version FROM schema_migrations`)).map((r) => Number(r.version)));
+    for (const v of after.perVersion) {
+      if (v.missing.length || recorded.has(v.version)) continue;
+      const entry = MIGRATIONS.find((m) => m.version === v.version);
+      await recordVersion(db.query, v.version, entry?.label ?? 'schema verified', 'schema-verified');
+    }
+    db.close();
+  }
+  console.log(`\nDone. ${applied} statements applied, ${skipped} skipped, ${failed} failed.`);
+  console.log(`Schema present up to v${after.presentUpTo} of v${latest}.`);
+  for (const v of after.incomplete) console.log(`  still missing in v${v.version}: ${v.missing.join(', ')}`);
+  if (failed || unverified.length || after.incomplete.length) process.exit(1);
+}
+
+main().catch((e) => { console.error(`Migration stopped: ${e.message}`); process.exit(1); });

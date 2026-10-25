@@ -16,7 +16,14 @@ export function applySchema(db: DatabaseSync, n: number): void {
   db.exec(schema(n));
 }
 
-export function fullSchemaDb(upTo = 45): DatabaseSync {
+/** The last migration in lib.rs. */
+export function latestSchemaVersion(): number {
+  let n = 1;
+  while (new RegExp(`fn schema_sql_v${n + 1}\\(\\)`).test(RS)) n++;
+  return n;
+}
+
+export function fullSchemaDb(upTo = latestSchemaVersion()): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   for (let v = 1; v <= upTo; v++) db.exec(schema(v));
   return db;

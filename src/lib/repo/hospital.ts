@@ -21,7 +21,8 @@ export const hospitalPatientsRepo = createTenantRepo<HospitalPatient>("hospital_
 export const hospitalServicesRepo = createTenantRepo<HospitalService>("hospital_services");
 const PATIENT_REF: [string, string, string] = ["patient_id", "hospital_patients", "Patient"];
 const EPISODE_REF: [string, string, string] = ["episode_id", "hospital_episodes", "Episode"];
-export const hospitalEpisodesRepo = createTenantRepo<HospitalEpisode>("hospital_episodes", { refs: [PATIENT_REF] });
+// from_episode_id: the visit an admission came from (same hospital), or empty.
+export const hospitalEpisodesRepo = createTenantRepo<HospitalEpisode>("hospital_episodes", { refs: [PATIENT_REF, ["from_episode_id", "hospital_episodes", "Source visit"]] });
 export const hospitalChargesRepo = createTenantRepo<HospitalCharge>("hospital_charges", { refs: [EPISODE_REF] });
 export const hospitalPaymentsRepo = createTenantRepo<HospitalPayment>("hospital_payments", { refs: [EPISODE_REF] });
 export const hospitalDepartmentsRepo = createTenantRepo<HospitalDepartment>("hospital_departments");
