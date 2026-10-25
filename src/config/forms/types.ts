@@ -34,8 +34,13 @@ export interface FormDef {
   scope: "patient" | "register";
   /** Visit / admission types the form belongs to; empty = any. */
   episodeTypes?: EpisodeType[];
-  /** One per visit/admission (opening it again continues the same record). */
+  /** One per visit/admission (opening it again continues the same record);
+   * with a subject, one per subject (e.g. one operative note per surgery). */
   onePerEpisode?: boolean;
+  /** The record belongs to one surgery of the admission (theatre and anaesthesia forms). */
+  subject?: "surgery";
+  /** Forms that must be signed (for the same surgery / admission) before this one can be signed. */
+  requiresFinal?: string[];
   createRoles: RoleRef[];
   /** Who finalizes (signs). A countersignature form names the senior role here. */
   finalizeRoles: RoleRef[];

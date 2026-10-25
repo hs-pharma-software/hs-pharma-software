@@ -56,12 +56,14 @@ export interface FormEditorProps {
   /** An existing record; absent = a new one. */
   record?: FormRecord | null;
   canFinalize: boolean;
+  /** The surgery a theatre / anaesthesia form belongs to. */
+  subjectId?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
 /** Fill in, sign, correct, void and print one medical-record form. */
-export function FormEditor({ formKey, patient, episode, record, canFinalize, onClose, onSaved }: FormEditorProps) {
+export function FormEditor({ formKey, patient, episode, record, canFinalize, subjectId, onClose, onSaved }: FormEditorProps) {
   const def = formDef(formKey)!;
   const [rec, setRec] = useState<FormRecord | null>(record ?? null);
   const [values, setValues] = useState<FormData>(() => toShown(def, record ? JSON.parse(record.data) : {}));
@@ -98,9 +100,9 @@ export function FormEditor({ formKey, patient, episode, record, canFinalize, onC
     }
   }
 
-  const save = () => act("save", () => saveForm({ formKey, patientId: patient.id, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null }), def.finalOnSave);
+  const save = () => act("save", () => saveForm({ formKey, patientId: patient.id, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null, subjectId: subjectId ?? rec?.subject_id ?? null }), def.finalOnSave);
   const finalize = () => act("sign", async () => {
-    const saved = await saveForm({ formKey, patientId: patient.id, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null });
+    const saved = await saveForm({ formKey, patientId: patient.id, episodeId: episode?.id ?? null, data: toStored(def, values), recordId: rec?.id ?? null, subjectId: subjectId ?? rec?.subject_id ?? null });
     return finalizeForm(saved.id);
   });
   const amend = () => act("save the correction", () => amendForm(rec!.id, toStored(def, values), reason));

@@ -317,6 +317,8 @@ export interface FormRecord extends TenantRow {
   finalized_by_name: string | null;
   finalized_at: string | null;
   revision_no: number;
+  /** The surgery booking a theatre / anaesthesia form belongs to (v50). */
+  subject_id?: string | null;
 }
 
 /** Append-only history of a form record: finalize, amend (with the values before) and void. */
@@ -348,6 +350,8 @@ export interface ChecklistEntry extends TenantRow {
   recorded_at: string;
   /** A later entry that corrects this one. */
   superseded_by: string | null;
+  /** The surgery booking (surgical safety checklist, v50). */
+  subject_id?: string | null;
 }
 
 export interface VitalSigns extends TenantRow {
@@ -367,6 +371,11 @@ export interface VitalSigns extends TenantRow {
   notes: string | null;
   recorded_by: string | null;
   recorded_by_name: string | null;
+  /** ward (default), intra_op (during anaesthesia) or recovery (v50). */
+  phase?: "ward" | "intra_op" | "recovery" | null;
+  subject_id?: string | null;
+  rhythm?: string | null;
+  airway?: string | null;
 }
 
 /** One dose given, held, refused or missed (medication administration record, v49). */

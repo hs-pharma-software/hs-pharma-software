@@ -31,6 +31,8 @@ export interface ChecklistItem {
   /** Not applicable is a normal answer here (no reason needed). */
   naExpected?: boolean;
   msds: string[];
+  /** Section heading (e.g. Sign in / Time out / Sign out). */
+  group?: string;
   /** Shown only in this context; absent = always. */
   when?: (c: ChecklistContext) => boolean;
 }
@@ -39,6 +41,10 @@ export interface ChecklistDef {
   key: string;
   version: number;
   title: string;
+  /** Answers belong to one surgery of the admission. */
+  subject?: "surgery";
+  /** Shown at the top of the checklist (who records it, when). */
+  guidance?: string;
   items: ChecklistItem[];
 }
 
@@ -62,7 +68,32 @@ export const DOCTOR_VISIT_CHECKLIST: ChecklistDef = {
   ],
 };
 
-export const CHECKLISTS: ChecklistDef[] = [DOCTOR_VISIT_CHECKLIST];
+/** Surgical safety (COP-4 Ind. 37, COP-5 Ind. 44): identity before induction,
+ * site marking, the time out agreed by the whole team, and documents and
+ * equipment ready. Recorded by the circulating nurse as the team confirms. */
+export const SURGICAL_SAFETY_CHECKLIST: ChecklistDef = {
+  key: "surgical_safety",
+  version: 1,
+  title: "Surgical safety checklist",
+  subject: "surgery",
+  guidance: "Recorded by the circulating nurse as the team confirms each step aloud. Answer each step when it happens: sign in before induction, time out before the incision, sign out before the patient leaves the theatre.",
+  items: [
+    { key: "identity", group: "Sign in (before induction)", label: "Patient identity confirmed with the patient / wristband (name and MR number)", kind: "self_confirmation", mandatory: true, msds: ["COP-4 · 37"] },
+    { key: "consents", group: "Sign in (before induction)", label: "Signed surgical and anaesthesia consents in the file", kind: "self_confirmation", mandatory: true, msds: ["COP-5 · 43", "COP-4 · 35"] },
+    { key: "site_marked", group: "Sign in (before induction)", label: "Operation site and side marked", kind: "self_confirmation", mandatory: true, naExpected: true, msds: ["COP-5 · 44"] },
+    { key: "anaesthesia_check", group: "Sign in (before induction)", label: "Anaesthesia machine, medicines and monitoring checked", kind: "self_confirmation", mandatory: true, msds: ["COP-4 · 31", "COP-4 · 36"] },
+    { key: "allergy", group: "Sign in (before induction)", label: "Known allergies reviewed", kind: "self_confirmation", mandatory: true, msds: [] },
+    { key: "documents", group: "Sign in (before induction)", label: "X-rays, reports and the needed equipment available", kind: "self_confirmation", mandatory: true, msds: ["COP-5 · 44"] },
+    { key: "timeout_patient", group: "Time out (before incision)", label: "All team members agree: correct patient", kind: "self_confirmation", mandatory: true, msds: ["COP-5 · 44"] },
+    { key: "timeout_procedure", group: "Time out (before incision)", label: "All team members agree: correct procedure", kind: "self_confirmation", mandatory: true, msds: ["COP-5 · 44"] },
+    { key: "timeout_site", group: "Time out (before incision)", label: "All team members agree: correct site and side", kind: "self_confirmation", mandatory: true, naExpected: true, msds: ["COP-5 · 44"] },
+    { key: "antibiotic", group: "Time out (before incision)", label: "Antibiotic prophylaxis given within 60 minutes before the incision", kind: "self_confirmation", mandatory: true, naExpected: true, msds: ["CQI-2 · 101"] },
+    { key: "counts", group: "Sign out (before leaving theatre)", label: "Instrument, swab and needle counts correct", kind: "self_confirmation", mandatory: true, msds: [] },
+    { key: "specimen", group: "Sign out (before leaving theatre)", label: "Specimens labelled with the patient's name and MR number", kind: "self_confirmation", mandatory: true, naExpected: true, msds: ["AAC-1 · 3"] },
+  ],
+};
+
+export const CHECKLISTS: ChecklistDef[] = [DOCTOR_VISIT_CHECKLIST, SURGICAL_SAFETY_CHECKLIST];
 
 export function checklistDef(key: string): ChecklistDef | null {
   return CHECKLISTS.find((c) => c.key === key) ?? null;

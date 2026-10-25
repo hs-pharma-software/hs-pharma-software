@@ -1317,6 +1317,25 @@ fn schema_sql_v44() -> &'static str {
 /// stop details, high-risk verification and verbal-order countersignature.
 /// Each administration is one append-only row with its identity and
 /// medicine / dose / route / time checks; errors are voided with a reason.
+/// Theatre and anaesthesia records (MSDS COP-4, COP-5): forms and checklist
+/// answers can belong to one surgery of an admission (subject_id = the
+/// surgery booking), and vital signs carry the phase (ward, during
+/// anaesthesia, recovery) with heart rhythm and airway for anaesthesia
+/// monitoring. All columns are nullable; existing rows are ward readings.
+fn schema_sql_v50() -> &'static str {
+    r#"
+    ALTER TABLE hospital_form_records ADD COLUMN subject_id TEXT;
+    ALTER TABLE hospital_checklist_entries ADD COLUMN subject_id TEXT;
+    ALTER TABLE hospital_vitals ADD COLUMN phase TEXT;
+    ALTER TABLE hospital_vitals ADD COLUMN subject_id TEXT;
+    ALTER TABLE hospital_vitals ADD COLUMN rhythm TEXT;
+    ALTER TABLE hospital_vitals ADD COLUMN airway TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hosp_forms_subject ON hospital_form_records (tenant_id, subject_id) WHERE subject_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_hosp_checklist_subject ON hospital_checklist_entries (tenant_id, subject_id) WHERE subject_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_hosp_vitals_subject ON hospital_vitals (tenant_id, subject_id, recorded_at) WHERE subject_id IS NOT NULL
+    "#
+}
+
 fn schema_sql_v49() -> &'static str {
     r#"
     ALTER TABLE hospital_rx_items ADD COLUMN order_type TEXT;
@@ -2578,6 +2597,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 49,
             description: "inpatient_medication_orders_and_mar",
             sql: schema_sql_v49(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 50,
+            description: "theatre_anaesthesia_records",
+            sql: schema_sql_v50(),
             kind: MigrationKind::Up,
         },
     ]

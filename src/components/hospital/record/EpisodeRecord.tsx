@@ -94,18 +94,20 @@ const VITAL_FIELDS: { key: keyof VitalsInput; label: string; unit?: string; step
   { key: "pain_score", label: "Pain", unit: "0–10" }, { key: "blood_sugar", label: "Sugar", unit: "mg/dL" },
 ];
 
-/** Vital signs chart of a visit / admission (CQI-2 Ind. 105). */
-export function VitalsPanel({ episode }: { episode: HospitalEpisode }) {
+/** Vital signs chart of a visit / admission (CQI-2 Ind. 105), or the
+ * anaesthesia / recovery monitoring of one surgery (COP-4 Ind. 36, 38). */
+export function VitalsPanel({ episode, phase, subjectId, title }: { episode: HospitalEpisode; phase?: "intra_op" | "recovery"; subjectId?: string; title?: string }) {
   const [rows, setRows] = useState<VitalSigns[]>([]);
   const [v, setV] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const load = () => listVitals(episode.id).then(setRows).catch(() => setRows([]));
-  useEffect(() => { void load(); }, [episode.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monitoring = Boolean(phase);
+  const load = () => listVitals(episode.id, phase ? { phase, subjectId } : {}).then(setRows).catch(() => setRows([]));
+  useEffect(() => { void load(); }, [episode.id, phase, subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function add() {
     setBusy(true);
     try {
-      const input: VitalsInput = { consciousness: v.consciousness, notes: v.notes, recorded_at: v.recorded_at };
+      const input: VitalsInput = { consciousness: v.consciousness, notes: v.notes, recorded_at: v.recorded_at, ...(phase ? { phase, subjectId, rhythm: v.rhythm, airway: v.airway } : {}) };
       for (const f of VITAL_FIELDS) if (v[f.key]) (input as Record<string, unknown>)[f.key] = Number(v[f.key]);
       await recordVitals(episode.id, input);
       setV({});
@@ -124,22 +126,24 @@ export function VitalsPanel({ episode }: { episode: HospitalEpisode }) {
 
   return (
     <div className={card}>
-      <h2 className="mb-3 text-sm font-semibold text-neutral-700">Vital signs</h2>
+      <h2 className="mb-3 text-sm font-semibold text-neutral-700">{title ?? "Vital signs"}</h2>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-xs">
           <thead><tr className="border-b border-neutral-100 text-left text-neutral-500">
             <th className="pb-1.5 pr-2 font-medium">Time</th>
             {VITAL_FIELDS.map((f) => <th key={f.key} className="pb-1.5 pr-2 font-medium">{f.label}</th>)}
+            {monitoring && <><th className="pb-1.5 pr-2 font-medium">Rhythm</th><th className="pb-1.5 pr-2 font-medium">Airway</th><th className="pb-1.5 pr-2 font-medium">AVPU</th></>}
             <th className="pb-1.5 pr-2 font-medium">By</th>
           </tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={VITAL_FIELDS.length + 2} className="py-2 text-neutral-400">No readings yet.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={VITAL_FIELDS.length + (monitoring ? 5 : 2)} className="py-2 text-neutral-400">No readings yet.</td></tr>}
             {rows.map((r) => {
               const f = flag(r);
               return (
                 <tr key={r.id} className={`border-b border-neutral-50 tabular-nums ${f ? "bg-rose-50" : ""}`} title={f ? `Check: ${f}` : undefined}>
                   <td className="py-1 pr-2 text-neutral-500">{fmtWhen(r.recorded_at)}</td>
                   {VITAL_FIELDS.map((x) => <td key={x.key} className="py-1 pr-2">{(r as unknown as Record<string, number | null>)[x.key] ?? "—"}</td>)}
+                  {monitoring && <><td className="py-1 pr-2">{r.rhythm ?? "—"}</td><td className="py-1 pr-2">{r.airway ?? "—"}</td><td className="py-1 pr-2">{r.consciousness ?? "—"}</td></>}
                   <td className="py-1 pr-2 text-neutral-500">{r.recorded_by_name}</td>
                 </tr>
               );
@@ -163,6 +167,12 @@ export function VitalsPanel({ episode }: { episode: HospitalEpisode }) {
             </Select>
           </Field>
         </div>
+        {monitoring && (
+          <>
+            <div className="w-36"><Field label="Rhythm"><Input id="v-rhythm" value={v.rhythm ?? ""} onChange={(e) => setV({ ...v, rhythm: e.target.value })} placeholder="e.g. Sinus" /></Field></div>
+            <div className="w-44"><Field label="Airway"><Input id="v-airway" value={v.airway ?? ""} onChange={(e) => setV({ ...v, airway: e.target.value })} placeholder="e.g. Patent, ETT" /></Field></div>
+          </>
+        )}
         <div className="min-w-40 flex-1"><Field label="Notes"><Input id="v-notes" value={v.notes ?? ""} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field></div>
         <Button variant="primary" onClick={() => void add()} disabled={busy}>Record</Button>
       </div>
@@ -174,7 +184,7 @@ export function VitalsPanel({ episode }: { episode: HospitalEpisode }) {
 const CHOICES: ChecklistStatus[] = ["completed", "not_completed", "na", "pending"];
 
 /** The visit's safety checks. Every answer is chosen by the clinician; nothing is pre-ticked. */
-export function VisitChecklist({ episodeId, checklistKey = "doctor_visit" }: { episodeId: string; checklistKey?: string }) {
+export function VisitChecklist({ episodeId, checklistKey = "doctor_visit", subjectId }: { episodeId: string; checklistKey?: string; subjectId?: string }) {
   const def = checklistDef(checklistKey)!;
   const [ctx, setCtx] = useState<ChecklistContext | null>(null);
   const [answers, setAnswers] = useState<Record<string, ChecklistAnswer>>({});
@@ -182,9 +192,9 @@ export function VisitChecklist({ episodeId, checklistKey = "doctor_visit" }: { e
   const [busy, setBusy] = useState(false);
   const load = async () => {
     setCtx(await checklistContext(episodeId));
-    setEntries(await listChecklistEntries(episodeId));
+    setEntries((await listChecklistEntries(episodeId, subjectId)).filter((e) => e.checklist_key === checklistKey));
   };
-  useEffect(() => { void load().catch(() => undefined); }, [episodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load().catch(() => undefined); }, [episodeId, subjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!ctx) return null;
   const items = applicableItems(def, ctx);
@@ -193,7 +203,7 @@ export function VisitChecklist({ episodeId, checklistKey = "doctor_visit" }: { e
   async function save() {
     setBusy(true);
     try {
-      await saveChecklist(def.key, episodeId, Object.values(answers).filter((a) => a.status));
+      await saveChecklist(def.key, episodeId, Object.values(answers).filter((a) => a.status), subjectId ?? null);
       setAnswers({});
       await load();
     } catch (e) {
@@ -208,13 +218,16 @@ export function VisitChecklist({ episodeId, checklistKey = "doctor_visit" }: { e
   return (
     <div className={card}>
       <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-neutral-700"><ShieldCheck size={15} />{def.title}</h2>
-      <p className="mb-3 text-[11px] text-neutral-400">Choose what you actually did. A step not done needs the reason. These are your own confirmations, not an audit.</p>
+      <p className="mb-3 text-[11px] text-neutral-400">{def.guidance ?? "Choose what you actually did. A step not done needs the reason. These are your own confirmations, not an audit."}</p>
       <div className="flex flex-col gap-2">
-        {items.map((i) => {
+        {items.map((i, idx) => {
           const a = answers[i.key];
           const needsReason = a?.status === "not_completed" || (a?.status === "na" && i.mandatory && !i.naExpected);
+          const heading = i.group && i.group !== items[idx - 1]?.group ? i.group : null;
           return (
-            <div key={i.key} className="rounded-lg border border-neutral-100 p-2">
+            <div key={i.key} className="flex flex-col gap-1">
+            {heading && <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{heading}</p>}
+            <div className="rounded-lg border border-neutral-100 p-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm">{i.label}{i.mandatory && <span className="text-rose-600"> *</span>}</p>
                 <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={i.label}>
@@ -227,6 +240,7 @@ export function VisitChecklist({ episodeId, checklistKey = "doctor_visit" }: { e
                 </div>
               </div>
               {needsReason && <Input id={`c-${i.key}`} className="mt-1" value={a?.reason ?? ""} onChange={(e) => set(i.key, { reason: e.target.value })} placeholder="Reason" />}
+            </div>
             </div>
           );
         })}

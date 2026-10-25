@@ -13,6 +13,7 @@ import { listSurgeryTypes, saveSurgeryType, listSurgeryBookings, markSurgeryDone
 import { parseBreakdown } from "@/config/surgeryCharges";
 import { SurgeryChargesFields, draftFrom, draftToBreakdown, draftTotal } from "@/components/hospital/SurgeryChargesFields";
 import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
+import { TheatreRecord } from "@/components/hospital/record/TheatreRecord";
 
 const STATUS_COLOR: Record<string, string> = {
   planned: "bg-amber-100 text-amber-700",
@@ -27,6 +28,7 @@ export default function SurgeryPage() {
   const [filter, setFilter] = useState<"" | "planned" | "done" | "cancelled">("planned");
   const [editing, setEditing] = useState<HospitalService | "new" | null>(null);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [theatreId, setTheatreId] = useState<string | null>(null);
 
   async function reload() {
     if (!isTauri()) return;
@@ -71,6 +73,7 @@ export default function SurgeryPage() {
       header: "",
       render: (b) => (
         <div className="flex gap-1">
+          {b.status !== "cancelled" && <Button variant="ghost" onClick={() => setTheatreId(b.id)}>Theatre record</Button>}
           {b.invoice_id && b.status !== "cancelled" && <Button variant="ghost" onClick={() => setInvoiceId(b.invoice_id!)}>Invoice</Button>}
           {b.status === "planned" && <>
           <Button variant="ghost" onClick={() => void act("mark the surgery done", () => markSurgeryDone(b.id))}>Mark done</Button>
@@ -119,6 +122,7 @@ export default function SurgeryPage() {
           <DataTable columns={bookingColumns} rows={bookings} />
         </>
       )}
+      {theatreId && <TheatreRecord bookingId={theatreId} onClose={() => setTheatreId(null)} />}
       {invoiceId && <SurgeryInvoiceModal invoiceId={invoiceId} onClose={() => setInvoiceId(null)} />}
       {editing && <SurgeryTypeModal surgery={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
     </div>

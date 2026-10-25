@@ -6,6 +6,9 @@ import { Plus, Trash2, CheckCircle2, ArrowLeft, BedDouble } from "lucide-react";
 import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
 import { EpisodeRecord, VitalsPanel, VisitChecklist } from "@/components/hospital/record/EpisodeRecord";
 import { MedicationPanel } from "@/components/hospital/record/MedicationPanel";
+import { TheatreRecord } from "@/components/hospital/record/TheatreRecord";
+import { surgeryBookingsRepo } from "@/lib/repo/hospitalCare";
+import type { SurgeryBooking } from "@/lib/types-hospital";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -52,6 +55,8 @@ export default function EpisodeDetailPage() {
   const [admission, setAdmission] = useState<HospitalEpisode | null>(null);
   const [declined, setDeclined] = useState<HospitalEpisode | null>(null);
   const [showAdmit, setShowAdmit] = useState(false);
+  const [surgeries, setSurgeries] = useState<SurgeryBooking[]>([]);
+  const [theatreId, setTheatreId] = useState<string | null>(null);
 
   async function reload() {
     if (!isTauri() || !id) return;
@@ -61,6 +66,7 @@ export default function EpisodeDetailPage() {
     ]);
     setEpisode(ep);
     setServices(svcList);
+    if (ep?.type === "ipd") setSurgeries(await surgeryBookingsRepo.list({ where: "episode_id = ?", params: [ep.id], orderBy: "created_at ASC" }).catch(() => []));
     if (ep && ep.type !== "ipd") {
       const fromHere = await hospitalEpisodesRepo.list({ where: "from_episode_id = ?", params: [ep.id] });
       setAdmission(fromHere.find((x) => x.status !== "cancelled") ?? null);
@@ -209,6 +215,7 @@ export default function EpisodeDetailPage() {
         }
       />
 
+      {theatreId && <TheatreRecord bookingId={theatreId} onClose={() => setTheatreId(null)} />}
       {showAdmit && <AdmitModal episode={episode} onClose={() => setShowAdmit(false)} onDone={() => { setShowAdmit(false); void reload(); }} />}
 
       {/* Episode + Patient header */}
@@ -253,7 +260,20 @@ export default function EpisodeDetailPage() {
             {episode.type !== "opd" && <VitalsPanel episode={episode} />}
             {episode.type !== "opd" && <MedicationPanel episode={episode} />}
           </div>
-          <VisitChecklist episodeId={episode.id} />
+          <div className="flex flex-col gap-4">
+            {surgeries.length > 0 && (
+              <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+                <h2 className="mb-2 text-sm font-semibold text-neutral-700">Surgeries</h2>
+                {surgeries.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between gap-2 py-1 text-sm">
+                    <span className={b.status === "cancelled" ? "text-neutral-400 line-through" : ""}>{b.surgery_name} <span className="text-xs text-neutral-400">{b.planned_date ?? ""} · {b.status}</span></span>
+                    {b.status !== "cancelled" && <Button variant="ghost" onClick={() => setTheatreId(b.id)}>Theatre record</Button>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <VisitChecklist episodeId={episode.id} />
+          </div>
         </div>
       )}
 

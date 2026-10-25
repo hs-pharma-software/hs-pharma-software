@@ -95,6 +95,21 @@ export interface SaveFormInput {
   data: FormData;
   /** Continue an existing draft. */
   recordId?: string | null;
+  /** The surgery booking, for theatre and anaesthesia forms. */
+  subjectId?: string | null;
+}
+
+/** The surgery a theatre / anaesthesia record belongs to: it must be a booking on this admission. */
+async function subjectOf(subject: "surgery" | undefined, ep: HospitalEpisode | null, subjectId: string | null | undefined): Promise<string | null> {
+  if (!subject) return null;
+  if (!subjectId || !ep) throw new Error("Open this record from the surgery it belongs to.");
+  const rows = await dbSelect<{ id: string; status: string }>(
+    `SELECT id, status FROM hospital_surgery_bookings WHERE id = ? AND tenant_id = ? AND episode_id = ? AND deleted_at IS NULL`,
+    [subjectId, requireCurrentTenantId(), ep.id]
+  );
+  if (!rows[0]) throw new Error("That surgery is not on this admission.");
+  if (rows[0].status === "cancelled") throw new Error("That surgery was cancelled.");
+  return rows[0].id;
 }
 
 /** Saves a draft (or, for final-on-save forms such as progress notes, a
@@ -105,6 +120,7 @@ export async function saveForm(input: SaveFormInput): Promise<FormRecord> {
   const a = await currentActor();
   if (!roleAllowed(def.createRoles, a)) throw new Error(`Your designation cannot write the ${def.title}.`);
   const ep = await episodeOf(input.patientId, input.episodeId ?? null, def);
+  const subjectId = await subjectOf(def.subject, ep, input.subjectId);
   const data = cleanData(def, input.data);
   const t = requireCurrentTenantId();
   const now = nowIso();
@@ -126,7 +142,8 @@ export async function saveForm(input: SaveFormInput): Promise<FormRecord> {
     id, tenant_id: t, form_key: def.key, form_version: def.version, scope: def.scope,
     patient_id: input.patientId, episode_id: ep?.id ?? null, department: ep?.department ?? def.department,
     status: def.finalOnSave ? "final" : "draft", data: JSON.stringify(data), summary: summaryOf(def, data),
-    unique_key: def.onePerEpisode && ep ? `${def.key}:${ep.id}` : null,
+    unique_key: def.onePerEpisode && ep ? `${def.key}:${subjectId ?? ep.id}` : null,
+    ...(subjectId ? { subject_id: subjectId } : {}),
     created_by: a.userId, created_by_name: stamp(a), updated_by: a.userId, updated_by_name: stamp(a),
     finalized_by: def.finalOnSave ? a.userId : null, finalized_by_name: def.finalOnSave ? stamp(a) : null,
     finalized_at: def.finalOnSave ? now : null, revision_no: def.finalOnSave ? 1 : 0,
@@ -142,7 +159,7 @@ export async function saveForm(input: SaveFormInput): Promise<FormRecord> {
     await dbBatch(statements);
   } catch (e) {
     if (/UNIQUE constraint failed/i.test(String(e instanceof Error ? e.message : e)) && record.unique_key) {
-      throw new Error(`This ${ep?.type === "ipd" ? "admission" : "visit"} already has its ${def.title}. Open it instead of starting another.`);
+      throw new Error(`This ${subjectId ? "surgery" : ep?.type === "ipd" ? "admission" : "visit"} already has its ${def.title}. Open it instead of starting another.`);
     }
     throw friendlyDbError(e);
   }
@@ -198,6 +215,15 @@ export async function finalizeForm(recordId: string): Promise<FormRecord> {
   }
   const errors = validateForm(def, JSON.parse(rec.data));
   if (errors.length) throw new Error(errors.join(" "));
+  for (const key of def.requiresFinal ?? []) {
+    const needed = requireDef(key);
+    const signed = await dbSelect<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM hospital_form_records WHERE tenant_id = ? AND form_key = ? AND status IN ('final', 'amended') AND deleted_at IS NULL
+       AND ${rec.subject_id ? "subject_id = ?" : "episode_id = ?"}`,
+      [rec.tenant_id, key, rec.subject_id ?? rec.episode_id]
+    );
+    if (!(signed[0]?.n > 0)) throw new Error(`Sign the ${needed.title} first.`);
+  }
   const now = nowIso();
   const no = rec.revision_no + 1;
   return commitChange(rec, { status: "final", finalized_by: a.userId, finalized_by_name: stamp(a), finalized_at: now, revision_no: no }, newRevision(rec, no, "finalize", "draft", null, null, a, now));
@@ -241,9 +267,10 @@ export async function voidForm(recordId: string, reason: string): Promise<FormRe
   return commitChange(rec, { status: "voided", unique_key: null, revision_no: no }, newRevision(rec, no, "void", rec.status, rec.data, reason.trim(), a, now));
 }
 
-export async function listForms(filter: { patientId?: string; episodeId?: string; formKey?: string; includeVoided?: boolean }): Promise<FormRecord[]> {
+export async function listForms(filter: { patientId?: string; episodeId?: string; formKey?: string; subjectId?: string; includeVoided?: boolean }): Promise<FormRecord[]> {
   const where: string[] = [];
   const params: unknown[] = [];
+  if (filter.subjectId) { where.push("subject_id = ?"); params.push(filter.subjectId); }
   if (filter.patientId) { where.push("patient_id = ?"); params.push(filter.patientId); }
   if (filter.episodeId) { where.push("episode_id = ?"); params.push(filter.episodeId); }
   if (filter.formKey) { where.push("form_key = ?"); params.push(filter.formKey); }
@@ -261,11 +288,21 @@ export async function episodeForms(episodeId: string): Promise<{ def: FormDef; r
   if (!ep) throw new Error("Visit / admission not found.");
   const [records, a] = await Promise.all([listForms({ episodeId }), currentActor()]);
   const { FORMS } = await import("../../config/forms");
-  return FORMS.filter((d) => d.scope === "patient" && (!d.episodeTypes?.length || d.episodeTypes.includes(ep.type))).map((def) => ({
+  // Theatre / anaesthesia forms are kept with their surgery (surgeryForms).
+  return FORMS.filter((d) => d.scope === "patient" && !d.subject && (!d.episodeTypes?.length || d.episodeTypes.includes(ep.type))).map((def) => ({
     def,
     records: records.filter((r) => r.form_key === def.key),
     canCreate: roleAllowed(def.createRoles, a),
     canFinalize: roleAllowed(def.finalizeRoles, a),
+  }));
+}
+
+/** The theatre and anaesthesia forms of one surgery, in the order of care. */
+export async function surgeryForms(bookingId: string): Promise<{ def: FormDef; records: FormRecord[]; canCreate: boolean; canFinalize: boolean }[]> {
+  const [records, a] = await Promise.all([listForms({ subjectId: bookingId }), currentActor()]);
+  const { FORMS } = await import("../../config/forms");
+  return FORMS.filter((d) => d.subject === "surgery").map((def) => ({
+    def, records: records.filter((r) => r.form_key === def.key), canCreate: roleAllowed(def.createRoles, a), canFinalize: roleAllowed(def.finalizeRoles, a),
   }));
 }
 
@@ -283,11 +320,12 @@ export async function checklistContext(episodeId: string): Promise<ChecklistCont
 }
 
 /** Saves one set of answers (a session) chosen by the user. Nothing is filled in for them. */
-export async function saveChecklist(key: string, episodeId: string, answers: ChecklistAnswer[]): Promise<ChecklistEntry[]> {
+export async function saveChecklist(key: string, episodeId: string, answers: ChecklistAnswer[], subjectId?: string | null): Promise<ChecklistEntry[]> {
   const def = checklistDef(key);
   if (!def) throw new Error("Unknown checklist.");
   const ep = await hospitalEpisodesRepo.get(episodeId);
   if (!ep) throw new Error("Visit / admission not found.");
+  const subject = await subjectOf(def.subject, ep, subjectId);
   const a = await currentActor();
   if (!roleAllowed(["any_clinical"], a)) throw new Error("Only clinical staff record these checks.");
   const ctx = await checklistContext(episodeId);
@@ -303,6 +341,7 @@ export async function saveChecklist(key: string, episodeId: string, answers: Che
     patient_id: ep.patient_id, episode_id: ep.id, record_id: null, department: ep.department,
     user_id: a.userId, user_name: stamp(a), user_role: a.role, recorded_at: now, superseded_by: null,
     created_at: now, updated_at: now, deleted_at: null,
+    ...(subject ? { subject_id: subject } : {}),
   }));
   await dbBatch(rows.map((r) => insert("hospital_checklist_entries", r as unknown as Record<string, unknown>)));
   for (const r of rows) await recordOutbox("hospital_checklist_entries", r.id, "insert", r as unknown as Record<string, unknown>);
@@ -327,8 +366,10 @@ export async function correctChecklistEntry(entryId: string, status: ChecklistEn
   return row;
 }
 
-export async function listChecklistEntries(episodeId: string): Promise<ChecklistEntry[]> {
-  return checklistRepo.list({ where: "episode_id = ?", params: [episodeId], orderBy: "recorded_at DESC" });
+export async function listChecklistEntries(episodeId: string, subjectId?: string | null): Promise<ChecklistEntry[]> {
+  return subjectId
+    ? checklistRepo.list({ where: "episode_id = ? AND subject_id = ?", params: [episodeId, subjectId], orderBy: "recorded_at DESC" })
+    : checklistRepo.list({ where: "episode_id = ?", params: [episodeId], orderBy: "recorded_at DESC" });
 }
 
 // ── Vital signs ───────────────────────────────────────────────────────────
@@ -338,7 +379,12 @@ const RANGES: Record<string, [number, number, string]> = {
   temperature_c: [30, 45, "Temperature"], spo2: [40, 100, "SpO2"], pain_score: [0, 10, "Pain score"], blood_sugar: [10, 1000, "Blood sugar"], weight_kg: [0.3, 400, "Weight"],
 };
 
-export type VitalsInput = Partial<Pick<VitalSigns, "bp_systolic" | "bp_diastolic" | "pulse" | "resp_rate" | "temperature_c" | "spo2" | "pain_score" | "blood_sugar" | "weight_kg" | "consciousness" | "notes">> & { recorded_at?: string };
+export type VitalsInput = Partial<Pick<VitalSigns, "bp_systolic" | "bp_diastolic" | "pulse" | "resp_rate" | "temperature_c" | "spo2" | "pain_score" | "blood_sugar" | "weight_kg" | "consciousness" | "notes" | "rhythm" | "airway">> & {
+  recorded_at?: string;
+  /** intra_op / recovery readings belong to a surgery (anaesthesia monitoring, COP-4 Ind. 36 and 38). */
+  phase?: "ward" | "intra_op" | "recovery";
+  subjectId?: string | null;
+};
 
 export async function recordVitals(episodeId: string, v: VitalsInput): Promise<VitalSigns> {
   const ep = await hospitalEpisodesRepo.get(episodeId);
@@ -360,12 +406,20 @@ export async function recordVitals(episodeId: string, v: VitalsInput): Promise<V
   if (Number.isNaN(at.getTime())) throw new Error("Enter a valid date and time.");
   if (at.getTime() > Date.now() + 5 * 60_000) throw new Error("The time recorded cannot be in the future.");
   const when = at.toISOString();
+  const phase = v.phase ?? "ward";
+  if (!["ward", "intra_op", "recovery"].includes(phase)) throw new Error("Unknown monitoring phase.");
+  const subject = phase === "ward" ? null : await subjectOf("surgery", ep, v.subjectId);
   return vitalsRepo.create({
     patient_id: ep.patient_id, episode_id: ep.id, recorded_at: when, ...values,
     consciousness: v.consciousness?.trim() || null, notes: v.notes?.trim() || null, recorded_by: a.userId, recorded_by_name: stamp(a),
+    ...(phase !== "ward" ? { phase, subject_id: subject, rhythm: v.rhythm?.trim() || null, airway: v.airway?.trim() || null } : {}),
   } as Partial<VitalSigns>);
 }
 
-export async function listVitals(episodeId: string): Promise<VitalSigns[]> {
-  return vitalsRepo.list({ where: "episode_id = ?", params: [episodeId], orderBy: "recorded_at ASC" });
+/** Ward readings of a visit / admission, or the anaesthesia / recovery readings of one surgery. */
+export async function listVitals(episodeId: string, opts: { phase?: "intra_op" | "recovery"; subjectId?: string } = {}): Promise<VitalSigns[]> {
+  if (opts.phase) {
+    return vitalsRepo.list({ where: "episode_id = ? AND phase = ? AND subject_id = ?", params: [episodeId, opts.phase, opts.subjectId ?? ""], orderBy: "recorded_at ASC" });
+  }
+  return vitalsRepo.list({ where: "episode_id = ? AND (phase IS NULL OR phase = 'ward')", params: [episodeId], orderBy: "recorded_at ASC" });
 }
