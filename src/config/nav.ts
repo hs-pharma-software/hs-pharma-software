@@ -563,6 +563,7 @@ const HOSPITAL_NAV: NavItem[] = [
     children: [
       { label: "Incidents & Complaints", href: "/hospital/quality" },
       { label: "Documents", href: "/hospital/quality/documents" },
+      { label: "Medical Records", href: "/hospital/records", moduleKey: "hospital_records" },
       { label: "MSDS Self-assessment", href: "/hospital/quality/compliance" },
     ],
   },

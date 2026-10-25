@@ -15,6 +15,7 @@ import { listLicences, listEquipment, drillSchedule } from "./facility";
 import { staffHrStatus, rosterRange, isClinical } from "./hrRecords";
 import { requiredDocumentStatus } from "./documents";
 import { medicineIndicators, stewardshipList } from "./medicines";
+import { recordCompleteness, listReleases } from "./records";
 
 export const MSDS_AREAS: [string, string][] = [
   ["AAC", "Access, assessment and continuity of care"],
@@ -30,7 +31,7 @@ export const MSDS_AREAS: [string, string][] = [
 ];
 
 /** The hospital's own targets used to colour the checks. */
-export const TARGETS = { erSeenPct: 90, criticalPct: 95, complaintsPct: 90, handHygienePct: 80 };
+export const TARGETS = { erSeenPct: 90, criticalPct: 95, complaintsPct: 90, handHygienePct: 80, recordsCompletePct: 90 };
 
 export type CheckState = "ok" | "attention" | "no_data";
 export interface ComplianceCheck { area: string; label: string; state: CheckState; detail: string; href: string }
@@ -218,6 +219,22 @@ export async function complianceSnapshot(today: string = localDate()): Promise<{
     const r = await rosterRange(today, addDays(today, 6));
     const days = new Set(r.map((x) => x.duty_date)).size;
     return r.length ? { state: days === 7 ? "ok" : "attention", detail: `Roster entries on ${days} of the next 7 days.` } : { state: "no_data", detail: "No roster entered for the next 7 days." };
+  });
+
+  await run("IMS", "Discharged admissions with a complete record", "/hospital/records", async () => {
+    const c = await recordCompleteness(range);
+    if (!c.rows.length) return { state: "no_data", detail: `No admissions discharged in the last ${WINDOW_DAYS} days.` };
+    const weakest = c.byItem.filter((i) => i.applicable && (i.pct ?? 100) < 100).sort((x, y) => (x.pct ?? 0) - (y.pct ?? 0)).slice(0, 2).map((i) => `${i.label} ${i.pct}%`);
+    return {
+      state: (c.completePct ?? 0) >= TARGETS.recordsCompletePct ? "ok" : "attention",
+      detail: `${c.completePct}% of ${c.rows.length} records complete (target ${TARGETS.recordsCompletePct}%).${weakest.length ? ` Lowest: ${weakest.join(", ")}.` : ""}`,
+    };
+  });
+
+  await run("IMS", "Requests for copies of records decided within 7 days", "/hospital/records", async () => {
+    const open = await listReleases({ status: "requested" });
+    const late = open.filter((r) => r.requested_at.slice(0, 10) < addDays(today, -7)).length;
+    return late ? { state: "attention", detail: `${late} request(s) waiting more than 7 days.` } : { state: "ok", detail: `${open.length} request(s) waiting, none more than 7 days.` };
   });
 
   return { checks, from, to: today };

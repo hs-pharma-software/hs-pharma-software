@@ -1337,6 +1337,22 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+fn schema_sql_v57() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_record_releases (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, release_no TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT,
+        requested_at TEXT NOT NULL, requester_name TEXT NOT NULL, requester_type TEXT NOT NULL, relation TEXT, requester_id_no TEXT,
+        purpose TEXT NOT NULL, records_requested TEXT NOT NULL, authority TEXT NOT NULL, authority_ref TEXT, received_by_name TEXT,
+        status TEXT NOT NULL DEFAULT 'requested', decided_by_name TEXT, decided_at TEXT, decision_note TEXT,
+        released_at TEXT, released_by_name TEXT, records_released TEXT, copies INTEGER, id_checked INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_release_no ON hospital_record_releases (tenant_id, release_no);
+    CREATE INDEX IF NOT EXISTS idx_releases ON hospital_record_releases (tenant_id, status, requested_at);
+    CREATE INDEX IF NOT EXISTS idx_releases_patient ON hospital_record_releases (tenant_id, patient_id);
+    "#
+}
+
 fn schema_sql_v56() -> &'static str {
     r#"
     ALTER TABLE hospital_rx_items ADD COLUMN abx_class TEXT;
@@ -2937,6 +2953,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 56,
             description: "hospital_medication_management",
             sql: schema_sql_v56(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 57,
+            description: "hospital_record_releases",
+            sql: schema_sql_v57(),
             kind: MigrationKind::Up,
         },
     ]

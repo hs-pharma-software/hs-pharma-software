@@ -50,9 +50,11 @@ export const DESIGNATIONS: Designation[] = [
     pages: ["hospital_episodes", "hospital_patients", "hospital_medicines", "products", "suppliers"] },
   { key: "store_keeper", label: "Store Keeper", prefix: "SK", license: null, licenseRequired: false, doctor: false, pages: ["products", "suppliers", "tasks"] },
   { key: "quality_manager", label: "Quality Manager / Patient Safety Officer", prefix: "QM", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_quality", "hospital_facility", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
+    pages: ["hospital_quality", "hospital_facility", "hospital_records", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
   { key: "facility_manager", label: "Facility Manager / Biomedical Engineer", prefix: "FM", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_facility"] },
+  { key: "medical_records_officer", label: "Medical Records Officer", prefix: "MRO", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_records", "hospital_patients", "hospital_episodes"] },
   { key: "hr_officer", label: "HR Officer", prefix: "HR", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr"] },
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
@@ -90,6 +92,10 @@ export const DOCUMENT_AUTHOR_ROLES = ["quality_manager", "nursing_superintendent
 
 /** Medicines management (MSDS MOM): the formulary, ADR assessment and controlled drug receipts. */
 export const PHARMACY_ROLES = ["pharmacist"];
+
+/** Medical records (MSDS IMS): release of information is decided by the records officer or an HoD. */
+export const RECORDS_ROLES = ["medical_records_officer"];
+export const RECORDS_APPROVER_ROLES = ["medical_records_officer", "hod"];
 
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];

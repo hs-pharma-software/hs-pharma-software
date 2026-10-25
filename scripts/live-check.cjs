@@ -25,7 +25,7 @@ const PAGES = [
   "/", "/hospital", "/hospital/reception", "/hospital/doctor", "/hospital/patients", "/hospital/episodes", "/hospital/opd", "/hospital/ipd",
   "/hospital/emergency", "/hospital/emergency/board", "/hospital/emergency/mlc", "/hospital/admissions", "/hospital/lab", "/hospital/lab/reports",
   "/hospital/lab/critical", "/hospital/blood-bank", "/hospital/radiology", "/hospital/surgery", "/hospital/ipc", "/hospital/ipc/registers",
-  "/hospital/cssd", "/hospital/medicines", "/hospital/quality", "/hospital/quality/documents", "/hospital/quality/compliance", "/hospital/facility", "/hospital/hr",
+  "/hospital/cssd", "/hospital/medicines", "/hospital/records", "/hospital/quality", "/hospital/quality/documents", "/hospital/quality/compliance", "/hospital/facility", "/hospital/hr",
   "/my-appraisals",
 ];
 

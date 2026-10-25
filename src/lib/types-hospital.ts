@@ -989,3 +989,31 @@ export interface FridgeLog extends TenantRow {
   action_taken: string | null;
   by_name: string | null;
 }
+
+// ── Medical records (v57) ─────────────────────────────────────────────────
+
+/** A request for a copy of a patient record, and what was released. */
+export interface RecordRelease extends TenantRow {
+  release_no: string;
+  patient_id: string;
+  episode_id: string | null;
+  requested_at: string;
+  requester_name: string;
+  requester_type: string;
+  relation: string | null;
+  requester_id_no: string | null;
+  purpose: string;
+  records_requested: string;
+  authority: "patient" | "patient_consent" | "legal_order" | "clinical_care";
+  authority_ref: string | null;
+  received_by_name: string | null;
+  status: "requested" | "approved" | "refused" | "released";
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  released_at: string | null;
+  released_by_name: string | null;
+  records_released: string | null;
+  copies: number | null;
+  id_checked: number;
+}
