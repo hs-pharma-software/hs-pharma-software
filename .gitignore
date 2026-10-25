@@ -49,3 +49,6 @@ backups/
 
 # Generated audit of live product data (scripts/categorize-products.cjs): never commit
 scripts/product-audit.json
+
+# Personal Claude Code settings: never commit
+.claude/settings.local.json
