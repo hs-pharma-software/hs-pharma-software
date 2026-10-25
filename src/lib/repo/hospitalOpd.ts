@@ -227,7 +227,8 @@ export async function saveRx(episodeId: string, lines: RxDraft[]): Promise<Hospi
   const clean = lines.filter((l) => l.product_name?.trim());
   for (const l of clean) if (!(Number(l.qty) > 0)) throw new Error(`Enter a quantity for ${l.product_name}.`);
   const ts = nowIso();
-  for (const old of await listRx(episodeId)) {
+  // Inpatient medication orders (MAR) are never replaced here; see repo/medication.ts.
+  for (const old of (await listRx(episodeId)).filter((r) => r.order_type !== "inpatient")) {
     await dbExecute(`UPDATE hospital_rx_items SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, [ts, ts, old.id, tenantId]);
     await recordOutbox("hospital_rx_items", old.id, "delete", null);
   }

@@ -328,6 +328,7 @@ const MIGRATIONS = [
   { version: 46, label: 'index of the visit an admission came from; v1 indexes the shared database lacked', statements: rustSchemaStatements(46) },
   { version: 47, label: 'admission confirmation by the department Head Nurse', statements: rustSchemaStatements(47) },
   { version: 48, label: 'MSDS medical record: forms, revisions, checklists, vital signs', statements: rustSchemaStatements(48) },
+  { version: 49, label: 'inpatient medication orders and the medication administration record', statements: rustSchemaStatements(49) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

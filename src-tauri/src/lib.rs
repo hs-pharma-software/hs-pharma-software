@@ -1311,6 +1311,45 @@ fn schema_sql_v44() -> &'static str {
 /// revisions (append-only, with reason). Checklist entries record a person
 /// affirming (self_confirmation) or observing (observation) a safety step;
 /// nothing is ever recorded as done without someone choosing it.
+/// Inpatient medication orders and the medication administration record
+/// (MSDS MOM-1, MOM-3). Orders reuse hospital_rx_items (order_type =
+/// 'inpatient'), are never replaced, and carry who ordered them and when,
+/// stop details, high-risk verification and verbal-order countersignature.
+/// Each administration is one append-only row with its identity and
+/// medicine / dose / route / time checks; errors are voided with a reason.
+fn schema_sql_v49() -> &'static str {
+    r#"
+    ALTER TABLE hospital_rx_items ADD COLUMN order_type TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN ordered_by TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN ordered_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN ordered_at TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN order_status TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN stopped_at TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN stopped_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN stop_reason TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN high_risk INTEGER;
+    ALTER TABLE hospital_rx_items ADD COLUMN order_source TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN received_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN countersigned_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN countersigned_at TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN verified_by_name TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN verified_at TEXT;
+    ALTER TABLE hospital_rx_items ADD COLUMN own_supply INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_hosp_rx_inpatient ON hospital_rx_items (tenant_id, episode_id, order_status) WHERE order_type = 'inpatient';
+    CREATE TABLE IF NOT EXISTS hospital_mar_entries (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, patient_id TEXT NOT NULL, episode_id TEXT NOT NULL, order_id TEXT NOT NULL,
+        status TEXT NOT NULL, given_at TEXT NOT NULL, dose_given TEXT, route_given TEXT,
+        identifier_1 TEXT, identifier_2 TEXT, checked_medicine INTEGER NOT NULL DEFAULT 0, checked_dose INTEGER NOT NULL DEFAULT 0,
+        checked_route INTEGER NOT NULL DEFAULT 0, checked_time INTEGER NOT NULL DEFAULT 0,
+        second_checker_id TEXT, second_checker_name TEXT, reason TEXT, notes TEXT,
+        given_by TEXT, given_by_name TEXT, voided_at TEXT, voided_by_name TEXT, void_reason TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_mar_episode ON hospital_mar_entries (tenant_id, episode_id, given_at);
+    CREATE INDEX IF NOT EXISTS idx_hosp_mar_order ON hospital_mar_entries (tenant_id, order_id, given_at)
+    "#
+}
+
 fn schema_sql_v48() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_form_records (
@@ -2533,6 +2572,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 48,
             description: "msds_forms_checklists_vitals",
             sql: schema_sql_v48(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 49,
+            description: "inpatient_medication_orders_and_mar",
+            sql: schema_sql_v49(),
             kind: MigrationKind::Up,
         },
     ]

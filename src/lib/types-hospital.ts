@@ -110,6 +110,24 @@ export interface HospitalRxItem extends TenantRow {
   qty: number;
   instructions: string | null;
   sent_at: string | null;
+  // Inpatient medication order (v49); absent on OPD prescriptions.
+  order_type?: "inpatient" | null;
+  ordered_by?: string | null;
+  ordered_by_name?: string | null;
+  ordered_at?: string | null;
+  order_status?: "active" | "stopped" | null;
+  stopped_at?: string | null;
+  stopped_by_name?: string | null;
+  stop_reason?: string | null;
+  high_risk?: number | null;
+  order_source?: "written" | "verbal" | "telephone" | null;
+  received_by_name?: string | null;
+  countersigned_by_name?: string | null;
+  countersigned_at?: string | null;
+  verified_by_name?: string | null;
+  verified_at?: string | null;
+  /** The patient's own medicine brought from outside (MOM-3 Ind. 71). */
+  own_supply?: number | null;
 }
 
 /** Fee fields of a lab / radiology order (v40): an order with a fee can only be
@@ -349,4 +367,30 @@ export interface VitalSigns extends TenantRow {
   notes: string | null;
   recorded_by: string | null;
   recorded_by_name: string | null;
+}
+
+/** One dose given, held, refused or missed (medication administration record, v49). */
+export interface MarEntry extends TenantRow {
+  patient_id: string;
+  episode_id: string;
+  order_id: string;
+  status: "given" | "held" | "refused" | "missed";
+  given_at: string;
+  dose_given: string | null;
+  route_given: string | null;
+  identifier_1: string | null;
+  identifier_2: string | null;
+  checked_medicine: number;
+  checked_dose: number;
+  checked_route: number;
+  checked_time: number;
+  second_checker_id: string | null;
+  second_checker_name: string | null;
+  reason: string | null;
+  notes: string | null;
+  given_by: string | null;
+  given_by_name: string | null;
+  voided_at: string | null;
+  voided_by_name: string | null;
+  void_reason: string | null;
 }
