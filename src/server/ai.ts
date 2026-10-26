@@ -7,6 +7,7 @@ import type { Caller } from "./sqlPolicy";
 import {
   GEMINI_MODELS, DEFAULT_GEMINI_MODEL, GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING,
   AI_PROVIDER_SETTING, OPENAI_KEY_SETTING, OPENAI_MODEL_SETTING, DEFAULT_OPENAI_MODEL, resolveProvider, type AiProvider,
+  geminiModelChain, geminiShouldFallBack, geminiNotSpent, markGeminiSpent,
 } from "../config/aiModels";
 import { toOpenAIRequest, callOpenAI } from "../lib/aiOpenAI";
 import type { GeminiRequest } from "../lib/gemini";
@@ -81,10 +82,17 @@ export async function generateForCaller(caller: Caller, body: { request?: unknow
       return { ...r, provider: "openai" };
     }
     const model = body.model && GEMINI_MODELS.some((m) => m.id === body.model) ? body.model : cfg.model;
-    const res = await fetch(`${BASE}/${model}:generateContent`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": cfg.apiKey }, body: payload, signal: controller.signal,
-    });
-    return { status: res.status, body: await res.text(), provider: "gemini" };
+    // When a model has used its free daily requests (or is retired), the next one answers instead.
+    let last = { status: 0, body: "" };
+    for (const m of geminiNotSpent(geminiModelChain(model))) {
+      const res = await fetch(`${BASE}/${m}:generateContent`, {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": cfg.apiKey }, body: payload, signal: controller.signal,
+      });
+      last = { status: res.status, body: await res.text() };
+      if (!geminiShouldFallBack(last.status, last.body)) break;
+      markGeminiSpent(m);
+    }
+    return { ...last, provider: "gemini" };
   } catch {
     if (controller.signal.aborted) throw new HttpError(504, `${service} took too long to answer. Try again.`);
     throw new HttpError(502, `The server could not reach ${service}.`);

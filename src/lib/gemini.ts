@@ -4,6 +4,7 @@ import { isTauriShell } from "./platform";
 import {
   GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL,
   AI_PROVIDER_SETTING, OPENAI_KEY_SETTING, OPENAI_MODEL_SETTING, OPENAI_MODELS, DEFAULT_OPENAI_MODEL, resolveProvider, type AiProvider,
+  geminiModelChain, geminiShouldFallBack, geminiNotSpent, markGeminiSpent,
 } from "../config/aiModels";
 import { toOpenAIRequest, callOpenAI, openAIErrorMessage } from "./aiOpenAI";
 
@@ -107,7 +108,8 @@ function errorMessage(status: number, body: string, provider: AiProvider): strin
   }
   if (status === 400 && /api key/i.test(msg)) return "Gemini API key was rejected. Check it in Settings > AI Assistant.";
   if (status === 403) return "This Gemini API key is not allowed to use the Gemini API. Create a key at aistudio.google.com/apikey.";
-  if (status === 429) return "Gemini free-tier limit reached. Wait a minute and try again, or pick Flash-Lite in Settings > AI Assistant.";
+  if (status === 429 && /per day|daily|free_tier/i.test(msg)) return "Every Gemini model has used its free requests for today. They reset tomorrow, or add billing to the Google key, or switch to ChatGPT on the Billori page.";
+  if (status === 429) return "Gemini is receiving too many requests. Wait a minute and try again.";
   if (status === 503) return `Gemini is busy right now. Try again in a moment. (${msg.slice(0, 120)})`;
   return `Gemini API error ${status}: ${msg.slice(0, 300)}`;
 }
@@ -157,14 +159,17 @@ export async function geminiGenerate(req: GeminiRequest, timeoutMs = 60_000, mod
         // A Gemini model override (e.g. from the FBR autofill) does not apply to ChatGPT.
         ({ status, body } = await callOpenAI(anyPost, apiKey, toOpenAIRequest(req, model), controller.signal));
       } else {
-        const res = await httpPost(
-          `${BASE}/${modelOverride ?? model}:generateContent`,
-          apiKey,
-          JSON.stringify(req),
-          controller.signal,
-        );
-        status = res.status;
-        body = await res.text();
+        // When a model has used its free daily requests (or is retired), the next one answers instead.
+        const chain = geminiNotSpent(geminiModelChain(modelOverride ?? model));
+        status = 0;
+        body = "";
+        for (const m of chain) {
+          const res = await httpPost(`${BASE}/${m}:generateContent`, apiKey, JSON.stringify(req), controller.signal);
+          status = res.status;
+          body = await res.text();
+          if (!geminiShouldFallBack(status, body)) break;
+          markGeminiSpent(m);
+        }
       }
     } catch (e) {
       if (controller.signal.aborted) throw new Error(`${service} took too long to answer. Try again.`);

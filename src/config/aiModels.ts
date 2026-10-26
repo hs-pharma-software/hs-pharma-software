@@ -1,10 +1,36 @@
 /** Gemini text models offered for the Billori assistant (shared by the page and the server). */
 export const GEMINI_MODELS = [
-  { id: "gemini-3.8-flash",      label: "Gemini 3.8 Flash (recommended)" },
-  { id: "gemini-3.6-flash",      label: "Gemini 3.6 Flash" },
-  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (fastest, highest free limits)" },
+  { id: "gemini-3.5-flash-lite",    label: "Gemini 3.5 Flash-Lite (recommended for the free tier)" },
+  { id: "gemini-3.1-flash-lite",    label: "Gemini 3.1 Flash-Lite" },
+  { id: "gemini-flash-lite-latest", label: "Gemini Flash-Lite (latest)" },
+  { id: "gemini-3.5-flash",         label: "Gemini 3.5 Flash" },
+  { id: "gemini-3.6-flash",         label: "Gemini 3.6 Flash" },
+  { id: "gemini-3.7-flash",         label: "Gemini 3.7 Flash" },
+  { id: "gemini-3.8-flash",         label: "Gemini 3.8 Flash (smartest, only 20 free requests a day)" },
 ];
 export const DEFAULT_GEMINI_MODEL = GEMINI_MODELS[0].id;
+
+/** Models to try, in order, when the chosen one has used its free daily
+ * requests or is no longer offered: each model has its own free allowance. */
+export function geminiModelChain(preferred: string | null | undefined): string[] {
+  const all = GEMINI_MODELS.map((m) => m.id);
+  return preferred && all.includes(preferred) ? [preferred, ...all.filter((m) => m !== preferred)] : all;
+}
+
+/** Models found used up or gone today, skipped until tomorrow (per process / browser tab). */
+const spent = new Map<string, string>();
+const today = () => new Date().toISOString().slice(0, 10);
+export const markGeminiSpent = (model: string) => spent.set(model, today());
+export const geminiNotSpent = (models: string[]) => {
+  const left = models.filter((m) => spent.get(m) !== today());
+  // All used up today: ask only the first, so the user gets the quota message without seven calls.
+  return left.length ? left : models.slice(0, 1);
+};
+
+/** A Gemini answer that means "try another model": daily quota used up, or the model is not offered (any more). */
+export function geminiShouldFallBack(status: number, body: string): boolean {
+  return (status === 429 && /quota|RESOURCE_EXHAUSTED|free_tier/i.test(body)) || status === 404;
+}
 
 /** Settings keys. Tenant keys are stored as "<tenant>::<key>"; Billori keys are global. */
 export const GEMINI_KEY_SETTING = "ai_gemini_api_key";

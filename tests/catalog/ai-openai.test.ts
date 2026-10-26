@@ -117,3 +117,22 @@ test("category from the description through ChatGPT, including the online step",
   assert.equal((await subCategoriesRepo.get(s!.subCategoryId!))!.name, "BENZODIAZEPINES");
   assert.deepEqual(bodies[1].tools, [{ type: "web_search" }], "the online step uses ChatGPT's web search");
 });
+
+test("Gemini: when a model has used its free requests for today, the next model answers", { skip: aiSkip }, async () => {
+  db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('ai_provider', 'gemini', 'x'), ('billori_api_key', 'g-key', 'x'), ('billori_model', 'gemini-3.8-flash', 'x')`).run();
+  const asked: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    const model = /models\/([^:]+):/.exec(String(url))?.[1] ?? "";
+    asked.push(model);
+    if (model === "gemini-3.8-flash") {
+      return new Response(JSON.stringify({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Quota exceeded for metric: generate_content_free_tier_requests, limit: 20" } }), { status: 429 });
+    }
+    return new Response(JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: "OK" }] }, finishReason: "STOP" }] }), { status: 200 });
+  }) as typeof fetch;
+  const r = await geminiGenerate({ contents: [{ role: "user", parts: [{ text: "Reply OK" }] }] });
+  assert.equal(r.text, "OK");
+  assert.deepEqual(asked, ["gemini-3.8-flash", "gemini-3.5-flash-lite"]);
+  const again = await geminiGenerate({ contents: [{ role: "user", parts: [{ text: "Again" }] }] });
+  assert.equal(again.text, "OK");
+  assert.deepEqual(asked.slice(2), ["gemini-3.5-flash-lite"], "a used-up model is skipped for the rest of the day");
+});
