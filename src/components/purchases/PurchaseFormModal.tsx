@@ -6,7 +6,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
-import { ProductPicker } from "@/components/products/ProductPicker";
+import { ProductPicker, type ProductPickerHandle } from "@/components/products/ProductPicker";
 import { suppliersRepo } from "@/lib/repo/suppliers";
 import {
   purchasesRepo,
@@ -292,10 +292,42 @@ export function PurchaseFormModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
 
+  // Keyboard entry: a new line opens at its first empty field; Enter moves to the
+  // next empty field of the line, and from the last one back to the product search.
+  const pickerRef = useRef<ProductPickerHandle>(null);
+  const linesRef = useRef<HTMLTableSectionElement>(null);
+  const focusRow = useRef<number | null>(null);
+  const cellsOf = (row: number) => Array.from(linesRef.current?.querySelectorAll<HTMLInputElement>(`[data-row="${row}"] [data-cell]`) ?? []);
+  const isEmpty = (el: HTMLInputElement) => el.value.trim() === "" || (el.dataset.zeroEmpty === "1" && Number(el.value) === 0);
+  function focusCell(el: HTMLInputElement | undefined) {
+    if (!el) { pickerRef.current?.focus(); return; }
+    el.focus();
+    if (el.type !== "date") el.select();
+  }
+  useEffect(() => {
+    if (focusRow.current === null) return;
+    const row = focusRow.current;
+    focusRow.current = null;
+    focusCell(cellsOf(row).find(isEmpty));
+  }, [lines]);
+  function onLineKeyDown(e: React.KeyboardEvent<HTMLTableSectionElement>) {
+    const el = e.target as HTMLInputElement;
+    if (e.key !== "Enter" || !el.dataset?.cell) return;
+    e.preventDefault();
+    const row = Number(el.closest<HTMLElement>("[data-row]")?.dataset.row);
+    const cells = cellsOf(row);
+    focusCell(cells.slice(cells.indexOf(el) + 1).find(isEmpty));
+  }
+
   async function addProduct(p: Product) {
-    if (lines.some((l) => l.product.id === p.id)) return;
+    const existing = lines.findIndex((l) => l.product.id === p.id);
+    if (existing >= 0) {
+      focusCell(cellsOf(existing).find(isEmpty) ?? cellsOf(existing)[0]);
+      return;
+    }
     const price = await getLatestPrice(p.id);
     const salePrice = price?.salePrice ?? 0;
+    focusRow.current = lines.length;
     setLines((prev) => [...prev, { ...makeLine(p), salePrice, initialSalePrice: salePrice }]);
   }
 
@@ -462,7 +494,7 @@ export function PurchaseFormModal({
         </div>
 
         <Field label="Barcode/Product Name">
-          <ProductPicker onSelect={(p) => void addProduct(p)} />
+          <ProductPicker ref={pickerRef} onSelect={(p) => void addProduct(p)} />
         </Field>
 
         <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
@@ -482,7 +514,7 @@ export function PurchaseFormModal({
                 <th className="px-2 py-2"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={linesRef} onKeyDown={onLineKeyDown}>
               {lines.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-2 py-6 text-center text-neutral-400">
@@ -491,7 +523,7 @@ export function PurchaseFormModal({
                 </tr>
               ) : (
                 lines.map((l, idx) => (
-                  <tr key={idx} className="border-b border-neutral-100 last:border-0">
+                  <tr key={idx} data-row={idx} className="border-b border-neutral-100 last:border-0">
                     <td className="px-2 py-1.5">{l.product.name}</td>
                     <td className="px-2 py-1.5">
                       {hasSecondaryUnit(l.product) ? (
@@ -507,6 +539,7 @@ export function PurchaseFormModal({
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        data-cell="batch"
                         value={l.batchNo}
                         onChange={(e) => updateLine(idx, { batchNo: e.target.value })}
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
@@ -514,6 +547,7 @@ export function PurchaseFormModal({
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        data-cell="expiry"
                         type="date"
                         value={l.expiryDate}
                         onChange={(e) => updateLine(idx, { expiryDate: e.target.value })}
@@ -525,6 +559,8 @@ export function PurchaseFormModal({
                         type="number"
                         min="0"
                         step="any"
+                        data-cell="purchase"
+                        data-zero-empty="1"
                         value={l.purchasePrice}
                         onChange={(e) => updateLine(idx, { purchasePrice: Number(e.target.value) })}
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
@@ -535,6 +571,8 @@ export function PurchaseFormModal({
                         type="number"
                         min="0"
                         step="any"
+                        data-cell="retail"
+                        data-zero-empty="1"
                         value={l.salePrice}
                         onChange={(e) => updateLine(idx, { salePrice: Number(e.target.value) })}
                         title={
@@ -554,6 +592,8 @@ export function PurchaseFormModal({
                         type="number"
                         min="0"
                         step="any"
+                        data-cell="qty"
+                        data-zero-empty="1"
                         value={l.qty}
                         onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
                         className="w-20 rounded border border-neutral-300 px-1.5 py-1"
@@ -564,6 +604,7 @@ export function PurchaseFormModal({
                         type="number"
                         min="0"
                         step="any"
+                        data-cell="st"
                         value={l.stPct}
                         onChange={(e) => updateLine(idx, { stPct: Number(e.target.value) })}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -574,6 +615,7 @@ export function PurchaseFormModal({
                         type="number"
                         min="0"
                         step="any"
+                        data-cell="wht"
                         value={l.whtPct}
                         onChange={(e) => updateLine(idx, { whtPct: Number(e.target.value) })}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
