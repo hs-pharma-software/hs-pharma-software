@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle } from "lucide-react";
+import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -20,6 +20,10 @@ import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice } from "@/lib/types2";
 import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
+import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/Field";
+import { markInvoicePaid } from "@/lib/repo/invoicePayments";
+import type { PaymentMethod } from "@/lib/types-hospital";
 
 const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
 
@@ -35,6 +39,7 @@ export default function InvoicesPage() {
   const [printing, setPrinting] = useState<typeof viewing>(null);
   const [surgeryInvoice, setSurgeryInvoice] = useState<{ id: string; print: boolean } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [payingRow, setPayingRow] = useState<InvoiceListRow | null>(null);
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
   // Per-row error tooltip state
@@ -173,6 +178,16 @@ export default function InvoicesPage() {
               <Pencil size={16} />
             </button>
           )}
+          {canEdit && r.balance > 0.005 && (
+            <button
+              type="button"
+              title={`Mark paid (balance Rs ${r.balance.toFixed(2)})`}
+              onClick={(e) => { e.stopPropagation(); setPayingRow(r); }}
+              className="hover:text-emerald-700"
+            >
+              <BadgeCheck size={16} />
+            </button>
+          )}
           <button
             type="button"
             title="Print"
@@ -229,6 +244,7 @@ export default function InvoicesPage() {
 
       {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setPrinting(null)} />}
 
+      {payingRow && <MarkPaidModal row={payingRow} onClose={() => setPayingRow(null)} onPaid={() => { setPayingRow(null); void reload(); }} />}
       {surgeryInvoice && (
         <SurgeryInvoiceModal key={surgeryInvoice.id + String(surgeryInvoice.print)} invoiceId={surgeryInvoice.id} autoPrint={surgeryInvoice.print} onClose={() => setSurgeryInvoice(null)} />
       )}
@@ -328,5 +344,46 @@ function FbrCell({
         </button>
       )}
     </div>
+  );
+}
+
+/** Confirms marking an invoice paid in full. A surgery invoice records a
+ * payment on the admission, so it asks how the money was received. */
+function MarkPaidModal({ row, onClose, onPaid }: { row: InvoiceListRow; onClose: () => void; onPaid: () => void }) {
+  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [busy, setBusy] = useState(false);
+  async function confirm() {
+    if (!can("invoice.edit")) return window.alert(NO_PERMISSION_MESSAGE);
+    setBusy(true);
+    try {
+      await markInvoicePaid(row.id, method);
+      onPaid();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={`Mark invoice #${row.invoice_no ?? ""} paid`} onClose={onClose} width="max-w-md">
+      <div className="flex flex-col gap-3 text-sm">
+        <p>
+          <b>{row.customer_name}</b> · bill Rs {row.payable.toFixed(2)}, paid Rs {row.paid.toFixed(2)}.
+          The balance of <b className="tabular-nums">Rs {row.balance.toFixed(2)}</b> will be recorded as received.
+        </p>
+        {isSurgery(row) && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-neutral-600">Received by</span>
+            <Select id="mark-paid-method" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
+              <option value="cash">Cash</option><option value="card">Card</option><option value="online">Online transfer</option><option value="bank">Bank deposit</option>
+            </Select>
+          </label>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={busy} onClick={() => void confirm()}>{busy ? "Saving…" : "Mark paid"}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
