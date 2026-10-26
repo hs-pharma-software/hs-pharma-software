@@ -88,6 +88,10 @@ export interface GroupedPL {
   sales: number;
   cogs: number;
   profit: number;
+  /** Product reports only: to show a part of a pack in the secondary unit. */
+  packing?: number | null;
+  base_unit?: string | null;
+  secondary_unit?: string | null;
 }
 
 async function groupedProfitLoss(
@@ -129,13 +133,16 @@ async function groupedProfitLoss(
       COALESCE(SUM(${sign} * COALESCE(ii.qty, 0)), 0) AS qty,
       COALESCE(SUM(${sign} * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales,
       COALESCE(SUM(${sign} * COALESCE(ii.purchase_price, 0) * COALESCE(ii.qty, 0)), 0) AS cogs,
-      COALESCE(SUM(${sign} * (COALESCE(ii.sale_price, 0) - COALESCE(ii.purchase_price, 0)) * COALESCE(ii.qty, 0)), 0) AS profit
+      COALESCE(SUM(${sign} * (COALESCE(ii.sale_price, 0) - COALESCE(ii.purchase_price, 0)) * COALESCE(ii.qty, 0)), 0) AS profit,
+      ${groupBy === "product" ? "MAX(COALESCE(p.packing, 1)) AS packing, MAX(bu.name) AS base_unit, MAX(su.name) AS secondary_unit" : "NULL AS packing, NULL AS base_unit, NULL AS secondary_unit"}
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     JOIN products p ON p.id = ii.product_id
     LEFT JOIN categories cat ON cat.id = p.category_id
     LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
     LEFT JOIN customers cu ON cu.id = i.customer_id
+    LEFT JOIN uoms bu ON bu.id = p.base_unit_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY ${groupExpr}
     ORDER BY profit DESC
@@ -155,6 +162,10 @@ export interface ProductSalesRow {
   name: string;
   qty: number;
   sales: number;
+  /** Product reports only: to show a part of a pack in the secondary unit. */
+  packing?: number | null;
+  base_unit?: string | null;
+  secondary_unit?: string | null;
 }
 
 export async function getProductWiseSales(fromDate: string, toDate: string): Promise<ProductSalesRow[]> {
@@ -163,10 +174,13 @@ export async function getProductWiseSales(fromDate: string, toDate: string): Pro
     `
     SELECT p.id, p.name,
            COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.qty, 0)), 0) AS qty,
-           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales,
+           MAX(COALESCE(p.packing, 1)) AS packing, MAX(bu.name) AS base_unit, MAX(su.name) AS secondary_unit
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     JOIN products p ON p.id = ii.product_id
+    LEFT JOIN uoms bu ON bu.id = p.base_unit_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY p.id
     ORDER BY sales DESC
@@ -246,6 +260,10 @@ export interface BonusDiscountRow {
   bonus_qty: number;
   bonus_value: number;
   discount_rs: number;
+  /** Product reports only: to show a part of a pack in the secondary unit. */
+  packing?: number | null;
+  base_unit?: string | null;
+  secondary_unit?: string | null;
 }
 
 export async function getBonusAndDiscountReport(fromDate: string, toDate: string): Promise<BonusDiscountRow[]> {
@@ -255,10 +273,13 @@ export async function getBonusAndDiscountReport(fromDate: string, toDate: string
     SELECT p.id, p.name,
       COALESCE(SUM(COALESCE(ii.bonus_qty, 0)), 0) AS bonus_qty,
       COALESCE(SUM(COALESCE(ii.bonus_qty, 0) * COALESCE(ii.sale_price, 0)), 0) AS bonus_value,
-      COALESCE(SUM(COALESCE(ii.discount_rs, 0)), 0) AS discount_rs
+      COALESCE(SUM(COALESCE(ii.discount_rs, 0)), 0) AS discount_rs,
+      MAX(COALESCE(p.packing, 1)) AS packing, MAX(bu.name) AS base_unit, MAX(su.name) AS secondary_unit
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     JOIN products p ON p.id = ii.product_id
+    LEFT JOIN uoms bu ON bu.id = p.base_unit_id
+    LEFT JOIN uoms su ON su.id = p.secondary_unit_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY p.id
     HAVING SUM(COALESCE(ii.bonus_qty, 0)) > 0 OR SUM(COALESCE(ii.discount_rs, 0)) > 0

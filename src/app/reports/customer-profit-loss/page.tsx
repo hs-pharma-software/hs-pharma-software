@@ -1,6 +1,7 @@
 "use client";
 
 import { ReportTablePage } from "@/components/reports/ReportTablePage";
+import { formatReportQty } from "@/lib/uom";
 import { getCustomerProfitLoss } from "@/lib/repo/reports";
 
 export default function Page() {
@@ -9,7 +10,7 @@ export default function Page() {
       title="Customer Wise Profit/Loss"
       columns={[
         { header: "Customer", render: (r) => r.name },
-        { header: "Qty", render: (r) => r.qty },
+        { header: "Qty", render: (r) => formatReportQty(r.qty) },
         { header: "Sales", render: (r) => r.sales.toFixed(2) },
         { header: "COGS", render: (r) => r.cogs.toFixed(2) },
         { header: "Profit", render: (r) => r.profit.toFixed(2) },

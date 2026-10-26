@@ -13,6 +13,7 @@ import {
   getProductProfitLoss, getCompanyProfitLoss, getCategoryProfitLoss, getSubCategoryProfitLoss, getCustomerProfitLoss,
   getProductWiseSales, getCategoryWiseSales, getBonusAndDiscountReport, getTaxReport, getTrialBalance,
 } from "@/lib/repo/reports";
+import { formatReportQty } from "@/lib/uom";
 import type { Invoice, InvoiceItem } from "@/lib/types2";
 
 const T = "pharm-a";
@@ -54,4 +55,20 @@ test("every sales report works for a pharmacy selling shared catalog products", 
   assert.equal((await getTaxReport("", ""))[0].sales_tax, 0);
   assert.ok((await getTrialBalance()).length >= 5);
   for (const r of pl) for (const v of [r.qty, r.sales, r.cogs, r.profit]) assert.equal(typeof v, "number", "no empty totals");
+});
+
+test("a part of a pack is shown in the secondary unit, whole packs in the base unit", async () => {
+  assert.equal(formatReportQty(0.1, 20, "Pack", "Tab"), "2 Tab");
+  assert.equal(formatReportQty(1 / 3, 30, "Pack", "Tab"), "10 Tab");
+  assert.equal(formatReportQty(2, 20, "Pack", "Tab"), "2 Pack");
+  assert.equal(formatReportQty(0.3333333333333333), "0.33");
+  assert.equal(formatReportQty(5), "5");
+  db.prepare("INSERT INTO uoms (id, tenant_id, name, created_at, updated_at) VALUES ('u-pack', ?, 'Pack', ?, ?), ('u-tab', ?, 'Tab', ?, ?)").run(T, NOW, NOW, T, NOW, NOW);
+  db.prepare("INSERT INTO products (id, tenant_id, name, packing, base_unit_id, secondary_unit_id, created_at, updated_at) VALUES ('p1', ?, 'Panadol', 20, 'u-pack', 'u-tab', ?, ?)").run(T, NOW, NOW);
+  const inv = await invoicesRepo.create({ invoice_no: 2, date: "2026-10-26", inv_on: "2026-10-26", invoice_type: "sale", total: 10, charges: 0, discount_pct: 0, discount_rs: 0, tax_pct: 0, payable: 10, paid: 10, balance: 0, is_return: 0, is_memorized: 0, is_quotation: 0 } as Partial<Invoice>);
+  await invoiceItemsRepo.create({ invoice_id: inv.id, product_id: "p1", packing: 20, qty: 0.1, bonus_qty: 0, purchase_price: 50, sale_price: 100, tax_pct: 0, further_tax_pct: 0, tax_rs: 0, discount_pct: 0, discount_rs: 0, total: 10 } as Partial<InvoiceItem>);
+  const [r] = await getProductProfitLoss("", "");
+  assert.equal(formatReportQty(r.qty, r.packing, r.base_unit, r.secondary_unit), "2 Tab");
+  const [s] = await getProductWiseSales("", "");
+  assert.equal(formatReportQty(s.qty, s.packing, s.base_unit, s.secondary_unit), "2 Tab");
 });

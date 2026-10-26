@@ -43,3 +43,18 @@ export function toBaseUnitQty(qty: number, isSecondaryUnit: boolean, packing: nu
 export function fromBaseUnitQty(qty: number, isSecondaryUnit: boolean, packing: number): number {
   return isSecondaryUnit ? qty * effectivePacking(packing) : qty;
 }
+
+/** A quantity in a report: whole base units as they are ("2 Pack"); a part of
+ * a base unit in the secondary unit instead ("0.1" Pack of 20 -> "2 Tab").
+ * Without a secondary unit, the decimals are rounded. */
+export function formatReportQty(qty: number, packing?: number | null, baseUnit?: string | null, secondaryUnit?: string | null): string {
+  const q = Number(qty) || 0;
+  const whole = Math.abs(q - Math.round(q)) < 1e-6;
+  const p = Number(packing) || 1;
+  if (!whole && p > 1 && secondaryUnit) {
+    const s = Math.round(q * p * 100) / 100;
+    return `${Number.isInteger(s) ? s : s.toFixed(2)} ${secondaryUnit}`;
+  }
+  const n = whole ? String(Math.round(q)) : (Math.round(q * 100) / 100).toString();
+  return baseUnit ? `${n} ${baseUnit}` : n;
+}
