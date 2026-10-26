@@ -38,7 +38,8 @@ export interface GeminiSchema {
 export interface GeminiRequest {
   contents: GeminiContent[];
   systemInstruction?: { parts: { text: string }[] };
-  tools?: { functionDeclarations: { name: string; description: string; parameters: GeminiSchema }[] }[];
+  /** Function tools, or Google Search grounding ({ googleSearch: {} }) for answers that need current web information. */
+  tools?: ({ functionDeclarations: { name: string; description: string; parameters: GeminiSchema }[] } | { googleSearch: Record<string, never> })[];
   generationConfig?: {
     maxOutputTokens?: number;
     temperature?: number;

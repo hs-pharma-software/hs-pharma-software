@@ -158,10 +158,14 @@ export function ProductFormModal({
         name, description: desc, excludeId: product?.id,
         categories: categories.map((c) => ({ id: c.id, name: c.name })),
         loadSubCategories: async (id) => (await listSubCategoriesWithShared(id)).map((x) => ({ id: x.id, name: x.name })),
+        createCategory: async (n) => (await categoriesRepo.create({ name: n, description: "Added from an online search for a product's description", flat_discount_pct: 0, image_url: null })).id,
+        createSubCategory: async (catId, n) => (await subCategoriesRepo.create({ category_id: catId, name: n, description: "Added from an online search for a product's description", image_url: null })).id,
       });
       if (!s) { setCatSuggest({ status: "idle" }); return; }
+      if (s.createdCategoryId) await reloadLookups();
       if (s.categoryId) {
         setCategoryId(s.categoryId);
+        if (s.createdSubCategoryId || s.createdCategoryId) setSubCategories(await listSubCategoriesWithShared(s.categoryId));
         setSubCategoryId(s.subCategoryId ?? "");
       }
       setCatSuggest({ status: "done", s, previous });
@@ -170,20 +174,18 @@ export function ProductFormModal({
     }
   }
 
-  async function addSuggestedCategory(nameToAdd: string) {
-    const created = await categoriesRepo.create({ name: nameToAdd, description: null, flat_discount_pct: 0, image_url: null });
-    await reloadLookups();
-    setCategoryId(created.id);
-    setSubCategoryId("");
+  /** Undo: restore the previous choice and remove what the online search created (not used by any product yet). */
+  async function undoCategorySuggestion(previous: { categoryId: string; subCategoryId: string }, sug: CategorySuggestion) {
+    setCategoryId(previous.categoryId);
+    setSubCategoryId(previous.subCategoryId);
     setCatSuggest({ status: "idle" });
-  }
-
-  async function addSuggestedSubCategory(nameToAdd: string) {
-    if (!categoryId) return;
-    const created = await subCategoriesRepo.create({ category_id: categoryId, name: nameToAdd, description: null, image_url: null });
-    setSubCategories((prev) => [...prev, created]);
-    setSubCategoryId(created.id);
-    setCatSuggest((c) => (c.status === "done" ? { ...c, s: { ...c.s, subCategoryId: created.id, newSubCategory: null } } : c));
+    try {
+      if (sug.createdSubCategoryId) await subCategoriesRepo.remove(sug.createdSubCategoryId);
+      if (sug.createdCategoryId) await categoriesRepo.remove(sug.createdCategoryId);
+      if (sug.createdCategoryId) await reloadLookups();
+    } catch {
+      // Leaving an unused category behind is harmless.
+    }
   }
 
   async function addDescription(value: string) {
@@ -593,9 +595,7 @@ export function ProductFormModal({
           subCategoryName={(id) => subCategories.find((c) => c.id === id)?.name ?? ""}
           canSuggest={!!description.trim()}
           onSuggest={() => void runCategoryAutofill(description, true)}
-          onUndo={(p) => { setCategoryId(p.categoryId); setSubCategoryId(p.subCategoryId); setCatSuggest({ status: "idle" }); }}
-          onAddCategory={(n) => void addSuggestedCategory(n).catch((e) => window.alert(e instanceof Error ? e.message : String(e)))}
-          onAddSubCategory={(n) => void addSuggestedSubCategory(n).catch((e) => window.alert(e instanceof Error ? e.message : String(e)))}
+          onUndo={(p, sug) => void undoCategorySuggestion(p, sug)}
         />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -808,8 +808,8 @@ export function ProductFormModal({
   );
 }
 
-/** The line under Category / Sub Category: what was suggested from the description, Undo, or a name to add. */
-function CategorySuggestionLine({ state, categoryName, subCategoryName, canSuggest, onSuggest, onUndo, onAddCategory, onAddSubCategory }: {
+/** The line under Category / Sub Category: what was filled in from the description, and Undo. */
+function CategorySuggestionLine({ state, categoryName, subCategoryName, canSuggest, onSuggest, onUndo }: {
   state:
     | { status: "idle" }
     | { status: "running" }
@@ -819,28 +819,27 @@ function CategorySuggestionLine({ state, categoryName, subCategoryName, canSugge
   subCategoryName: (id: string) => string;
   canSuggest: boolean;
   onSuggest: () => void;
-  onUndo: (previous: { categoryId: string; subCategoryId: string }) => void;
-  onAddCategory: (name: string) => void;
-  onAddSubCategory: (name: string) => void;
+  onUndo: (previous: { categoryId: string; subCategoryId: string }, s: CategorySuggestion) => void;
 }) {
   const link = "font-medium text-[#006633] underline underline-offset-2";
   if (state.status === "running") return <p className="-mt-1 text-xs text-neutral-500">Finding the category from the description…</p>;
-  if (state.status === "error") return <p className="-mt-1 text-xs text-rose-700">Could not suggest a category: {state.message} <button type="button" className={link} onClick={onSuggest}>Try again</button></p>;
+  if (state.status === "error") return <p className="-mt-1 text-xs text-rose-700">Could not fill the category: {state.message} <button type="button" className={link} onClick={onSuggest}>Try again</button></p>;
   if (state.status === "done") {
     const s = state.s;
-    const who = s.source === "catalog" ? "From your other products" : "Suggested by Gemini";
+    const who = s.source === "catalog" ? "From your other products" : s.source === "web" ? "Found online by Gemini" : "Chosen by Gemini from your categories";
+    const added = [s.createdCategoryId && "category", s.createdSubCategoryId && "sub category"].filter(Boolean).join(" and ");
     return (
       <div className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-emerald-50/60 px-3 py-1.5 text-xs text-neutral-700">
         {s.categoryId ? (
-          <span>{who}: <b>{categoryName(s.categoryId)}</b>{s.subCategoryId ? <> › <b>{subCategoryName(s.subCategoryId)}</b></> : null}{s.reason ? <span className="text-neutral-500"> · {s.reason}</span> : null}</span>
-        ) : (
-          <span>No existing category fits{s.reason ? <span className="text-neutral-500"> ({s.reason})</span> : null}.</span>
-        )}
-        {!s.categoryId && s.newCategory && <button type="button" className={link} onClick={() => onAddCategory(s.newCategory!)}>Add category “{s.newCategory}”</button>}
-        {s.categoryId && !s.subCategoryId && s.newSubCategory && <button type="button" className={link} onClick={() => onAddSubCategory(s.newSubCategory!)}>Add sub category “{s.newSubCategory}”</button>}
-        {s.categoryId && <button type="button" className={link} onClick={() => onUndo(state.previous)}>Undo</button>}
+          <span>
+            {who}: <b>{categoryName(s.categoryId)}</b>{s.subCategoryId ? <> › <b>{subCategoryName(s.subCategoryId)}</b></> : null}
+            {added ? <span className="font-medium text-emerald-800"> (new {added} added)</span> : null}
+            {s.reason ? <span className="text-neutral-500"> · {s.reason}</span> : null}
+          </span>
+        ) : <span>{s.reason || "No category found for this description."}</span>}
+        {s.categoryId && <button type="button" className={link} onClick={() => onUndo(state.previous, s)}>Undo</button>}
       </div>
     );
   }
-  return canSuggest ? <p className="-mt-1 text-xs"><button type="button" className="font-medium text-[#006633] underline underline-offset-2" onClick={onSuggest}>Suggest category from the description</button></p> : null;
+  return canSuggest ? <p className="-mt-1 text-xs"><button type="button" className={link} onClick={onSuggest}>Fill category from the description</button></p> : null;
 }
