@@ -26,6 +26,8 @@ beforeEach(() => {
   useAuthStore.setState({ currentUser: { id: "owner", username: "o", displayName: "Owner", role: "owner", tenantId: T, permissions: null }, currentTenant: tenant });
 });
 afterEach(() => { globalThis.fetch = realFetch; });
+// The tenant-scope run hides AI keys from the page, as the server does (there the server adds the key in /api/ai).
+const aiSkip = process.env.TENANT_SCOPE === "1" ? "AI keys are server-only under tenant scope" : false;
 
 /** Gemini replaced by a queue of answers; records each request body. */
 function fakeGemini(answers: string[]) {
@@ -56,7 +58,7 @@ test("same description as another product: its category, without asking Gemini; 
   assert.equal(await suggestCategory({ ...input, description: "Paracetamol" }), null, "no match and no AI key: nothing is guessed");
 });
 
-test("from the list: Gemini picks an existing category and sub category", async () => {
+test("from the list: Gemini picks an existing category and sub category", { skip: aiSkip }, async () => {
   const pain = await categoriesRepo.create({ name: "PAIN KILLER", description: null, flat_discount_pct: 0, image_url: null });
   const nsaid = await subCategoriesRepo.create({ category_id: pain.id, name: "NSAID", description: null, image_url: null });
   const req = fakeGemini([`{"index":0,"reason":"Ibuprofen is an NSAID."}`, `{"index":0,"reason":"NSAID."}`]);
@@ -65,7 +67,7 @@ test("from the list: Gemini picks an existing category and sub category", async 
   assert.ok(req.every((r) => !r.tools), "no online search when the list has a fit");
 });
 
-test("nothing fits: Gemini searches online and the category and sub category are created and selected", async () => {
+test("nothing fits: Gemini searches online and the category and sub category are created and selected", { skip: aiSkip }, async () => {
   const pain = await categoriesRepo.create({ name: "PAIN KILLER", description: null, flat_discount_pct: 0, image_url: null });
   const req = fakeGemini([
     `{"index":-1,"reason":"None fits."}`,
@@ -81,7 +83,7 @@ test("nothing fits: Gemini searches online and the category and sub category are
   assert.ok(req[1].tools && JSON.stringify(req[1].tools).includes("googleSearch"), "the online step uses Google Search");
 });
 
-test("an online answer that matches an existing category reuses it instead of creating a duplicate", async () => {
+test("an online answer that matches an existing category reuses it instead of creating a duplicate", { skip: aiSkip }, async () => {
   const anx = await categoriesRepo.create({ name: "Anti Anxiety", description: null, flat_discount_pct: 0, image_url: null });
   fakeGemini([`{"index":-1,"reason":"x"}`, "NAME: ANTI ANXIETY\nWHY: y", "NAME: BENZODIAZEPINES\nWHY: z"]);
   const s = await suggestCategory({ name: "Xanax", description: "Alprazolam", categories: named([anx]), ...callbacks });
