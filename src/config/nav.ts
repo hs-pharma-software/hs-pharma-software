@@ -1,5 +1,6 @@
 ﻿import type { LucideIcon } from "lucide-react";
 import {
+  KeyRound,
   PillBottle,
   ShieldAlert,
   Droplets,
@@ -594,6 +595,7 @@ const HOSPITAL_NAV: NavItem[] = [
     onlyFor: ["hospital"],
     children: [shared("Staff", "staff"), { label: "Staff Records", href: "/hospital/hr" }],
   },
+  { label: "User Logins", href: "/hospital/logins", icon: KeyRound, moduleKey: "hospital_logins", onlyFor: ["hospital"] },
 ];
 
 export const NAV: NavItem[] = [...BASE_NAV, ...HOSPITAL_NAV];

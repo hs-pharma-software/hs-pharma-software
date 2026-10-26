@@ -40,6 +40,7 @@ export const HOSPITAL_NAV_ORDER = [
   "hospital_services",
   "hospital_purchase_cell",
   "hospital_hr",
+  "hospital_logins",
 ];
 
 const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER };
