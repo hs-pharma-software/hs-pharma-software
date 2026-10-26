@@ -3,9 +3,14 @@ import { SERVER_DB, serverJson } from "./serverMode";
 import { isTauriShell } from "./platform";
 import {
   GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL,
+  AI_PROVIDER_SETTING, OPENAI_KEY_SETTING, OPENAI_MODEL_SETTING, OPENAI_MODELS, DEFAULT_OPENAI_MODEL, resolveProvider, type AiProvider,
 } from "../config/aiModels";
+import { toOpenAIRequest, callOpenAI, openAIErrorMessage } from "./aiOpenAI";
 
-export { GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL };
+export {
+  GEMINI_KEY_SETTING, GEMINI_MODEL_SETTING, BILLORI_KEY_SETTING, BILLORI_MODEL_SETTING, BILLORI_ENABLED_SETTING, GEMINI_MODELS, DEFAULT_GEMINI_MODEL,
+  AI_PROVIDER_SETTING, OPENAI_KEY_SETTING, OPENAI_MODEL_SETTING, OPENAI_MODELS, DEFAULT_OPENAI_MODEL,
+};
 
 /** The web version through the server: the server holds the key and calls Gemini (src/server/ai.ts). */
 const viaServer = () => SERVER_DB && !isTauriShell();
@@ -63,30 +68,37 @@ export async function hasAiKey(): Promise<boolean> {
   if (viaServer()) return (await serverJson<{ available: boolean }>("/api/ai/").catch(() => ({ available: false }))).available;
   const enabled = await getSetting(BILLORI_ENABLED_SETTING);
   if (enabled === "false") return false;
-  const tenantKey = (await getSetting(GEMINI_KEY_SETTING)) ?? "";
-  if (tenantKey.trim()) return true;
-  return !!((await getGlobalSetting(BILLORI_KEY_SETTING)) ?? "").trim();
+  return (await aiConfig().catch(() => null)) !== null;
 }
 
-async function geminiConfig(): Promise<{ apiKey: string; model: string }> {
+/** The provider, key and model to use: ChatGPT or Gemini, as the Super Admin chose. */
+async function aiConfig(): Promise<{ provider: AiProvider; apiKey: string; model: string }> {
   const enabled = await getSetting(BILLORI_ENABLED_SETTING);
   if (enabled === "false") throw new Error("Billori AI Assistant is disabled. Enable it in Settings.");
 
-  // Tenant-own key first; fall back to global Billori key set by admin.
-  const [tenantKey, tenantModel, globalKey, globalModel] = await Promise.all([
+  // Gemini: the tenant's own key first, then the global key set by the admin. ChatGPT: the global key.
+  const [chosen, openaiKey, openaiModel, tenantKey, tenantModel, globalKey, globalModel] = await Promise.all([
+    getGlobalSetting(AI_PROVIDER_SETTING),
+    getGlobalSetting(OPENAI_KEY_SETTING),
+    getGlobalSetting(OPENAI_MODEL_SETTING),
     getSetting(GEMINI_KEY_SETTING),
     getSetting(GEMINI_MODEL_SETTING),
     getGlobalSetting(BILLORI_KEY_SETTING),
     getGlobalSetting(BILLORI_MODEL_SETTING),
   ]);
-  const apiKey = (tenantKey ?? "").trim() || (globalKey ?? "").trim();
-  if (!apiKey) throw new Error("Billori AI is not configured yet. Contact the administrator.");
+  const geminiKey = (tenantKey ?? "").trim() || (globalKey ?? "").trim();
+  const provider = resolveProvider(chosen, { openai: (openaiKey ?? "").trim(), gemini: geminiKey });
+  if (!provider) throw new Error("Billori AI is not configured yet. Contact the administrator.");
+  if (provider === "openai") {
+    return { provider, apiKey: (openaiKey ?? "").trim(), model: (openaiModel ?? "").trim() || DEFAULT_OPENAI_MODEL };
+  }
   const model = tenantModel ?? globalModel ?? null;
-  return { apiKey, model: GEMINI_MODELS.some((m) => m.id === model) ? model! : DEFAULT_GEMINI_MODEL };
+  return { provider, apiKey: geminiKey, model: GEMINI_MODELS.some((m) => m.id === model) ? model! : DEFAULT_GEMINI_MODEL };
 }
 
-/** Turns Gemini API failures into messages a shop user can act on. */
-function errorMessage(status: number, body: string): string {
+/** Turns AI service failures into messages a shop user can act on. */
+function errorMessage(status: number, body: string, provider: AiProvider): string {
+  if (provider === "openai") return openAIErrorMessage(status, body);
   let msg = body;
   try {
     msg = (JSON.parse(body) as { error?: { message?: string } }).error?.message ?? body;
@@ -98,6 +110,15 @@ function errorMessage(status: number, body: string): string {
   if (status === 429) return "Gemini free-tier limit reached. Wait a minute and try again, or pick Flash-Lite in Settings > AI Assistant.";
   if (status === 503) return `Gemini is busy right now. Try again in a moment. (${msg.slice(0, 120)})`;
   return `Gemini API error ${status}: ${msg.slice(0, 300)}`;
+}
+
+/** A POST through the desktop's HTTP plugin, or fetch in a browser. */
+async function anyPost(url: string, init: { method: "POST"; headers: Record<string, string>; body: string; signal?: AbortSignal }): Promise<{ status: number; text(): Promise<string> }> {
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch(url, init);
+  }
+  return fetch(url, init);
 }
 
 /** Use Tauri HTTP plugin when inside the desktop shell; native fetch otherwise. */
@@ -119,35 +140,46 @@ async function httpPost(url: string, apiKey: string, body: string, signal: Abort
 export async function geminiGenerate(req: GeminiRequest, timeoutMs = 60_000, modelOverride?: string): Promise<GeminiResult> {
   let status: number;
   let body: string;
+  let provider: AiProvider = "gemini";
   if (viaServer()) {
-    ({ status, body } = await serverJson<{ status: number; body: string }>("/api/ai/", { request: req, model: modelOverride, timeoutMs }));
+    const res = await serverJson<{ status: number; body: string; provider?: AiProvider }>("/api/ai/", { request: req, model: modelOverride, timeoutMs });
+    ({ status, body } = res);
+    provider = res.provider ?? "gemini";
   } else {
-    const { apiKey, model } = await geminiConfig();
+    const cfg = await aiConfig();
+    provider = cfg.provider;
+    const { apiKey, model } = cfg;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const service = provider === "openai" ? "ChatGPT" : "Gemini";
     try {
-      const res = await httpPost(
-        `${BASE}/${modelOverride ?? model}:generateContent`,
-        apiKey,
-        JSON.stringify(req),
-        controller.signal,
-      );
-      status = res.status;
-      body = await res.text();
+      if (provider === "openai") {
+        // A Gemini model override (e.g. from the FBR autofill) does not apply to ChatGPT.
+        ({ status, body } = await callOpenAI(anyPost, apiKey, toOpenAIRequest(req, model), controller.signal));
+      } else {
+        const res = await httpPost(
+          `${BASE}/${modelOverride ?? model}:generateContent`,
+          apiKey,
+          JSON.stringify(req),
+          controller.signal,
+        );
+        status = res.status;
+        body = await res.text();
+      }
     } catch (e) {
-      if (controller.signal.aborted) throw new Error("Gemini took too long to answer. Try again.");
-      throw new Error(`Could not reach Gemini. Check the internet connection. (${e instanceof Error ? e.message : String(e)})`);
+      if (controller.signal.aborted) throw new Error(`${service} took too long to answer. Try again.`);
+      throw new Error(`Could not reach ${service}. Check the internet connection. (${e instanceof Error ? e.message : String(e)})`);
     } finally {
       clearTimeout(timer);
     }
   }
-  if (status < 200 || status >= 300) throw new Error(errorMessage(status, body));
+  if (status < 200 || status >= 300) throw new Error(errorMessage(status, body, provider));
 
   const data = JSON.parse(body) as {
     candidates?: { content?: GeminiContent; finishReason?: string }[];
     promptFeedback?: { blockReason?: string };
   };
-  if (data.promptFeedback?.blockReason) throw new Error(`Gemini blocked this request (${data.promptFeedback.blockReason}).`);
+  if (data.promptFeedback?.blockReason) throw new Error(`The AI service blocked this request (${data.promptFeedback.blockReason}).`);
   const cand = data.candidates?.[0];
   const content: GeminiContent = { role: "model", parts: cand?.content?.parts ?? [] };
   return {

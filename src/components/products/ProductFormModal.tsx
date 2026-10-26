@@ -634,7 +634,7 @@ export function ProductFormModal({
                 {autofill.suggestion.source === "catalog"
                   ? "Filled from your catalog"
                   : autofill.suggestion.source === "ai"
-                    ? "Filled by AI (Gemini)"
+                    ? "Filled by AI"
                     : "Filled by built-in rules"}
                 :
               </span>{" "}
@@ -826,7 +826,7 @@ function CategorySuggestionLine({ state, categoryName, subCategoryName, canSugge
   if (state.status === "error") return <p className="-mt-1 text-xs text-rose-700">Could not fill the category: {state.message} <button type="button" className={link} onClick={onSuggest}>Try again</button></p>;
   if (state.status === "done") {
     const s = state.s;
-    const who = s.source === "catalog" ? "From your other products" : s.source === "web" ? "Found online by Gemini" : "Chosen by Gemini from your categories";
+    const who = s.source === "catalog" ? "From your other products" : s.source === "web" ? "Found online by the AI" : "Chosen by the AI from your categories";
     const added = [s.createdCategoryId && "category", s.createdSubCategoryId && "sub category"].filter(Boolean).join(" and ");
     return (
       <div className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-emerald-50/60 px-3 py-1.5 text-xs text-neutral-700">

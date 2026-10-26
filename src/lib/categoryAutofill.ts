@@ -3,8 +3,8 @@
  * category:
  *
  *   1. the category of this business's own products with the same description;
- *   2. else Gemini picks from the existing categories (and their sub categories);
- *   3. else Gemini looks the medicine up online (Google Search) and the
+ *   2. else the AI (ChatGPT or Gemini) picks from the existing categories (and their sub categories);
+ *   3. else the AI looks the medicine up online (web search) and the
  *      category it names is created and selected. An existing category with
  *      the same name is reused, never duplicated.
  *
@@ -53,11 +53,11 @@ async function pickFromList(product: { name: string; description: string }, what
     const i = Number(out.index);
     return { id: Number.isInteger(i) && i >= 0 && i < list.length ? list[i].id : null, reason: (out.reason ?? "").trim() };
   } catch {
-    throw new Error("Gemini returned no usable category.");
+    throw new Error("The AI returned no usable category.");
   }
 }
 
-/** Gemini searches the web and names a new category (or sub category). */
+/** The AI searches the web and names a new category (or sub category). */
 async function nameFromWeb(product: { name: string; description: string }, what: string, examples: Named[], parent?: string): Promise<{ name: string; reason: string } | null> {
   const sample = examples.slice(0, 25).map((c) => c.name).join("; ");
   const r = await geminiGenerate({
@@ -112,7 +112,7 @@ export async function suggestCategory(input: {
   let createdCategoryId: string | null = null;
   if (!categoryId) {
     const web = await nameFromWeb(product, "category", input.categories);
-    if (!web) return { categoryId: null, subCategoryId: null, createdCategoryId: null, createdSubCategoryId: null, source: "web", reason: "Gemini could not find a category for this description." };
+    if (!web) return { categoryId: null, subCategoryId: null, createdCategoryId: null, createdSubCategoryId: null, source: "web", reason: "The AI could not find a category for this description." };
     source = "web";
     reason = web.reason;
     const existing = input.categories.find((c) => sameName(c.name, web.name));

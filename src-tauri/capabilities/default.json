@@ -26,6 +26,7 @@
         { "url": "https://eapp.dra.gov.pk/*" },
         { "url": "https://api.anthropic.com/*" },
         { "url": "https://generativelanguage.googleapis.com/*" },
+        { "url": "https://api.openai.com/*" },
         { "url": "https://ims.pral.com.pk/*" },
         { "url": "http://localhost:8524/*" }
       ]
