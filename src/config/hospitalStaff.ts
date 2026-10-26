@@ -43,6 +43,8 @@ export const DESIGNATIONS: Designation[] = [
     pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
   { key: "collection_center_receptionist", label: "Collection Center Receptionist", prefix: "CCR", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
+  { key: "radiology_receptionist", label: "Radiology Counter Receptionist", prefix: "RR", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_reception", "hospital_radiology_orders", "hospital_radiology_reports", "hospital_patients"] },
   { key: "lab_technician", label: "Lab Technician (Paramedic)", prefix: "LT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_lab"] },
   { key: "radiographer", label: "Radiographer (Paramedic)", prefix: "RT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_radiology"] },
   { key: "paramedic", label: "Paramedic (other)", prefix: "PM", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
@@ -96,6 +98,11 @@ export const PHARMACY_ROLES = ["pharmacist"];
 /** Medical records (MSDS IMS): release of information is decided by the records officer or an HoD. */
 export const RECORDS_ROLES = ["medical_records_officer"];
 export const RECORDS_APPROVER_ROLES = ["medical_records_officer", "hod"];
+
+/** Which fees a login sees at Reception: the lab counter only lab fees, the
+ * radiology counter only radiology fees; everyone else every fee. */
+export const FEE_SCOPE_LAB_ROLES = ["lab_receptionist", "collection_center_receptionist", "lab_technician", "pathologist"];
+export const FEE_SCOPE_IMAGING_ROLES = ["radiology_receptionist", "radiographer"];
 
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];

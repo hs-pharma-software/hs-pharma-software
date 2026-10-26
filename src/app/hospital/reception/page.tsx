@@ -9,13 +9,14 @@ import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { hospitalPatientsRepo, type HospitalPatient } from "@/lib/repo/hospital";
 import {
-  bookOpdVisit, listHospitalDoctors, listOpdQueue, listUnpaidOrders, payOrderFee,
-  type BookedVisit, type OpdQueueRow, type UnpaidOrderRow,
+  bookOpdVisit, listHospitalDoctors, payOrderFee,
+  type BookedVisit, type UnpaidOrderRow,
 } from "@/lib/repo/hospitalOpd";
 import type { PaymentMethod } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
 import PatientFormModal from "../patients/PatientFormModal";
 import { ReceiptModal } from "./ReceiptModal";
+import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, FEE_SCOPE_LABEL, type FeeScope, type ScopedQueueRow } from "@/lib/repo/receptionFees";
 
 const STATUS_LABEL: Record<string, string> = { waiting: "Waiting", in_consultation: "With doctor", done: "Seen" };
 const STATUS_COLOR: Record<string, string> = {
@@ -29,7 +30,9 @@ const STATUS_COLOR: Record<string, string> = {
 export default function ReceptionPage() {
   const [patients, setPatients] = useState<HospitalPatient[]>([]);
   const [doctors, setDoctors] = useState<Staff[]>([]);
-  const [queue, setQueue] = useState<OpdQueueRow[]>([]);
+  const [queue, setQueue] = useState<ScopedQueueRow[]>([]);
+  const [scope, setScope] = useState<FeeScope | null>(null);
+  const [canChooseScope, setCanChooseScope] = useState(false);
   const [unpaid, setUnpaid] = useState<UnpaidOrderRow[]>([]);
   const [search, setSearch] = useState("");
   const [patientId, setPatientId] = useState("");
@@ -41,20 +44,25 @@ export default function ReceptionPage() {
   const [payingId, setPayingId] = useState<string | null>(null);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
 
-  async function reload() {
-    if (!isTauri()) return;
+  async function reload(s: FeeScope | null = scope) {
+    if (!isTauri() || !s) return;
     const [p, d, q, u] = await Promise.all([
       hospitalPatientsRepo.list({ orderBy: "name ASC" }),
       listHospitalDoctors(),
-      listOpdQueue({ date: localDate() }),
-      listUnpaidOrders(),
+      opdQueueFor(s, { date: localDate() }),
+      listUnpaidOrdersFor(s),
     ]);
     setPatients(p);
     setDoctors(d);
     setQueue(q);
     setUnpaid(u);
   }
-  useEffect(() => { void reload(); }, []);
+  // The desk decides which fees are shown: the lab counter only lab fees, the radiology counter only radiology fees.
+  useEffect(() => {
+    if (!isTauri()) return;
+    void feeScopeForCurrentUser().then(({ scope: s, canChoose }) => { setCanChooseScope(canChoose); setScope(s); });
+  }, []);
+  useEffect(() => { if (scope) void reload(scope); }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = patients.find((p) => p.id === patientId) ?? null;
   const doctor = doctors.find((d) => d.id === doctorId) ?? null;
@@ -94,7 +102,16 @@ export default function ReceptionPage() {
 
   return (
     <div>
-      <PageHeader title="Reception" actions={<Button onClick={() => void reload()}>Refresh</Button>} />
+      <PageHeader title="Reception" actions={
+        <div className="flex flex-wrap items-center gap-2">
+          {scope && (canChooseScope ? (
+            <Select id="fee-scope" aria-label="Fees shown" value={scope} onChange={(e) => setScope(e.target.value as FeeScope)} className="!w-40">
+              {(Object.keys(FEE_SCOPE_LABEL) as FeeScope[]).map((k) => <option key={k} value={k}>{FEE_SCOPE_LABEL[k]}</option>)}
+            </Select>
+          ) : <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">{FEE_SCOPE_LABEL[scope]}</span>)}
+          <Button onClick={() => void reload()}>Refresh</Button>
+        </div>
+      } />
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] lg:col-span-2">
@@ -191,7 +208,7 @@ export default function ReceptionPage() {
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-neutral-100 text-left text-xs text-neutral-500">
                   <th className="pb-1.5 pr-2 font-medium">Token</th><th className="pb-1.5 pr-2 font-medium">Patient</th>
-                  <th className="pb-1.5 pr-2 font-medium">Doctor</th><th className="pb-1.5 pr-2 font-medium">Status</th><th className="pb-1.5 text-right font-medium">Due</th>
+                  <th className="pb-1.5 pr-2 font-medium">Doctor</th><th className="pb-1.5 pr-2 font-medium">Status</th><th className="pb-1.5 text-right font-medium">{scope === "lab" ? "Lab due" : scope === "imaging" ? "Radiology due" : "Due"}</th>
                 </tr></thead>
                 <tbody>
                   {queue.map((q) => (
@@ -202,8 +219,8 @@ export default function ReceptionPage() {
                       <td className="py-1.5 pr-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[q.consult_status ?? "waiting"] ?? ""}`}>{STATUS_LABEL[q.consult_status ?? "waiting"] ?? q.consult_status}</span></td>
                       <td className="py-1.5 text-right">
                         <button type="button" onClick={() => setReceiptFor(q.id)} title="Show the payment receipt"
-                          className={`rounded px-1.5 py-0.5 tabular-nums underline-offset-2 hover:bg-amber-50 hover:underline ${q.charges - q.paid > 0 ? "font-medium text-rose-600" : "text-neutral-500"}`}>
-                          {(q.charges - q.paid).toFixed(0)}
+                          className={`rounded px-1.5 py-0.5 tabular-nums underline-offset-2 hover:bg-amber-50 hover:underline ${q.due > 0 ? "font-medium text-rose-600" : "text-neutral-500"}`}>
+                          {q.due.toFixed(0)}
                         </button>
                       </td>
                     </tr>
@@ -216,7 +233,7 @@ export default function ReceptionPage() {
 
         <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
           <h2 className="mb-1 text-sm font-semibold text-neutral-700">Fees to collect ({unpaid.length})</h2>
-          <p className="mb-3 text-xs text-neutral-500">Tests and scans ordered by doctors. The lab and radiology can start once the fee is taken.</p>
+          <p className="mb-3 text-xs text-neutral-500">{scope === "lab" ? "Lab tests ordered by doctors. The lab can start a test once its fee is taken." : scope === "imaging" ? "Scans ordered by doctors. Radiology can start a scan once its fee is taken." : "Tests and scans ordered by doctors. The lab and radiology can start once the fee is taken."}</p>
           {unpaid.length === 0 ? <p className="text-sm text-neutral-400">Nothing waiting for payment.</p> : (
             <div className="flex flex-col divide-y divide-neutral-100">
               {unpaid.map((o) => (
@@ -235,7 +252,7 @@ export default function ReceptionPage() {
         </div>
       </div>
 
-      {receiptFor && <ReceiptModal episodeId={receiptFor} onClose={() => setReceiptFor(null)} onChanged={() => void reload()} />}
+      {receiptFor && <ReceiptModal episodeId={receiptFor} scope={scope ?? "all"} onClose={() => setReceiptFor(null)} onChanged={() => void reload()} />}
       {registering && (
         <PatientFormModal
           patient={null}

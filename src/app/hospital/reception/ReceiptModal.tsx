@@ -7,31 +7,33 @@ import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Field";
 import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
-import { addPayment } from "@/lib/repo/hospital";
-import { getVisitReceipt, type VisitReceipt } from "@/lib/repo/hospitalCare";
+import { visitReceiptFor, collectVisitFees, type FeeScope, type ScopedReceipt } from "@/lib/repo/receptionFees";
 import type { PaymentMethod } from "@/lib/types-hospital";
 
 const METHOD: Record<string, string> = { cash: "Cash", card: "Card", online: "Online transfer", bank: "Bank deposit" };
 const rs = (n: number) => n.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const when = (s: string) => s.replace("T", " ").slice(0, 16);
 
+const TITLE: Record<FeeScope, string> = { all: "PAYMENT RECEIPT", lab: "LABORATORY PAYMENT RECEIPT", imaging: "RADIOLOGY PAYMENT RECEIPT" };
+
 /** The payment receipt of a visit (opened from the Due amount): every charge,
- * every payment, and the balance. A balance can be collected here. */
-export function ReceiptModal({ episodeId, onClose, onChanged }: { episodeId: string; onClose: () => void; onChanged: () => void }) {
+ * every payment, and the balance; at the lab or radiology counter only that
+ * department's charges. Collecting the balance marks each test / scan paid. */
+export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: { episodeId: string; scope?: FeeScope; onClose: () => void; onChanged: () => void }) {
   const areaRef = useRef<HTMLDivElement>(null);
-  const [r, setR] = useState<VisitReceipt | null>(null);
+  const [r, setR] = useState<ScopedReceipt | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [busy, setBusy] = useState(false);
 
-  const load = () => getVisitReceipt(episodeId).then(setR).catch((e) => window.alert(`Could not load the receipt: ${e instanceof Error ? e.message : String(e)}`));
-  useEffect(() => { void load(); }, [episodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = () => visitReceiptFor(episodeId, scope).then(setR).catch((e) => window.alert(`Could not load the receipt: ${e instanceof Error ? e.message : String(e)}`));
+  useEffect(() => { void load(); }, [episodeId, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function collect() {
     if (!r || busy || !(r.due > 0)) return;
     if (!window.confirm(`Take Rs ${rs(r.due)} from ${r.patient?.name ?? "the patient"} by ${METHOD[method]}?`)) return;
     setBusy(true);
     try {
-      await addPayment({ tenant_id: "", episode_id: r.episode.id, type: "payment", amount: r.due, method, reference: r.episode.episode_no, notes: "Balance paid at reception", received_at: localDateTime() });
+      await collectVisitFees(r.episode.id, scope, method);
       await load();
       onChanged();
     } catch (e) {
@@ -57,7 +59,7 @@ export function ReceiptModal({ episodeId, onClose, onChanged }: { episodeId: str
             <div className="border-b-2 border-neutral-800 pb-1.5 text-center">
               <p className="text-base font-bold leading-tight">{r.hospital.name}</p>
               {(r.hospital.address || r.hospital.phone) && <p className="text-[11px] text-neutral-600">{[r.hospital.address, r.hospital.phone].filter(Boolean).join(" · ")}</p>}
-              <p className="mt-1 text-sm font-semibold tracking-wide">PAYMENT RECEIPT</p>
+              <p className="mt-1 text-sm font-semibold tracking-wide">{TITLE[scope]}</p>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 border-b border-neutral-300 py-1.5 text-[11px]">
               <p><span className="text-neutral-500">Receipt / Visit:</span> <span className="font-mono">{r.episode.episode_no}</span></p>
@@ -73,10 +75,13 @@ export function ReceiptModal({ episodeId, onClose, onChanged }: { episodeId: str
                 <th className="py-0.5 pr-2 font-semibold">Service</th><th className="py-0.5 pr-2 text-right font-semibold">Qty</th><th className="py-0.5 text-right font-semibold">Amount (Rs)</th>
               </tr></thead>
               <tbody>
-                {r.charges.length === 0 && <tr><td colSpan={3} className="py-1 text-neutral-500">No charges on this visit.</td></tr>}
+                {r.charges.length === 0 && <tr><td colSpan={3} className="py-1 text-neutral-500">{scope === "all" ? "No charges on this visit." : `No ${scope === "lab" ? "lab" : "radiology"} charges on this visit.`}</td></tr>}
                 {r.charges.map((c) => (
                   <tr key={c.id} className="border-b border-neutral-100">
-                    <td className="py-0.5 pr-2">{c.description}{c.discount_pct ? <span className="text-neutral-500"> (−{c.discount_pct}%)</span> : null}</td>
+                    <td className="py-0.5 pr-2">
+                      {c.description}{c.discount_pct ? <span className="text-neutral-500"> (−{c.discount_pct}%)</span> : null}
+                      {c.id in r.chargePaid ? <span className={`ml-1 text-[10px] font-semibold ${r.chargePaid[c.id] ? "text-emerald-700" : "text-rose-600"}`}>{r.chargePaid[c.id] ? "PAID" : "UNPAID"}</span> : null}
+                    </td>
                     <td className="py-0.5 pr-2 text-right tabular-nums">{c.qty}</td>
                     <td className="py-0.5 text-right tabular-nums">{rs(Number(c.amount))}</td>
                   </tr>
