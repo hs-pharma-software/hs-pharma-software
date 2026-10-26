@@ -31,12 +31,18 @@ export function ReportTablePage<T extends RowBase>({
   const [rows, setRows] = useState<T[]>([]);
   const [ran, setRan] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function runReport() {
     setLoading(true);
+    setError(null);
     try {
       setRows(await query(fromDate, toDate));
       setRan(true);
+    } catch (e) {
+      // Show why instead of leaving an empty page.
+      setError(e instanceof Error ? e.message : String(e));
+      setRan(false);
     } finally {
       setLoading(false);
     }
@@ -67,7 +73,13 @@ export function ReportTablePage<T extends RowBase>({
             <span className="text-xs text-neutral-400">Leave both blank for all-time.</span>
           </div>
 
-          {ran && (
+          {error && (
+            <p className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">Could not run the report: {error}</p>
+          )}
+          {ran && rows.length === 0 && (
+            <p className="mb-3 rounded-xl bg-white px-4 py-3 text-sm text-neutral-500 ring-1 ring-black/[0.04]">No sales in this period.</p>
+          )}
+          {ran && rows.length > 0 && (
             <>
               <DataTable columns={columns} rows={rows} />
               {footer && (

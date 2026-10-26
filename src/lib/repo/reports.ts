@@ -100,17 +100,17 @@ async function groupedProfitLoss(
     groupBy === "product"
       ? "p.id"
       : groupBy === "company"
-        ? "p.company_name"
+        ? "COALESCE(NULLIF(TRIM(p.company_name), ''), 'Unspecified')"
         : groupBy === "category"
-          ? "cat.id"
+          ? "COALESCE(cat.id, 'none')"
           : groupBy === "sub_category"
-            ? "sc.id"
-            : "cu.id";
+            ? "COALESCE(sc.id, 'none')"
+            : "COALESCE(cu.id, 'walk-in')";
   const nameExpr =
     groupBy === "product"
       ? "p.name"
       : groupBy === "company"
-        ? "COALESCE(p.company_name, 'Unspecified')"
+        ? "COALESCE(NULLIF(TRIM(p.company_name), ''), 'Unspecified')"
         : groupBy === "category"
           ? "COALESCE(cat.name, 'Uncategorized')"
           : groupBy === "sub_category"
@@ -126,15 +126,15 @@ async function groupedProfitLoss(
     SELECT
       ${groupExpr} AS id,
       ${nameExpr} AS name,
-      SUM(${sign} * ii.qty) AS qty,
-      SUM(${sign} * ii.sale_price * ii.qty) AS sales,
-      SUM(${sign} * ii.purchase_price * ii.qty) AS cogs,
-      SUM(${sign} * (ii.sale_price - ii.purchase_price) * ii.qty) AS profit
+      COALESCE(SUM(${sign} * COALESCE(ii.qty, 0)), 0) AS qty,
+      COALESCE(SUM(${sign} * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales,
+      COALESCE(SUM(${sign} * COALESCE(ii.purchase_price, 0) * COALESCE(ii.qty, 0)), 0) AS cogs,
+      COALESCE(SUM(${sign} * (COALESCE(ii.sale_price, 0) - COALESCE(ii.purchase_price, 0)) * COALESCE(ii.qty, 0)), 0) AS profit
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
-    LEFT JOIN categories cat ON cat.id = p.category_id AND cat.tenant_id = p.tenant_id
-    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id AND sc.tenant_id = p.tenant_id
+    JOIN products p ON p.id = ii.product_id
+    LEFT JOIN categories cat ON cat.id = p.category_id
+    LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
     LEFT JOIN customers cu ON cu.id = i.customer_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY ${groupExpr}
@@ -162,11 +162,11 @@ export async function getProductWiseSales(fromDate: string, toDate: string): Pro
   return dbSelect<ProductSalesRow>(
     `
     SELECT p.id, p.name,
-           SUM(CASE WHEN i.is_return = 0 THEN ii.qty ELSE -ii.qty END) AS qty,
-           SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.qty, 0)), 0) AS qty,
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
+    JOIN products p ON p.id = ii.product_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY p.id
     ORDER BY sales DESC
@@ -186,13 +186,13 @@ export async function getCategoryWiseSales(fromDate: string, toDate: string): Pr
   return dbSelect<CategorySalesRow>(
     `
     SELECT COALESCE(cat.id, 'none') AS id, COALESCE(cat.name, 'Uncategorized') AS name,
-           SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
-    LEFT JOIN categories cat ON cat.id = p.category_id AND cat.tenant_id = p.tenant_id
+    JOIN products p ON p.id = ii.product_id
+    LEFT JOIN categories cat ON cat.id = p.category_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
-    GROUP BY id
+    GROUP BY COALESCE(cat.id, 'none')
     ORDER BY sales DESC
   `,
     [currentTenantId(), ...inv.params]
@@ -213,7 +213,7 @@ export async function getTaxReport(fromDate: string, toDate: string): Promise<Ta
   const salesTax = await dbSelect<{ month: string; n: number }>(
     `
     SELECT substr(i.date,1,7) AS month,
-           SUM(CASE WHEN i.is_return = 0 THEN ii.tax_rs ELSE -ii.tax_rs END) AS n
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.tax_rs, 0)), 0) AS n
     FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY month
@@ -222,7 +222,7 @@ export async function getTaxReport(fromDate: string, toDate: string): Promise<Ta
   );
   const wht = await dbSelect<{ month: string; n: number }>(
     `
-    SELECT substr(pu.date,1,7) AS month, SUM(pi.purchase_price * pi.received_qty * pi.wht_pct / 100) AS n
+    SELECT substr(pu.date,1,7) AS month, COALESCE(SUM(COALESCE(pi.purchase_price, 0) * COALESCE(pi.received_qty, 0) * COALESCE(pi.wht_pct, 0) / 100), 0) AS n
     FROM purchase_items pi JOIN purchases pu ON pu.id = pi.purchase_id
     WHERE pu.deleted_at IS NULL AND pi.deleted_at IS NULL AND pu.tenant_id = ? AND pu.is_return = 0 ${pur.clause}
     GROUP BY month
@@ -253,16 +253,16 @@ export async function getBonusAndDiscountReport(fromDate: string, toDate: string
   return dbSelect<BonusDiscountRow>(
     `
     SELECT p.id, p.name,
-      SUM(ii.bonus_qty) AS bonus_qty,
-      SUM(ii.bonus_qty * ii.sale_price) AS bonus_value,
-      SUM(ii.discount_rs) AS discount_rs
+      COALESCE(SUM(COALESCE(ii.bonus_qty, 0)), 0) AS bonus_qty,
+      COALESCE(SUM(COALESCE(ii.bonus_qty, 0) * COALESCE(ii.sale_price, 0)), 0) AS bonus_value,
+      COALESCE(SUM(COALESCE(ii.discount_rs, 0)), 0) AS discount_rs
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
-    JOIN products p ON p.id = ii.product_id AND p.tenant_id = ii.tenant_id
+    JOIN products p ON p.id = ii.product_id
     WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}
     GROUP BY p.id
-    HAVING bonus_qty > 0 OR discount_rs > 0
-    ORDER BY discount_rs DESC
+    HAVING SUM(COALESCE(ii.bonus_qty, 0)) > 0 OR SUM(COALESCE(ii.discount_rs, 0)) > 0
+    ORDER BY SUM(COALESCE(ii.discount_rs, 0)) DESC
   `,
     [currentTenantId(), ...inv.params]
   );

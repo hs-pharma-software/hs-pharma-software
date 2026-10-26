@@ -10,10 +10,16 @@ import { getTrialBalance, type TrialBalanceRow } from "@/lib/repo/reports";
 export default function TrialBalanceReportPage() {
   const [rows, setRows] = useState<TrialBalanceRow[]>([]);
   const [ran, setRan] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function run() {
-    setRows(await getTrialBalance());
-    setRan(true);
+    setError(null);
+    try {
+      setRows(await getTrialBalance());
+      setRan(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   const columns: Column<TrialBalanceRow>[] = [
@@ -34,6 +40,8 @@ export default function TrialBalanceReportPage() {
         <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Run inside the desktop app to generate this report.
         </p>
+      ) : error ? (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">Could not run the report: {error}</p>
       ) : (
         ran && (
           <>
