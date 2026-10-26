@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Field, Input, Select } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
 import { DescriptionCombobox } from "@/components/ui/DescriptionCombobox";
 import { SuggestInput } from "@/components/ui/SuggestInput";
+import { SearchSelect } from "@/components/ui/SearchSelect";
 import { companyNames } from "@/lib/repo/companies";
 import { addGenericName, findExact, listGenericNames, normalizeGenericName } from "@/lib/repo/genericNames";
 import { suggestFbrDetails, type CatalogProduct, type FbrFields, type FbrSuggestion } from "@/lib/fbrAutofill";
@@ -21,114 +22,16 @@ import { useAuthStore } from "@/store/authStore";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Category, SubCategory, Uom, Product } from "@/lib/types";
 
-function UomCombobox({
-  value,
-  onChange,
-  uoms,
-  required,
-  placeholder,
-}: {
+function UomCombobox({ value, onChange, uoms, required, placeholder }: {
   value: string;
   onChange: (id: string) => void;
   uoms: Uom[];
   required?: boolean;
   placeholder?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(-1);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
-
-  const selected = uoms.find((u) => u.id === value) ?? null;
-
-  // The same unit can exist twice (this business's and the shared catalog's): list each name once, keeping the selected one.
-  const unique = uoms.filter((u, i) => {
-    const key = `${u.name.trim().toLowerCase()}|${(u.description ?? "").trim().toLowerCase()}`;
-    const first = uoms.findIndex((x) => `${x.name.trim().toLowerCase()}|${(x.description ?? "").trim().toLowerCase()}` === key);
-    const selectedTwin = selected && selected.id !== u.id && `${selected.name.trim().toLowerCase()}|${(selected.description ?? "").trim().toLowerCase()}` === key;
-    return u.id === value || (!selectedTwin && first === i);
-  });
-  const filtered = query
-    ? unique.filter((u) => u.name.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
-    : unique.slice(0, 50);
-
-  useEffect(() => {
-    listRef.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-
-  function pick(u: Uom) {
-    onChange(u.id);
-    setQuery("");
-    setOpen(false);
-    setActive(-1);
-  }
-
-  function handleFocus() {
-    setQuery("");
-    setOpen(true);
-    setActive(-1);
-  }
-
-  function handleBlur() {
-    setTimeout(() => {
-      if (!boxRef.current?.contains(document.activeElement)) {
-        setOpen(false);
-        setQuery("");
-      }
-    }, 150);
-  }
-
-  const displayValue = open ? query : (selected?.name ?? "");
-
   return (
-    <div ref={boxRef} className="relative">
-      <input
-        value={displayValue}
-        placeholder={open ? "Type to filter..." : (placeholder ?? "Select unit...")}
-        autoComplete="off"
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(e.target.value ? 0 : -1); }}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { setOpen(false); setQuery(""); setActive(-1); }
-          else if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive((a) => Math.min(a + 1, filtered.length - 1)); }
-          else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-          else if (e.key === "Enter" && open) {
-            // Enter picks the highlighted unit instead of submitting the product form.
-            e.preventDefault();
-            const u = filtered[active >= 0 ? active : 0];
-            if (u) pick(u);
-          }
-        }}
-        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-black/[0.06]"
-      />
-      {required && <input type="hidden" value={value} required />}
-      {open && (
-        <div className="absolute left-0 top-full z-[100] mt-1 w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
-          <ul ref={listRef} className="max-h-48 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-neutral-400">
-                {uoms.length === 0 ? "No units yet — click + to add one" : "No match"}
-              </li>
-            ) : (
-              filtered.map((u, i) => (
-                <li
-                  key={u.id}
-                  data-i={i}
-                  onMouseDown={(e) => { e.preventDefault(); pick(u); }}
-                  onMouseEnter={() => setActive(i)}
-                  className={`cursor-pointer px-3 py-1.5 text-sm ${i === active ? "bg-neutral-100" : ""} ${u.id === value ? "font-medium text-[#006633] bg-[#006633]/[0.04]" : "text-neutral-800"}`}
-                >
-                  {u.name}
-                  {u.description ? <span className="ml-1.5 text-xs text-neutral-400">{u.description}</span> : null}
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      )}
-    </div>
+    <SearchSelect value={value} onChange={onChange} required={required} placeholder={placeholder ?? "Select unit..."}
+      options={uoms.map((u) => ({ value: u.id, label: u.name, hint: u.description }))} emptyText="No units yet — click + to add one" />
   );
 }
 type QuickAddTarget = "category" | "subCategory" | "baseUnit" | "secondaryUnit" | null;
@@ -611,14 +514,9 @@ export function ProductFormModal({
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Category">
-                <Select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubCategoryId(""); }}>
-                  <option value="">Select...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
+                <SearchSelect id="product-category" value={categoryId} placeholder="Search category..." emptyText="No categories yet — click + to add one"
+                  onChange={(v) => { if (v !== categoryId) { setCategoryId(v); setSubCategoryId(""); } }}
+                  options={categories.map((c) => ({ value: c.id, label: c.name }))} />
               </Field>
             </div>
             <Button type="button" onClick={() => setQuickAdd("category")}>
@@ -629,14 +527,9 @@ export function ProductFormModal({
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Sub Category">
-                <Select value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
-                  <option value="">Select...</option>
-                  {subCategories.map((sc) => (
-                    <option key={sc.id} value={sc.id}>
-                      {sc.name}
-                    </option>
-                  ))}
-                </Select>
+                <SearchSelect id="product-sub-category" value={subCategoryId} onChange={setSubCategoryId} disabled={!categoryId}
+                  placeholder={categoryId ? "Search sub category..." : "Choose a category first"} emptyText="No sub categories yet — click + to add one"
+                  options={subCategories.map((sc) => ({ value: sc.id, label: sc.name }))} />
               </Field>
             </div>
             <Button type="button" onClick={() => setQuickAdd("subCategory")} disabled={!categoryId}>
