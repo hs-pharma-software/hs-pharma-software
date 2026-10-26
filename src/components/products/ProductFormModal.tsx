@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { DescriptionCombobox } from "@/components/ui/DescriptionCombobox";
+import { SuggestInput } from "@/components/ui/SuggestInput";
+import { companyNames } from "@/lib/repo/companies";
 import { addGenericName, findExact, listGenericNames, normalizeGenericName } from "@/lib/repo/genericNames";
 import { suggestFbrDetails, type CatalogProduct, type FbrFields, type FbrSuggestion } from "@/lib/fbrAutofill";
 import { Button } from "@/components/ui/Button";
@@ -34,23 +36,38 @@ function UomCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [active, setActive] = useState(-1);
   const boxRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const selected = uoms.find((u) => u.id === value) ?? null;
 
+  // The same unit can exist twice (this business's and the shared catalog's): list each name once, keeping the selected one.
+  const unique = uoms.filter((u, i) => {
+    const key = `${u.name.trim().toLowerCase()}|${(u.description ?? "").trim().toLowerCase()}`;
+    const first = uoms.findIndex((x) => `${x.name.trim().toLowerCase()}|${(x.description ?? "").trim().toLowerCase()}` === key);
+    const selectedTwin = selected && selected.id !== u.id && `${selected.name.trim().toLowerCase()}|${(selected.description ?? "").trim().toLowerCase()}` === key;
+    return u.id === value || (!selectedTwin && first === i);
+  });
   const filtered = query
-    ? uoms.filter((u) => u.name.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
-    : uoms.slice(0, 50);
+    ? unique.filter((u) => u.name.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
+    : unique.slice(0, 50);
+
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active]);
 
   function pick(u: Uom) {
     onChange(u.id);
     setQuery("");
     setOpen(false);
+    setActive(-1);
   }
 
   function handleFocus() {
     setQuery("");
     setOpen(true);
+    setActive(-1);
   }
 
   function handleBlur() {
@@ -70,29 +87,38 @@ function UomCombobox({
         value={displayValue}
         placeholder={open ? "Type to filter..." : (placeholder ?? "Select unit...")}
         autoComplete="off"
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(e.target.value ? 0 : -1); }}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onKeyDown={(e) => {
-          if (e.key === "Escape") { setOpen(false); setQuery(""); }
-          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); }
+          if (e.key === "Escape") { setOpen(false); setQuery(""); setActive(-1); }
+          else if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive((a) => Math.min(a + 1, filtered.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+          else if (e.key === "Enter" && open) {
+            // Enter picks the highlighted unit instead of submitting the product form.
+            e.preventDefault();
+            const u = filtered[active >= 0 ? active : 0];
+            if (u) pick(u);
+          }
         }}
         className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-black/[0.06]"
       />
       {required && <input type="hidden" value={value} required />}
       {open && (
         <div className="absolute left-0 top-full z-[100] mt-1 w-full overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
-          <ul className="max-h-48 overflow-y-auto py-1">
+          <ul ref={listRef} className="max-h-48 overflow-y-auto py-1">
             {filtered.length === 0 ? (
               <li className="px-3 py-2 text-sm text-neutral-400">
                 {uoms.length === 0 ? "No units yet — click + to add one" : "No match"}
               </li>
             ) : (
-              filtered.map((u) => (
+              filtered.map((u, i) => (
                 <li
                   key={u.id}
+                  data-i={i}
                   onMouseDown={(e) => { e.preventDefault(); pick(u); }}
-                  className={`cursor-pointer px-3 py-1.5 text-sm hover:bg-neutral-50 ${u.id === value ? "font-medium text-[#006633] bg-[#006633]/[0.04]" : "text-neutral-800"}`}
+                  onMouseEnter={() => setActive(i)}
+                  className={`cursor-pointer px-3 py-1.5 text-sm ${i === active ? "bg-neutral-100" : ""} ${u.id === value ? "font-medium text-[#006633] bg-[#006633]/[0.04]" : "text-neutral-800"}`}
                 >
                   {u.name}
                   {u.description ? <span className="ml-1.5 text-xs text-neutral-400">{u.description}</span> : null}
@@ -139,6 +165,8 @@ export function ProductFormModal({
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
   const [name, setName] = useState(product?.name ?? "");
   const [companyName, setCompanyName] = useState(product?.company_name ?? "");
+  const [companies, setCompanies] = useState<string[]>([]);
+  useEffect(() => { void companyNames().then(setCompanies).catch(() => setCompanies([])); }, []);
   const [description, setDescription] = useState(product?.description ?? "");
   const [categoryId, setCategoryId] = useState(product?.category_id ?? "");
   const [subCategoryId, setSubCategoryId] = useState(product?.sub_category_id ?? "");
@@ -515,7 +543,7 @@ export function ProductFormModal({
             <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
           </Field>
           <Field label="Company Name">
-            <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+            <SuggestInput id="product-company" value={companyName} onChange={setCompanyName} suggestions={companies} placeholder="Type or pick a company" />
           </Field>
         </div>
 

@@ -118,6 +118,7 @@ const BASE_NAV: NavItem[] = [
       { label: "Price List", href: "/products/price-list" },
       { label: "UOM Details", href: "/products/uom" },
       { label: "Categories Details", href: "/products/categories" },
+      { label: "Companies", href: "/products/companies" },
       { label: "Assign To Supplier", href: "/products/assign-supplier" },
     ],
   },
