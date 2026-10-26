@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { PatientPicker } from "@/components/hospital/PatientPicker";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { hospitalPatientsRepo, type HospitalPatient } from "@/lib/repo/hospital";
@@ -231,10 +232,7 @@ function NewLabOrder({ patients, onClose, onSaved }: { patients: HospitalPatient
     <Modal title="New Lab Order" onClose={onClose}>
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field label="Patient *">
-          <Select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-            <option value="">— Select —</option>
-            {patients.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.mr_no})</option>)}
-          </Select>
+          <PatientPicker patients={patients} value={patientId} onChange={setPatientId} />
         </Field>
         <Field label="Visit (bill)">
           <Select value={visitId} onChange={(e) => setVisitId(e.target.value)} disabled={!patientId}>

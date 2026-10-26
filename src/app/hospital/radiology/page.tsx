@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { PatientPicker } from "@/components/hospital/PatientPicker";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
@@ -110,10 +111,7 @@ function NewOrder({ patients, onClose, onSaved }: { patients: HospitalPatient[];
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <div className="md:col-span-2">
           <Field label="Patient *">
-            <Select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-              <option value="">— Select —</option>
-              {patients.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.mr_no})</option>)}
-            </Select>
+            <PatientPicker patients={patients} value={patientId} onChange={setPatientId} />
           </Field>
         </div>
         <div className="md:col-span-2">
