@@ -16,6 +16,7 @@ import type { PaymentMethod } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
 import PatientFormModal from "../patients/PatientFormModal";
 import { ReceiptModal } from "./ReceiptModal";
+import { CloseDayModal } from "@/components/hospital/finance/CloseDay";
 import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, FEE_SCOPE_LABEL, type FeeScope, type ScopedQueueRow } from "@/lib/repo/receptionFees";
 
 const STATUS_LABEL: Record<string, string> = { waiting: "Waiting", in_consultation: "With doctor", done: "Seen" };
@@ -43,6 +44,7 @@ export default function ReceptionPage() {
   const [slip, setSlip] = useState<{ visit: BookedVisit; patient: HospitalPatient; doctor: Staff } | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  const [closingDay, setClosingDay] = useState(false);
 
   async function reload(s: FeeScope | null = scope) {
     if (!isTauri() || !s) return;
@@ -109,9 +111,11 @@ export default function ReceptionPage() {
               {(Object.keys(FEE_SCOPE_LABEL) as FeeScope[]).map((k) => <option key={k} value={k}>{FEE_SCOPE_LABEL[k]}</option>)}
             </Select>
           ) : <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">{FEE_SCOPE_LABEL[scope]}</span>)}
+          <Button onClick={() => setClosingDay(true)}>Close my day</Button>
           <Button onClick={() => void reload()}>Refresh</Button>
         </div>
       } />
+      {closingDay && <CloseDayModal onClose={() => setClosingDay(false)} />}
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] lg:col-span-2">

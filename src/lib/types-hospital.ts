@@ -177,6 +177,11 @@ export interface HospitalPayment extends TenantRow {
   reference: string | null;
   notes: string | null;
   received_at: string;
+  /** The login that took the money (v58); null on payments taken before that. */
+  received_by?: string | null;
+  received_by_name?: string | null;
+  /** The day closing that accounted for it; null until the receiver closes their day. */
+  closing_id?: string | null;
 }
 
 export interface HospitalDepartment extends TenantRow {

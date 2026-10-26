@@ -40,11 +40,11 @@ export const DESIGNATIONS: Designation[] = [
   { key: "blood_bank_technologist", label: "Blood Bank Technologist", prefix: "BBT", license: "LICENSE", licenseRequired: false, doctor: false,
     pages: ["hospital_blood_bank", "hospital_patients"] },
   { key: "lab_receptionist", label: "Lab Counter Receptionist", prefix: "LR", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
+    pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception", "hospital_my_cash"] },
   { key: "collection_center_receptionist", label: "Collection Center Receptionist", prefix: "CCR", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception"] },
+    pages: ["hospital_lab_orders", "hospital_lab_reports", "hospital_patients", "hospital_reception", "hospital_my_cash"] },
   { key: "radiology_receptionist", label: "Radiology Counter Receptionist", prefix: "RR", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_reception", "hospital_radiology_orders", "hospital_radiology_reports", "hospital_patients"] },
+    pages: ["hospital_reception", "hospital_radiology_orders", "hospital_radiology_reports", "hospital_patients", "hospital_my_cash"] },
   { key: "lab_technician", label: "Lab Technician (Paramedic)", prefix: "LT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_lab"] },
   { key: "radiographer", label: "Radiographer (Paramedic)", prefix: "RT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_radiology"] },
   { key: "paramedic", label: "Paramedic (other)", prefix: "PM", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
@@ -57,10 +57,12 @@ export const DESIGNATIONS: Designation[] = [
     pages: ["hospital_facility"] },
   { key: "medical_records_officer", label: "Medical Records Officer", prefix: "MRO", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_records", "hospital_patients", "hospital_episodes"] },
+  { key: "accountant", label: "Accountant / Finance Officer", prefix: "ACC", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_finance", "hospital_dashboard", "hospital_my_cash"] },
   { key: "hr_officer", label: "HR Officer", prefix: "HR", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr"] },
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
-    pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports", "hospital_radiology_reports"] },
+    pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports", "hospital_radiology_reports", "hospital_my_cash"] },
   { key: "other", label: "Other", prefix: "EMP", license: null, licenseRequired: false, doctor: false, pages: ["hospital_dashboard"] },
 ];
 
@@ -103,6 +105,11 @@ export const RECORDS_APPROVER_ROLES = ["medical_records_officer", "hod"];
  * radiology counter only radiology fees; everyone else every fee. */
 export const FEE_SCOPE_LAB_ROLES = ["lab_receptionist", "collection_center_receptionist", "lab_technician", "pathologist"];
 export const FEE_SCOPE_IMAGING_ROLES = ["radiology_receptionist", "radiographer"];
+
+/** Finance (collections, receptionist day closings): verified by the accountant or a full-access login. */
+export const FINANCE_ROLES = ["accountant"];
+/** Desks that take money and close their day. */
+export const CASH_DESK_ROLES = ["receptionist","lab_receptionist","collection_center_receptionist","radiology_receptionist"];
 
 /** Hand-hygiene observation audits (MSDS IPC-1 Ind. 84, 86). */
 export const IPC_AUDITOR_ROLES = ["infection_control_nurse", "nursing_superintendent", "head_nurse"];

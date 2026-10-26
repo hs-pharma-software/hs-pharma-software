@@ -1337,6 +1337,26 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+fn schema_sql_v58() -> &'static str {
+    r#"
+    ALTER TABLE hospital_payments ADD COLUMN received_by TEXT;
+    ALTER TABLE hospital_payments ADD COLUMN received_by_name TEXT;
+    ALTER TABLE hospital_payments ADD COLUMN closing_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hosp_payment_receiver ON hospital_payments (tenant_id, received_by, closing_id);
+    CREATE TABLE IF NOT EXISTS hospital_cash_closings (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, closing_no TEXT NOT NULL, user_id TEXT NOT NULL, user_name TEXT NOT NULL,
+        desk TEXT, from_at TEXT, to_at TEXT NOT NULL, payments_count INTEGER NOT NULL DEFAULT 0,
+        cash REAL NOT NULL DEFAULT 0, card REAL NOT NULL DEFAULT 0, online REAL NOT NULL DEFAULT 0, bank REAL NOT NULL DEFAULT 0,
+        refunds REAL NOT NULL DEFAULT 0, net_total REAL NOT NULL DEFAULT 0, counted_cash REAL NOT NULL DEFAULT 0, difference REAL NOT NULL DEFAULT 0,
+        handed_to TEXT, note TEXT, status TEXT NOT NULL DEFAULT 'submitted', verified_by_name TEXT, verified_at TEXT, verify_note TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_cash_closing_no ON hospital_cash_closings (tenant_id, closing_no);
+    CREATE INDEX IF NOT EXISTS idx_cash_closings ON hospital_cash_closings (tenant_id, user_id, to_at);
+    CREATE INDEX IF NOT EXISTS idx_cash_closings_status ON hospital_cash_closings (tenant_id, status, to_at);
+    "#
+}
+
 fn schema_sql_v57() -> &'static str {
     r#"
     CREATE TABLE IF NOT EXISTS hospital_record_releases (
@@ -2959,6 +2979,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 57,
             description: "hospital_record_releases",
             sql: schema_sql_v57(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 58,
+            description: "hospital_cash_closings",
+            sql: schema_sql_v58(),
             kind: MigrationKind::Up,
         },
     ]

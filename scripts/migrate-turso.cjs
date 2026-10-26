@@ -337,6 +337,7 @@ const MIGRATIONS = [
   { version: 55, label: 'equipment and maintenance, licences, drills, staff training / credentials / appraisals, duty roster, controlled documents', statements: rustSchemaStatements(55) },
   { version: 56, label: 'medication management: formulary, antibiotic stewardship, adverse drug reactions, controlled drugs, medicine fridges', statements: rustSchemaStatements(56) },
   { version: 57, label: 'medical records: release of information register', statements: rustSchemaStatements(57) },
+  { version: 58, label: 'who took each payment; receptionist day closings', statements: rustSchemaStatements(58) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

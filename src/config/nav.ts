@@ -483,6 +483,7 @@ function shared(label: string, moduleKey: string): NavChild {
 const HOSPITAL_NAV: NavItem[] = [
   { label: "Dashboard", href: "/hospital", icon: LayoutDashboard, moduleKey: "hospital_dashboard", onlyFor: ["hospital"] },
   { label: "Reception", href: "/hospital/reception", icon: Bell, moduleKey: "hospital_reception", onlyFor: ["hospital"] },
+  { label: "My Cash", href: "/hospital/my-cash", icon: Wallet, moduleKey: "hospital_my_cash", onlyFor: ["hospital"] },
   { label: "Doctor Desk", href: "/hospital/doctor", icon: Stethoscope, moduleKey: "hospital_doctor_desk", onlyFor: ["hospital"] },
   {
     label: "Hospital",
@@ -570,6 +571,18 @@ const HOSPITAL_NAV: NavItem[] = [
   },
   { label: "Facility", href: "/hospital/facility", icon: Wrench, moduleKey: "hospital_facility", onlyFor: ["hospital"] },
   { label: "Service Master", href: "/hospital/services", icon: Activity, moduleKey: "hospital_services", onlyFor: ["hospital"] },
+  {
+    label: "Finance",
+    href: "/hospital/finance",
+    icon: Landmark,
+    moduleKey: "hospital_finance",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Overview", href: "/hospital/finance" },
+      { label: "Collections", href: "/hospital/finance/collections" },
+      { label: "Day Closings", href: "/hospital/finance/closings" },
+    ],
+  },
   {
     label: "Purchase Cell",
     href: "/products",

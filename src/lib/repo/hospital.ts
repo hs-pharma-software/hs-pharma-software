@@ -14,6 +14,7 @@ import type {
 } from "../types-hospital";
 import { localDate } from "../localDate";
 import { invoicesRepo } from "./invoices";
+import { useAuthStore } from "../../store/authStore";
 
 export type { HospitalDepartment, HospitalLabOrder, HospitalImagingOrder, HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
 
@@ -191,18 +192,35 @@ export async function addPayment(payment: Omit<HospitalPayment, "id" | "created_
   }
   const id = newId();
   const now = nowIso();
+  // Who took the money: their own day closing accounts for it.
+  const user = useAuthStore.getState().currentUser;
+  const staff = user
+    ? (await dbSelect<{ name: string }>(`SELECT name FROM staff WHERE user_id = ? AND tenant_id = ? AND deleted_at IS NULL LIMIT 1`, [user.id, tenantId]).catch(() => []))[0]
+    : undefined;
+  const receivedBy = user?.id ?? null;
+  const receivedByName = staff?.name ?? user?.displayName ?? user?.username ?? null;
+  const base = [id, tenantId, payment.episode_id, payment.type, payment.amount, payment.method, payment.reference ?? null, payment.notes ?? null, payment.received_at];
   try {
     await dbExecute(
-      `INSERT INTO hospital_payments (id, tenant_id, episode_id, type, amount, method, reference, notes, received_at, created_at, updated_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-      [id, tenantId, payment.episode_id, payment.type, payment.amount, payment.method,
-       payment.reference ?? null, payment.notes ?? null, payment.received_at, now, now]
+      `INSERT INTO hospital_payments (id, tenant_id, episode_id, type, amount, method, reference, notes, received_at, received_by, received_by_name, closing_id, created_at, updated_at, deleted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
+      [...base, receivedBy, receivedByName, now, now]
     );
   } catch (e) {
-    throw friendlyDbError(e);
+    // A database not yet migrated to v58 has no receiver columns: the money is still taken, just without the receiver.
+    if (!/received_by|closing_id/i.test(String(e instanceof Error ? e.message : e))) throw friendlyDbError(e);
+    try {
+      await dbExecute(
+        `INSERT INTO hospital_payments (id, tenant_id, episode_id, type, amount, method, reference, notes, received_at, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        [...base, now, now]
+      );
+    } catch (e2) {
+      throw friendlyDbError(e2);
+    }
   }
   await syncEpisodeInvoices(payment.episode_id);
-  return { ...payment, tenant_id: tenantId, id, created_at: now, updated_at: now, deleted_at: null };
+  return { ...payment, tenant_id: tenantId, id, received_by: receivedBy, received_by_name: receivedByName, closing_id: null, created_at: now, updated_at: now, deleted_at: null };
 }
 
 /** Keeps Paid / Balance of an admission's invoices (surgery invoices in

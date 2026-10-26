@@ -24,6 +24,7 @@ export const CLINIC_NAV_ORDER = [
 export const HOSPITAL_NAV_ORDER = [
   "hospital_dashboard",
   "hospital_reception",
+  "hospital_my_cash",
   "hospital_doctor_desk",
   "hospital_profile",
   "hospital_patients",
@@ -38,6 +39,7 @@ export const HOSPITAL_NAV_ORDER = [
   "hospital_quality",
   "hospital_facility",
   "hospital_services",
+  "hospital_finance",
   "hospital_purchase_cell",
   "hospital_hr",
   "hospital_logins",

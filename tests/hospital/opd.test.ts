@@ -111,7 +111,7 @@ test("a login per role: receptionist sees Reception, a consultant the Doctor Des
   await assert.rejects(createStaffLogin(con.id, "x", "pass1234"), /already has a login/);
 
   const menu = (perms: string[] | null) => visibleNavFor("hospital", null, perms).map((i) => i.label);
-  assert.deepEqual(menu(JSON.parse(recUser.permissions!)), ["Reception", "Hospital", "Patient", "Episodes & Billing", "Labs", "Radiology"]);
+  assert.deepEqual(menu(JSON.parse(recUser.permissions!)), ["Reception", "My Cash", "Hospital", "Patient", "Episodes & Billing", "Labs", "Radiology"]);
   const recLabs = visibleNavFor("hospital", null, JSON.parse(recUser.permissions!)).find((i) => i.label === "Labs")!;
   assert.deepEqual(recLabs.children!.map((c) => c.label), ["Lab Reports"], "a receptionist only searches and prints reports");
   // At the front desk "Hospital" holds only the OPD / IPD / Emergency queues, not the hospital's profile.

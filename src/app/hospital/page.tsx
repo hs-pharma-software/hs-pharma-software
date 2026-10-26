@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { getHospitalStats, listEpisodes, type HospitalStats, type EpisodeListRow } from "@/lib/repo/hospital";
 import { localDate } from "@/lib/localDate";
+import { CloseDayModal } from "@/components/hospital/finance/CloseDay";
 
 export default function HospitalDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<HospitalStats | null>(null);
   const [todayEpisodes, setTodayEpisodes] = useState<EpisodeListRow[]>([]);
+  const [closingDay, setClosingDay] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -40,9 +42,12 @@ export default function HospitalDashboard() {
             <Button onClick={() => router.push("/hospital/episodes")}>
               New Episode
             </Button>
+            <Button onClick={() => setClosingDay(true)}>Close day</Button>
           </>
         }
       />
+
+      {closingDay && <CloseDayModal onClose={() => setClosingDay(false)} />}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
