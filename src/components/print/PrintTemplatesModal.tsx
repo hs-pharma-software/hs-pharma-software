@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlignCenter, AlignLeft, AlignRight, Eye, EyeOff, GripVertical, ImagePlus, Trash2 } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, CaseUpper, Eye, EyeOff, GripVertical, ImagePlus, Italic, Pencil, RotateCcw, Trash2, Underline } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePrintLayout";
 import {
   BLOCK_LABELS,
+  BLOCK_TEXTS,
   DEFAULT_TEMPLATES,
   PAPERS,
   PRINT_STYLES,
@@ -18,6 +19,7 @@ import {
   saveLogo,
   saveTemplate,
   type Align,
+  type BlockConfig,
   type BlockId,
   type BlockSize,
   type PaperSize,
@@ -110,8 +112,18 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
     });
   }
 
-  function setBlock(id: BlockId, patch: Partial<{ visible: boolean; align: Align; size: BlockSize }>) {
+  function setBlock(id: BlockId, patch: Partial<BlockConfig>) {
     update((t) => ({ ...t, blocks: t.blocks.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  }
+
+  function setLabel(id: BlockId, key: string, value: string) {
+    update((t) => ({ ...t, blocks: t.blocks.map((x) => (x.id === id ? { ...x, labels: { ...x.labels, [key]: value } } : x)) }));
+  }
+
+  /** Opens the section's text fields (pencil button). */
+  function editText(id: BlockId) {
+    setSelected(id);
+    setTimeout(() => document.getElementById(`blk-text-${id}-0`)?.focus(), 0);
   }
 
   async function handleLogo(file: File | undefined) {
@@ -147,6 +159,18 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
   }
 
   const sel = tpl?.blocks.find((x) => x.id === selected) ?? null;
+  const styleBtn = (key: "bold" | "italic" | "underline" | "uppercase", Icon: typeof Bold, title: string) => (
+    <button
+      key={key}
+      type="button"
+      title={title}
+      aria-pressed={Boolean(sel?.[key])}
+      onClick={() => sel && setBlock(sel.id, { [key]: !sel[key] })}
+      className={`rounded-md p-1.5 ${sel?.[key] ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100"}`}
+    >
+      <Icon size={14} />
+    </button>
+  );
   const alignBtn = (a: Align, Icon: typeof AlignLeft) => (
     <button
       key={a}
@@ -342,6 +366,20 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                     <span className={`flex-1 truncate ${blk.visible ? "text-neutral-800" : "text-neutral-400 line-through"}`}>
                       {BLOCK_LABELS[blk.id]}
                     </span>
+                    {(BLOCK_TEXTS[blk.id] || blk.id === "thanks") && (
+                      <button
+                        type="button"
+                        title="Edit text"
+                        aria-label={`Edit text of ${BLOCK_LABELS[blk.id]}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editText(blk.id);
+                        }}
+                        className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       title={blk.visible ? "Hide" : "Show"}
@@ -380,6 +418,65 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                     ))}
                   </div>
                 </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <div className="flex gap-0.5 rounded-md bg-white p-0.5 ring-1 ring-neutral-200">
+                    {styleBtn("bold", Bold, "Bold")}
+                    {styleBtn("italic", Italic, "Italic")}
+                    {styleBtn("underline", Underline, "Underline")}
+                    {styleBtn("uppercase", CaseUpper, "CAPITAL LETTERS")}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-neutral-600" title="Text colour">
+                    <input
+                      type="color"
+                      value={sel.color ?? "#111111"}
+                      onChange={(e) => setBlock(sel.id, { color: e.target.value })}
+                      className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                    />
+                    Text colour
+                  </label>
+                  {(sel.bold || sel.italic || sel.underline || sel.uppercase || sel.color) && (
+                    <button
+                      type="button"
+                      onClick={() => setBlock(sel.id, { bold: false, italic: false, underline: false, uppercase: false, color: null })}
+                      className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-neutral-500 hover:bg-neutral-100"
+                    >
+                      <RotateCcw size={12} />
+                      Plain text
+                    </button>
+                  )}
+                </div>
+                {BLOCK_TEXTS[sel.id] && (
+                  <div className="mt-3">
+                    <div className="mb-1 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-neutral-600">Text</p>
+                      {sel.labels && Object.values(sel.labels).some((v) => v.trim()) && (
+                        <button
+                          type="button"
+                          onClick={() => setBlock(sel.id, { labels: {} })}
+                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-neutral-500 hover:bg-neutral-100"
+                        >
+                          <RotateCcw size={12} />
+                          Default text
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {BLOCK_TEXTS[sel.id]!.map((t, i) => (
+                        <div key={t.key} className={t.text.length > 24 || t.key === "title" ? "col-span-2" : ""}>
+                          <Field label={t.label}>
+                            <Input
+                              id={`blk-text-${sel.id}-${i}`}
+                              value={sel.labels?.[t.key] ?? ""}
+                              placeholder={t.text || "Automatic"}
+                              onChange={(e) => setLabel(sel.id, t.key, e.target.value)}
+                            />
+                          </Field>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-[11px] text-neutral-500">Blank = the default shown in grey.</p>
+                  </div>
+                )}
                 {sel.id === "logo" && (
                   <div className="mt-3">
                     <Field label={`Logo height (${tpl.logoHeight}px)`}>
@@ -397,7 +494,7 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                 {sel.id === "thanks" && (
                   <div className="mt-3">
                     <Field label="Message">
-                      <Input value={tpl.thanksText} onChange={(e) => update((t) => ({ ...t, thanksText: e.target.value }))} />
+                      <Input id="blk-text-thanks-0" value={tpl.thanksText} onChange={(e) => update((t) => ({ ...t, thanksText: e.target.value }))} />
                     </Field>
                   </div>
                 )}

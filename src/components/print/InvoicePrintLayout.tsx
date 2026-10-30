@@ -5,6 +5,7 @@ import QRCode from "react-qr-code";
 import {
   DEVELOPER_CREDIT,
   PAPERS,
+  blockText,
   type BlockConfig,
   type BlockId,
   type PrintStyle,
@@ -133,6 +134,14 @@ export function InvoicePrintLayout({
   const font = (blk: BlockConfig) => ({ fontSize: `${(base * SIZE_SCALE[blk.size]).toFixed(1)}px` });
   const justify = (a: BlockConfig["align"]) => (a === "center" ? "center" : a === "right" ? "flex-end" : "flex-start");
   const label: CSSProperties = colored ? { color: P, fontWeight: 700 } : { fontWeight: 700 };
+  const tx = blockText;
+  const textStyle = (blk: BlockConfig): CSSProperties => ({
+    ...(blk.bold ? { fontWeight: 700 } : {}),
+    ...(blk.italic ? { fontStyle: "italic" } : {}),
+    ...(blk.underline ? { textDecoration: "underline" } : {}),
+    ...(blk.uppercase ? { textTransform: "uppercase" } : {}),
+    ...(blk.color ? { color: blk.color } : {}),
+  });
 
   const infoBox = (blk: BlockConfig): CSSProperties => {
     const side = blk.align === "right" ? "borderRight" : "borderLeft";
@@ -253,21 +262,22 @@ export function InvoicePrintLayout({
         <div style={{ fontWeight: 700, fontSize: "1.25em", color: nameColor }}>{data.business.name}</div>
         {/* Contact lines stay smaller than the name, even at Large size. */}
         {data.business.address && <div style={sub}>{data.business.address}</div>}
-        {data.business.phone && <div style={sub}>Ph: {data.business.phone}</div>}
-        {data.business.ntn && <div style={sub}>NTN: {data.business.ntn}</div>}
-        {data.business.stn && <div style={sub}>STN: {data.business.stn}</div>}
-        {data.business.pra && <div style={sub}>PRA: {data.business.pra}</div>}
+        {data.business.phone && <div style={sub}>{tx(blk, "phone")} {data.business.phone}</div>}
+        {data.business.ntn && <div style={sub}>{tx(blk, "ntn")} {data.business.ntn}</div>}
+        {data.business.stn && <div style={sub}>{tx(blk, "stn")} {data.business.stn}</div>}
+        {data.business.pra && <div style={sub}>{tx(blk, "pra")} {data.business.pra}</div>}
       </div>
     );
   }
 
   function renderTitle(blk: BlockConfig) {
+    const title = tx(blk, "title") || data.title;
     const number = <span style={colored ? { color: P, fontWeight: 600 } : undefined}>{data.number}</span>;
     const returnOf = data.returnOf && <div style={{ fontSize: "0.85em" }}>Return of Bill {data.returnOf}</div>;
     if (colored && skin.title === "ribbon") {
       return (
         <div style={{ ...font(blk), background: P, color: on(P), padding: "5px 12px", borderLeft: `8px solid ${A}`, textAlign: blk.align }}>
-          <span style={{ fontWeight: 700, letterSpacing: "0.12em" }}>{data.title}</span> <span style={{ fontWeight: 600 }}>{data.number}</span>
+          <span style={{ fontWeight: 700, letterSpacing: "0.12em" }}>{title}</span> <span style={{ fontWeight: 600 }}>{data.number}</span>
           {returnOf}
         </div>
       );
@@ -281,7 +291,7 @@ export function InvoicePrintLayout({
     }
     return (
       <div style={{ textAlign: blk.align, ...font(blk) }}>
-        <span style={titleStyle}>{data.title}</span> {number}
+        <span style={titleStyle}>{title}</span> {number}
         {returnOf}
       </div>
     );
@@ -344,22 +354,22 @@ export function InvoicePrintLayout({
       <table style={{ width: "100%", borderCollapse: "collapse", ...font(blk) }}>
         <thead>
           <tr style={headRow}>
-            <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>Product</th>
-            {showHs && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>HS Code</th>}
-            {template.columns.batch && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>Batch</th>}
+            <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{tx(blk, "product")}</th>
+            {showHs && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{tx(blk, "hsCode")}</th>}
+            {template.columns.batch && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{tx(blk, "batch")}</th>}
             {[
-              ["Qty", true],
-              ["Bonus", template.columns.bonus],
-              ["Price", true],
-              ["Disc", template.columns.discount],
-              ["Tax %", showTax],
-              ["Tax Rs", showTax],
-              ["Total", true],
+              ["qty", true],
+              ["bonus", template.columns.bonus],
+              ["price", true],
+              ["disc", template.columns.discount],
+              ["taxPct", showTax],
+              ["taxRs", showTax],
+              ["total", true],
             ]
               .filter(([, show]) => show)
               .map(([h]) => (
                 <th key={h as string} style={{ ...headCell("right"), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>
-                  {h}
+                  {tx(blk, h as string)}
                 </th>
               ))}
           </tr>
@@ -393,7 +403,7 @@ export function InvoicePrintLayout({
   function renderTotals(blk: BlockConfig) {
     const t = data.totals;
     const row = (text: string, value: string, strong = false, extra?: CSSProperties) => (
-      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: strong ? 700 : 400, ...extra }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: strong ? 700 : undefined, ...extra }}>
         <span>{text}</span>
         <span>{value}</span>
       </div>
@@ -440,14 +450,14 @@ export function InvoicePrintLayout({
             ...(framed ? { border: `1px solid ${tint(P, 0.25)}`, borderRadius: 6, padding: "6px 8px", overflow: "hidden" } : {}),
           }}
         >
-          {row("Total", money(t.total))}
-          {t.discount > 0 && row("Discount", `-${money(t.discount)}`)}
+          {row(tx(blk, "total"), money(t.total))}
+          {t.discount > 0 && row(tx(blk, "discount"), `-${money(t.discount)}`)}
           {/* Tax always shows before the grand total (thermal included). */}
-          {t.tax > 0 && row("Sales Tax", money(t.tax))}
-          {t.charges > 0 && row("Charges", money(t.charges))}
-          {row("Grand Total", money(t.payable), true, grand)}
-          {row("Paid", money(t.paid))}
-          {row("Balance", money(t.balance), true, colored ? { color: P } : undefined)}
+          {t.tax > 0 && row(tx(blk, "tax"), money(t.tax))}
+          {t.charges > 0 && row(tx(blk, "charges"), money(t.charges))}
+          {row(tx(blk, "grand"), money(t.payable), true, grand)}
+          {row(tx(blk, "paid"), money(t.paid))}
+          {row(tx(blk, "balance"), money(t.balance), true, colored ? { color: P } : undefined)}
         </div>
       </div>
     );
@@ -472,7 +482,7 @@ export function InvoicePrintLayout({
         return (
           <div style={{ textAlign: blk.align, ...font(blk), ...(colored ? infoBox(blk) : {}) }}>
             <div>
-              <span style={label}>Date:</span> {data.date}
+              <span style={label}>{tx(blk, "date")}</span> {data.date}
             </div>
             <div>
               {data.payment}
@@ -480,7 +490,7 @@ export function InvoicePrintLayout({
             </div>
             {data.salesman && (
               <div>
-                <span style={label}>Salesman:</span> {data.salesman}
+                <span style={label}>{tx(blk, "salesman")}</span> {data.salesman}
               </div>
             )}
           </div>
@@ -488,10 +498,10 @@ export function InvoicePrintLayout({
       case "customer":
         return (
           <div style={{ textAlign: blk.align, ...font(blk), ...(colored ? infoBox(blk) : {}) }}>
-            <div><span style={label}>Customer:</span> {data.customer.name}</div>
-            {data.customer.phone && <div><span style={label}>Mobile:</span> {data.customer.phone}</div>}
-            {data.customer.ntn && <div><span style={label}>NTN/CNIC:</span> {data.customer.ntn}</div>}
-            {data.customer.address && <div><span style={label}>Address:</span> {data.customer.address}</div>}
+            <div><span style={label}>{tx(blk, "customer")}</span> {data.customer.name}</div>
+            {data.customer.phone && <div><span style={label}>{tx(blk, "mobile")}</span> {data.customer.phone}</div>}
+            {data.customer.ntn && <div><span style={label}>{tx(blk, "ntn")}</span> {data.customer.ntn}</div>}
+            {data.customer.address && <div><span style={label}>{tx(blk, "address")}</span> {data.customer.address}</div>}
           </div>
         );
       case "items":
@@ -501,7 +511,7 @@ export function InvoicePrintLayout({
       case "note":
         return data.note ? (
           <div style={{ textAlign: blk.align, ...font(blk), ...(colored ? { background: tint(A, 0.12), padding: "4px 8px", borderRadius: 4 } : {}) }}>
-            <span style={label}>Note:</span> {data.note}
+            <span style={label}>{tx(blk, "note")}</span> {data.note}
           </div>
         ) : null;
       case "fbr": {
@@ -519,11 +529,11 @@ export function InvoicePrintLayout({
         );
         const text = (
           <div style={{ textAlign: thermal || blk.align === "center" ? "center" : "left", minWidth: 0 }}>
-            <div style={{ fontWeight: 700, color: colored ? P : "#006633" }}>FBR Digital Invoice</div>
+            <div style={{ fontWeight: 700, color: colored ? P : "#006633" }}>{tx(blk, "heading")}</div>
             <div style={{ marginTop: 2, wordBreak: "break-all" }}>
-              FBR Invoice No: <b>{data.fbrInvoiceNo}</b>
+              {tx(blk, "number")} <b>{data.fbrInvoiceNo}</b>
             </div>
-            <div style={{ fontSize: "0.8em", color: "#666" }}>Scan the QR code to verify this invoice on the FBR portal</div>
+            <div style={{ fontSize: "0.8em", color: "#666" }}>{tx(blk, "hint")}</div>
           </div>
         );
         const panel: CSSProperties = colored ? { border: `1px solid ${tint(P, 0.25)}`, borderRadius: 8, padding: 8 } : {};
@@ -600,7 +610,7 @@ export function InvoicePrintLayout({
         .filter((blk) => blk.visible)
         .map((blk) => {
           const content = renderBlock(blk);
-          if (!editor) return content ? <div key={blk.id} style={{ marginBottom: 6 }}>{content}</div> : null;
+          if (!editor) return content ? <div key={blk.id} style={{ marginBottom: 6, ...textStyle(blk) }}>{content}</div> : null;
           const isSel = editor.selected === blk.id;
           return (
             <div
@@ -617,7 +627,7 @@ export function InvoicePrintLayout({
               }}
               onClick={() => editor.onSelect(blk.id)}
               title="Drag to move, click to edit"
-              style={{ marginBottom: 6, cursor: "grab" }}
+              style={{ marginBottom: 6, cursor: "grab", ...textStyle(blk) }}
               className={`rounded outline-dashed outline-1 outline-offset-2 ${isSel ? "outline-[#006633] bg-[#006633]/[0.04]" : "outline-transparent hover:outline-neutral-300"}`}
             >
               {content ?? <div className="text-[11px] text-neutral-300">[ {blk.id} - nothing to show in this sample ]</div>}

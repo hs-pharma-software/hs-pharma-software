@@ -10,6 +10,53 @@ export interface BlockConfig {
   visible: boolean;
   align: Align;
   size: BlockSize;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  uppercase?: boolean;
+  /** Text colour; unset = the design's own colours. */
+  color?: string | null;
+  /** The section's printed words, changed from the defaults (BLOCK_TEXTS). */
+  labels?: Record<string, string>;
+}
+
+/** The words each section prints that the user may change. */
+export const BLOCK_TEXTS: Partial<Record<BlockId, { key: string; label: string; text: string }[]>> = {
+  business: [
+    { key: "phone", label: "Phone", text: "Ph:" }, { key: "ntn", label: "NTN", text: "NTN:" },
+    { key: "stn", label: "STN", text: "STN:" }, { key: "pra", label: "PRA", text: "PRA:" },
+  ],
+  title: [{ key: "title", label: "Title (blank = Invoice / Return / Quotation as the bill is)", text: "" }],
+  meta: [{ key: "date", label: "Date", text: "Date:" }, { key: "salesman", label: "Salesman", text: "Salesman:" }],
+  customer: [
+    { key: "customer", label: "Customer", text: "Customer:" }, { key: "mobile", label: "Mobile", text: "Mobile:" },
+    { key: "ntn", label: "NTN / CNIC", text: "NTN/CNIC:" }, { key: "address", label: "Address", text: "Address:" },
+  ],
+  items: [
+    { key: "product", label: "Product", text: "Product" }, { key: "hsCode", label: "HS Code", text: "HS Code" },
+    { key: "batch", label: "Batch", text: "Batch" }, { key: "qty", label: "Qty", text: "Qty" },
+    { key: "bonus", label: "Bonus", text: "Bonus" }, { key: "price", label: "Price", text: "Price" },
+    { key: "disc", label: "Discount", text: "Disc" }, { key: "taxPct", label: "Tax %", text: "Tax %" },
+    { key: "taxRs", label: "Tax Rs", text: "Tax Rs" }, { key: "total", label: "Total", text: "Total" },
+  ],
+  totals: [
+    { key: "total", label: "Total", text: "Total" }, { key: "discount", label: "Discount", text: "Discount" },
+    { key: "tax", label: "Sales tax", text: "Sales Tax" }, { key: "charges", label: "Charges", text: "Charges" },
+    { key: "grand", label: "Grand total", text: "Grand Total" }, { key: "paid", label: "Paid", text: "Paid" },
+    { key: "balance", label: "Balance", text: "Balance" },
+  ],
+  note: [{ key: "note", label: "Note", text: "Note:" }],
+  fbr: [
+    { key: "heading", label: "Heading", text: "FBR Digital Invoice" }, { key: "number", label: "Invoice number", text: "FBR Invoice No:" },
+    { key: "hint", label: "QR hint", text: "Scan the QR code to verify this invoice on the FBR portal" },
+  ],
+};
+
+/** A section's word: the user's own, else the default. */
+export function blockText(blk: BlockConfig, key: string): string {
+  const own = blk.labels?.[key];
+  if (own != null && own.trim() !== "") return own;
+  return BLOCK_TEXTS[blk.id]?.find((t) => t.key === key)?.text ?? "";
 }
 
 /** Graphical design for A4 / A5 (thermal prints black only). How each one
