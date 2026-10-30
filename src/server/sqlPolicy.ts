@@ -108,7 +108,7 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     if (!knownTables.has(t)) return { ok: false, reason: `Unknown table ${t}.` };
   }
   // Hospital records are for logins with a hospital section (a pharmacy cashier's login has none).
-  if (caller.role === "staff" && Array.isArray(caller.permissions) && a.tables.some((t) => t.startsWith("hospital_"))
+  if (caller.role === "staff" && Array.isArray(caller.permissions) && a.tables.some((t) => t.startsWith("hospital_") || t.startsWith("radiology_"))
       && !caller.permissions.some((p) => p.startsWith("hospital_"))) {
     return { ok: false, reason: "Your login has no access to hospital records." };
   }
@@ -131,4 +131,4 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
 }
 
 /** Columns never returned to the browser. */
-export const HIDDEN_COLUMNS = new Set(["password_hash", "password_salt"]);
+export const HIDDEN_COLUMNS = new Set(["password_hash", "password_salt", "api_key_hash"]);

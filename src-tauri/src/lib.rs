@@ -1337,6 +1337,61 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Radiology portal: modalities, machines (with the DICOM API key's hash),
+/// report templates, the PACS (Orthanc) link, and the machine messages log;
+/// on each imaging order the machine, the technologist's examination and the
+/// images the PACS received.
+fn schema_sql_v59() -> &'static str {
+    r#"
+    ALTER TABLE hospital_imaging_orders ADD COLUMN modality_code TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN clinical_history TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN machine_id TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN exam_started_at TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN exam_started_by_name TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN performed_at TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN performed_by_name TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN exam_data TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN acquisition_status TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN study_uid TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN series_count INTEGER;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN images_count INTEGER;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN images_received_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hosp_img_machine ON hospital_imaging_orders (tenant_id, machine_id, status);
+    CREATE INDEX IF NOT EXISTS idx_hosp_img_order_no ON hospital_imaging_orders (tenant_id, order_no);
+    CREATE TABLE IF NOT EXISTS radiology_modalities (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, dicom_code TEXT, universal_name TEXT,
+        outsourced INTEGER NOT NULL DEFAULT 0, is_active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_radiology_modalities ON radiology_modalities (tenant_id, code);
+    CREATE TABLE IF NOT EXISTS radiology_machines (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, machine_code TEXT NOT NULL, name TEXT NOT NULL, modality_code TEXT NOT NULL,
+        manufacturer TEXT, model TEXT, serial_no TEXT, location TEXT, status TEXT NOT NULL DEFAULT 'active', ae_title TEXT,
+        assigned_user_id TEXT, assigned_user_name TEXT, api_key_hash TEXT, api_key_hint TEXT, last_seen_at TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_radiology_machines ON radiology_machines (tenant_id, modality_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_radiology_machine_key ON radiology_machines (api_key_hash);
+    CREATE TABLE IF NOT EXISTS radiology_templates (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, modality_code TEXT, service_id TEXT,
+        findings TEXT, impression TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_radiology_templates ON radiology_templates (tenant_id, modality_code);
+    CREATE TABLE IF NOT EXISTS radiology_pacs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, orthanc_url TEXT, viewer_url TEXT, ae_title TEXT,
+        dicom_host TEXT, dicom_port INTEGER, is_active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_radiology_pacs ON radiology_pacs (tenant_id);
+    CREATE TABLE IF NOT EXISTS radiology_dicom_events (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, machine_id TEXT, order_id TEXT, kind TEXT NOT NULL, detail TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_radiology_dicom_events ON radiology_dicom_events (tenant_id, machine_id, created_at);
+    "#
+}
+
 fn schema_sql_v58() -> &'static str {
     r#"
     ALTER TABLE hospital_payments ADD COLUMN received_by TEXT;
@@ -2985,6 +3040,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 58,
             description: "hospital_cash_closings",
             sql: schema_sql_v58(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 59,
+            description: "radiology_portal",
+            sql: schema_sql_v59(),
             kind: MigrationKind::Up,
         },
     ]

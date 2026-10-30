@@ -149,13 +149,19 @@ test("visit receipt: charges, payments and what is due", async () => {
   await assert.rejects(getVisitReceipt(episode.id), /not found/);
 });
 
-test("Radiology has Radiology Orders, Performing Images and Radiology Reports; receptionists and doctors get the reports", () => {
+test("Radiology portal sections; receptionists and doctors get the reports, technologists and radiologists their own screens", () => {
   const rad = visibleNavFor("hospital", null, null).find((n) => n.label === "Radiology")!;
-  assert.deepEqual(rad.children?.map((c) => c.label), ["Radiology Orders", "Performing Images", "Radiology Reports"]);
+  assert.deepEqual(rad.children?.map((c) => c.label), [
+    "Dashboard", "Reception", "Technologist", "Reporting", "Radiology Reports", "Modalities", "Machines", "Performing Images (Tests)", "Templates", "PACS / Orthanc",
+  ]);
   for (const role of ["receptionist", "consultant"]) {
     const r = visibleNavFor("hospital", null, designation(role)!.pages).find((n) => n.label === "Radiology");
     assert.deepEqual(r?.children?.map((c) => c.label), ["Radiology Reports"], role);
   }
   const rt = visibleNavFor("hospital", null, designation("radiographer")!.pages).find((n) => n.label === "Radiology");
-  assert.equal(rt?.children?.length, 3);
+  assert.deepEqual(rt?.children?.map((c) => c.label), ["Technologist", "Radiology Reports"]);
+  const rad2 = visibleNavFor("hospital", null, designation("radiologist")!.pages).find((n) => n.label === "Radiology");
+  assert.deepEqual(rad2?.children?.map((c) => c.label), ["Reporting", "Radiology Reports"]);
+  const admin = visibleNavFor("hospital", null, designation("radiology_admin")!.pages).find((n) => n.label === "Radiology");
+  assert.equal(admin?.children?.length, 10);
 });

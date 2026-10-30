@@ -46,7 +46,12 @@ export const DESIGNATIONS: Designation[] = [
   { key: "radiology_receptionist", label: "Radiology Counter Receptionist", prefix: "RR", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_reception", "hospital_radiology_orders", "hospital_radiology_reports", "hospital_patients", "hospital_my_cash"] },
   { key: "lab_technician", label: "Lab Technician (Paramedic)", prefix: "LT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_lab"] },
-  { key: "radiographer", label: "Radiographer (Paramedic)", prefix: "RT", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_radiology"] },
+  { key: "radiographer", label: "Radiology Technologist / Radiographer (Paramedic)", prefix: "RT", license: "LICENSE", licenseRequired: false, doctor: false,
+    pages: ["hospital_radiology_tech", "hospital_radiology_reports", "hospital_patients"] },
+  { key: "radiologist", label: "Radiologist (reports imaging)", prefix: "RAD", license: "PMDC", licenseRequired: true, doctor: false,
+    pages: ["hospital_radiology_reporting", "hospital_radiology_reports", "hospital_patients"] },
+  { key: "radiology_admin", label: "Radiology Administrator", prefix: "RA", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_radiology", "hospital_patients"] },
   { key: "paramedic", label: "Paramedic (other)", prefix: "PM", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
   { key: "pharmacist", label: "Pharmacist", prefix: "PH", license: "LICENSE", licenseRequired: true, doctor: false,
     pages: ["hospital_episodes", "hospital_patients", "hospital_medicines", "products", "suppliers"] },
@@ -104,7 +109,13 @@ export const RECORDS_APPROVER_ROLES = ["medical_records_officer", "hod"];
 /** Which fees a login sees at Reception: the lab counter only lab fees, the
  * radiology counter only radiology fees; everyone else every fee. */
 export const FEE_SCOPE_LAB_ROLES = ["lab_receptionist", "collection_center_receptionist", "lab_technician", "pathologist"];
-export const FEE_SCOPE_IMAGING_ROLES = ["radiology_receptionist", "radiographer"];
+export const FEE_SCOPE_IMAGING_ROLES = ["radiology_receptionist", "radiographer", "radiologist", "radiology_admin"];
+
+/** Radiology portal: who sets up modalities, machines (and their DICOM keys)
+ * and the PACS; who performs examinations; who assigns machines to technologists. */
+export const RADIOLOGY_ADMIN_ROLES = ["radiology_admin", "hod"];
+export const TECHNOLOGIST_ROLES = ["radiographer", "radiology_admin"];
+export const TECHNOLOGIST_ASSIGN_ROLES = ["radiology_admin", "hod"];
 
 /** Finance (collections, receptionist day closings): verified by the accountant or a full-access login. */
 export const FINANCE_ROLES = ["accountant"];

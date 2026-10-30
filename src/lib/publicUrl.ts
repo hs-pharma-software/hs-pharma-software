@@ -4,11 +4,17 @@
  * of the web version in use. Null when neither is known. */
 export function publicReportUrl(token: string | null | undefined): string | null {
   if (!token) return null;
-  const configured = (process.env.NEXT_PUBLIC_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "");
-  let base = configured;
-  if (!base && typeof window !== "undefined") {
-    const { protocol, hostname, origin } = window.location;
-    if (/^https?:$/.test(protocol) && hostname !== "tauri.localhost") base = origin;
-  }
+  const base = publicSiteUrl();
   return base ? `${base}/report/?t=${encodeURIComponent(token)}` : null;
+}
+
+/** The web version's address (report links, the DICOM machine API), or null when unknown. */
+export function publicSiteUrl(): string | null {
+  const configured = (process.env.NEXT_PUBLIC_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  if (typeof window !== "undefined") {
+    const { protocol, hostname, origin } = window.location;
+    if (/^https?:$/.test(protocol) && hostname !== "tauri.localhost") return origin;
+  }
+  return null;
 }

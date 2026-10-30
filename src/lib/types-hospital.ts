@@ -231,7 +231,9 @@ export interface HospitalImagingOrder extends TenantRow, OrderFee {
   modality: string;
   body_part: string | null;
   priority: OrderPriority;
-  status: "pending" | "performed" | "reported" | "cancelled";
+  /** pending = waiting in the queue; in_progress = the technologist started the examination;
+   * performed = examination completed, waiting for the radiologist's report. */
+  status: "pending" | "in_progress" | "performed" | "reported" | "cancelled";
   findings: string | null;
   impression: string | null;
   radiologist: string | null;
@@ -239,6 +241,22 @@ export interface HospitalImagingOrder extends TenantRow, OrderFee {
   ordered_at: string;
   reported_at: string | null;
   notes: string | null;
+  // Radiology portal (v59).
+  modality_code?: string | null;
+  clinical_history?: string | null;
+  machine_id?: string | null;
+  exam_started_at?: string | null;
+  exam_started_by_name?: string | null;
+  performed_at?: string | null;
+  performed_by_name?: string | null;
+  /** The technologist's examination record, JSON ExamData (see config/radiologyPortal). */
+  exam_data?: string | null;
+  /** What the machine reported (DICOM MPPS): in_progress, completed, discontinued. */
+  acquisition_status?: string | null;
+  study_uid?: string | null;
+  series_count?: number | null;
+  images_count?: number | null;
+  images_received_at?: string | null;
 }
 
 /** One parameter of a panel test result (Hb, TLC, platelets... of a CBC). */

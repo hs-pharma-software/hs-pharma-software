@@ -1,0 +1,28 @@
+{
+  "Name": "HOSPITAL PACS",
+  "DicomAet": "ORTHANC",
+  "DicomPort": 4242,
+  "HttpPort": 8042,
+  "RemoteAccessAllowed": true,
+  "AuthenticationEnabled": true,
+  "RegisteredUsers": { "radiology": "change-this-password" },
+
+  "DicomModalities": {
+    "xray01": ["XRAY01", "192.168.1.31", 104],
+    "ct01": ["CT01", "192.168.1.32", 104]
+  },
+
+  "Worklists": { "Enable": false },
+  "Plugins": ["/usr/share/orthanc/plugins"],
+  "PythonScript": "/etc/orthanc/hms_bridge.py",
+
+  "HmsBridge": {
+    "ApiBase": "https://your-hospital-website",
+    "Machines": {
+      "XRAY01": "hmsk_paste-the-key-from-Radiology-Machines",
+      "CT01": "hmsk_paste-the-key-from-Radiology-Machines"
+    },
+    "DefaultMachine": "",
+    "TimeoutSeconds": 10
+  }
+}

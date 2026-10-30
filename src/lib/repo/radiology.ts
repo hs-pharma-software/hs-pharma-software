@@ -8,6 +8,7 @@ import { hasPermission } from "../moduleAccess";
 import { getSetting } from "./settings";
 import { hospitalEpisodesRepo, hospitalImagingRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo } from "./hospital";
 import { listOpenVisits, orderInvestigation } from "./hospitalOpd";
+import { modalityCodeOfStudy } from "./radiologyPortal";
 import type { HospitalEpisode, HospitalImagingOrder, HospitalService, OrderPriority } from "../types-hospital";
 
 // ── Performing Images ─────────────────────────────────────────────────────
@@ -118,6 +119,7 @@ export async function importStandardImagingStudies(onProgress?: (done: number, t
  * bill Reception can collect; radiology reports it once the fee is paid. */
 export async function orderImaging(input: {
   patientId: string; serviceId: string; episodeId?: string | null; bodyPart?: string | null; priority?: OrderPriority; orderedBy?: string | null;
+  clinicalHistory?: string | null;
 }): Promise<{ episode: HospitalEpisode; order: HospitalImagingOrder }> {
   const patient = await hospitalPatientsRepo.get(input.patientId);
   if (!patient) throw new Error("Patient not found in this hospital.");
@@ -139,10 +141,21 @@ export async function orderImaging(input: {
     });
   }
   const { order } = await orderInvestigation(episode.id, svc.id, input.orderedBy?.trim() || null);
+  // The modality puts the order in the queue of that modality's machines (Radiology portal).
   const extra: Partial<HospitalImagingOrder> = {};
   if (input.bodyPart?.trim()) extra.body_part = input.bodyPart.trim();
   if (input.priority && input.priority !== "routine") extra.priority = input.priority;
-  const saved = Object.keys(extra).length ? (await hospitalImagingRepo.update(order.id, extra))! : (order as HospitalImagingOrder);
+  const portal: Partial<HospitalImagingOrder> = {};
+  if (input.clinicalHistory?.trim()) portal.clinical_history = input.clinicalHistory.trim();
+  let saved: HospitalImagingOrder;
+  try {
+    portal.modality_code = await modalityCodeOfStudy(svc.modality);
+    saved = (await hospitalImagingRepo.update(order.id, { ...extra, ...portal }))!;
+  } catch (e) {
+    // A database before v59 has no portal columns; the order itself stands.
+    if (!/no such (table|column)|has no column/i.test(String(e instanceof Error ? e.message : e))) throw e;
+    saved = Object.keys(extra).length ? (await hospitalImagingRepo.update(order.id, extra))! : (order as HospitalImagingOrder);
+  }
   return { episode, order: saved };
 }
 
