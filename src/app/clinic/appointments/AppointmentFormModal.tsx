@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { ClinicPatientPicker } from "@/components/clinic/ClinicPatientPicker";
 import { saveAppointment, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
 import type { AppointmentWithNames } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
@@ -68,12 +69,10 @@ export default function AppointmentFormModal({
     <Modal title={isEdit ? "Edit Appointment" : "Book Appointment"} onClose={onClose}>
       <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Patient *">
-            <Select value={patientId} onChange={(e) => setPatientId(e.target.value)} required>
-              <option value="">— Select Patient —</option>
-              {patients.map((p) => <option key={p.id} value={p.id}>{p.name}{p.mrn ? ` (${p.mrn})` : ""}</option>)}
-            </Select>
-          </Field>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-neutral-600">Patient *</span>
+            <ClinicPatientPicker patients={patients} value={patientId} onChange={setPatientId} onRegistered={(p) => setPatients((x) => [p, ...x])} />
+          </div>
           <Field label="Doctor">
             <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
               <option value="">— Any / Walk-in —</option>

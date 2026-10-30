@@ -13,17 +13,22 @@ export default function PatientFormModal({
   patient,
   onClose,
   onSaved,
+  initialName,
+  initialPhone,
 }: {
   patient: ClinicPatient | null;
   onClose: () => void;
-  onSaved: () => void;
+  /** Receives the saved patient (a new one is selected by the form that opened this). */
+  onSaved: (saved?: ClinicPatient) => void;
+  initialName?: string;
+  initialPhone?: string;
 }) {
   const isEdit = Boolean(patient);
-  const [name, setName] = useState(patient?.name ?? "");
+  const [name, setName] = useState(patient?.name ?? initialName ?? "");
   const [mrn, setMrn] = useState(patient?.mrn ?? "");
   const [dob, setDob] = useState(patient?.dob ?? "");
   const [gender, setGender] = useState(patient?.gender ?? "");
-  const [phone, setPhone] = useState(patient?.phone ?? "");
+  const [phone, setPhone] = useState(patient?.phone ?? initialPhone ?? "");
   const [address, setAddress] = useState(patient?.address ?? "");
   const [bloodGroup, setBloodGroup] = useState(patient?.blood_group ?? "");
   const [allergies, setAllergies] = useState(patient?.allergies ?? "");
@@ -48,8 +53,7 @@ export default function PatientFormModal({
         emergency_contact: emergencyContact.trim() || null,
         notes: notes.trim() || null,
       };
-      await savePatient(isEdit && patient ? patient.id : null, payload);
-      onSaved();
+      onSaved(await savePatient(isEdit && patient ? patient.id : null, payload));
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

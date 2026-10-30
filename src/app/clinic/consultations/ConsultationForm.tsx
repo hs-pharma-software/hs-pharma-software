@@ -6,6 +6,7 @@ import { Plus, Trash2, Send, FileText } from "lucide-react";
 import { useAppStore } from "@/store/appStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { ClinicPatientPicker } from "@/components/clinic/ClinicPatientPicker";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
@@ -284,12 +285,10 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
 
       <div className="rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-5 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <Field label="Patient *">
-            <Select value={patientId} onChange={(e) => setPatientId(e.target.value)} required>
-              <option value="">— Select Patient —</option>
-              {patients.map((p) => <option key={p.id} value={p.id}>{p.name}{p.mrn ? ` (${p.mrn})` : ""}</option>)}
-            </Select>
-          </Field>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-neutral-600">Patient *</span>
+            <ClinicPatientPicker patients={patients} value={patientId} onChange={setPatientId} onRegistered={(p) => setPatients((x) => [p, ...x])} />
+          </div>
           <Field label="Doctor">
             <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
               <option value="">— Select Doctor —</option>
