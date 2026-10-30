@@ -10,6 +10,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { listAppointments, appointmentsRepo, type AppointmentWithNames } from "@/lib/repo/clinic";
 import AppointmentFormModal from "./AppointmentFormModal";
+import { AppointmentSlipModal } from "@/components/clinic/AppointmentSlipModal";
 import { localDate } from "@/lib/localDate";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -35,6 +36,7 @@ export default function AppointmentsPage() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AppointmentWithNames | null>(null);
+  const [slip, setSlip] = useState<AppointmentWithNames | null>(null);
   const tauriReady = useIsTauri();
 
   async function reload() {
@@ -84,6 +86,7 @@ export default function AppointmentsPage() {
           {a.status !== "cancelled" && a.status !== "no_show" && (
             <Button variant="ghost" onClick={() => router.push(`/clinic/consultations/new?appointment=${a.id}`)}>Consult</Button>
           )}
+          <Button variant="ghost" onClick={() => setSlip(a)}>Slip</Button>
           <Button variant="ghost" onClick={() => { setEditing(a); setModalOpen(true); }}>Edit</Button>
         </div>
       ),
@@ -111,6 +114,7 @@ export default function AppointmentsPage() {
       ) : (
         <DataTable columns={columns} rows={filtered} emptyMessage="No appointments found." onRowClick={(a) => { setEditing(a); setModalOpen(true); }} />
       )}
+      {slip && <AppointmentSlipModal appointment={slip} onClose={() => setSlip(null)} />}
       {modalOpen && (
         <AppointmentFormModal
           appointment={editing}

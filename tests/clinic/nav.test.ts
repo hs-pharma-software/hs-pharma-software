@@ -14,7 +14,7 @@ const labels = (type: string, allowed: string[] | null = null, perms: string[] |
 test("clinic sidebar shows exactly these tabs in this order", () => {
   assert.deepEqual(labels("clinic"), [
     "Clinic", "Patients", "Doctors", "Appointments", "Consultation",
-    "Invoices", "Staff", "Cash Register", "Banks", "Expenses", "Reports", "Utilities",
+    "Invoices", "Staff", "Cash Register", "Banks", "Expenses", "Reports", "Utilities", "Settings",
   ]);
 });
 

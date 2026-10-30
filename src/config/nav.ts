@@ -440,6 +440,17 @@ const BASE_NAV: NavItem[] = [
       { label: "New Consultation", href: "/clinic/consultations/new" },
     ],
   },
+  {
+    label: "Settings",
+    href: "/clinic/settings/profile",
+    icon: Settings,
+    moduleKey: "clinic_settings",
+    onlyFor: ["clinic"],
+    children: [
+      { label: "Clinic Profile", href: "/clinic/settings/profile" },
+      { label: "Users", href: "/clinic/settings/users" },
+    ],
+  },
   // ── Pharmacy Rx Inbox (hospital_pharmacy only) ──────────────────────────
   {
     label: "Rx Inbox",

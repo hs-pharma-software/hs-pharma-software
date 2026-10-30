@@ -16,6 +16,7 @@ export const CLINIC_NAV_ORDER = [
   "expenses",
   "reports",
   "utilities",
+  "clinic_settings",
 ];
 
 /** Hospital sidebar, top to bottom. Invoices sit under Billing, and Products,
