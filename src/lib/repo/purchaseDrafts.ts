@@ -6,6 +6,8 @@ export interface PurchaseDraftLine {
   expiryDate: string;
   purchasePrice: number;
   qty: number;
+  /** Free units from the supplier (drafts saved before it have none). */
+  bonusQty?: number;
   stPct: number;
   whtPct: number;
   salePrice: number;

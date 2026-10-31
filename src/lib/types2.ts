@@ -166,6 +166,8 @@ export interface PurchaseItem extends TenantRow {
   st_pct: number;
   wht_pct: number;
   total: number;
+  /** Free units the supplier added (v61); received in stock on top of received_qty. */
+  bonus_qty?: number | null;
 }
 
 export interface Invoice extends TenantRow {

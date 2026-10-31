@@ -17,6 +17,8 @@ import {
   applyPurchaseReversal,
 } from "@/lib/repo/purchases";
 import { receiveStock } from "@/lib/repo/stock";
+import { purchaseLineMath } from "@/lib/purchaseMath";
+import { isMissingSchemaError } from "@/lib/dbErrors";
 import { getLatestPrice, priceListRepo, productsRepo } from "@/lib/repo/products";
 import {
   deleteDraft,
@@ -39,6 +41,8 @@ interface Line {
   expiryDate: string;
   purchasePrice: number;
   qty: number;
+  /** Free units the supplier adds; paid for nothing, received in stock. */
+  bonusQty: number;
   stPct: number;
   whtPct: number;
   /** Retail (sale) price - prefilled from the current price list so the
@@ -63,6 +67,7 @@ function linesKey(lines: Line[]): string {
         l.batchNo,
         l.expiryDate,
         toBaseUnitQty(l.qty, sec, packing),
+        toBaseUnitQty(l.bonusQty, sec, packing),
         sec ? l.purchasePrice * packing : l.purchasePrice,
         l.stPct,
         l.whtPct,
@@ -79,6 +84,7 @@ function makeLine(p: Product): Line {
     expiryDate: "",
     purchasePrice: 0,
     qty: 1,
+    bonusQty: 0,
     stPct: 0,
     whtPct: 0,
     salePrice: 0,
@@ -153,6 +159,7 @@ export function PurchaseFormModal({
           expiryDate: item.expiry_date ?? "",
           purchasePrice: item.purchase_price,
           qty: item.received_qty,
+          bonusQty: Number(item.bonus_qty ?? 0),
           stPct: item.st_pct,
           whtPct: item.wht_pct,
           salePrice,
@@ -180,6 +187,7 @@ export function PurchaseFormModal({
           ...l,
           unit: toSecondary ? "secondary" : "base",
           qty: convertQtyOnUnitToggle(l.qty, toSecondary, packing),
+          bonusQty: convertQtyOnUnitToggle(l.bonusQty, toSecondary, packing),
           purchasePrice: convertPriceOnUnitToggle(l.purchasePrice, toSecondary, packing),
           salePrice: convertPriceOnUnitToggle(l.salePrice, toSecondary, packing),
         };
@@ -218,7 +226,7 @@ export function PurchaseFormModal({
         const rebuilt: Line[] = [];
         for (const l of d.lines) {
           const product = await productsRepo.get(l.productId);
-          if (product) rebuilt.push({ ...l, product });
+          if (product) rebuilt.push({ bonusQty: 0, ...l, product });
         }
         setLines(rebuilt);
       }
@@ -339,13 +347,16 @@ export function PurchaseFormModal({
     setLines((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  /** Paid on the quantity bought; sales tax and withholding tax are both added. */
   function lineTotal(l: Line) {
-    const amount = l.purchasePrice * l.qty;
-    return amount + amount * (l.stPct / 100) - amount * (l.whtPct / 100);
+    return purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, l.stPct, l.whtPct).total;
   }
 
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
-  const tax = lines.reduce((s, l) => s + l.purchasePrice * l.qty * ((l.stPct - l.whtPct) / 100), 0);
+  const tax = lines.reduce((s, l) => {
+    const m = purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, l.stPct, l.whtPct);
+    return s + m.st + m.wht;
+  }, 0);
   const payable = subtotal - (Number(discountRs) || 0);
   const balance = payable - (Number(paidAmount) || 0);
 
@@ -408,19 +419,22 @@ export function PurchaseFormModal({
         const isSecondary = l.unit === "secondary";
         const packing = l.product.packing || 1;
         const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
+        const finalBonus = toBaseUnitQty(l.bonusQty, isSecondary, packing);
         const finalPurchasePrice = isSecondary ? l.purchasePrice * packing : l.purchasePrice;
+        // Cost of one unit in stock: bonus units came free (85 for 1 + 1 bonus = 42.50).
+        const netRate = purchaseLineMath(finalPurchasePrice, finalQty, finalBonus, 0, 0).netRate;
         const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
         const lineTotalValue = lineTotal(l);
 
         const batch = await receiveStock({
           productId: l.product.id,
           batchNo: l.batchNo || null,
-          qty: finalQty,
-          purchasePrice: finalPurchasePrice,
+          qty: finalQty + finalBonus,
+          purchasePrice: netRate,
           expiryDate: l.expiryDate || null,
           location: null,
         });
-        await purchaseItemsRepo.create({
+        const item = {
           purchase_id: purchaseId,
           product_id: l.product.id,
           location: null,
@@ -435,7 +449,17 @@ export function PurchaseFormModal({
           st_pct: l.stPct,
           wht_pct: l.whtPct,
           total: lineTotalValue,
-        });
+        };
+        if (finalBonus > 0) {
+          try {
+            await purchaseItemsRepo.create({ ...item, bonus_qty: finalBonus });
+          } catch (e) {
+            if (isMissingSchemaError(e)) throw new Error("Bonus on purchases needs the latest database update (v61). Ask the administrator to run it, or save without bonus.");
+            throw e;
+          }
+        } else {
+          await purchaseItemsRepo.create(item);
+        }
         // Only write a new price-list entry when the retail price was
         // actually changed on this purchase - avoids spamming price_list
         // with an unchanged duplicate row on every routine purchase.
@@ -508,6 +532,8 @@ export function PurchaseFormModal({
                 <th className="px-2 py-2">Pur Price</th>
                 <th className="px-2 py-2">Retail</th>
                 <th className="px-2 py-2">Rec Qty</th>
+                <th className="px-2 py-2">Bonus</th>
+                <th className="px-2 py-2" title="Cost of one unit with the bonus counted (rate x qty / (qty + bonus))">Net Rate</th>
                 <th className="px-2 py-2">ST %</th>
                 <th className="px-2 py-2">WHT %</th>
                 <th className="px-2 py-2">Total</th>
@@ -517,7 +543,7 @@ export function PurchaseFormModal({
             <tbody ref={linesRef} onKeyDown={onLineKeyDown}>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-2 py-6 text-center text-neutral-400">
+                  <td colSpan={13} className="px-2 py-6 text-center text-neutral-400">
                     No content in table
                   </td>
                 </tr>
@@ -598,6 +624,21 @@ export function PurchaseFormModal({
                         onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
                         className="w-20 rounded border border-neutral-300 px-1.5 py-1"
                       />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        data-cell="bonus"
+                        value={l.bonusQty}
+                        onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })}
+                        title="Free units the supplier added"
+                        className="w-16 rounded border border-neutral-300 px-1.5 py-1"
+                      />
+                    </td>
+                    <td className={`px-2 py-1.5 tabular-nums ${l.bonusQty > 0 ? "font-semibold text-emerald-700" : "text-neutral-500"}`}>
+                      {purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, 0, 0).netRate.toFixed(2)}
                     </td>
                     <td className="px-2 py-1.5">
                       <input

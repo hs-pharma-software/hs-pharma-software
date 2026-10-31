@@ -130,7 +130,7 @@ export async function planPurchaseReversal(purchaseId: string): Promise<Purchase
   const deductions = new Map<string, number>();
 
   for (const item of items) {
-    let needed = item.received_qty;
+    let needed = Number(item.received_qty) + Number(item.bonus_qty ?? 0);
     const candidates = batches.filter(
       (b) => b.product_id === item.product_id && (b.batch_no ?? "") === (item.batch_no ?? "")
     );

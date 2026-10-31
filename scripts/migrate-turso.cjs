@@ -340,6 +340,7 @@ const MIGRATIONS = [
   { version: 58, label: 'who took each payment; receptionist day closings', statements: rustSchemaStatements(58) },
   { version: 59, label: 'radiology portal: modalities, machines, templates, PACS, technologist examination, DICOM machine API', statements: rustSchemaStatements(59) },
   { version: 60, label: 'expiry corrections of stock batches (at most 3 per batch)', statements: rustSchemaStatements(60) },
+  { version: 61, label: 'bonus quantity on purchase lines', statements: rustSchemaStatements(61) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

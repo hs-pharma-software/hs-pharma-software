@@ -1337,6 +1337,13 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Purchase bonus: free units the supplier adds to a purchase line.
+fn schema_sql_v61() -> &'static str {
+    r#"
+    ALTER TABLE purchase_items ADD COLUMN bonus_qty REAL DEFAULT 0;
+    "#
+}
+
 /// Expiry corrections: a batch's expiry date entered by mistake can be
 /// corrected a limited number of times; each correction is kept (old and new
 /// date, who, when, why).
@@ -3066,6 +3073,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 60,
             description: "product_batch_expiry_changes",
             sql: schema_sql_v60(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 61,
+            description: "purchase_items_bonus_qty",
+            sql: schema_sql_v61(),
             kind: MigrationKind::Up,
         },
     ]
