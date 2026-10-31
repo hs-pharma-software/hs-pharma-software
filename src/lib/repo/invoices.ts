@@ -317,6 +317,43 @@ export async function restoreInvoiceStock(items: InvoiceItem[]): Promise<void> {
  * deducted \u2014 the single place both "Delete" and "Edit" (delete-then-recreate
  * under the hood) route through, so stock bookkeeping can't drift between
  * the two actions. */
+/** Turns a memorized draft into a real invoice dated today. A draft took no
+ * stock, so its lines are taken from stock now (each from its own batch);
+ * nothing is taken unless every line has enough. */
+export async function convertMemorizedInvoice(invoiceId: string, today: string): Promise<Invoice> {
+  const inv = await invoicesRepo.get(invoiceId);
+  if (!inv) throw new Error("Draft invoice not found.");
+  if (!inv.is_memorized) throw new Error("This invoice is already converted.");
+  const items = await listItemsForInvoice(invoiceId);
+  if (!items.length) throw new Error("This draft has no items.");
+  const plan: { batchId: string; qty: number }[] = [];
+  const short: string[] = [];
+  for (const item of items) {
+    const need = Number(item.qty) + Number(item.bonus_qty || 0);
+    const batches = await listAvailableBatches(item.product_id);
+    const batch = batches.find((b) => b.batch_no === item.batch_no) ?? null;
+    const name = (await dbSelect<{ name: string }>(`SELECT name FROM products WHERE id = ?`, [item.product_id]))[0]?.name ?? "item";
+    const planned = plan.filter((p) => p.batchId === batch?.id).reduce((s, p) => s + p.qty, 0);
+    if (!batch || batch.qty - planned < need - 1e-9) {
+      short.push(`${name}${item.batch_no ? ` (batch ${item.batch_no})` : ""}: need ${need}, in stock ${batch ? batch.qty - planned : 0}`);
+      continue;
+    }
+    plan.push({ batchId: batch.id, qty: need });
+  }
+  if (short.length) throw new Error(`Not enough stock to convert. ${short.join("; ")}. Edit the draft to choose another batch or quantity.`);
+  for (const p of plan) await deductStock(p.batchId, p.qty);
+  return (await invoicesRepo.update(invoiceId, { is_memorized: 0, date: today }))!;
+}
+
+/** Deletes a memorized draft. A draft took no stock, so none is put back. */
+export async function deleteMemorizedInvoice(invoiceId: string, reason?: string): Promise<void> {
+  const inv = await invoicesRepo.get(invoiceId);
+  if (!inv) throw new Error("Draft invoice not found.");
+  if (!inv.is_memorized) throw new Error("This is no longer a draft; delete it from the invoice list.");
+  for (const item of await listItemsForInvoice(invoiceId)) await invoiceItemsRepo.remove(item.id);
+  await invoicesRepo.remove(invoiceId, reason, "Memorized Invoice");
+}
+
 export async function deleteInvoiceWithStockRestore(invoiceId: string, reason?: string): Promise<void> {
   const items = await listItemsForInvoice(invoiceId);
   await restoreInvoiceStock(items);

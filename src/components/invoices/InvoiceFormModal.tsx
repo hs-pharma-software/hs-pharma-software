@@ -83,6 +83,8 @@ export function InvoiceFormModal({
   active?: boolean;
 }) {
   const isEdit = Boolean(invoice);
+  // A memorized draft holds no stock: editing it neither puts stock back nor takes any.
+  const isDraft = Boolean(invoice?.is_memorized);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
   const [customerId, setCustomerId] = useState(invoice?.customer_id ?? "");
@@ -490,7 +492,7 @@ export function InvoiceFormModal({
         // Put back what the original items had deducted, delete them, then
         // deduct fresh for whatever the form now says - this way editing
         // can't drift from a plain delete+recreate's stock bookkeeping.
-        await restoreInvoiceStock(originalItems);
+        if (!isDraft) await restoreInvoiceStock(originalItems);
         for (const item of originalItems) await invoiceItemsRepo.remove(item.id);
         await invoicesRepo.update(invoice.id, invoiceHeader());
         invoiceId = invoice.id;
@@ -505,7 +507,7 @@ export function InvoiceFormModal({
         });
         invoiceId = created.id;
       }
-      await buildLineItems(invoiceId);
+      await buildLineItems(invoiceId, isDraft);
       // Billed from a received prescription: mark it invoiced so it is not billed twice.
       if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
       onSaved();
@@ -553,7 +555,7 @@ export function InvoiceFormModal({
   };
 
   return (
-    <Modal title={isEdit ? "Edit Invoice" : "Create Invoice"} onClose={onClose} width="max-w-6xl">
+    <Modal title={isDraft ? "Edit Memorized Invoice" : isEdit ? "Edit Invoice" : "Create Invoice"} onClose={onClose} width="max-w-6xl">
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
