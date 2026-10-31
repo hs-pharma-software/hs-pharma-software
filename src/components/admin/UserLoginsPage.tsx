@@ -13,6 +13,7 @@ import { changePassword, updateUserPermissions } from "@/lib/auth";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { NAV } from "@/config/nav";
+import { visibleNavFor } from "@/config/navFilter";
 import { ACTION_PERMISSIONS, parseDeniedActions, staffAllows, toggleStaffAction, staffListFor, restrictedCount } from "@/lib/actionPermissions";
 import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import type { Tenant, UserAccount } from "@/lib/types2";
@@ -96,11 +97,8 @@ export function UserLoginsPage({
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
     const bt = businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
-    const typeId = bt.id;
-    return NAV.filter((item) => {
-      if (item.onlyFor) return item.onlyFor.includes(typeId);
-      return moduleAllowedForType(typeId, item.moduleKey);
-    });
+    // The same sections as this business's sidebar (a clinic sees only clinic sections).
+    return visibleNavFor(bt.id, null, null);
   }
 
   function toggleModule(key: string) {
@@ -128,10 +126,12 @@ export function UserLoginsPage({
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
     const bt = businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
     const typeId = bt.id;
+    // Only actions of sections this business has in its sidebar.
+    const keys = new Set(visibleNavFor(typeId, null, null).flatMap((n) => [n.moduleKey, ...(n.children ?? []).map((c) => c.moduleKey ?? "")]));
     return (["Invoices", "Memorized Invoices", "Purchases", "Restaurant"] as const).filter((group) => {
       if (group === "Restaurant") return typeId === "restaurant";
-      if (group === "Invoices" || group === "Memorized Invoices") return moduleAllowedForType(typeId, "invoices");
-      if (group === "Purchases") return moduleAllowedForType(typeId, "purchase");
+      if (group === "Invoices" || group === "Memorized Invoices") return keys.has("invoices") && moduleAllowedForType(typeId, "invoices");
+      if (group === "Purchases") return keys.has("purchase") && moduleAllowedForType(typeId, "purchase");
       return true;
     });
   }
