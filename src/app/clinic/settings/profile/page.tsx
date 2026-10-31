@@ -7,11 +7,18 @@ import { Field, Input, Textarea } from "@/components/ui/Field";
 import { ClinicSlipHeader } from "@/components/clinic/ClinicSlipHeader";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
+import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
+import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
+import { LinkedPharmacyCard } from "@/components/clinic/LinkedPharmacyCard";
+import { useIsTauri } from "@/lib/platform";
 import { EMPTY_CLINIC_PROFILE, loadClinicProfile, saveClinicProfile, type ClinicProfile } from "@/lib/clinicProfile";
 
 /** Settings > Clinic Profile: the clinic details printed on its slips. */
 export default function ClinicProfilePage() {
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
+  const fbrAllowed = useAuthStore((s) => s.currentTenant?.fbrAllowed !== false);
+  const templatesEditable = useAuthStore((s) => s.currentTenant?.printTemplatesEditable !== false);
+  const tauriReady = useIsTauri();
   const [p, setP] = useState<ClinicProfile>(EMPTY_CLINIC_PROFILE);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -65,6 +72,16 @@ export default function ClinicProfilePage() {
             <p className="mt-2 text-center text-xs text-neutral-400">Appointment details follow here</p>
           </div>
         </section>
+      </div>
+      <div className="mt-4 flex flex-col gap-4">
+        {fbrAllowed ? <FbrSettingsCard tauriReady={tauriReady} /> : (
+          <section className="rounded-2xl bg-white p-5 text-sm text-neutral-500 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+            <h2 className="text-base font-semibold text-neutral-900">FBR Digital Invoicing</h2>
+            <p className="mt-1">FBR Digital Invoicing is not enabled for this clinic. Ask the administrator to turn it on.</p>
+          </section>
+        )}
+        <ClinicPrintTemplatesCard editable={templatesEditable} />
+        <LinkedPharmacyCard />
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ import {
   staffForCurrentUser, listHospitalDoctors, listOpdQueue, saveConsultationNotes, listRx, saveRx, sendRxToPharmacy,
   orderInvestigation, listVisitOrders, type OpdQueueRow, type RxDraft,
 } from "@/lib/repo/hospitalOpd";
-import { getPharmacyLink, savePharmacyLink, listPharmacyTenants, searchProductsForPharmacy } from "@/lib/repo/clinic";
+import { getPharmacyLink, listPharmacyTenants, searchProductsForPharmacy } from "@/lib/repo/clinic";
 import { getLabReport, type LabReport } from "@/lib/repo/labReports";
 import { getRadiologyReport, type RadiologyReport } from "@/lib/repo/radiology";
 import { LabReportModal } from "@/components/hospital/LabReportModal";
@@ -246,16 +246,10 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <h3 className="text-sm font-semibold text-neutral-700">Prescription</h3>
           <div className="w-64">
-            <Field label="Linked pharmacy">
-              <Select value={pharmacyId} onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                savePharmacyLink(id).then(() => setPharmacyId(id)).catch((err) => window.alert(`Could not link the pharmacy: ${err instanceof Error ? err.message : String(err)}`));
-              }}>
-                <option value="">— Choose the hospital pharmacy —</option>
-                {pharmacies.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            </Field>
+            <p className="text-xs text-neutral-500">Linked pharmacy</p>
+            <p className="text-sm font-medium text-neutral-800">
+              {pharmacyId ? pharmacies.find((p) => p.id === pharmacyId)?.name ?? "Hospital pharmacy" : <span className="text-amber-700">None: link one in Hospital &gt; Profile</span>}
+            </p>
           </div>
         </div>
 

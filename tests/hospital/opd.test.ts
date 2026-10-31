@@ -168,7 +168,7 @@ test("doctor's desk: notes, prescription by generic name from the linked pharmac
 
   // The pharmacy's medicine, found by its generic name (Description).
   insert("products", { id: "prod-1", tenant_id: PH, name: "Panadol 500mg", description: "Paracetamol", barcode: "111" });
-  await assert.rejects(searchProductsForPharmacy("parac", PH), /Link this pharmacy/);
+  await assert.rejects(searchProductsForPharmacy("parac", PH), /Link a pharmacy first/);
   await savePharmacyLink(PH);
   const found = await searchProductsForPharmacy("paracetamol", PH);
   assert.deepEqual(found.map((f) => f.name), ["Panadol 500mg"]);

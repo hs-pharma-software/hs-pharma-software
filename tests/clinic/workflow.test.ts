@@ -317,8 +317,8 @@ test("integration is explicit: only the linked hospital pharmacy can be searched
   await saveRxItems(rx.id, [{ prescription_id: rx.id, product_id: null, product_name: "Panadol", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 1, instructions: null }]);
   const opts = { patientName: "Linked", patientId: p.id, doctorName: null, clinicName: null, rxDate: TODAY };
 
-  await assert.rejects(sendPrescriptionToPharmacy(rx.id, "other-pharm", opts), /Link this pharmacy/);
-  await assert.rejects(searchProductsForPharmacy("pan", "other-pharm"), /Link this pharmacy/);
+  await assert.rejects(sendPrescriptionToPharmacy(rx.id, "other-pharm", opts), /Link a pharmacy first/);
+  await assert.rejects(searchProductsForPharmacy("pan", "other-pharm"), /Link a pharmacy first/);
   await assert.rejects(savePharmacyLink("retail-1"), /pharmacy was not found/, "only hospital pharmacies");
   await assert.rejects(savePharmacyLink(B), /pharmacy was not found/, "not another clinic");
 

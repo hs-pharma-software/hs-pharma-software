@@ -7,6 +7,7 @@ import { Field, Input, Textarea } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { getSetting, setSetting } from "@/lib/repo/settings";
+import { LinkedPharmacyCard } from "@/components/clinic/LinkedPharmacyCard";
 
 const KEY = "hospital.profile";
 
@@ -81,6 +82,7 @@ export default function HospitalProfilePage() {
         </div>
         {savedAt && <p className="mt-3 text-xs text-emerald-600">Saved at {savedAt}.</p>}
       </div>
+      <div className="mt-4"><LinkedPharmacyCard /></div>
     </div>
   );
 }

@@ -71,6 +71,9 @@ export interface Caller {
 
 /** Only the Super Admin changes tenants and subscription plans (Admin screens). */
 const SUPER_ADMIN_WRITES = new Set(["tenants", "subscription_plans"]);
+/** A clinic's pharmacy link is made with the pharmacy's consent, by token,
+ * through /api/link/verify only (lib/businessLink.ts). */
+const LINK_ONLY_WRITES = new Set(["clinic_pharmacy_link"]);
 /** Logins are created and passwords changed through /api/auth only. */
 const AUTH_ONLY_WRITES = new Set(["users"]);
 /** Device-only tables and internal tables are never reached from the browser. */
@@ -123,6 +126,7 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     }
     for (const t of a.tables) {
       if (SUPER_ADMIN_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "Only the Super Admin changes tenants and plans." };
+      if (LINK_ONLY_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "A pharmacy is linked by token: the pharmacy enters the clinic's token in its settings." };
       // Profile fields (name, permissions, active) are edited by owners / Super Admin; passwords are blocked above.
       if (AUTH_ONLY_WRITES.has(t) && caller.role === "staff") return { ok: false, reason: "Only the owner manages logins." };
     }

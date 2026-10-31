@@ -345,6 +345,7 @@ const MIGRATIONS = [
   { version: 63, label: 'clinic services, lab, radiology and visit bills', statements: rustSchemaStatements(63) },
   { version: 64, label: 'clinic lab panel results (CBC, LFT, RFT...)', statements: rustSchemaStatements(64) },
   { version: 65, label: 'clinic: admission advised by the consultant', statements: rustSchemaStatements(65) },
+  { version: 66, label: 'pharmacy link by token (clinic / hospital to hospital pharmacy)', statements: rustSchemaStatements(66) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

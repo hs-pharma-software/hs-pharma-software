@@ -432,6 +432,7 @@ export async function getPharmacyLink(): Promise<ClinicPharmacyLink | null> {
  * that allows searching that pharmacy's catalogue and sending it prescriptions. */
 export async function savePharmacyLink(pharmacyTenantId: string): Promise<void> {
   const tenantId = requireCurrentTenantId();
+  if ((await getPharmacyLink())?.verified_at) throw new Error("The pharmacy link is verified and fixed. Only the administrator can change it.");
   const ok = await dbSelect<{ id: string }>(
     `SELECT id FROM tenants WHERE id = ? AND business_type = 'hospital_pharmacy' AND deleted_at IS NULL`,
     [pharmacyTenantId]
@@ -452,7 +453,7 @@ export async function savePharmacyLink(pharmacyTenantId: string): Promise<void> 
 export async function assertLinkedPharmacy(pharmacyTenantId: string): Promise<void> {
   const link = await getPharmacyLink();
   if (!link || link.pharmacy_tenant_id !== pharmacyTenantId) {
-    throw new Error("Link this pharmacy to the clinic first (Linked Pharmacy, on the consultation screen).");
+    throw new Error("Link a pharmacy first: Settings > Linked Pharmacy.");
   }
 }
 

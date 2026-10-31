@@ -14,11 +14,45 @@ import { getConsultationWithPrescriptions, patientsRepo, doctorsRepo } from "@/l
 import type { ClinicConsultation, ClinicDoctor, ClinicPatient, ClinicRxItem } from "@/lib/types-clinic";
 import { ClinicSlipHeader } from "./ClinicSlipHeader";
 import { parseComponents } from "@/config/labPanels";
+import { PAPERS } from "@/lib/printTemplates";
+import { PAPER_WIDTH, loadClinicTemplate, type ClinicDoc, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FLAG: Record<string, string> = { H: "High", L: "Low", N: "Normal" };
 
-function usePrint(autoPrint: boolean, ready: boolean) {
+/** The document's print template (Clinic Profile > Print Templates). */
+function useTemplate(doc: ClinicDoc): ClinicPrintTemplate | null {
+  const [t, setT] = useState<ClinicPrintTemplate | null>(null);
+  useEffect(() => { void loadClinicTemplate(doc).then(setT); }, [doc]);
+  return t;
+}
+
+/** The printed area: paper width, page size, header and (at the end) the
+ * signature line and footer of the template. */
+function PrintArea({ t, profile, areaRef, signature, children }: {
+  t: ClinicPrintTemplate;
+  profile: ClinicProfile;
+  areaRef: React.RefObject<HTMLDivElement | null>;
+  signature: string;
+  children: React.ReactNode;
+}) {
+  const p = PAPERS.find((x) => x.id === t.paper)!;
+  return (
+    <div ref={areaRef} className={`print-area mx-auto w-full ${PAPER_WIDTH[t.paper]} bg-white ${t.paper === "thermal" ? "text-[11px]" : "text-[13px]"} text-neutral-900`}>
+      <style>{`@media print { @page { size: ${p.css}; margin: ${p.marginMm}mm; } }`}</style>
+      <ClinicSlipHeader profile={profile} compact={t.paper === "thermal"} align={t.headerAlign} showIds={t.showIds} />
+      {children}
+      {t.signature && (
+        <div className="mt-10 flex justify-end">
+          <div className="min-w-[45%] border-t border-neutral-700 pt-1 text-center text-xs text-neutral-700">{signature}</div>
+        </div>
+      )}
+      {t.footer && <p className="mt-4 border-t border-neutral-300 pt-1 text-center text-[0.85em] text-neutral-600">{t.footer}</p>}
+    </div>
+  );
+}
+
+function usePrint(autoPrint: boolean, ready: boolean, paper: ClinicPrintTemplate["paper"] = "a4") {
   const areaRef = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
   const done = useRef(false);
@@ -26,7 +60,7 @@ function usePrint(autoPrint: boolean, ready: boolean) {
     if (printing) return;
     setPrinting(true);
     try {
-      await printDirect("a4", areaRef.current);
+      await printDirect(paper, areaRef.current);
     } catch (e) {
       window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -50,16 +84,17 @@ export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { ord
     void getClinicReport(orderId).then(setR).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [orderId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { areaRef, printing, print } = usePrint(autoPrint, Boolean(r && profile));
+  const t = useTemplate("lab");
+  const { areaRef, printing, print } = usePrint(autoPrint, Boolean(r && profile && t), t?.paper);
   const o = r?.order;
+  const narrow = t?.paper === "thermal";
   return (
     <Modal title={o ? `${o.kind === "lab" ? "Lab report" : "Radiology report"} ${o.order_no}` : "Report"} onClose={onClose} width="max-w-3xl">
-      {!r || !profile || !o ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
+      {!r || !profile || !o || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
-            <ClinicSlipHeader profile={profile} />
+          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={o.reported_by ? `Reported by: ${o.reported_by}` : "Reported by"}>
             <p className="mt-3 text-center text-sm font-bold uppercase tracking-widest">{o.kind === "lab" ? "Laboratory Report" : "Radiology Report"}</p>
-            <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 border-y border-neutral-300 py-2">
+            <div className={`mt-3 grid ${narrow ? "grid-cols-1" : "grid-cols-2"} gap-x-6 gap-y-1 border-y border-neutral-300 py-2`}>
               <div><span className="text-neutral-500">Patient: </span><b>{r.patient?.name ?? "—"}</b></div>
               <div><span className="text-neutral-500">MRN: </span>{r.patient?.mrn ?? "—"}</div>
               <div><span className="text-neutral-500">Gender / DOB: </span>{[r.patient?.gender, r.patient?.dob].filter(Boolean).join(" / ") || "—"}</div>
@@ -111,8 +146,8 @@ export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { ord
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Impression</p><p className="whitespace-pre-line font-semibold">{o.impression}</p></div>
               </div>
             )}
-            <p className="mt-10 text-right text-xs text-neutral-600">Reported by: {o.reported_by ?? "—"}</p>
-          </div>
+            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">Reported by: {o.reported_by ?? "—"}</p>}
+          </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>
@@ -147,8 +182,10 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
     })().catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [consultationId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { areaRef, printing, print } = usePrint(false, Boolean(d && profile));
+  const t = useTemplate("prescription");
+  const { areaRef, printing, print } = usePrint(false, Boolean(d && profile && t), t?.paper);
   const c = d?.consultation;
+  const narrow = t?.paper === "thermal";
   const section = (kind: "lab" | "radiology", external: boolean) => d?.orders.filter((o) => o.kind === kind && (o.status === "external") === external) ?? [];
   const tests = (title: string, rows: ClinicOrder[]) => rows.length > 0 && (
     <div>
@@ -167,11 +204,10 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
   const field = (label: string, value: string | null | undefined) => value ? <div><span className="font-semibold">{label}: </span><span className="whitespace-pre-line">{value}</span></div> : null;
   return (
     <Modal title="Consultation" onClose={onClose} width="max-w-3xl">
-      {!d || !profile || !c ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
+      {!d || !profile || !c || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
-            <ClinicSlipHeader profile={profile} />
-            <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 border-b border-neutral-300 pb-2">
+          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={d.doctor ? `Dr. ${d.doctor.name}` : "Doctor's signature"}>
+            <div className={`mt-3 grid ${narrow ? "grid-cols-1" : "grid-cols-2"} gap-x-6 gap-y-1 border-b border-neutral-300 pb-2`}>
               <div><span className="text-neutral-500">Patient: </span><b>{d.patient?.name ?? "—"}</b></div>
               <div><span className="text-neutral-500">Date: </span>{c.date}</div>
               <div><span className="text-neutral-500">MRN: </span>{d.patient?.mrn ?? "—"}</div>
@@ -203,7 +239,7 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
               </div>
             )}
             {(section("lab", false).length + section("lab", true).length + section("radiology", false).length + section("radiology", true).length) > 0 && (
-              <div className="mt-3 grid grid-cols-2 gap-4">
+              <div className={`mt-3 grid ${narrow ? "grid-cols-1" : "grid-cols-2"} gap-4`}>
                 <div className="flex flex-col gap-2">
                   <p className="font-semibold">Lab tests</p>
                   {tests("In-house (this clinic)", section("lab", false))}
@@ -226,8 +262,8 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
               {field("Advice", c.advice)}
               {c.followup_date && <div><span className="font-semibold">Follow-up: </span>{c.followup_date}{c.followup_notes ? ` - ${c.followup_notes}` : ""}</div>}
             </div>
-            <p className="mt-10 text-right text-xs text-neutral-600">{d.doctor ? `Dr. ${d.doctor.name}` : ""}</p>
-          </div>
+            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">{d.doctor ? `Dr. ${d.doctor.name}` : ""}</p>}
+          </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>
@@ -245,20 +281,21 @@ export function ClinicVisitInvoiceModal({ invoiceId, onClose, autoPrint = false 
     void getClinicVisitInvoice(invoiceId).then(setInv).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { areaRef, printing, print } = usePrint(autoPrint, Boolean(inv && profile));
+  const t = useTemplate("invoice");
+  const { areaRef, printing, print } = usePrint(autoPrint, Boolean(inv && profile && t), t?.paper);
+  const narrow = t?.paper === "thermal";
   const groups = inv ? SERVICE_CATEGORIES.map((c) => ({ key: c.key, lines: inv.lines.filter((l) => l.kind === c.key) })).filter((g) => g.lines.length) : [];
   return (
     <Modal title={inv ? `Invoice #${inv.invoice.invoice_no ?? ""}` : "Invoice"} onClose={onClose} width="max-w-3xl">
-      {!inv || !profile ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
+      {!inv || !profile || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
-            <ClinicSlipHeader profile={profile} />
-            <div className="mt-3 flex items-start justify-between">
+          <PrintArea t={t} profile={profile} areaRef={areaRef} signature="Received by">
+            <div className={`mt-3 flex ${narrow ? "flex-col gap-1" : "items-start justify-between"}`}>
               <div>
                 <p className="text-base font-bold uppercase tracking-widest">Invoice</p>
                 <p>No. <b>{inv.invoice.invoice_no}</b> · {inv.invoice.date}</p>
               </div>
-              <div className="text-right">
+              <div className={narrow ? "" : "text-right"}>
                 <p><span className="text-neutral-500">Patient: </span><b>{inv.patient?.name ?? inv.invoice.customer_name ?? "—"}</b></p>
                 {inv.patient?.mrn && <p><span className="text-neutral-500">MRN: </span>{inv.patient.mrn}</p>}
                 {inv.doctor && <p><span className="text-neutral-500">Doctor: </span>Dr. {inv.doctor.name}</p>}
@@ -286,14 +323,14 @@ export function ClinicVisitInvoiceModal({ invoiceId, onClose, autoPrint = false 
                 ))}
               </tbody>
             </table>
-            <div className="mt-3 ml-auto w-64 text-sm">
+            <div className={`mt-3 ml-auto ${narrow ? "w-full" : "w-64 text-sm"}`}>
               <div className="flex justify-between"><span>Total</span><span className="tabular-nums">{money(inv.invoice.total)}</span></div>
               {Number(inv.invoice.discount_rs) > 0 && <div className="flex justify-between"><span>Discount</span><span className="tabular-nums">-{money(inv.invoice.discount_rs)}</span></div>}
               <div className="flex justify-between border-t border-neutral-800 font-bold"><span>Payable</span><span className="tabular-nums">{money(inv.invoice.payable)}</span></div>
               <div className="flex justify-between"><span>Paid</span><span className="tabular-nums">{money(inv.invoice.paid)}</span></div>
               <div className="flex justify-between font-semibold"><span>Balance</span><span className="tabular-nums">{money(inv.invoice.balance)}</span></div>
             </div>
-          </div>
+          </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>

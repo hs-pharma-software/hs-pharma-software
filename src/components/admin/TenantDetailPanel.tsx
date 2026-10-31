@@ -10,6 +10,8 @@ import { parseAllowedModules } from "@/lib/repo/subscriptionPlans";
 import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions";
 import { PAPERS, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/lib/printTemplates";
 import { NAV } from "@/config/nav";
+import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
+import { linkOfTenant, unlinkPharmacy } from "@/lib/repo/pharmacyLink";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
 import {
   BUSINESS_TYPES,
@@ -79,9 +81,22 @@ export function TenantDetailPanel({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const [pharmacyLink, setPharmacyLink] = useState<Awaited<ReturnType<typeof linkOfTenant>>>(null);
+
   useEffect(() => {
     void loadDefaultPaper(tenant.id).then(setPaper);
+    void linkOfTenant(tenant.id).then(setPharmacyLink).catch(() => setPharmacyLink(null));
   }, [tenant.id]);
+
+  async function unlink() {
+    if (!window.confirm(`Remove the pharmacy link of ${tenant.name}? They can then link a pharmacy again with a new token.`)) return;
+    try {
+      await unlinkPharmacy(tenant.id);
+      setPharmacyLink(null);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   const type = businessType(typeId);
   const selectedPlan = plan(planId);
@@ -315,7 +330,27 @@ export function TenantDetailPanel({
             </div>
             <Button onClick={() => setEditorOpen(true)}>Edit Templates</Button>
           </div>
+          {typeId === "clinic" && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-medium text-neutral-600">Clinic documents (invoice, lab report, prescription)</p>
+              <ClinicPrintTemplatesCard tenantId={tenant.id} editable embedded />
+            </div>
+          )}
         </Section>
+
+        {(typeId === "clinic" || typeId === "hospital") && (
+          <Section title="Linked Pharmacy" hint="Made by token; once the pharmacy verifies it, only you can remove it.">
+            {pharmacyLink ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span>
+                  <b>{pharmacyLink.pharmacy_name ?? pharmacyLink.pharmacy_tenant_id}</b>
+                  <span className="text-neutral-500"> · {pharmacyLink.verified_at ? `verified ${new Date(pharmacyLink.verified_at).toLocaleDateString()}` : "not verified"}</span>
+                </span>
+                <Button onClick={() => void unlink()}>Unlink</Button>
+              </div>
+            ) : <p className="text-sm text-neutral-500">No pharmacy linked.</p>}
+          </Section>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-3">

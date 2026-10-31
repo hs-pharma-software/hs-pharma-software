@@ -1350,6 +1350,33 @@ fn schema_sql_v65() -> &'static str {
     "#
 }
 
+/// Linking a clinic / hospital to a hospital pharmacy by token: the clinic
+/// makes a one-time token (only its SHA-256 hash is kept), the pharmacy enters
+/// it in its settings, and the verified link is then fixed (only the Super
+/// Admin can undo it).
+fn schema_sql_v66() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS business_link_tokens (
+        id                 TEXT PRIMARY KEY,
+        tenant_id          TEXT NOT NULL,
+        token_hash         TEXT NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'pending',
+        expires_at         TEXT NOT NULL,
+        pharmacy_tenant_id TEXT,
+        verified_at        TEXT,
+        created_by         TEXT,
+        created_at         TEXT NOT NULL,
+        updated_at         TEXT NOT NULL,
+        deleted_at         TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_business_link_token ON business_link_tokens (token_hash);
+    CREATE INDEX IF NOT EXISTS ix_business_link_tokens_tenant ON business_link_tokens (tenant_id, status);
+    ALTER TABLE clinic_pharmacy_link ADD COLUMN verified_at TEXT;
+    ALTER TABLE clinic_pharmacy_link ADD COLUMN verified_by TEXT;
+    ALTER TABLE clinic_pharmacy_link ADD COLUMN clinic_name TEXT;
+    "#
+}
+
 /// Clinic lab panels: the parameters of a panel test (CBC, LFT, RFT, lipid
 /// profile, electrolytes, urine R/E), JSON LabComponent[], as in the hospital lab.
 fn schema_sql_v64() -> &'static str {
@@ -3160,6 +3187,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 65,
             description: "clinic_admission_advice",
             sql: schema_sql_v65(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 66,
+            description: "pharmacy_link_tokens",
+            sql: schema_sql_v66(),
             kind: MigrationKind::Up,
         },
     ]

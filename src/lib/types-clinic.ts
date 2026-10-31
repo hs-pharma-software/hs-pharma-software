@@ -110,4 +110,8 @@ export interface ClinicPharmacyLink extends BaseRow {
   clinic_tenant_id: string;
   pharmacy_tenant_id: string;
   is_active: number;
+  /** Set when the pharmacy redeemed the clinic's token (v66); the link is then fixed. */
+  verified_at?: string | null;
+  verified_by?: string | null;
+  clinic_name?: string | null;
 }
