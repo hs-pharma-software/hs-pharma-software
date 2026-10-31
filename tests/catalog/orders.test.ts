@@ -80,3 +80,26 @@ test("edit, convert (purchase linked, then locked) and delete", async () => {
   await deleteOrder(o.id, "done");
   assert.deepEqual(await listOrdersWithStatus(), []);
 });
+
+test("two checks at once order a product only once; existing duplicate stock-out orders are merged", async () => {
+  bought("s1", "2026-10-01", "p1", 5, 400);
+  bought("s1", "2026-10-02", "p2", 10, 30);
+  stock("p1", 0);
+  stock("p2", 0);
+  const [a, b] = await Promise.all([createStockOutOrders(DAY), createStockOutOrders(DAY)]);
+  assert.deepEqual(a, b, "the second call shares the first run");
+  let orders = await listOrdersWithStatus();
+  assert.equal(orders.length, 1);
+  assert.equal(orders[0].item_count, 2);
+
+  // Duplicates made before this fix: a second open stock-out order for the same supplier.
+  const dup = await saveOrder(null, { supplierId: "s1", orderType: AUTO_ORDER_TYPE, advancePayment: 0, paymentMethod: "Cash", description: null },
+    [{ productId: "p1", packing: 10, uomId: null, qty: 5, purchasePrice: 400 }, { productId: "p3", packing: 1, uomId: null, qty: 2, purchasePrice: 500 }], DAY);
+  assert.equal((await listOrdersWithStatus()).length, 2);
+  await createStockOutOrders(DAY);
+  orders = await listOrdersWithStatus();
+  assert.equal(orders.length, 1, "merged into the oldest");
+  assert.notEqual(orders[0].id, dup.id);
+  assert.equal(orders[0].item_count, 3, "p1 kept once, p3 moved over");
+  assert.equal(orders[0].estimated_price, 5 * 400 + 10 * 30 + 2 * 500);
+});

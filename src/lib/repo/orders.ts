@@ -195,6 +195,57 @@ export async function orderForPurchase(orderId: string): Promise<OrderForPurchas
  * purchase, with that purchase's quantity and rate. Products of one supplier
  * share one open stock-out order. */
 export async function createStockOutOrders(today: string): Promise<{ products: number; orders: number }> {
+  // One check at a time: two at once (two tabs, a reload mid-check) would both order the same products.
+  const key = currentTenantId() ?? "";
+  const running = stockOutRuns.get(key);
+  if (running) return running;
+  const run = (async () => {
+    await mergeDuplicateAutoOrders();
+    const r = await raiseStockOutOrders(today);
+    // Another tab or device may have checked at the same moment: fold any copy in again.
+    await mergeDuplicateAutoOrders();
+    return r;
+  })().finally(() => stockOutRuns.delete(key));
+  stockOutRuns.set(key, run);
+  return run;
+}
+
+const stockOutRuns = new Map<string, Promise<{ products: number; orders: number }>>();
+
+/** Folds duplicate open stock-out orders of one supplier into the oldest: its
+ * products are kept once, the copies are deleted. Returns how many were removed. */
+export async function mergeDuplicateAutoOrders(): Promise<number> {
+  const t = currentTenantId();
+  const open = await dbSelect<{ id: string; supplier_id: string }>(
+    `SELECT o.id, o.supplier_id FROM orders o
+     WHERE o.tenant_id = ? AND o.deleted_at IS NULL AND o.order_type = ?
+       AND NOT EXISTS (SELECT 1 FROM purchases pu WHERE pu.order_id = o.id AND pu.deleted_at IS NULL)
+     ORDER BY o.created_at ASC, o.id ASC`,
+    [t, AUTO_ORDER_TYPE]
+  );
+  const keep = new Map<string, string>();
+  let removed = 0;
+  for (const o of open) {
+    const kept = keep.get(o.supplier_id);
+    if (!kept) { keep.set(o.supplier_id, o.id); continue; }
+    const have = new Set((await orderItemsRepo.list({ where: "order_id = ?", params: [kept] })).map((i) => i.product_id));
+    for (const it of await orderItemsRepo.list({ where: "order_id = ?", params: [o.id] })) {
+      if (have.has(it.product_id)) await orderItemsRepo.remove(it.id);
+      else { await orderItemsRepo.update(it.id, { order_id: kept }); have.add(it.product_id); }
+    }
+    await ordersRepo.remove(o.id, "Duplicate stock-out order merged", "Order");
+    removed++;
+  }
+  if (!removed) return 0;
+  // Bring the merged orders' estimates in step with their lines.
+  for (const id of keep.values()) {
+    const items = await orderItemsRepo.list({ where: "order_id = ?", params: [id] });
+    await ordersRepo.update(id, { estimated_price: items.reduce((s, i) => s + (Number(i.purchase_price) || 0) * (Number(i.qty) || 0), 0) });
+  }
+  return removed;
+}
+
+async function raiseStockOutOrders(today: string): Promise<{ products: number; orders: number }> {
   const t = currentTenantId();
   type Last = { supplier_id: string; purchase_price: number; qty: number; packing: number | null; uom_id: string | null; max_stock_qty: number | null };
   const last = new Map<string, Last>();
