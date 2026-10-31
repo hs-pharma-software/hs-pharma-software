@@ -1,6 +1,7 @@
 ﻿import { dbSelect } from "../db";
 import { useAuthStore } from "../../store/authStore";
 import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../catalogAccess";
+import { localDate } from "../localDate";
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
@@ -203,33 +204,47 @@ export interface TodaySummary {
   cashOut: number;
 }
 
-export async function getTodaySummary(): Promise<TodaySummary> {
-  const tenantId = currentTenantId();
-  const [sales, expenses, cash] = await Promise.all([
-    dbSelect<{ sales: number; n: number }>(
-      `SELECT
-         COALESCE(SUM(CASE WHEN is_return = 0 THEN total ELSE -total END), 0) AS sales,
-         COALESCE(SUM(CASE WHEN is_return = 0 THEN 1 ELSE 0 END), 0) AS n
+/** Today's figures. "Today" is the business's own (local) date, as invoices
+ * are saved with it; the database's date('now') is UTC and was a day behind
+ * in Pakistan until 5 am. Money in = payments taken on today's sales,
+ * payments received from customers and cash-register receipts; money out =
+ * payments on today's purchases, refunds on returns, payments to suppliers /
+ * staff, today's expenses and cash-register payments. */
+export async function getTodaySummary(today: string = localDate()): Promise<TodaySummary> {
+  const t = currentTenantId();
+  const day = `substr(date, 1, 10) = ?`;
+  const one = async (sql: string, params: unknown[]) => Number((await dbSelect<{ n: number | null }>(sql, params))[0]?.n ?? 0) || 0;
+  const [salesRows, expenses, register, salePaid, refunds, purchasePaid, purchaseRefunds, received, paidOut] = await Promise.all([
+    dbSelect<{ sales: number | null; n: number | null }>(
+      `SELECT COALESCE(SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN COALESCE(total, 0) ELSE -COALESCE(total, 0) END), 0) AS sales,
+              COALESCE(SUM(CASE WHEN COALESCE(is_return, 0) = 0 THEN 1 ELSE 0 END), 0) AS n
        FROM invoices
-       WHERE deleted_at IS NULL AND tenant_id = ? AND is_memorized = 0 AND is_quotation = 0 AND date = date('now')`,
-      [tenantId]
+       WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(is_memorized, 0) = 0 AND COALESCE(is_quotation, 0) = 0 AND ${day}`,
+      [t, today]
     ),
-    dbSelect<{ n: number }>(
-      `SELECT COALESCE(SUM(amount),0) AS n FROM expenses WHERE deleted_at IS NULL AND tenant_id = ? AND date = date('now')`,
-      [tenantId]
+    one(`SELECT COALESCE(SUM(amount), 0) AS n FROM expenses WHERE deleted_at IS NULL AND tenant_id = ? AND ${day}`, [t, today]),
+    dbSelect<{ cash_in: number | null; cash_out: number | null }>(
+      `SELECT COALESCE(SUM(CASE WHEN transaction_type = 'in' THEN amount ELSE 0 END), 0) AS cash_in,
+              COALESCE(SUM(CASE WHEN transaction_type = 'out' THEN amount ELSE 0 END), 0) AS cash_out
+       FROM cash_register_entries WHERE deleted_at IS NULL AND tenant_id = ? AND ${day}`,
+      [t, today]
     ),
-    dbSelect<{ cash_in: number; cash_out: number }>(
-      `SELECT COALESCE(SUM(CASE WHEN transaction_type='in' THEN amount ELSE 0 END),0) AS cash_in,
-              COALESCE(SUM(CASE WHEN transaction_type='out' THEN amount ELSE 0 END),0) AS cash_out
-       FROM cash_register_entries WHERE deleted_at IS NULL AND tenant_id = ? AND date = date('now')`,
-      [tenantId]
-    ),
+    one(`SELECT COALESCE(SUM(paid), 0) AS n FROM invoices WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(is_return, 0) = 0
+         AND COALESCE(is_memorized, 0) = 0 AND COALESCE(is_quotation, 0) = 0 AND ${day}`, [t, today]),
+    one(`SELECT COALESCE(SUM(paid), 0) AS n FROM invoices WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(is_return, 0) = 1
+         AND COALESCE(is_quotation, 0) = 0 AND ${day}`, [t, today]),
+    one(`SELECT COALESCE(SUM(paid_amount), 0) AS n FROM purchases WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(is_return, 0) = 0 AND ${day}`, [t, today]),
+    one(`SELECT COALESCE(SUM(paid_amount), 0) AS n FROM purchases WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(is_return, 0) = 1 AND ${day}`, [t, today]),
+    one(`SELECT COALESCE(SUM(paid_amount), 0) AS n FROM ledger_adjustments WHERE deleted_at IS NULL AND tenant_id = ? AND party_type = 'customer' AND ${day}`, [t, today]),
+    one(`SELECT COALESCE(SUM(paid_amount), 0) AS n FROM ledger_adjustments WHERE deleted_at IS NULL AND tenant_id = ? AND party_type IN ('supplier', 'staff') AND ${day}`, [t, today]),
   ]);
+  const cashIn = Number(register[0]?.cash_in ?? 0) + salePaid + purchaseRefunds + received;
+  const cashOut = Number(register[0]?.cash_out ?? 0) + refunds + purchasePaid + paidOut + expenses;
   return {
-    sales: sales[0]?.sales ?? 0,
-    invoiceCount: sales[0]?.n ?? 0,
-    expenses: expenses[0]?.n ?? 0,
-    cashIn: cash[0]?.cash_in ?? 0,
-    cashOut: cash[0]?.cash_out ?? 0,
+    sales: Number(salesRows[0]?.sales ?? 0),
+    invoiceCount: Number(salesRows[0]?.n ?? 0),
+    expenses,
+    cashIn,
+    cashOut,
   };
 }
