@@ -12,6 +12,9 @@ import {
   listClinicWork, markClinicOrderStarted, enterClinicLabResult, reportClinicRadiology, cancelClinicOrder, type ClinicWorkRow,
 } from "@/lib/repo/clinicServices";
 import { ClinicReportModal } from "./ClinicPrints";
+import { LabPanelForm } from "@/components/lab/LabPanelForm";
+import { panelFor, parseComponents } from "@/config/labPanels";
+import type { LabComponent } from "@/lib/types-hospital";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   ordered: { label: "Ordered", cls: "bg-sky-100 text-sky-800" },
@@ -89,6 +92,27 @@ export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
 }
 
 function LabResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
+  const panel = panelFor(row.name);
+  if (panel) return <PanelResultModal row={row} onClose={onClose} onSaved={onSaved} />;
+  return <SingleResultModal row={row} onClose={onClose} onSaved={onSaved} />;
+}
+
+/** CBC, LFT, RFT, lipid profile, electrolytes, urine R/E: every parameter. */
+function PanelResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
+  const [saving, setSaving] = useState(false);
+  async function save(components: LabComponent[]) {
+    setSaving(true);
+    try { await enterClinicLabResult(row.id, { value: "", components }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
+  }
+  return (
+    <Modal title={`Result: ${row.name}`} onClose={onClose} width="max-w-3xl">
+      <p className="mb-2 text-sm text-neutral-600">{row.patient_name}{row.gender ? ` · ${row.gender}` : ""} · {row.order_no}</p>
+      <LabPanelForm panel={panelFor(row.name)!} gender={row.gender} saved={parseComponents(row.components)} saving={saving} onSave={(c) => void save(c)} onCancel={onClose} />
+    </Modal>
+  );
+}
+
+function SingleResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
   const [value, setValue] = useState(row.result_value ?? "");
   const [unit, setUnit] = useState(row.unit ?? "");
   const [range, setRange] = useState(row.ref_range ?? "");

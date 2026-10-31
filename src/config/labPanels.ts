@@ -40,12 +40,82 @@ export const CBC_PANEL: PanelParam[] = [
   P("alc", "Absolute Lymphocyte Count", "ALC", ABS, "×10³/µL", "1.0-3.0"),
   P("plt", "Platelet count", "Plt", PLT, "×10³/µL", "150-400"),
   P("mpv", "MPV", "MPV", PLT, "fL", "7.5-11.5"),
+  P("esr", "ESR (Westergren)", "ESR", "ESR", "mm/1st hour", "M 0-15; F 0-20"),
 ];
+
+export const LFT_PANEL: PanelParam[] = [
+  P("tbil", "Bilirubin Total", "T.Bil", "Bilirubin", "mg/dL", "0.2-1.2"),
+  P("dbil", "Bilirubin Direct", "D.Bil", "Bilirubin", "mg/dL", "0.0-0.3"),
+  P("ibil", "Bilirubin Indirect", "I.Bil", "Bilirubin", "mg/dL", "0.2-0.9"),
+  P("alt", "ALT (SGPT)", "ALT", "Enzymes", "U/L", "M 0-41; F 0-33"),
+  P("ast", "AST (SGOT)", "AST", "Enzymes", "U/L", "M 0-40; F 0-32"),
+  P("alp", "Alkaline Phosphatase (ALP)", "ALP", "Enzymes", "U/L", "40-129"),
+  P("ggt", "Gamma GT (GGT)", "GGT", "Enzymes", "U/L", "M 10-71; F 6-42"),
+  P("tp", "Total Protein", "TP", "Proteins", "g/dL", "6.4-8.3"),
+  P("alb", "Albumin", "Alb", "Proteins", "g/dL", "3.5-5.2"),
+  P("glob", "Globulin", "Glob", "Proteins", "g/dL", "2.0-3.5"),
+  P("agr", "A/G Ratio", "A/G", "Proteins", "", "1.1-2.2"),
+];
+
+export const RFT_PANEL: PanelParam[] = [
+  P("urea", "Urea", "Urea", "Renal", "mg/dL", "15-45"),
+  P("bun", "Blood Urea Nitrogen (BUN)", "BUN", "Renal", "mg/dL", "7-20"),
+  P("creat", "Creatinine", "Creat", "Renal", "mg/dL", "M 0.7-1.3; F 0.6-1.1"),
+  P("uric", "Uric Acid", "UA", "Renal", "mg/dL", "M 3.4-7.0; F 2.4-5.7"),
+  P("na", "Sodium (Na)", "Na", "Electrolytes", "mmol/L", "135-145"),
+  P("k", "Potassium (K)", "K", "Electrolytes", "mmol/L", "3.5-5.1"),
+  P("cl", "Chloride (Cl)", "Cl", "Electrolytes", "mmol/L", "98-107"),
+];
+
+export const ELECTROLYTES_PANEL: PanelParam[] = [
+  P("na", "Sodium (Na)", "Na", "Electrolytes", "mmol/L", "135-145"),
+  P("k", "Potassium (K)", "K", "Electrolytes", "mmol/L", "3.5-5.1"),
+  P("cl", "Chloride (Cl)", "Cl", "Electrolytes", "mmol/L", "98-107"),
+  P("hco3", "Bicarbonate (HCO₃)", "HCO3", "Electrolytes", "mmol/L", "22-29"),
+];
+
+export const LIPID_PANEL: PanelParam[] = [
+  P("chol", "Cholesterol Total", "Chol", "Lipids", "mg/dL", "< 200"),
+  P("tg", "Triglycerides", "TG", "Lipids", "mg/dL", "< 150"),
+  P("hdl", "HDL Cholesterol", "HDL", "Lipids", "mg/dL", "> 40"),
+  P("ldl", "LDL Cholesterol", "LDL", "Lipids", "mg/dL", "< 130"),
+  P("vldl", "VLDL Cholesterol", "VLDL", "Lipids", "mg/dL", "< 30"),
+  P("chol_hdl", "Cholesterol / HDL ratio", "Chol/HDL", "Lipids", "", "< 5"),
+];
+
+const PHYS = "Physical";
+const CHEM = "Chemical";
+const MICRO = "Microscopic";
+export const URINE_RE_PANEL: PanelParam[] = [
+  P("u_colour", "Colour", "Colour", PHYS, "", "Pale yellow"),
+  P("u_appear", "Appearance", "Appearance", PHYS, "", "Clear"),
+  P("u_sg", "Specific gravity", "SG", PHYS, "", "1.005-1.030"),
+  P("u_ph", "pH", "pH", CHEM, "", "4.5-8.0"),
+  P("u_protein", "Protein", "Protein", CHEM, "", "Nil"),
+  P("u_glucose", "Glucose (sugar)", "Sugar", CHEM, "", "Nil"),
+  P("u_ketones", "Ketones", "Ketones", CHEM, "", "Nil"),
+  P("u_blood", "Blood", "Blood", CHEM, "", "Nil"),
+  P("u_bili", "Bilirubin", "Bil", CHEM, "", "Nil"),
+  P("u_nitrite", "Nitrite", "Nitrite", CHEM, "", "Negative"),
+  P("u_pus", "Pus cells", "Pus", MICRO, "/HPF", "0-5"),
+  P("u_rbc", "Red blood cells", "RBCs", MICRO, "/HPF", "0-2"),
+  P("u_epi", "Epithelial cells", "Epi", MICRO, "/HPF", "Few"),
+  P("u_casts", "Casts", "Casts", MICRO, "", "Nil"),
+  P("u_crystals", "Crystals", "Crystals", MICRO, "", "Nil"),
+  P("u_bacteria", "Bacteria", "Bacteria", MICRO, "", "Nil"),
+];
+
+const ALL_PANELS = [CBC_PANEL, LFT_PANEL, RFT_PANEL, ELECTROLYTES_PANEL, LIPID_PANEL, URINE_RE_PANEL];
 
 /** The panel of a test, by its name, or null for a single-value test. */
 export function panelFor(testName: string | null | undefined): PanelParam[] | null {
   const n = (testName ?? "").toLowerCase();
   if (/\bcbc\b|complete blood (count|picture)|full blood count|\bcbp\b/.test(n)) return CBC_PANEL;
+  if (/\blft\b|liver function/.test(n)) return LFT_PANEL;
+  if (/\brft\b|renal function|kidney function|\bkft\b/.test(n)) return RFT_PANEL;
+  if (/lipid/.test(n)) return LIPID_PANEL;
+  if (/electrolyte/.test(n)) return ELECTROLYTES_PANEL;
+  if (/urine (routine|r\/?e|complete|analysis)|urinalysis|\bu\/?re\b/.test(n)) return URINE_RE_PANEL;
   return null;
 }
 
@@ -90,7 +160,7 @@ export function parseComponents(json: string | null | undefined): LabComponent[]
 
 /** One line for the whole panel: "Hb 10.1 L, TLC 7.5, Plt 250". */
 export function summarizeComponents(components: LabComponent[]): string {
-  const short = new Map(CBC_PANEL.map((p) => [p.key, p.short]));
+  const short = new Map(ALL_PANELS.flat().map((p) => [p.key, p.short]));
   return components
     .filter((c) => c.value.trim())
     .map((c) => `${short.get(c.key) ?? c.name} ${c.value.trim()}${c.flag === "H" || c.flag === "L" ? ` ${c.flag}` : ""}`)

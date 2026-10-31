@@ -131,3 +131,29 @@ test("today's bills for reception: fee due before the consultation, then due / b
   b = (await listDayBills(TODAY)).get(a.id)!;
   assert.deepEqual([b.due, b.billed, b.paid, b.balance], [0, 1300, 1000, 300]);
 });
+
+test("panel tests: CBC (with ESR), LFT, RFT, lipids, electrolytes, urine R/E are entered parameter by parameter", async () => {
+  const { panelFor, parseComponents } = await import("@/config/labPanels");
+  assert.ok(panelFor("Complete Blood Count (CBC)")!.some((p) => p.key === "esr"));
+  for (const n of ["Liver Function Tests (LFT)", "Renal Function Tests (RFT)", "Lipid Profile", "Serum Electrolytes (Na, K, Cl)", "Urine Routine Examination (Urine R/E)"]) {
+    assert.ok(panelFor(n)?.length, n);
+  }
+  assert.equal(panelFor("ESR (Westergren)"), null);
+
+  const { c } = await visit();
+  const cbc = await saveClinicService(null, { name: "Complete Blood Count (CBC)", category: "lab", rate: 1200 });
+  const o = await addClinicOrder({ consultationId: c.id, serviceId: cbc.id });
+  await assert.rejects(enterClinicLabResult(o.id, { value: "", components: [{ key: "hb", name: "Hb", group: null, value: " ", unit: null, ref_range: null, flag: null }] }), /at least one/);
+  const done = await enterClinicLabResult(o.id, {
+    value: "",
+    components: [
+      { key: "hb", name: "Haemoglobin (Hb)", group: "Red cells", value: "10.1", unit: "g/dL", ref_range: "M 13.0-17.0; F 12.0-15.0", flag: "L" },
+      { key: "tlc", name: "TLC", group: "White cells", value: "7.5", unit: "×10³/µL", ref_range: "4.0-11.0", flag: "N" },
+      { key: "esr", name: "ESR (Westergren)", group: "ESR", value: "35", unit: "mm/1st hour", ref_range: "M 0-15; F 0-20", flag: "H" },
+    ],
+  });
+  assert.equal(done.status, "reported");
+  assert.equal(done.result_value, "Hb 10.1 L, TLC 7.5, ESR 35 H");
+  assert.equal(parseComponents(done.components).length, 3);
+  assert.equal((await getClinicReport(o.id)).order.components, done.components);
+});

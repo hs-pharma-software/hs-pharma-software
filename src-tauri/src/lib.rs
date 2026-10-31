@@ -1337,6 +1337,14 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Clinic lab panels: the parameters of a panel test (CBC, LFT, RFT, lipid
+/// profile, electrolytes, urine R/E), JSON LabComponent[], as in the hospital lab.
+fn schema_sql_v64() -> &'static str {
+    r#"
+    ALTER TABLE clinic_orders ADD COLUMN components TEXT;
+    "#
+}
+
 /// Clinic services, lab and radiology: the clinic's own services with fees
 /// (consultation, lab tests, radiology, procedures, room, nursing, medicine),
 /// and what a consultation orders from them: lab tests with results,
@@ -3127,6 +3135,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 63,
             description: "clinic_services_orders",
             sql: schema_sql_v63(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 64,
+            description: "clinic_orders_components",
+            sql: schema_sql_v64(),
             kind: MigrationKind::Up,
         },
     ]

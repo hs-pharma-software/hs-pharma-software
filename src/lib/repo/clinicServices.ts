@@ -12,7 +12,9 @@ import { localDate, localDateTime } from "../localDate";
 import { useAuthStore } from "../../store/authStore";
 import { consultationsRepo, doctorsRepo, patientsRepo, appointmentsRepo } from "./clinic";
 import { invoicesRepo, nextInvoiceNo } from "./invoices";
-import { flagFor } from "../../config/labPanels";
+import { flagFor, summarizeComponents } from "../../config/labPanels";
+import { isMissingSchemaError } from "../dbErrors";
+import type { LabComponent } from "../types-hospital";
 import type { ClinicConsultation, ClinicDoctor, ClinicPatient } from "../types-clinic";
 import type { Invoice } from "../types2";
 
@@ -65,6 +67,8 @@ export interface ClinicOrder extends TenantRow {
   status: ClinicOrderStatus;
   priority: "routine" | "urgent" | "stat";
   result_value: string | null;
+  /** The parameters of a panel test (CBC, LFT...), JSON LabComponent[] (v64). */
+  components?: string | null;
   unit: string | null;
   ref_range: string | null;
   flag: "N" | "H" | "L" | null;
@@ -237,11 +241,26 @@ export async function markClinicOrderStarted(orderId: string): Promise<void> {
   await clinicOrdersRepo.update(orderId, { status: o.kind === "lab" ? "collected" : "performed" });
 }
 
-/** Enters a lab result; the flag (high / low / normal) follows from the range and the patient's sex. */
-export async function enterClinicLabResult(orderId: string, r: { value: string; unit?: string | null; refRange?: string | null }): Promise<ClinicOrder> {
+/** Enters a lab result; the flag (high / low / normal) follows from the range
+ * and the patient's sex. A panel (CBC, LFT...) is entered parameter by
+ * parameter (`components`); its summary becomes the result. */
+export async function enterClinicLabResult(orderId: string, r: { value: string; unit?: string | null; refRange?: string | null; components?: LabComponent[] }): Promise<ClinicOrder> {
   const o = await clinicOrdersRepo.get(orderId);
   if (!o || o.kind !== "lab") throw new Error("Lab order not found.");
   if (o.status === "cancelled") throw new Error("This test is cancelled.");
+  if (r.components) {
+    const parts = r.components.filter((c) => c.value.trim());
+    if (!parts.length) throw new Error("Enter at least one result.");
+    try {
+      return (await clinicOrdersRepo.update(orderId, {
+        components: JSON.stringify(parts), result_value: summarizeComponents(parts), unit: null, ref_range: null, flag: null,
+        status: "reported", reported_by: actorName(), reported_at: localDateTime(),
+      }))!;
+    } catch (e) {
+      if (isMissingSchemaError(e)) throw new Error("Panel results (CBC, LFT...) need the latest database update (v64). Ask the administrator to run it.");
+      throw e;
+    }
+  }
   const value = r.value.trim();
   if (!value) throw new Error("Enter the result.");
   const patient = await patientsRepo.get(o.patient_id);

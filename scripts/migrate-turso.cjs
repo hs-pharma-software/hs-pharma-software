@@ -343,6 +343,7 @@ const MIGRATIONS = [
   { version: 61, label: 'bonus quantity on purchase lines', statements: rustSchemaStatements(61) },
   { version: 62, label: 'salesman login and monthly target', statements: rustSchemaStatements(62) },
   { version: 63, label: 'clinic services, lab, radiology and visit bills', statements: rustSchemaStatements(63) },
+  { version: 64, label: 'clinic lab panel results (CBC, LFT, RFT...)', statements: rustSchemaStatements(64) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

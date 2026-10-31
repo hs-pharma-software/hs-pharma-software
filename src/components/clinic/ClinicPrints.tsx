@@ -13,6 +13,7 @@ import {
 import { getConsultationWithPrescriptions, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
 import type { ClinicConsultation, ClinicDoctor, ClinicPatient, ClinicRxItem } from "@/lib/types-clinic";
 import { ClinicSlipHeader } from "./ClinicSlipHeader";
+import { parseComponents } from "@/config/labPanels";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FLAG: Record<string, string> = { H: "High", L: "Low", N: "Normal" };
@@ -74,6 +75,25 @@ export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { ord
                   </tr>
                 </thead>
                 <tbody>
+                  {parseComponents(o.components).length > 0 ? (
+                    <>
+                      <tr><td colSpan={5} className="pt-2 font-semibold">{o.name}</td></tr>
+                      {parseComponents(o.components).map((c, i, all) => (
+                        <Fragment key={c.key}>
+                          {c.group && c.group !== all[i - 1]?.group && (
+                            <tr><td colSpan={5} className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{c.group}</td></tr>
+                          )}
+                          <tr className="border-b border-neutral-100">
+                            <td className="py-1 pl-2">{c.name}</td>
+                            <td className={`py-1 font-semibold tabular-nums ${c.flag === "H" || c.flag === "L" ? "text-rose-700" : ""}`}>{c.value}</td>
+                            <td className="py-1">{c.unit ?? ""}</td>
+                            <td className="py-1">{c.ref_range ?? ""}</td>
+                            <td className="py-1">{c.flag && c.flag !== "N" ? FLAG[c.flag] : ""}</td>
+                          </tr>
+                        </Fragment>
+                      ))}
+                    </>
+                  ) : (
                   <tr className="border-b border-neutral-200">
                     <td className="py-1.5 font-medium">{o.name}</td>
                     <td className={`py-1.5 font-bold ${o.flag === "H" || o.flag === "L" ? "text-rose-700" : ""}`}>{o.result_value}</td>
@@ -81,6 +101,7 @@ export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { ord
                     <td className="py-1.5">{o.ref_range ?? "—"}</td>
                     <td className="py-1.5">{o.flag ? FLAG[o.flag] : "—"}</td>
                   </tr>
+                  )}
                 </tbody>
               </table>
             ) : (
