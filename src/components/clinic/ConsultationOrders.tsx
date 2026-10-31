@@ -5,6 +5,7 @@ import { FileText, Plus, Receipt, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { SearchSelect } from "@/components/ui/SearchSelect";
 import { isTauri } from "@/lib/platform";
 import {
   listClinicServices, addClinicOrder, listOrdersForConsultation, cancelClinicOrder, getVisitBill, createVisitInvoice,
@@ -109,14 +110,19 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
           </Select>
         </Field>
         <Field label={category === "lab" ? "Test" : category === "radiology" ? "Study" : "Service"}>
-          <Select id="co-svc" value={serviceId} onChange={(e) => setServiceId(e.target.value)} disabled={!canOrder}>
-            <option value="">{choices.length ? "— Choose —" : "None offered yet (add them on Services)"}</option>
-            {choices.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}{!s.is_active ? " (external)" : showFees ? ` · Rs ${Number(s.rate).toFixed(0)}` : ""}
-              </option>
-            ))}
-          </Select>
+          <SearchSelect
+            id="co-svc"
+            value={serviceId}
+            onChange={setServiceId}
+            disabled={!canOrder}
+            placeholder={category === "lab" ? "Type to find a test…" : category === "radiology" ? "Type to find a study…" : "Type to find a service…"}
+            emptyText="None in the list yet (add them on Services)"
+            options={choices.map((s) => ({
+              value: s.id,
+              label: s.name,
+              hint: [!s.is_active ? "external" : showFees ? `Rs ${Number(s.rate).toFixed(0)}` : null, s.section ?? s.modality].filter(Boolean).join(" · ") || null,
+            }))}
+          />
         </Field>
         <Field label={perUnit === "per day" ? "Days" : "Qty"}>
           <Input id="co-qty" type="number" min="0" step="any" value={qty} onChange={(e) => setQty(e.target.value)} />

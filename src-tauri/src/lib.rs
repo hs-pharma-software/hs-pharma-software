@@ -1337,6 +1337,19 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Admission advice: the consultant advises admission (reason, ward / room,
+/// expected days, urgency); printed on the consultation and shown to reception.
+fn schema_sql_v65() -> &'static str {
+    r#"
+    ALTER TABLE clinic_consultations ADD COLUMN admit_advised INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE clinic_consultations ADD COLUMN admit_reason TEXT;
+    ALTER TABLE clinic_consultations ADD COLUMN admit_ward TEXT;
+    ALTER TABLE clinic_consultations ADD COLUMN admit_days INTEGER;
+    ALTER TABLE clinic_consultations ADD COLUMN admit_urgency TEXT;
+    ALTER TABLE clinic_consultations ADD COLUMN admit_advised_at TEXT;
+    "#
+}
+
 /// Clinic lab panels: the parameters of a panel test (CBC, LFT, RFT, lipid
 /// profile, electrolytes, urine R/E), JSON LabComponent[], as in the hospital lab.
 fn schema_sql_v64() -> &'static str {
@@ -3141,6 +3154,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 64,
             description: "clinic_orders_components",
             sql: schema_sql_v64(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 65,
+            description: "clinic_admission_advice",
+            sql: schema_sql_v65(),
             kind: MigrationKind::Up,
         },
     ]

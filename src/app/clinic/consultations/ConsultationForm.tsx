@@ -30,6 +30,7 @@ import {
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { localDate } from "@/lib/localDate";
 import { ConsultationOrders } from "@/components/clinic/ConsultationOrders";
+import { AdmissionAdvice } from "@/components/clinic/AdmissionAdvice";
 import { ConsultationPrintModal } from "@/components/clinic/ClinicPrints";
 import { useCanBill } from "@/lib/moduleAccess";
 
@@ -353,6 +354,13 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
           </Field>
         </div>
       </div>
+
+      {/* Admission advice (advising on a new consultation saves it first) */}
+      <AdmissionAdvice
+        consultationId={savedConsultationId || consultationId || null}
+        canAdvise={Boolean(patientId)}
+        ensureSaved={() => persistConsultation(false)}
+      />
 
       {/* Lab, radiology, services and the bill (ordering on a new consultation saves it first) */}
       <ConsultationOrders

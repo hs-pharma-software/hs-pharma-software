@@ -14,6 +14,7 @@ import type {
   ClinicPharmacyLink,
 } from "../types-clinic";
 import { localDate } from "../localDate";
+import { isMissingSchemaError } from "../dbErrors";
 
 export type { PharmacyRxNotification } from "../types-clinic";
 
@@ -660,4 +661,53 @@ export async function unreadRxCount(): Promise<number> {
     [tenantId]
   );
   return rows[0]?.n ?? 0;
+}
+
+// ── Admission advice ──────────────────────────────────────────────────────
+
+export interface AdmissionAdvice {
+  reason: string;
+  ward?: string | null;
+  days?: number | null;
+  urgency?: "routine" | "urgent" | "emergency";
+}
+
+/** The consultant advises admission (or withdraws it with null). */
+export async function adviseAdmission(consultationId: string, a: AdmissionAdvice | null): Promise<ClinicConsultation> {
+  const c = await consultationsRepo.get(consultationId);
+  if (!c) throw new Error("Save the consultation first.");
+  const patch: Partial<ClinicConsultation> = a
+    ? (() => {
+        if (!a.reason.trim()) throw new Error("Enter the reason for admission.");
+        const days = a.days == null || String(a.days) === "" ? null : Number(a.days);
+        if (days != null && !(Number.isInteger(days) && days > 0)) throw new Error("Expected stay is a whole number of days.");
+        return {
+          admit_advised: 1, admit_reason: a.reason.trim(), admit_ward: a.ward?.trim() || null, admit_days: days,
+          admit_urgency: a.urgency ?? "routine", admit_advised_at: c.admit_advised_at ?? new Date().toISOString(),
+        };
+      })()
+    : { admit_advised: 0, admit_reason: null, admit_ward: null, admit_days: null, admit_urgency: null, admit_advised_at: null };
+  try {
+    return (await consultationsRepo.update(consultationId, patch))!;
+  } catch (e) {
+    if (isMissingSchemaError(e)) {
+      throw new Error("Admission advice needs the latest database update (v65). Ask the administrator to run it.");
+    }
+    throw e;
+  }
+}
+
+/** Appointments of a day whose consultation advised admission (empty before v65). */
+export async function admissionsAdvisedOn(date: string): Promise<Map<string, { reason: string | null; urgency: string | null }>> {
+  try {
+    const rows = await dbSelect<{ appointment_id: string; admit_reason: string | null; admit_urgency: string | null }>(
+      `SELECT c.appointment_id, c.admit_reason, c.admit_urgency FROM clinic_consultations c
+       JOIN clinic_appointments a ON a.id = c.appointment_id
+       WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.admit_advised = 1 AND a.date = ?`,
+      [requireCurrentTenantId(), date]
+    );
+    return new Map(rows.map((r) => [r.appointment_id, { reason: r.admit_reason, urgency: r.admit_urgency }]));
+  } catch {
+    return new Map();
+  }
 }

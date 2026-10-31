@@ -52,6 +52,13 @@ export interface ClinicConsultation extends TenantRow {
   advice: string | null;
   followup_date: string | null;
   followup_notes: string | null;
+  // Admission advised by the consultant (v65).
+  admit_advised?: number | null;
+  admit_reason?: string | null;
+  admit_ward?: string | null;
+  admit_days?: number | null;
+  admit_urgency?: "routine" | "urgent" | "emergency" | null;
+  admit_advised_at?: string | null;
 }
 
 export interface ClinicPrescription extends TenantRow {

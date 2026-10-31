@@ -216,6 +216,12 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
                 </div>
               </div>
             )}
+            {c.admit_advised ? (
+              <div className="mt-3 rounded border-2 border-neutral-800 px-3 py-2">
+                <b>ADMISSION ADVISED</b>{c.admit_urgency && c.admit_urgency !== "routine" ? ` (${c.admit_urgency.toUpperCase()})` : ""}: {c.admit_reason}
+                {c.admit_ward ? ` · Ward / room: ${c.admit_ward}` : ""}{c.admit_days ? ` · Expected stay: ${c.admit_days} day${c.admit_days === 1 ? "" : "s"}` : ""}
+              </div>
+            ) : null}
             <div className="mt-3 flex flex-col gap-1.5">
               {field("Advice", c.advice)}
               {c.followup_date && <div><span className="font-semibold">Follow-up: </span>{c.followup_date}{c.followup_notes ? ` - ${c.followup_notes}` : ""}</div>}

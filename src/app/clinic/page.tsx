@@ -15,6 +15,7 @@ import { useAuthStore } from "@/store/authStore";
 import {
   getClinicStats,
   getTodayAppointments,
+  admissionsAdvisedOn,
   type ClinicStats,
   type TodayAppointmentRow,
 } from "@/lib/repo/clinic";
@@ -39,6 +40,7 @@ export default function ClinicDashboardPage() {
   // Reception: what each patient of today owes; fees collected from here.
   const canBill = useCanBill();
   const [bills, setBills] = useState<Map<string, DayBillRow>>(new Map());
+  const [admits, setAdmits] = useState<Map<string, { reason: string | null; urgency: string | null }>>(new Map());
   const [billing, setBilling] = useState<VisitBill | null>(null);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -50,10 +52,12 @@ export default function ClinicDashboardPage() {
       getClinicStats().catch(() => EMPTY_STATS),
       getTodayAppointments(100).catch(() => [] as TodayAppointmentRow[]),
       canBill ? listDayBills(localDate()).catch(() => new Map<string, DayBillRow>()) : Promise.resolve(new Map<string, DayBillRow>()),
-    ]).then(([s, a, b]) => {
+      admissionsAdvisedOn(localDate()),
+    ]).then(([s, a, b, adm]) => {
       setStats(s);
       setAppointments(a);
       setBills(b);
+      setAdmits(adm);
       setLoading(false);
     });
   }, [tenantId, canBill, reloadKey]);
@@ -120,7 +124,14 @@ export default function ClinicDashboardPage() {
                   {a.token_no ?? <Users size={13} />}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{a.patient_name}</p>
+                  <p className="font-medium truncate">
+                    {a.patient_name}
+                    {admits.has(a.id) && (
+                      <span title={admits.get(a.id)?.reason ?? ""} className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-rose-700">
+                        Admit{admits.get(a.id)?.urgency && admits.get(a.id)?.urgency !== "routine" ? ` · ${admits.get(a.id)?.urgency}` : ""}
+                      </span>
+                    )}
+                  </p>
                   {a.doctor_name && <p className="text-xs text-neutral-400 truncate">Dr. {a.doctor_name}</p>}
                 </div>
                 {a.time && <span className="text-xs text-neutral-400 shrink-0">{a.time}</span>}
