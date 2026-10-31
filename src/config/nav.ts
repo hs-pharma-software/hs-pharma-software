@@ -440,6 +440,9 @@ const BASE_NAV: NavItem[] = [
       { label: "New Consultation", href: "/clinic/consultations/new" },
     ],
   },
+  { label: "Lab", href: "/clinic/lab", icon: FlaskConical, moduleKey: "clinic_lab", onlyFor: ["clinic"] },
+  { label: "Radiology", href: "/clinic/radiology", icon: ScanLine, moduleKey: "clinic_radiology", onlyFor: ["clinic"] },
+  { label: "Services", href: "/clinic/services", icon: ClipboardList, moduleKey: "clinic_services", onlyFor: ["clinic"] },
   {
     label: "Settings",
     href: "/clinic/settings/profile",

@@ -23,11 +23,13 @@ import {
   sendPrescriptionToPharmacy,
   listPharmacyTenants,
   searchProductsForPharmacy,
+  searchMedicineCatalog,
   type PrescriptionWithDetails,
   getPrescriptionsForConsultation,
 } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { localDate } from "@/lib/localDate";
+import { ConsultationOrders } from "@/components/clinic/ConsultationOrders";
 
 interface RxItemDraft {
   product_id: string | null;
@@ -123,30 +125,10 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
   }, [consultationId, tenantId]);
 
   async function saveConsultationClicked() {
-    if (!patientId || !date || saving) return;
+    if (saving) return;
     setSaving(true);
     try {
-      const payload = {
-        patient_id: patientId,
-        doctor_id: doctorId || null,
-        date,
-        complaint: complaint.trim() || null,
-        history: history.trim() || null,
-        vitals: vitals.trim() || null,
-        findings: findings.trim() || null,
-        diagnosis: diagnosis.trim() || null,
-        advice: advice.trim() || null,
-        followup_date: followupDate || null,
-        followup_notes: followupNotes.trim() || null,
-        // Only linked when creating; an edit never clears an existing link.
-        ...(savedConsultationId ? {} : { appointment_id: linkedAppointmentId || null }),
-      };
-      // A second click updates the record the first click created.
-      const record = await saveConsultation(savedConsultationId || null, payload);
-      const firstSave = !savedConsultationId;
-      setSavedConsultationId(record.id);
-      setSaved(true);
-      if (firstSave) router.replace(`/clinic/consultations/view?id=${record.id}`);
+      await persistConsultation(true);
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -154,13 +136,42 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
     }
   }
 
+  /** Saves the consultation and returns its id. `openView` moves a new one to its
+   * own page; a prescription saved with it waits until its medicines are saved. */
+  async function persistConsultation(openView: boolean): Promise<string> {
+    if (!patientId || !date) throw new Error("Choose the patient first.");
+    const payload = {
+      patient_id: patientId,
+      doctor_id: doctorId || null,
+      date,
+      complaint: complaint.trim() || null,
+      history: history.trim() || null,
+      vitals: vitals.trim() || null,
+      findings: findings.trim() || null,
+      diagnosis: diagnosis.trim() || null,
+      advice: advice.trim() || null,
+      followup_date: followupDate || null,
+      followup_notes: followupNotes.trim() || null,
+      // Only linked when creating; an edit never clears an existing link.
+      ...(savedConsultationId ? {} : { appointment_id: linkedAppointmentId || null }),
+    };
+    // A second click updates the record the first click created.
+    const record = await saveConsultation(savedConsultationId || consultationId || null, payload);
+    const firstSave = !savedConsultationId && !consultationId;
+    setSavedConsultationId(record.id);
+    setSaved(true);
+    if (firstSave && openView) router.replace(`/clinic/consultations/view?id=${record.id}`);
+    return record.id;
+  }
+
   async function saveRx() {
-    const cid = savedConsultationId || consultationId;
-    if (!cid) { window.alert("Save the consultation first."); return; }
     if (saving) return;
     if (!rxItems.some((i) => i.product_name.trim())) { window.alert("Add at least one medicine."); return; }
     setSaving(true);
     try {
+      // The prescription goes with the consultation: save that first when it is new.
+      const newConsultation = !(savedConsultationId || consultationId);
+      const cid = savedConsultationId || consultationId || (await persistConsultation(false));
       const items = rxItems
         .filter((i) => i.product_name.trim())
         .map((i) => ({
@@ -205,6 +216,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
       setSavedRxId("");
       setRxItems([{ ...EMPTY_RX_ITEM }]);
       setRxNotes("");
+      if (newConsultation) router.replace(`/clinic/consultations/view?id=${cid}`);
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -248,11 +260,12 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
 
   function handleDrugInput(i: number, value: string) {
     updateRxRow(i, "product_name", value);
-    if (!linkedPharmacyId || value.trim().length < 2) {
+    if (value.trim().length < 2) {
       setDrugSuggestions((s) => ({ ...s, [i]: [] }));
       return;
     }
-    void searchProductsForPharmacy(value, linkedPharmacyId).then((results) => {
+    const search = linkedPharmacyId ? searchProductsForPharmacy(value, linkedPharmacyId) : searchMedicineCatalog(value);
+    void search.catch(() => []).then((results) => {
       setDrugSuggestions((s) => ({ ...s, [i]: results }));
       setDrugSearchOpen((s) => ({ ...s, [i]: true }));
     });
@@ -328,12 +341,22 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
         </div>
       </div>
 
+      {/* Lab, radiology, services and the bill (ordering on a new consultation saves it first) */}
+      <ConsultationOrders
+        consultationId={savedConsultationId || consultationId || null}
+        canOrder={Boolean(patientId)}
+        ensureSaved={async () => {
+          const id = await persistConsultation(false);
+          return id;
+        }}
+      />
+
       {/* Prescriptions section */}
       <div className="rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-sm text-neutral-700">Prescriptions</h2>
-          {saved && (
-            <Button variant="primary" onClick={() => setShowRx((v) => !v)}>
+          {(
+            <Button variant="primary" onClick={() => setShowRx((v) => !v)} disabled={!patientId}>
               <Plus size={14} className="mr-1" />
               {showRx ? "Cancel" : "Add Prescription"}
             </Button>
@@ -423,12 +446,12 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                           value={item.product_name}
                           onChange={(e) => handleDrugInput(i, e.target.value)}
                           onFocus={() => {
-                            if (linkedPharmacyId && item.product_name.trim().length >= 2) {
+                            if (item.product_name.trim().length >= 2) {
                               setDrugSearchOpen((s) => ({ ...s, [i]: true }));
                             }
                           }}
                           onBlur={() => setTimeout(() => setDrugSearchOpen((s) => ({ ...s, [i]: false })), 150)}
-                          placeholder={linkedPharmacyId ? "Search pharmacy…" : "Drug name"}
+                          placeholder={linkedPharmacyId ? "Search pharmacy…" : "Search medicine…"}
                           className="min-w-36"
                         />
                         {drugSearchOpen[i] && (drugSuggestions[i]?.length ?? 0) > 0 && (
@@ -502,8 +525,8 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
           </div>
         )}
 
-        {!saved && (
-          <p className="text-xs text-neutral-400 mt-2">Save the consultation first to add a prescription.</p>
+        {!saved && !showRx && (
+          <p className="text-xs text-neutral-400 mt-2">Choose the patient, then add the medicines; saving the prescription also saves the consultation.</p>
         )}
       </div>
     </div>

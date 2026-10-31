@@ -1337,6 +1337,33 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Clinic services, lab and radiology: the clinic's own services with fees
+/// (consultation, lab tests, radiology, procedures, room, nursing, medicine),
+/// and what a consultation orders from them: lab tests with results,
+/// radiology with reports, other services; each a line of the visit's bill.
+fn schema_sql_v63() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS clinic_services (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT, name TEXT NOT NULL, category TEXT NOT NULL,
+        rate REAL NOT NULL DEFAULT 0, billing_unit TEXT, sample_type TEXT, unit TEXT, ref_range TEXT, section TEXT, modality TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_clinic_services ON clinic_services (tenant_id, category, name);
+    CREATE TABLE IF NOT EXISTS clinic_orders (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, order_no TEXT NOT NULL, patient_id TEXT NOT NULL, consultation_id TEXT,
+        doctor_id TEXT, service_id TEXT, kind TEXT NOT NULL, name TEXT NOT NULL, qty REAL NOT NULL DEFAULT 1, rate REAL NOT NULL DEFAULT 0,
+        amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ordered', priority TEXT NOT NULL DEFAULT 'routine',
+        result_value TEXT, unit TEXT, ref_range TEXT, flag TEXT, findings TEXT, impression TEXT,
+        reported_by TEXT, reported_at TEXT, ordered_by TEXT, ordered_at TEXT NOT NULL, notes TEXT, invoice_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_clinic_orders_consult ON clinic_orders (tenant_id, consultation_id);
+    CREATE INDEX IF NOT EXISTS idx_clinic_orders_work ON clinic_orders (tenant_id, kind, status, ordered_at);
+    CREATE INDEX IF NOT EXISTS idx_clinic_orders_invoice ON clinic_orders (tenant_id, invoice_id);
+    "#
+}
+
 /// Salesman login and target: the login a salesman uses (their invoices are
 /// put on them) and a monthly sales target for their progress.
 fn schema_sql_v62() -> &'static str {
@@ -3094,6 +3121,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 62,
             description: "salesmen_user_target",
             sql: schema_sql_v62(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 63,
+            description: "clinic_services_orders",
+            sql: schema_sql_v63(),
             kind: MigrationKind::Up,
         },
     ]

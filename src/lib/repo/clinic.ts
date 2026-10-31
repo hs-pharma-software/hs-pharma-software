@@ -588,6 +588,22 @@ export async function searchProductsForPharmacy(
   );
 }
 
+/** Medicines from the shared catalogue (no pharmacy linked yet), by name or barcode. */
+export async function searchMedicineCatalog(
+  term: string
+): Promise<{ id: string; name: string; barcode: string | null; company_name: string | null; description: string | null }[]> {
+  if (!term.trim()) return [];
+  const like = `%${term.trim()}%`;
+  return dbSelect(
+    `SELECT id, name, barcode, company_name, description
+     FROM products
+     WHERE deleted_at IS NULL AND tenant_id IS NULL AND catalog_group = 'pharma'
+       AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?)
+     ORDER BY name ASC LIMIT 20`,
+    [like, like, like]
+  );
+}
+
 /** Unread notification count for the pharmacy inbox badge. */
 export async function unreadRxCount(): Promise<number> {
   const tenantId = requireCurrentTenantId();

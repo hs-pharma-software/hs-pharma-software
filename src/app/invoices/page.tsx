@@ -20,12 +20,16 @@ import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice } from "@/lib/types2";
 import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
+import { ClinicVisitInvoiceModal } from "@/components/clinic/ClinicPrints";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Field";
 import { markInvoicePaid } from "@/lib/repo/invoicePayments";
 import type { PaymentMethod } from "@/lib/types-hospital";
 
 const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
+const isClinicVisit = (r: InvoiceListRow) => r.invoice_type === "clinic_visit";
+/** Billed from services (surgery, clinic visit): opened in their own view, not edited as product invoices. */
+const isServiceBill = (r: InvoiceListRow) => isSurgery(r) || isClinicVisit(r);
 
 export default function InvoicesPage() {
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
@@ -38,6 +42,7 @@ export default function InvoicesPage() {
   );
   const [printing, setPrinting] = useState<typeof viewing>(null);
   const [surgeryInvoice, setSurgeryInvoice] = useState<{ id: string; print: boolean } | null>(null);
+  const [clinicInvoice, setClinicInvoice] = useState<{ id: string; print: boolean } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [payingRow, setPayingRow] = useState<InvoiceListRow | null>(null);
   const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
@@ -89,6 +94,7 @@ export default function InvoicesPage() {
 
   async function openView(row: InvoiceListRow) {
     if (isSurgery(row)) return setSurgeryInvoice({ id: row.id, print: false });
+    if (isClinicVisit(row)) return setClinicInvoice({ id: row.id, print: false });
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     setViewing({ invoice: full, customerName: row.customer_name, salesmanName: row.salesman_name });
@@ -111,6 +117,7 @@ export default function InvoicesPage() {
   async function printInvoice(row: InvoiceListRow) {
     if (printing) return;
     if (isSurgery(row)) return setSurgeryInvoice({ id: row.id, print: true });
+    if (isClinicVisit(row)) return setClinicInvoice({ id: row.id, print: true });
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     setPrinting({ invoice: full, customerName: row.customer_name, salesmanName: row.salesman_name });
@@ -140,13 +147,13 @@ export default function InvoicesPage() {
     { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
     { header: "Date", render: (r) => r.date },
     { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
-    { header: "Customer", render: (r) => isSurgery(r) ? <span>{r.customer_name} <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">Surgery</span></span> : r.customer_name },
+    { header: "Customer", render: (r) => isServiceBill(r) ? <span>{r.customer_name} <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{isSurgery(r) ? "Surgery" : "Clinic visit"}</span></span> : r.customer_name },
     { header: "Total Bill", render: (r) => r.total.toFixed(2) },
     { header: "Paid", render: (r) => r.paid.toFixed(2) },
     { header: "Balance", render: (r) => r.balance.toFixed(2) },
     ...(fbrSettings ? [{
       header: "FBR",
-      render: (r: InvoiceListRow) => isSurgery(r) ? <span className="text-xs text-neutral-400">—</span> : (
+      render: (r: InvoiceListRow) => isServiceBill(r) ? <span className="text-xs text-neutral-400">—</span> : (
         <FbrCell
           row={r}
           submitting={submittingIds.has(r.id)}
@@ -168,7 +175,7 @@ export default function InvoicesPage() {
           >
             <Eye size={16} />
           </button>
-          {canEdit && !isSurgery(r) && (
+          {canEdit && !isServiceBill(r) && (
             <button
               type="button"
               title="Edit"
@@ -197,7 +204,7 @@ export default function InvoicesPage() {
           >
             <Printer size={16} />
           </button>
-          {canDelete && !isSurgery(r) && (
+          {canDelete && !isServiceBill(r) && (
             <button
               type="button"
               title="Delete"
@@ -245,6 +252,9 @@ export default function InvoicesPage() {
       {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setPrinting(null)} />}
 
       {payingRow && <MarkPaidModal row={payingRow} onClose={() => setPayingRow(null)} onPaid={() => { setPayingRow(null); void reload(); }} />}
+      {clinicInvoice && (
+        <ClinicVisitInvoiceModal key={clinicInvoice.id + String(clinicInvoice.print)} invoiceId={clinicInvoice.id} autoPrint={clinicInvoice.print} onClose={() => setClinicInvoice(null)} />
+      )}
       {surgeryInvoice && (
         <SurgeryInvoiceModal key={surgeryInvoice.id + String(surgeryInvoice.print)} invoiceId={surgeryInvoice.id} autoPrint={surgeryInvoice.print} onClose={() => setSurgeryInvoice(null)} />
       )}
