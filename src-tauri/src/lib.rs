@@ -1337,6 +1337,20 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Expiry corrections: a batch's expiry date entered by mistake can be
+/// corrected a limited number of times; each correction is kept (old and new
+/// date, who, when, why).
+fn schema_sql_v60() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS product_batch_expiry_changes (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, batch_id TEXT NOT NULL, product_id TEXT,
+        old_expiry TEXT, new_expiry TEXT NOT NULL, reason TEXT NOT NULL, changed_by TEXT, changed_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_batch_expiry_changes ON product_batch_expiry_changes (tenant_id, batch_id);
+    "#
+}
+
 /// Radiology portal: modalities, machines (with the DICOM API key's hash),
 /// report templates, the PACS (Orthanc) link, and the machine messages log;
 /// on each imaging order the machine, the technologist's examination and the
@@ -3046,6 +3060,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 59,
             description: "radiology_portal",
             sql: schema_sql_v59(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 60,
+            description: "product_batch_expiry_changes",
+            sql: schema_sql_v60(),
             kind: MigrationKind::Up,
         },
     ]

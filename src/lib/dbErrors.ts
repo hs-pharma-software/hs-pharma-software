@@ -1,3 +1,11 @@
+/** Whether an error says a table or column does not exist yet (a migration
+ * not run): SQLite's own words, or the web server's ("Unknown table x",
+ * "Table x is not available"). */
+export function isMissingSchemaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /no such (table|column)|has no column named|unknown table|table [a-z0-9_]+ is not available|is not up to date/i.test(msg);
+}
+
 /** A missing table or column means the database was not brought up to date: say what to do. */
 export function explainMissingTable(err: unknown): Error | null {
   const msg = err instanceof Error ? err.message : String(err);

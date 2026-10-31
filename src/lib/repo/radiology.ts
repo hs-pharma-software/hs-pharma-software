@@ -9,6 +9,7 @@ import { getSetting } from "./settings";
 import { hospitalEpisodesRepo, hospitalImagingRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo } from "./hospital";
 import { listOpenVisits, orderInvestigation } from "./hospitalOpd";
 import { modalityCodeOfStudy } from "./radiologyPortal";
+import { isMissingSchemaError } from "../dbErrors";
 import type { HospitalEpisode, HospitalImagingOrder, HospitalService, OrderPriority } from "../types-hospital";
 
 // ── Performing Images ─────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ export async function orderImaging(input: {
     saved = (await hospitalImagingRepo.update(order.id, { ...extra, ...portal }))!;
   } catch (e) {
     // A database before v59 has no portal columns; the order itself stands.
-    if (!/no such (table|column)|has no column/i.test(String(e instanceof Error ? e.message : e))) throw e;
+    if (!isMissingSchemaError(e)) throw e;
     saved = Object.keys(extra).length ? (await hospitalImagingRepo.update(order.id, extra))! : (order as HospitalImagingOrder);
   }
   return { episode, order: saved };

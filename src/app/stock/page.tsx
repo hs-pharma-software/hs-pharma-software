@@ -13,6 +13,8 @@ import { addStockToBatch, receiveStock } from "@/lib/repo/stock";
 import { businessType } from "@/config/businessTypes";
 import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import { PackagePlus } from "lucide-react";
+import { ExpiryCell, ExpiryCorrectionModal } from "@/components/stock/ExpiryCorrection";
+import { expiryCorrectionCounts } from "@/lib/repo/batchExpiry";
 import { useAuthStore } from "@/store/authStore";
 import type { Product } from "@/lib/types";
 
@@ -57,6 +59,10 @@ export default function StockPage() {
   // another account (dealer portal).
   const canTopUp =
     businessType(sessionTenant?.businessType).id === "contractor" && !sessionTenant?.sourceTenantId;
+  // Expiry corrections: the business's own stock only (not stock viewed from another account).
+  const canCorrectExpiry = !sessionTenant?.sourceTenantId;
+  const [corrections, setCorrections] = useState<Map<string, number>>(new Map());
+  const [expiryEdit, setExpiryEdit] = useState<StockRow | null>(null);
   const [topUp, setTopUp] = useState<StockRow | null>(null);
   const [topUpQty, setTopUpQty] = useState("");
   const [topUpPrice, setTopUpPrice] = useState("");
@@ -64,6 +70,7 @@ export default function StockPage() {
 
   async function reload() {
     if (!isTauri()) return;
+    if (canCorrectExpiry) void expiryCorrectionCounts().then(setCorrections);
     setRows(
       await dbSelect<StockRow>(
         `
@@ -124,7 +131,12 @@ export default function StockPage() {
     { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
     { header: "Company", render: (r) => r.company_name ?? "\u2014" },
     { header: "Batch", render: (r) => r.batch_no ?? "\u2014" },
-    { header: "Expiry", render: (r) => r.expiry_date ?? "\u2014" },
+    {
+      header: "Expiry",
+      render: (r) => canCorrectExpiry
+        ? <ExpiryCell expiry={r.expiry_date} used={corrections.get(r.id) ?? 0} onEdit={() => setExpiryEdit(r)} />
+        : <ExpiryCell expiry={r.expiry_date} used={0} />,
+    },
     { header: "Location", render: (r) => r.location ?? "\u2014" },
     { header: "UOM", render: (r) => r.uom_name ?? "\u2014" },
     {
@@ -332,6 +344,9 @@ export default function StockPage() {
         </div>
       </div>
 
+      {expiryEdit && (
+        <ExpiryCorrectionModal batch={expiryEdit} onClose={() => setExpiryEdit(null)} onSaved={() => { setExpiryEdit(null); void reload(); }} />
+      )}
       {topUp && (
         <Modal title="Add Stock" onClose={() => setTopUp(null)} width="max-w-sm">
           <form
