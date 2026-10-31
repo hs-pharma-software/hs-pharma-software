@@ -91,3 +91,28 @@ export async function listAvailableBatches(productId: string): Promise<ProductBa
     [productId, currentTenantId()]
   );
 }
+
+/** Who supplied each batch: the supplier of the latest purchase of that
+ * product and batch number, else of the product's latest purchase. Keyed
+ * `${product_id}|${batch_no}` and `${product_id}`. Purchase returns are ignored. */
+export async function stockSupplierNames(): Promise<Map<string, string>> {
+  const rows = await dbSelect<{ product_id: string; batch_no: string | null; name: string }>(
+    `SELECT pi.product_id, pi.batch_no, s.name
+     FROM purchase_items pi
+     JOIN purchases pu ON pu.id = pi.purchase_id
+     JOIN suppliers s ON s.id = pu.supplier_id
+     WHERE pi.tenant_id = ? AND pi.deleted_at IS NULL AND pu.deleted_at IS NULL AND COALESCE(pu.is_return, 0) = 0
+     ORDER BY pu.date ASC, pu.created_at ASC`,
+    [currentTenantId()]
+  );
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    map.set(`${r.product_id}|${(r.batch_no ?? "").trim()}`, r.name);
+    map.set(r.product_id, r.name);
+  }
+  return map;
+}
+
+export function supplierOf(map: Map<string, string>, productId: string, batchNo: string | null): string | null {
+  return map.get(`${productId}|${(batchNo ?? "").trim()}`) ?? map.get(productId) ?? null;
+}

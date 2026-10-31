@@ -9,7 +9,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { dbSelect } from "@/lib/db";
 import { searchProductsByNameOrBarcode } from "@/lib/repo/products";
-import { addStockToBatch, receiveStock } from "@/lib/repo/stock";
+import { addStockToBatch, receiveStock, stockSupplierNames, supplierOf } from "@/lib/repo/stock";
 import { businessType } from "@/config/businessTypes";
 import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import { PackagePlus } from "lucide-react";
@@ -20,6 +20,9 @@ import type { Product } from "@/lib/types";
 
 interface StockRow {
   id: string;
+  product_id: string;
+  /** Supplier of the purchase this batch came from (filled after loading). */
+  supplier_name?: string | null;
   barcode: string | null;
   product_name: string;
   company_name: string | null;
@@ -71,10 +74,11 @@ export default function StockPage() {
   async function reload() {
     if (!isTauri()) return;
     if (canCorrectExpiry) void expiryCorrectionCounts().then(setCorrections);
-    setRows(
-      await dbSelect<StockRow>(
+    // Suppliers come from this business's own purchases (not for stock viewed from another account).
+    const suppliersP = canCorrectExpiry ? stockSupplierNames().catch(() => new Map<string, string>()) : Promise.resolve(new Map<string, string>());
+    const stock = await dbSelect<StockRow>(
         `
-        SELECT pb.id, p.barcode, p.name AS product_name, p.company_name, pb.location,
+        SELECT pb.id, pb.product_id, p.barcode, p.name AS product_name, p.company_name, pb.location,
                c.name AS category_name, u.name AS uom_name,
                p.secondary_unit_id, su.name AS secondary_unit_name,
                COALESCE(p.packing, 1) AS packing,
@@ -98,8 +102,9 @@ export default function StockPage() {
         ORDER BY p.name ASC
       `,
         [tenantId, tenantId]
-      )
-    );
+      );
+    const suppliers = await suppliersP;
+    setRows(stock.map((r) => ({ ...r, supplier_name: supplierOf(suppliers, r.product_id, r.batch_no) })));
   }
 
   useEffect(() => {
@@ -119,7 +124,8 @@ export default function StockPage() {
 
   const filtered = rows.filter((r) => {
     const term = search.toLowerCase();
-    return !term || r.product_name.toLowerCase().includes(term) || (r.barcode ?? "").toLowerCase().includes(term);
+    return !term || r.product_name.toLowerCase().includes(term) || (r.barcode ?? "").toLowerCase().includes(term)
+      || (r.supplier_name ?? "").toLowerCase().includes(term);
   });
 
   const discountFactor = mrpDiscountPct > 0 ? 1 - mrpDiscountPct / 100 : 0;
@@ -130,6 +136,7 @@ export default function StockPage() {
     { header: "Barcode", render: (r) => r.barcode ?? "\u2014" },
     { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
     { header: "Company", render: (r) => r.company_name ?? "\u2014" },
+    { header: "Supplier", render: (r) => r.supplier_name ?? "\u2014" },
     { header: "Batch", render: (r) => r.batch_no ?? "\u2014" },
     {
       header: "Expiry",
@@ -231,11 +238,11 @@ export default function StockPage() {
             </Button>
             <Button
               onClick={() => {
-                const STOCK_CSV_HEADERS = ["Barcode","Product Name","Company","Batch No","Expiry Date","Location","UOM","Avail Qty","Sale Price","Purchase Price"];
+                const STOCK_CSV_HEADERS = ["Barcode","Product Name","Company","Batch No","Expiry Date","Location","UOM","Avail Qty","Sale Price","Purchase Price","Supplier"];
                 exportCsv(
                   `stock-${new Date().toISOString().slice(0,10)}.csv`,
                   STOCK_CSV_HEADERS,
-                  filtered.map((r) => [r.barcode, r.product_name, r.company_name, r.batch_no, r.expiry_date, r.location, r.uom_name, r.avail_qty, r.sale_price, r.purchase_price])
+                  filtered.map((r) => [r.barcode, r.product_name, r.company_name, r.batch_no, r.expiry_date, r.location, r.uom_name, r.avail_qty, r.sale_price, r.purchase_price, r.supplier_name ?? ""])
                 );
               }}
             >
@@ -297,7 +304,7 @@ export default function StockPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
             <thead>
               <tr style={{ borderBottom: "2px solid #222", background: "#f5f5f5" }}>
-                {["Barcode","Product","Company","Batch","Expiry","Location","UOM","Qty","Sale Price","Stock Value"].map((h) => (
+                {["Barcode","Product","Company","Supplier","Batch","Expiry","Location","UOM","Qty","Sale Price","Stock Value"].map((h) => (
                   <th key={h} style={{ padding: "6px 8px", textAlign: h === "Qty" || h === "Sale Price" || h === "Stock Value" ? "right" : "left" }}>
                     {h}
                   </th>
@@ -310,6 +317,7 @@ export default function StockPage() {
                   <td style={{ padding: "4px 8px" }}>{r.barcode ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px", fontWeight: "600" }}>{r.product_name}</td>
                   <td style={{ padding: "4px 8px" }}>{r.company_name ?? "\u2014"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.supplier_name ?? "-"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.batch_no ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.expiry_date ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.location ?? "\u2014"}</td>
