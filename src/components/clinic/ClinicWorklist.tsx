@@ -69,6 +69,12 @@ export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
     try { await fn(); await reload(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
   }
 
+  /** The patient's pending tests of the same visit, in order. */
+  const visitRows = (r: ClinicWorkRow) => {
+    const key = (x: ClinicWorkRow) => x.consultation_id || `${x.patient_id}|${x.ordered_at.slice(0, 10)}`;
+    return rows.filter((x) => key(x) === key(r)).sort((a, b) => a.ordered_at.localeCompare(b.ordered_at) || a.order_no.localeCompare(b.order_no));
+  };
+
   const term = search.trim().toLowerCase();
   const shown = rows.filter((r) => !term || `${r.patient_name} ${r.mrn ?? ""} ${r.name} ${r.order_no}`.toLowerCase().includes(term));
   const lab = kind === "lab";
@@ -136,36 +142,87 @@ export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
       {view === "pending"
         ? <DataTable columns={columns} rows={shown} emptyMessage={`Nothing to do. ${lab ? "Tests" : "Studies"} ordered in consultations appear here.`} />
         : <DataTable columns={reportColumns} rows={groupReported(shown)} emptyMessage="Nothing reported yet." />}
-      {entering && (lab
-        ? <LabResultModal row={entering} onClose={() => setEntering(null)} onSaved={() => { setEntering(null); void reload(); }} />
-        : <RadiologyReportForm row={entering} onClose={() => setEntering(null)} onSaved={() => { setEntering(null); void reload(); }} />)}
+      {entering && (
+        <ResultWorkspace kind={kind} rows={visitRows(entering)} startId={entering.id}
+          onClose={() => { setEntering(null); void reload(); }} />
+      )}
       {printing && <ClinicReportModal orderIds={printing} onClose={() => setPrinting(null)} />}
     </div>
   );
 }
 
-function LabResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
-  const panel = panelFor(row.name);
-  if (panel) return <PanelResultModal row={row} onClose={onClose} onSaved={onSaved} />;
-  return <SingleResultModal row={row} onClose={onClose} onSaved={onSaved} />;
+/** Result entry for one patient's visit: the tests as tabs on the left, the
+ * selected test's fields on the right. Saving moves on to the next test. */
+function ResultWorkspace({ kind, rows, startId, onClose }: {
+  kind: "lab" | "radiology";
+  rows: ClinicWorkRow[];
+  startId: string;
+  onClose: () => void;
+}) {
+  const lab = kind === "lab";
+  const [current, setCurrent] = useState(startId);
+  const [done, setDone] = useState<Set<string>>(new Set());
+  const row = rows.find((r) => r.id === current) ?? rows[0];
+  const p = rows[0];
+
+  function saved() {
+    const next = new Set(done).add(row.id);
+    setDone(next);
+    const after = rows.slice(rows.indexOf(row) + 1).concat(rows).find((r) => !next.has(r.id));
+    if (after) setCurrent(after.id);
+  }
+
+  return (
+    <Modal title={`${lab ? "Results" : "Reports"}: ${p.patient_name}`} onClose={onClose} width="max-w-6xl">
+      <p className="mb-3 text-sm text-neutral-600">
+        {p.mrn ?? ""}{p.gender ? ` · ${p.gender}` : ""}{p.doctor_name ? ` · Dr. ${p.doctor_name}` : ""} · {done.size} of {rows.length} saved
+      </p>
+      <div className="grid min-h-[60vh] grid-cols-1 gap-4 md:grid-cols-[240px_1fr]">
+        <nav aria-label={lab ? "Tests" : "Studies"} className="flex gap-1 overflow-x-auto border-neutral-200 pb-2 md:flex-col md:overflow-y-auto md:border-r md:pb-0 md:pr-3">
+          {rows.map((r) => {
+            const active = r.id === row.id;
+            const isDone = done.has(r.id);
+            return (
+              <button key={r.id} type="button" onClick={() => setCurrent(r.id)} aria-current={active ? "true" : undefined}
+                className={`flex shrink-0 items-start gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${active ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"}`}>
+                <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${isDone ? "bg-emerald-500 text-white" : active ? "border border-white/60" : "border border-neutral-300"}`}>
+                  {isDone && <Check size={11} />}
+                </span>
+                <span>
+                  <span className="block font-medium leading-tight">{r.name}</span>
+                  <span className={`block text-[11px] ${active ? "text-white/70" : "text-neutral-500"}`}>{r.order_no}{r.priority !== "routine" ? ` · ${r.priority.toUpperCase()}` : ""}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+        <section className="min-w-0">
+          <h3 className="mb-2 text-base font-semibold text-neutral-900">{row.name}</h3>
+          {lab
+            ? (panelFor(row.name)
+              ? <PanelResultForm key={row.id} row={row} onSaved={saved} onCancel={onClose} />
+              : <SingleResultForm key={row.id} row={row} onSaved={saved} onCancel={onClose} />)
+            : <RadiologyReportForm key={row.id} row={row} onSaved={saved} onCancel={onClose} />}
+          {done.size === rows.length && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">All {rows.length} saved. Print them together from the Reported tab.</p>}
+        </section>
+      </div>
+    </Modal>
+  );
 }
 
+type FormProps = { row: ClinicWorkRow; onSaved: () => void; onCancel: () => void };
+
 /** CBC, LFT, RFT, lipid profile, electrolytes, urine R/E: every parameter. */
-function PanelResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
+function PanelResultForm({ row, onSaved, onCancel }: FormProps) {
   const [saving, setSaving] = useState(false);
   async function save(components: LabComponent[]) {
     setSaving(true);
     try { await enterClinicLabResult(row.id, { value: "", components }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   }
-  return (
-    <Modal title={`Result: ${row.name}`} onClose={onClose} width="max-w-3xl">
-      <p className="mb-2 text-sm text-neutral-600">{row.patient_name}{row.gender ? ` · ${row.gender}` : ""} · {row.order_no}</p>
-      <LabPanelForm panel={panelFor(row.name)!} gender={row.gender} saved={parseComponents(row.components)} saving={saving} onSave={(c) => void save(c)} onCancel={onClose} />
-    </Modal>
-  );
+  return <LabPanelForm panel={panelFor(row.name)!} gender={row.gender} saved={parseComponents(row.components)} saving={saving} onSave={(c) => void save(c)} onCancel={onCancel} />;
 }
 
-function SingleResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
+function SingleResultForm({ row, onSaved, onCancel }: FormProps) {
   const [value, setValue] = useState(row.result_value ?? "");
   const [unit, setUnit] = useState(row.unit ?? "");
   const [range, setRange] = useState(row.ref_range ?? "");
@@ -175,8 +232,7 @@ function SingleResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onCl
     try { await enterClinicLabResult(row.id, { value, unit, refRange: range }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   }
   return (
-    <Modal title={`Result: ${row.name}`} onClose={onClose} width="max-w-md">
-      <p className="mb-3 text-sm text-neutral-600">{row.patient_name}{row.gender ? ` · ${row.gender}` : ""} · {row.order_no}</p>
+    <div className="max-w-md">
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2"><Field label="Result" required><Input id="lr-value" value={value} onChange={(e) => setValue(e.target.value)} autoFocus /></Field></div>
         <Field label="Unit"><Input id="lr-unit" value={unit} onChange={(e) => setUnit(e.target.value)} /></Field>
@@ -184,14 +240,14 @@ function SingleResultModal({ row, onClose, onSaved }: { row: ClinicWorkRow; onCl
       </div>
       <p className="mt-2 text-xs text-neutral-500">High / low is marked from the normal range and the patient&apos;s sex.</p>
       <div className="mt-4 flex justify-end gap-2">
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onCancel}>Close</Button>
         <Button variant="primary" onClick={() => void save()} disabled={saving || !value.trim()}>{saving ? "Saving…" : "Save result"}</Button>
       </div>
-    </Modal>
+    </div>
   );
 }
 
-function RadiologyReportForm({ row, onClose, onSaved }: { row: ClinicWorkRow; onClose: () => void; onSaved: () => void }) {
+function RadiologyReportForm({ row, onSaved, onCancel }: FormProps) {
   const [findings, setFindings] = useState(row.findings ?? "");
   const [impression, setImpression] = useState(row.impression ?? "");
   const [saving, setSaving] = useState(false);
@@ -200,16 +256,15 @@ function RadiologyReportForm({ row, onClose, onSaved }: { row: ClinicWorkRow; on
     try { await reportClinicRadiology(row.id, { findings, impression }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   }
   return (
-    <Modal title={`Report: ${row.name}`} onClose={onClose} width="max-w-xl">
-      <p className="mb-3 text-sm text-neutral-600">{row.patient_name} · {row.order_no}</p>
+    <div>
       <div className="flex flex-col gap-3">
-        <Field label="Findings"><Textarea id="rr-findings" rows={7} value={findings} onChange={(e) => setFindings(e.target.value)} /></Field>
+        <Field label="Findings"><Textarea id="rr-findings" rows={9} value={findings} onChange={(e) => setFindings(e.target.value)} /></Field>
         <Field label="Impression" required><Textarea id="rr-impression" rows={3} value={impression} onChange={(e) => setImpression(e.target.value)} /></Field>
       </div>
       <div className="mt-4 flex justify-end gap-2">
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onCancel}>Close</Button>
         <Button variant="primary" onClick={() => void save()} disabled={saving || !impression.trim()}>{saving ? "Saving…" : "Save report"}</Button>
       </div>
-    </Modal>
+    </div>
   );
 }
