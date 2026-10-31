@@ -6,7 +6,12 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { printDirect } from "@/lib/print";
 import { loadClinicProfile, type ClinicProfile } from "@/lib/clinicProfile";
-import { getClinicReport, getClinicVisitInvoice, categoryLabel, SERVICE_CATEGORIES, type ClinicReport, type ClinicVisitInvoice } from "@/lib/repo/clinicServices";
+import {
+  getClinicReport, getClinicVisitInvoice, listOrdersForConsultation, categoryLabel, SERVICE_CATEGORIES,
+  type ClinicReport, type ClinicVisitInvoice, type ClinicOrder,
+} from "@/lib/repo/clinicServices";
+import { getConsultationWithPrescriptions, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
+import type { ClinicConsultation, ClinicDoctor, ClinicPatient, ClinicRxItem } from "@/lib/types-clinic";
 import { ClinicSlipHeader } from "./ClinicSlipHeader";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -86,6 +91,115 @@ export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { ord
               </div>
             )}
             <p className="mt-10 text-right text-xs text-neutral-600">Reported by: {o.reported_by ?? "—"}</p>
+          </div>
+          <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
+            <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+interface ConsultationPrintData {
+  consultation: ClinicConsultation;
+  patient: ClinicPatient | null;
+  doctor: ClinicDoctor | null;
+  medicines: ClinicRxItem[];
+  orders: ClinicOrder[];
+}
+
+/** The consultation for the patient: findings, medicines, and the lab tests
+ * and radiology advised, in-house and external. No fees. */
+export function ConsultationPrintModal({ consultationId, onClose }: { consultationId: string; onClose: () => void }) {
+  const [d, setD] = useState<ConsultationPrintData | null>(null);
+  const [profile, setProfile] = useState<ClinicProfile | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const full = await getConsultationWithPrescriptions(consultationId);
+      if (!full) throw new Error("Consultation not found.");
+      const c = full.consultation;
+      const [patient, doctor, orders] = await Promise.all([
+        patientsRepo.get(c.patient_id), c.doctor_id ? doctorsRepo.get(c.doctor_id) : Promise.resolve(null), listOrdersForConsultation(c.id),
+      ]);
+      setD({ consultation: c, patient, doctor, medicines: full.rxItems.flat(), orders: orders.filter((o) => o.status !== "cancelled") });
+    })().catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
+    void loadClinicProfile().then(setProfile);
+  }, [consultationId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { areaRef, printing, print } = usePrint(false, Boolean(d && profile));
+  const c = d?.consultation;
+  const section = (kind: "lab" | "radiology", external: boolean) => d?.orders.filter((o) => o.kind === kind && (o.status === "external") === external) ?? [];
+  const tests = (title: string, rows: ClinicOrder[]) => rows.length > 0 && (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{title}</p>
+      <ul className="list-disc pl-5">
+        {rows.map((o) => (
+          <li key={o.id}>
+            {o.name}
+            {o.status === "reported" && o.kind === "lab" && o.result_value ? <span className="text-neutral-600">: {o.result_value} {o.unit ?? ""}{o.flag && o.flag !== "N" ? ` (${FLAG[o.flag]})` : ""}</span> : null}
+            {o.status === "reported" && o.kind === "radiology" && o.impression ? <span className="text-neutral-600">: {o.impression}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+  const field = (label: string, value: string | null | undefined) => value ? <div><span className="font-semibold">{label}: </span><span className="whitespace-pre-line">{value}</span></div> : null;
+  return (
+    <Modal title="Consultation" onClose={onClose} width="max-w-3xl">
+      {!d || !profile || !c ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
+        <>
+          <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
+            <ClinicSlipHeader profile={profile} />
+            <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 border-b border-neutral-300 pb-2">
+              <div><span className="text-neutral-500">Patient: </span><b>{d.patient?.name ?? "—"}</b></div>
+              <div><span className="text-neutral-500">Date: </span>{c.date}</div>
+              <div><span className="text-neutral-500">MRN: </span>{d.patient?.mrn ?? "—"}</div>
+              <div><span className="text-neutral-500">Doctor: </span>{d.doctor ? `Dr. ${d.doctor.name}${d.doctor.qualification ? `, ${d.doctor.qualification}` : ""}` : "—"}</div>
+              <div><span className="text-neutral-500">Gender / DOB: </span>{[d.patient?.gender, d.patient?.dob].filter(Boolean).join(" / ") || "—"}</div>
+              {d.patient?.allergies && <div className="text-rose-700"><span>Allergies: </span>{d.patient.allergies}</div>}
+            </div>
+            <div className="mt-3 flex flex-col gap-1.5">
+              {field("Complaint", c.complaint)}
+              {field("History", c.history)}
+              {field("Vitals", c.vitals)}
+              {field("Findings", c.findings)}
+              {field("Diagnosis", c.diagnosis)}
+            </div>
+            {d.medicines.length > 0 && (
+              <div className="mt-3">
+                <p className="text-lg font-bold">&#8478;</p>
+                <table className="w-full border-collapse">
+                  <tbody>
+                    {d.medicines.map((m, i) => (
+                      <tr key={m.id ?? i} className="border-b border-neutral-100 align-top">
+                        <td className="py-1 pr-2 font-medium">{i + 1}. {m.product_name}{m.strength ? ` ${m.strength}` : ""}{m.dosage_form ? ` (${m.dosage_form})` : ""}</td>
+                        <td className="py-1 pr-2">{[m.dose, m.route, m.frequency, m.duration].filter(Boolean).join(" · ")}</td>
+                        <td className="py-1 text-neutral-600">{m.instructions ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {(section("lab", false).length + section("lab", true).length + section("radiology", false).length + section("radiology", true).length) > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <p className="font-semibold">Lab tests</p>
+                  {tests("In-house (this clinic)", section("lab", false))}
+                  {tests("External (other lab)", section("lab", true))}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <p className="font-semibold">Radiology</p>
+                  {tests("In-house (this clinic)", section("radiology", false))}
+                  {tests("External (other centre)", section("radiology", true))}
+                </div>
+              </div>
+            )}
+            <div className="mt-3 flex flex-col gap-1.5">
+              {field("Advice", c.advice)}
+              {c.followup_date && <div><span className="font-semibold">Follow-up: </span>{c.followup_date}{c.followup_notes ? ` - ${c.followup_notes}` : ""}</div>}
+            </div>
+            <p className="mt-10 text-right text-xs text-neutral-600">{d.doctor ? `Dr. ${d.doctor.name}` : ""}</p>
           </div>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>

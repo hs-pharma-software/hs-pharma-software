@@ -46,7 +46,9 @@ export interface ClinicService extends TenantRow {
   notes: string | null;
 }
 
-export type ClinicOrderStatus = "ordered" | "collected" | "performed" | "reported" | "cancelled";
+/** external = a test or study the clinic does not offer: advised to be done
+ * elsewhere, printed on the consultation, never billed or worked here. */
+export type ClinicOrderStatus = "ordered" | "collected" | "performed" | "reported" | "cancelled" | "external";
 
 export interface ClinicOrder extends TenantRow {
   order_no: string;
@@ -178,13 +180,15 @@ export async function addClinicOrder(input: {
   const c = await consultationsRepo.get(input.consultationId);
   if (!c) throw new Error("Save the consultation first.");
   const svc = await clinicServicesRepo.get(input.serviceId);
-  if (!svc || !svc.is_active) throw new Error("Choose a service from the clinic's list (Services).");
+  // A lab test or radiology study the clinic does not offer is advised as external (done elsewhere, not billed).
+  const external = Boolean(svc && !svc.is_active && (svc.category === "lab" || svc.category === "radiology"));
+  if (!svc || (!svc.is_active && !external)) throw new Error("Choose a service from the clinic's list (Services).");
   const qty = input.qty == null ? 1 : Number(input.qty);
   if (!(qty > 0)) throw new Error("The quantity must be more than 0.");
   return clinicOrdersRepo.create({
     order_no: await nextClinicOrderNo(svc.category), patient_id: c.patient_id, consultation_id: c.id, doctor_id: c.doctor_id, service_id: svc.id,
-    kind: svc.category, name: svc.name, qty, rate: Number(svc.rate) || 0, amount: round((Number(svc.rate) || 0) * qty),
-    status: "ordered", priority: input.priority ?? "routine", unit: svc.unit, ref_range: svc.ref_range,
+    kind: svc.category, name: svc.name, qty, rate: external ? 0 : Number(svc.rate) || 0, amount: external ? 0 : round((Number(svc.rate) || 0) * qty),
+    status: external ? "external" : "ordered", priority: input.priority ?? "routine", unit: svc.unit, ref_range: svc.ref_range,
     ordered_by: actorName(), ordered_at: localDateTime(), notes: clean(input.notes),
   });
 }
@@ -319,7 +323,7 @@ export async function getVisitBill(consultationId: string): Promise<VisitBill> {
   const fee = feeBilled ? 0 : await doctorFee(c, doctor);
   if (fee > 0 && doctor) lines.push({ orderId: null, kind: "consultation", name: `Consultation fee - Dr. ${doctor.name}`, qty: 1, rate: fee, amount: fee });
   for (const o of orders) {
-    if (o.status === "cancelled" || o.invoice_id) continue;
+    if (o.status === "cancelled" || o.status === "external" || o.invoice_id) continue;
     lines.push({ orderId: o.id, kind: o.kind, name: o.name, qty: Number(o.qty), rate: Number(o.rate), amount: Number(o.amount) });
   }
   lines.sort((a, b) => KIND_ORDER(a.kind) - KIND_ORDER(b.kind));
@@ -383,4 +387,50 @@ export async function getClinicVisitInvoice(invoiceId: string): Promise<ClinicVi
     first?.doctor_id ? doctorsRepo.get(first.doctor_id) : Promise.resolve(null),
   ]);
   return { invoice, lines, patient, doctor };
+}
+
+// ── Today's queue at reception: what each patient owes ────────────────────
+
+export interface DayBillRow {
+  appointmentId: string;
+  consultationId: string | null;
+  /** Not billed yet (the doctor's fee included until billed). */
+  due: number;
+  /** Invoices of the visit: billed, paid and still owed. */
+  billed: number;
+  paid: number;
+  balance: number;
+  invoiceIds: string[];
+}
+
+/** For each appointment of a day: what is still to bill and what is billed / paid.
+ * Before the consultation is started, the doctor's fee is what is due. */
+export async function listDayBills(date: string): Promise<Map<string, DayBillRow>> {
+  const t = requireCurrentTenantId();
+  const appts = await dbSelect<{ id: string; type: string; consultation_fee: number | null; follow_up_fee: number | null; consultation_id: string | null }>(
+    `SELECT a.id, a.type, d.consultation_fee, d.follow_up_fee,
+            (SELECT c.id FROM clinic_consultations c WHERE c.tenant_id = a.tenant_id AND c.appointment_id = a.id AND c.deleted_at IS NULL LIMIT 1) AS consultation_id
+     FROM clinic_appointments a LEFT JOIN clinic_doctors d ON d.id = a.doctor_id
+     WHERE a.tenant_id = ? AND a.date = ? AND a.deleted_at IS NULL AND a.status NOT IN ('cancelled', 'no_show')`,
+    [t, date]
+  );
+  const out = new Map<string, DayBillRow>();
+  for (const a of appts) {
+    if (!a.consultation_id) {
+      const fee = Number(a.type === "follow_up" ? a.follow_up_fee : a.consultation_fee) || 0;
+      out.set(a.id, { appointmentId: a.id, consultationId: null, due: fee, billed: 0, paid: 0, balance: 0, invoiceIds: [] });
+      continue;
+    }
+    const bill = await getVisitBill(a.consultation_id);
+    const inv = await Promise.all(bill.invoices.map((i) => invoicesRepo.get(i.id)));
+    const live = inv.filter((x): x is Invoice => Boolean(x && !x.deleted_at));
+    out.set(a.id, {
+      appointmentId: a.id, consultationId: a.consultation_id, due: bill.total,
+      billed: round(live.reduce((s2, x) => s2 + (Number(x.payable) || 0), 0)),
+      paid: round(live.reduce((s2, x) => s2 + (Number(x.paid) || 0), 0)),
+      balance: round(live.reduce((s2, x) => s2 + (Number(x.balance) || 0), 0)),
+      invoiceIds: live.map((x) => x.id),
+    });
+  }
+  return out;
 }

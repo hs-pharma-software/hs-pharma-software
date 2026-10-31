@@ -30,6 +30,8 @@ import {
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { localDate } from "@/lib/localDate";
 import { ConsultationOrders } from "@/components/clinic/ConsultationOrders";
+import { ConsultationPrintModal } from "@/components/clinic/ClinicPrints";
+import { useCanBill } from "@/lib/moduleAccess";
 
 interface RxItemDraft {
   product_id: string | null;
@@ -87,6 +89,9 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [saved, setSaved] = useState(isEdit);
+  // Fees and invoicing are for logins that bill (reception / owner), not the consultant.
+  const canBill = useCanBill();
+  const [printing, setPrinting] = useState(false);
   const [linkedAppointmentId, setLinkedAppointmentId] = useState(appointmentId ?? "");
 
   useEffect(() => {
@@ -290,11 +295,19 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
       <PageHeader
         title={isEdit ? "Consultation Detail" : "New Consultation"}
         actions={
-          <Button variant="primary" onClick={() => void saveConsultationClicked()} disabled={saving || !patientId}>
-            {saving ? "Saving…" : "Save Consultation"}
-          </Button>
+          <>
+            {(savedConsultationId || consultationId) && (
+              <Button onClick={() => setPrinting(true)}><FileText size={14} className="mr-1" />Print</Button>
+            )}
+            <Button variant="primary" onClick={() => void saveConsultationClicked()} disabled={saving || !patientId}>
+              {saving ? "Saving…" : "Save Consultation"}
+            </Button>
+          </>
         }
       />
+      {printing && (savedConsultationId || consultationId) && (
+        <ConsultationPrintModal consultationId={(savedConsultationId || consultationId)!} onClose={() => setPrinting(false)} />
+      )}
 
       <div className="rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] p-5 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -345,6 +358,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
       <ConsultationOrders
         consultationId={savedConsultationId || consultationId || null}
         canOrder={Boolean(patientId)}
+        showFees={canBill}
         ensureSaved={async () => {
           const id = await persistConsultation(false);
           return id;
@@ -376,11 +390,13 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                   {rx.notes && <span className="text-xs text-neutral-400 ml-2">— {rx.notes}</span>}
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Create Invoice button */}
-                  <Button variant="ghost" onClick={() => { setPendingAction("new-invoice-from-rx", rx.id); router.push("/invoices"); }}>
-                    <FileText size={13} className="mr-1" />
-                    Invoice
-                  </Button>
+                  {/* Create Invoice button (logins that bill only) */}
+                  {canBill && (
+                    <Button variant="ghost" onClick={() => { setPendingAction("new-invoice-from-rx", rx.id); router.push("/invoices"); }}>
+                      <FileText size={13} className="mr-1" />
+                      Invoice
+                    </Button>
+                  )}
                   {/* Send to pharmacy */}
                   {rx.status === "draft" && pharmacyTenants.length > 0 && (
                     <Button

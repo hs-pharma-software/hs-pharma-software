@@ -11,7 +11,7 @@ import { savePatient, saveConsultation, doctorsRepo, saveAppointment } from "@/l
 import {
   saveClinicService, loadStandardClinicServices, listClinicServices, addClinicOrder, listOrdersForConsultation, cancelClinicOrder,
   listClinicWork, markClinicOrderStarted, enterClinicLabResult, reportClinicRadiology, getClinicReport, getVisitBill, createVisitInvoice,
-  getClinicVisitInvoice,
+  getClinicVisitInvoice, listDayBills,
 } from "@/lib/repo/clinicServices";
 
 const T = "clinic-a";
@@ -102,4 +102,32 @@ test("a follow-up appointment bills the follow-up fee", async () => {
   const c = await saveConsultation(null, { patient_id: p.id, doctor_id: d.id, appointment_id: a.id, date: TODAY });
   assert.deepEqual((await getVisitBill(c.id)).lines.map((l) => l.amount), [500]);
   assert.equal((await listOrdersForConsultation(c.id)).length, 0);
+});
+
+test("a test the clinic does not offer is ordered as external: not billed, not on the worklist", async () => {
+  const { c } = await visit();
+  await loadStandardClinicServices("lab");
+  const all = await listClinicServices({ category: "lab", includeInactive: true });
+  const notOffered = all.find((s) => !s.is_active)!;
+  const ext = await addClinicOrder({ consultationId: c.id, serviceId: notOffered.id });
+  assert.deepEqual([ext.status, ext.amount], ["external", 0]);
+  assert.equal((await listClinicWork("lab")).length, 0);
+  assert.deepEqual((await getVisitBill(c.id)).lines.map((l) => l.kind), ["consultation"], "only the doctor's fee is billed");
+  await cancelClinicOrder(ext.id);
+});
+
+test("today's bills for reception: fee due before the consultation, then due / billed / paid", async () => {
+  const p = await savePatient(null, { name: "Bilal" });
+  const d = await doctorsRepo.create({ name: "Rab Nawaz", consultation_fee: 1000, follow_up_fee: 500 });
+  const a = await saveAppointment(null, { patient_id: p.id, doctor_id: d.id, date: TODAY, status: "scheduled", type: "routine" });
+  let b = (await listDayBills(TODAY)).get(a.id)!;
+  assert.deepEqual([b.consultationId, b.due, b.billed], [null, 1000, 0]);
+  const c = await saveConsultation(null, { patient_id: p.id, doctor_id: d.id, appointment_id: a.id, date: TODAY });
+  const lab = await saveClinicService(null, { name: "Blood sugar", category: "lab", rate: 300 });
+  await addClinicOrder({ consultationId: c.id, serviceId: lab.id });
+  b = (await listDayBills(TODAY)).get(a.id)!;
+  assert.deepEqual([b.consultationId, b.due], [c.id, 1300]);
+  await createVisitInvoice(c.id, { paid: 1000 });
+  b = (await listDayBills(TODAY)).get(a.id)!;
+  assert.deepEqual([b.due, b.billed, b.paid, b.balance], [0, 1300, 1000, 300]);
 });

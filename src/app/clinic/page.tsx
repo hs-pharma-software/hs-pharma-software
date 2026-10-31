@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Stethoscope, UserRoundPlus, CalendarDays, FileHeart, Clock, Users } from "lucide-react";
+import { Stethoscope, UserRoundPlus, CalendarDays, FileHeart, Clock, Users, Receipt } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { BillModal } from "@/components/clinic/ConsultationOrders";
+import { ClinicVisitInvoiceModal } from "@/components/clinic/ClinicPrints";
+import { listDayBills, getVisitBill, type DayBillRow, type VisitBill } from "@/lib/repo/clinicServices";
+import { useCanBill } from "@/lib/moduleAccess";
+import { localDate } from "@/lib/localDate";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
@@ -30,19 +36,35 @@ export default function ClinicDashboardPage() {
   const [stats, setStats] = useState<ClinicStats>(EMPTY_STATS);
   const [appointments, setAppointments] = useState<TodayAppointmentRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Reception: what each patient of today owes; fees collected from here.
+  const canBill = useCanBill();
+  const [bills, setBills] = useState<Map<string, DayBillRow>>(new Map());
+  const [billing, setBilling] = useState<VisitBill | null>(null);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!isTauri() || !tenantId) return;
     setLoading(true);
     Promise.all([
       getClinicStats().catch(() => EMPTY_STATS),
-      getTodayAppointments(20).catch(() => [] as TodayAppointmentRow[]),
-    ]).then(([s, a]) => {
+      getTodayAppointments(100).catch(() => [] as TodayAppointmentRow[]),
+      canBill ? listDayBills(localDate()).catch(() => new Map<string, DayBillRow>()) : Promise.resolve(new Map<string, DayBillRow>()),
+    ]).then(([s, a, b]) => {
       setStats(s);
       setAppointments(a);
+      setBills(b);
       setLoading(false);
     });
-  }, [tenantId]);
+  }, [tenantId, canBill, reloadKey]);
+
+  async function collect(b: DayBillRow) {
+    if (!b.consultationId) return;
+    try { setBilling(await getVisitBill(b.consultationId)); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+  }
+
+  const money = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const totals = [...bills.values()].reduce((t, b) => ({ paid: t.paid + b.paid, due: t.due + b.due + b.balance }), { paid: 0, due: 0 });
 
   const cards = [
     { label: "Total Patients", value: stats.totalPatients, icon: UserRoundPlus, href: "/clinic/patients", color: "text-blue-600" },
@@ -76,6 +98,12 @@ export default function ClinicDashboardPage() {
             <Clock size={15} className="text-neutral-400" />
             Today&apos;s Queue
           </div>
+          {canBill && (
+            <div className="flex items-center gap-3 text-xs">
+              <span>Collected today: <b className="tabular-nums text-emerald-700">Rs {money(totals.paid)}</b></span>
+              <span>Still to collect: <b className="tabular-nums text-amber-700">Rs {money(totals.due)}</b></span>
+            </div>
+          )}
           <Link href="/clinic/appointments" className="text-xs text-blue-600 hover:underline">
             Manage →
           </Link>
@@ -96,6 +124,21 @@ export default function ClinicDashboardPage() {
                   {a.doctor_name && <p className="text-xs text-neutral-400 truncate">Dr. {a.doctor_name}</p>}
                 </div>
                 {a.time && <span className="text-xs text-neutral-400 shrink-0">{a.time}</span>}
+                {canBill && bills.get(a.id) && (() => {
+                  const b = bills.get(a.id)!;
+                  return (
+                    <div className="flex shrink-0 items-center gap-2 text-xs">
+                      {b.billed > 0 && (
+                        <button type="button" onClick={() => setInvoiceId(b.invoiceIds[b.invoiceIds.length - 1])} className="tabular-nums text-neutral-600 hover:underline" title="Open the invoice">
+                          Billed Rs {money(b.billed)}{b.balance > 0 ? ` · owes Rs ${money(b.balance)}` : " · paid"}
+                        </button>
+                      )}
+                      {b.due > 0 && (b.consultationId
+                        ? <Button variant="primary" onClick={() => void collect(b)}><Receipt size={13} />Collect Rs {money(b.due)}</Button>
+                        : <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600" title="Billed once the doctor starts the consultation">Fee Rs {money(b.due)}</span>)}
+                    </div>
+                  );
+                })()}
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[a.status] ?? "bg-neutral-100 text-neutral-600"}`}>
                   {a.status.replace(/_/g, " ")}
                 </span>
@@ -104,6 +147,10 @@ export default function ClinicDashboardPage() {
           </div>
         )}
       </div>
+      {billing && (
+        <BillModal bill={billing} onClose={() => setBilling(null)} onBilled={(id) => { setBilling(null); setInvoiceId(id); setReloadKey((k) => k + 1); }} />
+      )}
+      {invoiceId && <ClinicVisitInvoiceModal invoiceId={invoiceId} onClose={() => setInvoiceId(null)} />}
     </div>
   );
 }

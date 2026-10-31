@@ -13,14 +13,18 @@ import {
 import { ClinicReportModal, ClinicVisitInvoiceModal } from "./ClinicPrints";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const STATUS: Record<string, string> = { ordered: "Ordered", collected: "Sample collected", performed: "Done", reported: "Reported", cancelled: "Cancelled" };
+const STATUS: Record<string, string> = { ordered: "Ordered", collected: "Sample collected", performed: "Done", reported: "Reported", cancelled: "Cancelled", external: "External" };
 
 /** Lab tests, radiology and other services of a consultation, and its bill.
- * Ordering on a new consultation saves it first (`ensureSaved`). */
-export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
+ * Ordering on a new consultation saves it first (`ensureSaved`). Every lab
+ * test and radiology study can be ordered: one the clinic does not offer is
+ * advised as external. Fees and billing show only to logins that bill
+ * (`showFees`), not to the consultant. */
+export function ConsultationOrders({ consultationId, ensureSaved, canOrder, showFees }: {
   consultationId: string | null;
   ensureSaved: () => Promise<string>;
   canOrder: boolean;
+  showFees: boolean;
 }) {
   const [services, setServices] = useState<ClinicService[]>([]);
   const [orders, setOrders] = useState<ClinicOrder[]>([]);
@@ -40,14 +44,17 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
     setBilled((await getVisitBill(cid)).invoices);
   }
   useEffect(() => {
-    if (isTauri()) void listClinicServices().then(setServices).catch(() => setServices([]));
+    // All lab tests and radiology studies (offered or not); other services only when offered.
+    if (isTauri()) void listClinicServices({ includeInactive: true })
+      .then((all) => setServices(all.filter((s) => s.is_active || s.category === "lab" || s.category === "radiology")))
+      .catch(() => setServices([]));
   }, []);
   useEffect(() => { void reload().catch(() => undefined); }, [consultationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const choices = useMemo(() => services.filter((s) => s.category === category && s.category !== "consultation"), [services, category]);
   const service = services.find((s) => s.id === serviceId);
   const live = orders.filter((o) => o.status !== "cancelled");
-  const unbilled = live.filter((o) => !o.invoice_id).reduce((s, o) => s + Number(o.amount), 0);
+  const unbilled = live.filter((o) => !o.invoice_id && o.status !== "external").reduce((s, o) => s + Number(o.amount), 0);
 
   async function add() {
     if (!serviceId) return;
@@ -85,12 +92,14 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
     <div className="mb-4 rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-neutral-700">Lab, Radiology &amp; Services</h2>
-        <div className="flex items-center gap-2">
-          {billed.map((b) => (
-            <Button key={b.id} variant="ghost" onClick={() => setInvoiceId(b.id)}><Receipt size={14} />Invoice #{b.invoice_no}</Button>
-          ))}
-          <Button variant="primary" onClick={() => void openBill()} disabled={!canOrder}><Receipt size={14} />Create bill</Button>
-        </div>
+        {showFees && (
+          <div className="flex items-center gap-2">
+            {billed.map((b) => (
+              <Button key={b.id} variant="ghost" onClick={() => setInvoiceId(b.id)}><Receipt size={14} />Invoice #{b.invoice_no}</Button>
+            ))}
+            <Button variant="primary" onClick={() => void openBill()} disabled={!canOrder}><Receipt size={14} />Create bill</Button>
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid grid-cols-1 items-end gap-2 md:grid-cols-[170px_1fr_90px_110px_auto]">
@@ -102,7 +111,11 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
         <Field label={category === "lab" ? "Test" : category === "radiology" ? "Study" : "Service"}>
           <Select id="co-svc" value={serviceId} onChange={(e) => setServiceId(e.target.value)} disabled={!canOrder}>
             <option value="">{choices.length ? "— Choose —" : "None offered yet (add them on Services)"}</option>
-            {choices.map((s) => <option key={s.id} value={s.id}>{s.name} · Rs {Number(s.rate).toFixed(0)}</option>)}
+            {choices.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}{!s.is_active ? " (external)" : showFees ? ` · Rs ${Number(s.rate).toFixed(0)}` : ""}
+              </option>
+            ))}
           </Select>
         </Field>
         <Field label={perUnit === "per day" ? "Days" : "Qty"}>
@@ -116,6 +129,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
         <Button variant="secondary" onClick={() => void add()} disabled={busy || !serviceId || !canOrder}><Plus size={14} />{busy ? "Adding…" : "Add"}</Button>
       </div>
       {!canOrder && <p className="mb-3 text-xs text-neutral-500">Choose the patient first.</p>}
+      {service && !service.is_active && <p className="mb-3 text-xs text-amber-700">Not done at this clinic: it is advised as an external test and printed under External on the consultation.</p>}
 
       {live.length > 0 && (
         <div className="overflow-x-auto">
@@ -123,7 +137,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
             <thead>
               <tr className="border-b border-neutral-100 text-left text-xs text-neutral-500">
                 <th className="pb-2 pr-2 font-medium">Item</th><th className="pb-2 pr-2 font-medium">Type</th><th className="pb-2 pr-2 text-right font-medium">Qty</th>
-                <th className="pb-2 pr-2 text-right font-medium">Amount</th><th className="pb-2 pr-2 font-medium">Status / result</th><th className="pb-2" />
+                {showFees && <th className="pb-2 pr-2 text-right font-medium">Amount</th>}<th className="pb-2 pr-2 font-medium">Status / result</th><th className="pb-2" />
               </tr>
             </thead>
             <tbody>
@@ -132,10 +146,11 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
                   <td className="py-1.5 pr-2 font-medium">{o.name}</td>
                   <td className="py-1.5 pr-2 text-neutral-600">{categoryLabel(o.kind)}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{o.qty}</td>
-                  <td className="py-1.5 pr-2 text-right tabular-nums">{money(o.amount)}</td>
+                  {showFees && <td className="py-1.5 pr-2 text-right tabular-nums">{o.status === "external" ? "—" : money(o.amount)}</td>}
                   <td className="py-1.5 pr-2">
                     {o.kind === "lab" && o.result_value ? <span className={o.flag === "H" || o.flag === "L" ? "font-semibold text-rose-700" : ""}>{o.result_value} {o.unit ?? ""}</span>
                       : o.kind === "radiology" && o.impression ? <span>{o.impression}</span>
+                      : o.status === "external" ? <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">External</span>
                       : <span className="text-neutral-500">{STATUS[o.status] ?? o.status}</span>}
                     {o.invoice_id && <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Billed</span>}
                   </td>
@@ -151,7 +166,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
               ))}
             </tbody>
           </table>
-          {unbilled > 0 && <p className="mt-2 text-right text-sm">Not billed yet: <span className="font-semibold tabular-nums">Rs {money(unbilled)}</span> (plus the doctor&apos;s fee if not billed)</p>}
+          {showFees && unbilled > 0 && <p className="mt-2 text-right text-sm">Not billed yet: <span className="font-semibold tabular-nums">Rs {money(unbilled)}</span> (plus the doctor&apos;s fee if not billed)</p>}
         </div>
       )}
 
@@ -164,7 +179,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder }: {
   );
 }
 
-function BillModal({ bill, onClose, onBilled }: { bill: VisitBill; onClose: () => void; onBilled: (invoiceId: string) => void }) {
+export function BillModal({ bill, onClose, onBilled }: { bill: VisitBill; onClose: () => void; onBilled: (invoiceId: string) => void }) {
   const [discount, setDiscount] = useState("0");
   const [paid, setPaid] = useState(String(bill.total));
   const [saving, setSaving] = useState(false);

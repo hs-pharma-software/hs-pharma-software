@@ -53,3 +53,12 @@ export function hasModuleAccess(moduleKey: string | null): boolean {
   if (!moduleAllowedForType(currentTenant.businessType, moduleKey)) return false;
   return currentTenant.allowedModules.includes(moduleKey);
 }
+
+/** Whether the logged-in user bills: the owner, a full-access login, or a login
+ * with Invoices. A consultant without it does not see fees or billing. */
+export function useCanBill(): boolean {
+  const user = useAuthStore((s) => s.currentUser);
+  if (!user) return false;
+  if (user.role !== "staff" || user.permissions === null) return true;
+  return hasPermission(user.permissions, "invoices");
+}
