@@ -36,7 +36,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
   const [busy, setBusy] = useState(false);
   const [billing, setBilling] = useState<VisitBill | null>(null);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
-  const [report, setReport] = useState<string | null>(null);
+  const [report, setReport] = useState<string[] | null>(null);
   const [billed, setBilled] = useState<VisitBill["invoices"]>([]);
 
   async function reload(cid = consultationId) {
@@ -154,15 +154,15 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
                   <td className="py-1.5 pr-2 text-right tabular-nums">{o.qty}</td>
                   {showFees && <td className="py-1.5 pr-2 text-right tabular-nums">{o.status === "external" ? "—" : money(o.amount)}</td>}
                   <td className="py-1.5 pr-2">
-                    {o.kind === "lab" && o.result_value ? <span className={o.flag === "H" || o.flag === "L" ? "font-semibold text-rose-700" : ""}>{o.result_value} {o.unit ?? ""}</span>
-                      : o.kind === "radiology" && o.impression ? <span>{o.impression}</span>
+                    {o.kind === "lab" && o.result_value ? <span title={o.result_value} className={`inline-block max-w-[16rem] truncate align-bottom ${o.flag === "H" || o.flag === "L" ? "font-semibold text-rose-700" : ""}`}>{o.result_value} {o.unit ?? ""}</span>
+                      : o.kind === "radiology" && o.impression ? <span title={o.impression} className="inline-block max-w-[16rem] truncate align-bottom">{o.impression}</span>
                       : o.status === "external" ? <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">External</span>
                       : <span className="text-neutral-500">{STATUS[o.status] ?? o.status}</span>}
                     {o.invoice_id && <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Billed</span>}
                   </td>
                   <td className="py-1.5 text-right">
                     {o.status === "reported" && (o.kind === "lab" || o.kind === "radiology") && (
-                      <button type="button" title="Report" onClick={() => setReport(o.id)} className="rounded p-1 text-neutral-500 hover:bg-neutral-100"><FileText size={14} /></button>
+                      <button type="button" title="Report" onClick={() => setReport(orders.filter((x) => x.kind === o.kind && x.status === "reported").map((x) => x.id))} className="rounded p-1 text-neutral-500 hover:bg-neutral-100"><FileText size={14} /></button>
                     )}
                     {!o.invoice_id && o.status !== "reported" && o.kind !== "consultation" && (
                       <button type="button" title="Cancel" onClick={() => void cancel(o)} className="rounded p-1 text-neutral-400 hover:text-rose-600"><Trash2 size={14} /></button>
@@ -180,7 +180,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
         <BillModal bill={billing} onClose={() => setBilling(null)} onBilled={(id) => { setBilling(null); setInvoiceId(id); void reload(billing.consultation.id); }} />
       )}
       {invoiceId && <ClinicVisitInvoiceModal invoiceId={invoiceId} onClose={() => setInvoiceId(null)} />}
-      {report && <ClinicReportModal orderId={report} onClose={() => setReport(null)} />}
+      {report && <ClinicReportModal orderIds={report} onClose={() => setReport(null)} />}
     </div>
   );
 }

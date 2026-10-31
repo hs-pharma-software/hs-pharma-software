@@ -11,7 +11,7 @@ import { savePatient, saveConsultation, doctorsRepo, saveAppointment } from "@/l
 import {
   saveClinicService, loadStandardClinicServices, listClinicServices, addClinicOrder, listOrdersForConsultation, cancelClinicOrder,
   listClinicWork, markClinicOrderStarted, enterClinicLabResult, reportClinicRadiology, getClinicReport, getVisitBill, createVisitInvoice,
-  getClinicVisitInvoice, listDayBills,
+  getClinicVisitInvoice, listDayBills, getClinicReports,
 } from "@/lib/repo/clinicServices";
 
 const T = "clinic-a";
@@ -156,4 +156,25 @@ test("panel tests: CBC (with ESR), LFT, RFT, lipids, electrolytes, urine R/E are
   assert.equal(done.result_value, "Hb 10.1 L, TLC 7.5, ESR 35 H");
   assert.equal(parseComponents(done.components).length, 3);
   assert.equal((await getClinicReport(o.id)).order.components, done.components);
+});
+
+test("one report for a patient's several tests: reported ones only, one patient only", async () => {
+  const { c } = await visit();
+  const hb = await saveClinicService(null, { name: "Haemoglobin (Hb)", category: "lab", rate: 400, unit: "g/dL", ref_range: "12-17" });
+  const alt = await saveClinicService(null, { name: "ALT (SGPT)", category: "lab", rate: 600, unit: "U/L", ref_range: "0-40" });
+  const a = await addClinicOrder({ consultationId: c.id, serviceId: hb.id });
+  const b = await addClinicOrder({ consultationId: c.id, serviceId: alt.id });
+  await assert.rejects(getClinicReports([a.id, b.id]), /Nothing is reported/);
+  await enterClinicLabResult(a.id, { value: "13" });
+  assert.deepEqual((await getClinicReports([a.id, b.id])).orders.map((o) => o.name), ["Haemoglobin (Hb)"], "not yet reported tests are left out");
+  await enterClinicLabResult(b.id, { value: "30" });
+  const r = await getClinicReports([b.id, a.id]);
+  assert.deepEqual(r.orders.map((o) => o.id), [a.id, b.id]);
+  assert.equal(r.patient?.name, "Ayesha");
+  assert.equal(r.doctor?.name, "Rab Nawaz");
+  const other = await savePatient(null, { name: "Bilal" });
+  const c2 = await saveConsultation(null, { patient_id: other.id, doctor_id: c.doctor_id, date: TODAY });
+  const x = await addClinicOrder({ consultationId: c2.id, serviceId: hb.id });
+  await enterClinicLabResult(x.id, { value: "14" });
+  await assert.rejects(getClinicReports([a.id, x.id]), /one patient/);
 });

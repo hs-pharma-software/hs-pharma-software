@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { printDirect } from "@/lib/print";
 import { loadClinicProfile, type ClinicProfile } from "@/lib/clinicProfile";
 import {
-  getClinicReport, getClinicVisitInvoice, listOrdersForConsultation, categoryLabel, SERVICE_CATEGORIES,
-  type ClinicReport, type ClinicVisitInvoice, type ClinicOrder,
+  getClinicReports, getClinicVisitInvoice, listOrdersForConsultation, categoryLabel, SERVICE_CATEGORIES,
+  type ClinicReports, type ClinicVisitInvoice, type ClinicOrder,
 } from "@/lib/repo/clinicServices";
 import { getConsultationWithPrescriptions, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
 import type { ClinicConsultation, ClinicDoctor, ClinicPatient, ClinicRxItem } from "@/lib/types-clinic";
@@ -76,33 +76,39 @@ function usePrint(autoPrint: boolean, ready: boolean, paper: ClinicPrintTemplate
   return { areaRef, printing, print };
 }
 
-/** A clinic lab result or radiology report, with the clinic's header, ready to print. */
-export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { orderId: string; onClose: () => void; autoPrint?: boolean }) {
-  const [r, setR] = useState<ClinicReport | null>(null);
+/** A patient's lab results or radiology reports on one report (one visit's
+ * tests together), with the clinic's header, ready to print. */
+export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { orderIds: string[]; onClose: () => void; autoPrint?: boolean }) {
+  const [r, setR] = useState<ClinicReports | null>(null);
   const [profile, setProfile] = useState<ClinicProfile | null>(null);
+  const key = orderIds.join(",");
   useEffect(() => {
-    void getClinicReport(orderId).then(setR).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
+    void getClinicReports(orderIds).then(setR).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
-  }, [orderId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const t = useTemplate("lab");
   const { areaRef, printing, print } = usePrint(autoPrint, Boolean(r && profile && t), t?.paper);
-  const o = r?.order;
+  const orders = r?.orders ?? [];
+  const lab = orders.filter((o) => o.kind === "lab");
+  const radiology = orders.filter((o) => o.kind === "radiology");
   const narrow = t?.paper === "thermal";
+  const reportedBy = [...new Set(orders.map((o) => o.reported_by).filter(Boolean))].join(", ");
+  const lastReported = orders.map((o) => o.reported_at ?? "").sort().at(-1) || "—";
   return (
-    <Modal title={o ? `${o.kind === "lab" ? "Lab report" : "Radiology report"} ${o.order_no}` : "Report"} onClose={onClose} width="max-w-3xl">
-      {!r || !profile || !o || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
+    <Modal title={orders.length ? `${radiology.length && !lab.length ? "Radiology report" : "Lab report"}: ${r?.patient?.name ?? ""}` : "Report"} onClose={onClose} width="max-w-3xl">
+      {!r || !profile || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={o.reported_by ? `Reported by: ${o.reported_by}` : "Reported by"}>
-            <p className="mt-3 text-center text-sm font-bold uppercase tracking-widest">{o.kind === "lab" ? "Laboratory Report" : "Radiology Report"}</p>
+          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={reportedBy ? `Reported by: ${reportedBy}` : "Reported by"}>
+            <p className="mt-3 text-center text-sm font-bold uppercase tracking-widest">{lab.length ? "Laboratory Report" : "Radiology Report"}</p>
             <div className={`mt-3 grid ${narrow ? "grid-cols-1" : "grid-cols-2"} gap-x-6 gap-y-1 border-y border-neutral-300 py-2`}>
               <div><span className="text-neutral-500">Patient: </span><b>{r.patient?.name ?? "—"}</b></div>
               <div><span className="text-neutral-500">MRN: </span>{r.patient?.mrn ?? "—"}</div>
               <div><span className="text-neutral-500">Gender / DOB: </span>{[r.patient?.gender, r.patient?.dob].filter(Boolean).join(" / ") || "—"}</div>
               <div><span className="text-neutral-500">Referred by: </span>{r.doctor ? `Dr. ${r.doctor.name}` : "—"}</div>
-              <div><span className="text-neutral-500">Order: </span>{o.order_no}</div>
-              <div><span className="text-neutral-500">Reported: </span>{o.reported_at ?? "—"}</div>
+              <div><span className="text-neutral-500">Order{orders.length > 1 ? "s" : ""}: </span>{orders.map((o) => o.order_no).join(", ")}</div>
+              <div><span className="text-neutral-500">Reported: </span>{lastReported}</div>
             </div>
-            {o.kind === "lab" ? (
+            {lab.length > 0 && (
               <table className="mt-4 w-full border-collapse">
                 <thead>
                   <tr className="border-b-2 border-neutral-800 text-left">
@@ -110,43 +116,47 @@ export function ClinicReportModal({ orderId, onClose, autoPrint = false }: { ord
                   </tr>
                 </thead>
                 <tbody>
-                  {parseComponents(o.components).length > 0 ? (
-                    <>
-                      <tr><td colSpan={5} className="pt-2 font-semibold">{o.name}</td></tr>
-                      {parseComponents(o.components).map((c, i, all) => (
-                        <Fragment key={c.key}>
-                          {c.group && c.group !== all[i - 1]?.group && (
-                            <tr><td colSpan={5} className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{c.group}</td></tr>
-                          )}
-                          <tr className="border-b border-neutral-100">
-                            <td className="py-1 pl-2">{c.name}</td>
-                            <td className={`py-1 font-semibold tabular-nums ${c.flag === "H" || c.flag === "L" ? "text-rose-700" : ""}`}>{c.value}</td>
-                            <td className="py-1">{c.unit ?? ""}</td>
-                            <td className="py-1">{c.ref_range ?? ""}</td>
-                            <td className="py-1">{c.flag && c.flag !== "N" ? FLAG[c.flag] : ""}</td>
-                          </tr>
-                        </Fragment>
-                      ))}
-                    </>
-                  ) : (
-                  <tr className="border-b border-neutral-200">
-                    <td className="py-1.5 font-medium">{o.name}</td>
-                    <td className={`py-1.5 font-bold ${o.flag === "H" || o.flag === "L" ? "text-rose-700" : ""}`}>{o.result_value}</td>
-                    <td className="py-1.5">{o.unit ?? "—"}</td>
-                    <td className="py-1.5">{o.ref_range ?? "—"}</td>
-                    <td className="py-1.5">{o.flag ? FLAG[o.flag] : "—"}</td>
-                  </tr>
-                  )}
+                  {lab.map((o) => {
+                    const parts = parseComponents(o.components);
+                    return parts.length > 0 ? (
+                      <Fragment key={o.id}>
+                        <tr><td colSpan={5} className="pt-3 font-semibold">{o.name}</td></tr>
+                        {parts.map((c, i, all) => (
+                          <Fragment key={c.key}>
+                            {c.group && c.group !== all[i - 1]?.group && (
+                              <tr><td colSpan={5} className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{c.group}</td></tr>
+                            )}
+                            <tr className="border-b border-neutral-100">
+                              <td className="py-1 pl-2">{c.name}</td>
+                              <td className={`py-1 font-semibold tabular-nums ${c.flag === "H" || c.flag === "L" ? "text-rose-700" : ""}`}>{c.value}</td>
+                              <td className="py-1">{c.unit ?? ""}</td>
+                              <td className="py-1">{c.ref_range ?? ""}</td>
+                              <td className="py-1">{c.flag && c.flag !== "N" ? FLAG[c.flag] : ""}</td>
+                            </tr>
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    ) : (
+                      <tr key={o.id} className="border-b border-neutral-200">
+                        <td className="py-1.5 font-medium">{o.name}</td>
+                        <td className={`py-1.5 font-bold ${o.flag === "H" || o.flag === "L" ? "text-rose-700" : ""}`}>{o.result_value}</td>
+                        <td className="py-1.5">{o.unit ?? "—"}</td>
+                        <td className="py-1.5">{o.ref_range ?? "—"}</td>
+                        <td className="py-1.5">{o.flag ? FLAG[o.flag] : "—"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            ) : (
-              <div className="mt-4 flex flex-col gap-3">
+            )}
+            {radiology.map((o) => (
+              <div key={o.id} className="mt-4 flex flex-col gap-2">
                 <p className="font-semibold">{o.name}</p>
                 {o.findings && <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Findings</p><p className="whitespace-pre-line">{o.findings}</p></div>}
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Impression</p><p className="whitespace-pre-line font-semibold">{o.impression}</p></div>
               </div>
-            )}
-            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">Reported by: {o.reported_by ?? "—"}</p>}
+            ))}
+            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">Reported by: {reportedBy || "—"}</p>}
           </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>

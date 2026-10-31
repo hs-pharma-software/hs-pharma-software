@@ -297,6 +297,26 @@ export async function getClinicReport(orderId: string): Promise<ClinicReport> {
   return { order, patient, doctor };
 }
 
+export interface ClinicReports {
+  orders: ClinicOrder[];
+  patient: ClinicPatient | null;
+  doctor: ClinicDoctor | null;
+}
+
+/** One patient's reported tests on one report (e.g. a visit's CBC and LFT). */
+export async function getClinicReports(orderIds: string[]): Promise<ClinicReports> {
+  const orders = (await Promise.all([...new Set(orderIds)].map((id) => clinicOrdersRepo.get(id))))
+    .filter((o): o is ClinicOrder => Boolean(o) && o!.status === "reported");
+  if (!orders.length) throw new Error("Nothing is reported yet.");
+  if (new Set(orders.map((o) => o.patient_id)).size > 1) throw new Error("A report is for one patient.");
+  orders.sort((a, b) => a.ordered_at.localeCompare(b.ordered_at) || a.order_no.localeCompare(b.order_no));
+  const doctorId = orders.find((o) => o.doctor_id)?.doctor_id ?? null;
+  const [patient, doctor] = await Promise.all([
+    patientsRepo.get(orders[0].patient_id), doctorId ? doctorsRepo.get(doctorId) : Promise.resolve(null),
+  ]);
+  return { orders, patient, doctor };
+}
+
 // ── The visit bill ────────────────────────────────────────────────────────
 
 export interface VisitBillLine {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText } from "lucide-react";
+import { Check, FileText, PencilLine, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -23,14 +23,42 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   reported: { label: "Reported", cls: "bg-emerald-100 text-emerald-700" },
 };
 
+/** A small round icon button with its name as a tooltip. */
+function IconButton({ title, onClick, tone = "neutral", children }: { title: string; onClick: () => void; tone?: "neutral" | "primary" | "danger"; children: React.ReactNode }) {
+  const cls = tone === "primary" ? "bg-neutral-900 text-white hover:bg-neutral-700" : tone === "danger" ? "text-rose-600 hover:bg-rose-50" : "text-neutral-600 hover:bg-neutral-100";
+  return (
+    <button type="button" title={title} aria-label={title} onClick={onClick} className={`rounded-full p-1.5 transition-colors ${cls}`}>
+      {children}
+    </button>
+  );
+}
+
+/** One patient's reported tests of one visit: printed together on one report. */
+interface ReportGroup {
+  id: string;
+  rows: ClinicWorkRow[];
+}
+
+function groupReported(rows: ClinicWorkRow[]): ReportGroup[] {
+  const groups = new Map<string, ClinicWorkRow[]>();
+  for (const r of rows) {
+    const key = r.consultation_id || `${r.patient_id}|${r.ordered_at.slice(0, 10)}`;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  return [...groups].map(([id, rs]) => ({ id, rows: rs }));
+}
+
+const lastReported = (g: ReportGroup) => g.rows.map((r) => r.reported_at ?? "").sort().at(-1) || "—";
+
 /** The clinic's lab or radiology work: tests ordered from consultations,
- * sample / examination, result or report entry, and the printed report. */
+ * sample / examination, result or report entry, and the printed report (a
+ * visit's tests on one report). */
 export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
   const [view, setView] = useState<"pending" | "reported">("pending");
   const [rows, setRows] = useState<ClinicWorkRow[]>([]);
   const [search, setSearch] = useState("");
   const [entering, setEntering] = useState<ClinicWorkRow | null>(null);
-  const [printing, setPrinting] = useState<string | null>(null);
+  const [printing, setPrinting] = useState<string[] | null>(null);
 
   async function reload() {
     if (isTauri()) setRows(await listClinicWork(kind, view));
@@ -52,18 +80,41 @@ export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
     { header: "Doctor", render: (r) => (r.doctor_name ? `Dr. ${r.doctor_name}` : "—") },
     { header: "Ordered", render: (r) => r.ordered_at },
     { header: "Priority", render: (r) => <span className={`text-xs font-semibold uppercase ${r.priority === "routine" ? "text-neutral-500" : "text-rose-700"}`}>{r.priority}</span> },
-    { header: lab ? "Result" : "Impression", render: (r) => (lab ? (r.result_value ? `${r.result_value} ${r.unit ?? ""}${r.flag && r.flag !== "N" ? ` (${r.flag})` : ""}` : "—") : r.impression ?? "—") },
     { header: "Status", render: (r) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS[r.status]?.cls ?? ""}`}>{STATUS[r.status]?.label ?? r.status}</span> },
     {
       header: "",
       render: (r) => (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          {r.status === "ordered" && <Button variant="ghost" onClick={() => void run(() => markClinicOrderStarted(r.id))}>{lab ? "Sample collected" : "Done"}</Button>}
-          {r.status !== "reported" && <Button variant="secondary" onClick={() => setEntering(r)}>{lab ? "Enter result" : "Report"}</Button>}
-          {r.status === "reported" && <Button variant="ghost" onClick={() => setPrinting(r.id)}><FileText size={14} />Report</Button>}
-          {r.status !== "reported" && !r.invoice_id && (
-            <Button variant="ghost" onClick={() => { if (window.confirm(`Cancel ${r.name} for ${r.patient_name}?`)) void run(() => cancelClinicOrder(r.id)); }}>Cancel</Button>
+        <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {r.status === "ordered" && (
+            <IconButton title={lab ? "Sample collected" : "Examination done"} onClick={() => void run(() => markClinicOrderStarted(r.id))}><Check size={15} /></IconButton>
           )}
+          <IconButton title={lab ? "Enter result" : "Write report"} tone="primary" onClick={() => setEntering(r)}><PencilLine size={15} /></IconButton>
+          {!r.invoice_id && (
+            <IconButton title="Cancel" tone="danger" onClick={() => { if (window.confirm(`Cancel ${r.name} for ${r.patient_name}?`)) void run(() => cancelClinicOrder(r.id)); }}><X size={15} /></IconButton>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const reportColumns: Column<ReportGroup>[] = [
+    { header: "Patient", render: (g) => <span><span className="font-medium">{g.rows[0].patient_name}</span> <span className="text-xs text-neutral-500">{g.rows[0].mrn ?? ""}</span></span> },
+    {
+      header: lab ? "Tests" : "Studies",
+      render: (g) => (
+        <span title={g.rows.map((r) => r.name).join(", ")} className="inline-block max-w-[22rem] truncate align-bottom">
+          {g.rows.length > 1 && <span className="mr-1.5 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-600">{g.rows.length}</span>}
+          {g.rows.map((r) => r.name).join(", ")}
+        </span>
+      ),
+    },
+    { header: "Doctor", render: (g) => (g.rows[0].doctor_name ? `Dr. ${g.rows[0].doctor_name}` : "—") },
+    { header: "Reported", render: (g) => lastReported(g) },
+    {
+      header: "",
+      render: (g) => (
+        <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <IconButton title="View / print report" tone="primary" onClick={() => setPrinting(g.rows.map((r) => r.id))}><FileText size={15} /></IconButton>
         </div>
       ),
     },
@@ -82,11 +133,13 @@ export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
         </div>
         <Input id={`${kind}-search`} className="max-w-xs" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient, MRN, test…" />
       </div>
-      <DataTable columns={columns} rows={shown} emptyMessage={view === "pending" ? `Nothing to do. ${lab ? "Tests" : "Studies"} ordered in consultations appear here.` : "Nothing reported yet."} />
+      {view === "pending"
+        ? <DataTable columns={columns} rows={shown} emptyMessage={`Nothing to do. ${lab ? "Tests" : "Studies"} ordered in consultations appear here.`} />
+        : <DataTable columns={reportColumns} rows={groupReported(shown)} emptyMessage="Nothing reported yet." />}
       {entering && (lab
         ? <LabResultModal row={entering} onClose={() => setEntering(null)} onSaved={() => { setEntering(null); void reload(); }} />
         : <RadiologyReportForm row={entering} onClose={() => setEntering(null)} onSaved={() => { setEntering(null); void reload(); }} />)}
-      {printing && <ClinicReportModal orderId={printing} onClose={() => setPrinting(null)} />}
+      {printing && <ClinicReportModal orderIds={printing} onClose={() => setPrinting(null)} />}
     </div>
   );
 }
