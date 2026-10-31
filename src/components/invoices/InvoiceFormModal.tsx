@@ -19,6 +19,7 @@ import {
   type InvoiceItemWithProduct,
 } from "@/lib/repo/invoices";
 import { deductStock, listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
+import { allocateBatches, batchLabel, totalStock } from "@/lib/batchAllocation";
 import { getLatestPrice, productsRepo } from "@/lib/repo/products";
 import { getEffectiveDiscountPct } from "@/lib/repo/categories";
 import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
@@ -45,7 +46,12 @@ function localToday(): string {
 
 interface Line {
   product: Product;
+  /** The earliest-expiring batch (price fallback). */
   batch: ProductBatchOption;
+  /** Every batch in stock, earliest expiry first: a line may use several. */
+  batches: ProductBatchOption[];
+  /** Stock this invoice already holds (editing a saved invoice), base units. */
+  extraAvail: number;
   qty: number;
   bonusQty: number;
   salePrice: number;
@@ -244,24 +250,36 @@ export function InvoiceFormModal({
     (async () => {
       const items = await listItemsForInvoice(invoice.id);
       setOriginalItems(items);
+      const draft = Boolean(invoice.is_memorized);
       const reconstructed: Line[] = [];
+      // A line sold from several batches was saved as one item per batch: show it as one line again.
       for (const item of items) {
+        const same = reconstructed.find((l) => l.product.id === item.product_id && l.salePrice === item.sale_price
+          && l.taxPct === item.tax_pct && l.discountPct === item.discount_pct);
+        const held = draft ? 0 : Number(item.qty) + Number(item.bonus_qty);
+        if (same) {
+          same.qty += Number(item.qty);
+          same.bonusQty += Number(item.bonus_qty);
+          same.extraAvail += held;
+          continue;
+        }
         const product = await productsRepo.get(item.product_id);
         if (!product) continue;
         const batches = await listAvailableBatches(item.product_id);
-        const matching = batches.find((b) => b.batch_no === item.batch_no);
-        const batch: ProductBatchOption = matching ?? {
+        const batch: ProductBatchOption = batches.find((b) => b.batch_no === item.batch_no) ?? batches[0] ?? {
           id: `stale:${item.id}`,
           batch_no: item.batch_no,
           expiry_date: null,
-          qty: item.qty + item.bonus_qty,
+          qty: 0,
           purchase_price: item.purchase_price,
         };
         reconstructed.push({
           product,
           batch,
-          qty: item.qty,
-          bonusQty: item.bonus_qty,
+          batches,
+          extraAvail: held,
+          qty: Number(item.qty),
+          bonusQty: Number(item.bonus_qty),
           salePrice: item.sale_price,
           taxPct: item.tax_pct,
           discountPct: item.discount_pct,
@@ -307,6 +325,8 @@ export function InvoiceFormModal({
         newLines.push({
           product,
           batch,
+          batches,
+          extraAvail: 0,
           qty: item.qty,
           bonusQty: 0,
           salePrice,
@@ -338,7 +358,7 @@ export function InvoiceFormModal({
     }
     if (existingIdx >= 0) {
       const existing = lines[existingIdx];
-      const availInLineUnit = fromBaseUnitQty(batch.qty, existing.unit === "secondary", p.packing || 1);
+      const availInLineUnit = fromBaseUnitQty(lineAvail(existing), existing.unit === "secondary", p.packing || 1);
       if (existing.qty + existing.bonusQty + 1 > availInLineUnit) {
         setError(`Only ${availInLineUnit} of ${p.name} available.`);
         return;
@@ -352,6 +372,8 @@ export function InvoiceFormModal({
       {
         product: p,
         batch,
+        batches,
+        extraAvail: 0,
         qty: 1,
         bonusQty: 0,
         taxPct: p.gst_rate_pct ?? 0,
@@ -364,6 +386,11 @@ export function InvoiceFormModal({
         })(),
       },
     ]);
+  }
+
+  /** All of the product's stock this line may sell, base units. */
+  function lineAvail(l: Line): number {
+    return totalStock(l.batches) + l.extraAvail;
   }
 
   function updateLine(idx: number, patch: Partial<Line>) {
@@ -393,43 +420,73 @@ export function InvoiceFormModal({
   const payable = total - lineDiscountTotal - (Number(discountRs) || 0) + (Number(charges) || 0) + taxTotal;
   const balance = payable - (Number(paid) || 0);
 
+  /** Saves the lines as invoice items. A line larger than one batch is taken
+   * from several, earliest expiry first, and saved as one item per batch (so
+   * the print shows every batch). A draft takes no stock: it records the
+   * batches it would use, and any shortfall on the last one. */
   async function buildLineItems(invoiceId: string, skipStockDeduct = false) {
+    const used = new Map<string, number>();
+    const fresh = new Map<string, ProductBatchOption[]>();
     for (const l of lines) {
-      let batchId = l.batch.id;
-      if (isEdit && batchId.startsWith("stale:")) {
-        const fresh = await listAvailableBatches(l.product.id);
-        const match = fresh.find((b) => b.batch_no === l.batch.batch_no) ?? fresh[0];
-        if (!match) throw new Error(`No stock available for ${l.product.name}.`);
-        batchId = match.id;
-      }
+      if (!fresh.has(l.product.id)) fresh.set(l.product.id, await listAvailableBatches(l.product.id));
+      const batches = fresh.get(l.product.id)!;
       const isSecondary = l.unit === "secondary";
       const packing = l.product.packing || 1;
       const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
       const finalBonusQty = toBaseUnitQty(l.bonusQty, isSecondary, packing);
       const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
-
-      if (!skipStockDeduct) {
-        await deductStock(batchId, finalQty + finalBonusQty);
+      const { parts, short } = allocateBatches(batches, finalQty, finalBonusQty, used);
+      if (short > 1e-9) {
+        if (!skipStockDeduct) throw new Error(`Not enough stock of ${l.product.name}: ${short} more needed than all its batches hold.`);
+        // A draft may hold more than is in stock: the rest goes on the last batch (or the line's own).
+        if (!parts.length) parts.push({ batch: l.batch, qty: 0, bonus: 0 });
+        const last = parts[parts.length - 1];
+        last.qty += Math.max(0, finalQty - parts.reduce((t, p) => t + p.qty, 0));
+        last.bonus += Math.max(0, finalBonusQty - parts.reduce((t, p) => t + p.bonus, 0));
       }
-      await invoiceItemsRepo.create({
-        invoice_id: invoiceId,
-        product_id: l.product.id,
-        batch_no: l.batch.batch_no,
-        packing: l.product.packing,
-        uom_id: l.product.base_unit_id,
-        avail_qty: l.batch.qty,
-        qty: finalQty,
-        bonus_qty: finalBonusQty,
-        purchase_price: l.batch.purchase_price,
-        sale_price: finalSalePrice,
-        tax_pct: l.taxPct,
-        further_tax_pct: 0,
-        tax_rs: (finalSalePrice * finalQty - finalSalePrice * finalQty * (l.discountPct / 100)) * (l.taxPct / 100),
-        discount_pct: l.discountPct,
-        discount_rs: finalSalePrice * finalQty * (l.discountPct / 100),
-        total: lineTotal(l),
-      });
+      for (const part of parts) {
+        if (!skipStockDeduct) await deductStock(part.batch.id, part.qty + part.bonus);
+        const gross = finalSalePrice * part.qty;
+        const disc = gross * (l.discountPct / 100);
+        await invoiceItemsRepo.create({
+          invoice_id: invoiceId,
+          product_id: l.product.id,
+          batch_no: part.batch.batch_no,
+          packing: l.product.packing,
+          uom_id: l.product.base_unit_id,
+          avail_qty: part.batch.qty,
+          qty: part.qty,
+          bonus_qty: part.bonus,
+          purchase_price: part.batch.purchase_price,
+          sale_price: finalSalePrice,
+          tax_pct: l.taxPct,
+          further_tax_pct: 0,
+          tax_rs: (gross - disc) * (l.taxPct / 100),
+          discount_pct: l.discountPct,
+          discount_rs: disc,
+          total: (gross - disc) * (1 + l.taxPct / 100),
+        });
+      }
     }
+  }
+
+  /** Before anything is saved: every product's lines fit in its stock (all
+   * batches, plus what this invoice already holds when it is edited). */
+  function stockProblem(): string | null {
+    const need = new Map<string, { name: string; qty: number; avail: number }>();
+    for (const l of lines) {
+      const isSecondary = l.unit === "secondary";
+      const packing = l.product.packing || 1;
+      const q = toBaseUnitQty(l.qty, isSecondary, packing) + toBaseUnitQty(l.bonusQty, isSecondary, packing);
+      const cur = need.get(l.product.id) ?? { name: l.product.name, qty: 0, avail: 0 };
+      cur.qty += q;
+      cur.avail = Math.max(cur.avail, lineAvail(l));
+      need.set(l.product.id, cur);
+    }
+    for (const n of need.values()) {
+      if (n.qty > n.avail + 1e-9) return `Only ${Math.round(n.avail * 1000) / 1000} of ${n.name} in stock (all batches), ${Math.round(n.qty * 1000) / 1000} entered.`;
+    }
+    return null;
   }
 
   function invoiceHeader() {
@@ -465,6 +522,11 @@ export function InvoiceFormModal({
     }
     if (canPickDate && (!invoiceDate || invoiceDate > localToday())) {
       setError("Invoice date can't be in the future.");
+      return;
+    }
+    const stockError = stockProblem();
+    if (stockError) {
+      setError(stockError);
       return;
     }
     const buyerError = validateBuyer();
@@ -706,7 +768,9 @@ export function InvoiceFormModal({
               ) : (
                 lines.map((l, idx) => {
                   const isSecondary = l.unit === "secondary";
-                  const availInLineUnit = fromBaseUnitQty(l.batch.qty, isSecondary, l.product.packing || 1);
+                  const availInLineUnit = Math.round(fromBaseUnitQty(lineAvail(l), isSecondary, l.product.packing || 1) * 1000) / 1000;
+                  const pk = l.product.packing || 1;
+                  const usesBatches = batchLabel(l.batches, toBaseUnitQty(l.qty, isSecondary, pk), toBaseUnitQty(l.bonusQty, isSecondary, pk));
                   return (
                   <tr key={idx} className="border-b border-neutral-100 last:border-0">
                     <td className="px-2 py-1.5">
@@ -729,7 +793,7 @@ export function InvoiceFormModal({
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">{l.batch.batch_no ?? "\u2014"}</td>
+                    <td className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>
                     <td className="px-2 py-1.5">{availInLineUnit}</td>
                     <td className="px-2 py-1.5">
                       <input
