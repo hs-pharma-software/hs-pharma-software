@@ -13,7 +13,7 @@ import { invoicesRepo, invoiceItemsRepo, nextQuotationNo } from "@/lib/repo/invo
 import { listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
 import { getLatestPrice } from "@/lib/repo/products";
 import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
-import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
+import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, roundPrice, toBaseUnitQty } from "@/lib/uom";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman } from "@/lib/types2";
 
@@ -97,7 +97,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
           const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
           const pk = p.packing || 1;
           const rawPrice = price?.salePrice ?? batches[0]?.purchase_price ?? 0;
-          return { salePrice: defaultUnit === "secondary" ? rawPrice / pk : rawPrice, unit: defaultUnit };
+          return { salePrice: defaultUnit === "secondary" ? roundPrice(rawPrice / pk) : rawPrice, unit: defaultUnit };
         })(),
       },
     ]);

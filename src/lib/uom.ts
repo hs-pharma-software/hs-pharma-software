@@ -28,7 +28,30 @@ export function convertQtyOnUnitToggle(qty: number, togglingToSecondary: boolean
  * Rs.10 per Tab automatically ("MRP auto divides by sub-unit count"). */
 export function convertPriceOnUnitToggle(price: number, togglingToSecondary: boolean, packing: number): number {
   const p = effectivePacking(packing);
-  return togglingToSecondary ? price / p : price * p;
+  return roundPrice(togglingToSecondary ? price / p : price * p);
+}
+
+/** A price to 2 decimals (Rs 415.84 a pack of 7 -> Rs 59.41 a capsule). */
+export function roundPrice(price: number): number {
+  return Math.round((Number(price) || 0) * 100) / 100;
+}
+
+const isWhole = (n: number) => Math.abs(n - Math.round(n)) < 1e-6;
+
+/** The unit a saved quantity (always in base units) was most likely entered
+ * in: whole packs read as packs; a part of a pack that is a whole number of
+ * the secondary unit (3/7 pack = 3 capsules) reads in the secondary unit. */
+export function inferEntryUnit(qtyBase: number, bonusBase: number, packing: number, hasSecondary: boolean): "base" | "secondary" {
+  if (!hasSecondary) return "base";
+  if (isWhole(qtyBase) && isWhole(bonusBase)) return "base";
+  const p = effectivePacking(packing);
+  return isWhole(qtyBase * p) && isWhole(bonusBase * p) ? "secondary" : "base";
+}
+
+/** A quantity converted to the secondary unit, without float dust (2.9999999 -> 3). */
+export function toSecondaryQty(qtyBase: number, packing: number): number {
+  const v = qtyBase * effectivePacking(packing);
+  return isWhole(v) ? Math.round(v) : Math.round(v * 1e6) / 1e6;
 }
 
 /** Normalizes a qty entered in whichever unit was selected back to base

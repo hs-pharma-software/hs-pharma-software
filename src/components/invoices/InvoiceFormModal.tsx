@@ -28,6 +28,9 @@ import {
   hasSecondaryUnit,
   convertQtyOnUnitToggle,
   convertPriceOnUnitToggle,
+  inferEntryUnit,
+  roundPrice,
+  toSecondaryQty,
   toBaseUnitQty,
   fromBaseUnitQty,
 } from "@/lib/uom";
@@ -295,7 +298,18 @@ export function InvoiceFormModal({
           unit: "base",
         });
       }
-      setLines(reconstructed);
+      // Saved in base units: show each line in the unit it was entered in (3 CAP, not 0.43 Pack).
+      setLines(reconstructed.map((l) => {
+        const pk = l.product.packing || 1;
+        if (inferEntryUnit(l.qty, l.bonusQty, pk, hasSecondaryUnit(l.product)) === "base") return l;
+        return {
+          ...l,
+          unit: "secondary" as const,
+          qty: toSecondaryQty(l.qty, pk),
+          bonusQty: toSecondaryQty(l.bonusQty, pk),
+          salePrice: roundPrice(l.salePrice / pk),
+        };
+      }));
       setLoadingExisting(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -390,7 +404,7 @@ export function InvoiceFormModal({
           const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
           const pk = p.packing || 1;
           const rawPrice = price?.salePrice ?? batch.purchase_price;
-          return { salePrice: defaultUnit === "secondary" ? rawPrice / pk : rawPrice, unit: defaultUnit };
+          return { salePrice: defaultUnit === "secondary" ? roundPrice(rawPrice / pk) : rawPrice, unit: defaultUnit };
         })(),
       },
     ]);
