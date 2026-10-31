@@ -91,12 +91,31 @@ export async function findAppointmentConflict(a: { doctor_id: string | null; dat
 }
 
 /** Creates or updates an appointment with validation and double-booking protection. */
+/** The next queue token of a doctor on a day: one more than the highest given. */
+export async function nextAppointmentToken(doctorId: string, date: string, excludeId?: string): Promise<number> {
+  const rows = await dbSelect<{ n: number | null }>(
+    `SELECT MAX(token_no) AS n FROM clinic_appointments WHERE tenant_id = ? AND doctor_id = ? AND date = ? AND deleted_at IS NULL AND id != ?`,
+    [requireCurrentTenantId(), doctorId, date, excludeId ?? ""]
+  );
+  return (Number(rows[0]?.n) || 0) + 1;
+}
+
+/** Saves an appointment. A doctor is required; the token is given
+ * automatically (next for that doctor and day) when the appointment is new
+ * or moved to another doctor or day. */
 export async function saveAppointment(id: string | null, data: Partial<ClinicAppointment>): Promise<ClinicAppointment> {
   if (!data.patient_id) throw new Error("Select a patient.");
+  if (!data.doctor_id) throw new Error("Select the doctor.");
   if (!data.date || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) || Number.isNaN(Date.parse(data.date))) throw new Error("Enter a valid appointment date.");
+  const before = id ? await appointmentsRepo.get(id) : null;
+  if (id && !before) throw new Error("Appointment not found.");
+  const moved = !before || before.doctor_id !== data.doctor_id || before.date !== data.date;
+  const doctorId: string = data.doctor_id;
+  const date: string = data.date;
+  data = { ...data, token_no: moved || before?.token_no == null ? await nextAppointmentToken(doctorId, date, id ?? undefined) : before.token_no };
   if (data.status !== "cancelled" && data.status !== "no_show") {
     const clash = await findAppointmentConflict(
-      { doctor_id: data.doctor_id ?? null, date: data.date, time: data.time ?? null, token_no: data.token_no ?? null },
+      { doctor_id: doctorId, date, time: data.time ?? null, token_no: data.token_no ?? null },
       id ?? undefined
     );
     if (clash) throw new Error(clash.time === (data.time ?? null) && data.time ? `The doctor already has an appointment at ${clash.time} on ${clash.date}.` : `Token ${clash.token_no} is already taken for this doctor on ${clash.date}.`);

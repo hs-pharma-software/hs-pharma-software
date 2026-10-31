@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { ClinicPatientPicker } from "@/components/clinic/ClinicPatientPicker";
-import { saveAppointment, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
+import { saveAppointment, patientsRepo, doctorsRepo, nextAppointmentToken } from "@/lib/repo/clinic";
 import type { AppointmentWithNames } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { isTauri } from "@/lib/platform";
@@ -27,7 +27,8 @@ export default function AppointmentFormModal({
   const [doctorId, setDoctorId] = useState(appointment?.doctor_id ?? "");
   const [date, setDate] = useState(appointment?.date ?? localDate());
   const [time, setTime] = useState(appointment?.time ?? "");
-  const [tokenNo, setTokenNo] = useState(String(appointment?.token_no ?? ""));
+  // Given automatically: the next token of the chosen doctor on the chosen day.
+  const [tokenNo, setTokenNo] = useState<number | null>(appointment?.token_no ?? null);
   const [status, setStatus] = useState<AppointmentWithNames["status"]>(appointment?.status ?? "scheduled");
   const [type, setType] = useState<AppointmentWithNames["type"]>(appointment?.type ?? "routine");
   const [reason, setReason] = useState(appointment?.reason ?? "");
@@ -37,20 +38,36 @@ export default function AppointmentFormModal({
   useEffect(() => {
     if (!isTauri()) return;
     void patientsRepo.list({ orderBy: "name ASC" }).then(setPatients);
-    void doctorsRepo.list({ orderBy: "name ASC" }).then(setDoctors);
-  }, []);
+    void doctorsRepo.list({ orderBy: "name ASC" }).then((list) => {
+      setDoctors(list);
+      // Only one doctor: pick him for a new appointment.
+      if (!appointment && list.length === 1) setDoctorId((cur) => cur || list[0].id);
+    });
+  }, [appointment]);
+
+  // The token the appointment will get (kept when editing without changing doctor or day).
+  useEffect(() => {
+    if (!isTauri() || !doctorId || !date) { setTokenNo(null); return; }
+    if (appointment && appointment.doctor_id === doctorId && appointment.date === date && appointment.token_no != null) {
+      setTokenNo(appointment.token_no);
+      return;
+    }
+    let live = true;
+    void nextAppointmentToken(doctorId, date, appointment?.id).then((n) => { if (live) setTokenNo(n); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [doctorId, date, appointment]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!patientId || !date || saving) return;
+    if (!patientId || !doctorId || !date || saving) return;
     setSaving(true);
     try {
       const payload = {
         patient_id: patientId,
-        doctor_id: doctorId || null,
+        doctor_id: doctorId,
         date,
         time: time || null,
-        token_no: tokenNo ? Number(tokenNo) : null,
+        token_no: tokenNo,
         status: status as AppointmentWithNames["status"],
         type: type as AppointmentWithNames["type"],
         reason: reason.trim() || null,
@@ -73,9 +90,9 @@ export default function AppointmentFormModal({
             <span className="text-xs font-medium text-neutral-600">Patient *</span>
             <ClinicPatientPicker patients={patients} value={patientId} onChange={setPatientId} onRegistered={(p) => setPatients((x) => [p, ...x])} />
           </div>
-          <Field label="Doctor">
-            <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-              <option value="">— Any / Walk-in —</option>
+          <Field label="Doctor" required>
+            <Select value={doctorId} onChange={(e) => setDoctorId(e.target.value)} required>
+              <option value="" disabled>— Select doctor —</option>
               {doctors.map((d) => <option key={d.id} value={d.id}>Dr. {d.name}{d.specialization ? ` — ${d.specialization}` : ""}</option>)}
             </Select>
           </Field>
@@ -86,7 +103,7 @@ export default function AppointmentFormModal({
             <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
           </Field>
           <Field label="Token No">
-            <Input type="number" min="1" value={tokenNo} onChange={(e) => setTokenNo(e.target.value)} placeholder="Queue token" />
+            <Input value={tokenNo ?? ""} readOnly placeholder={doctorId ? "…" : "Choose the doctor"} title="Given automatically: the doctor's next token for that day" className="bg-neutral-50 font-semibold tabular-nums" />
           </Field>
           <Field label="Type">
             <Select value={type} onChange={(e) => setType(e.target.value as AppointmentWithNames["type"])}>

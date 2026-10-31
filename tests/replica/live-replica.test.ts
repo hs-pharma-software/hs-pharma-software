@@ -171,7 +171,7 @@ run("migration on a copy of the live database: pharmacy unchanged, all modules w
   login("replica-clinic", "clinic");
   const doc = await doctorsRepo.create({ name: "Dr Replica" });
   const pat = await savePatient(null, { name: "Replica Patient", phone: "0300" });
-  const appt = await saveAppointment(null, { patient_id: pat.id, doctor_id: null, date: localDate(), status: "scheduled", type: "routine" });
+  const appt = await saveAppointment(null, { patient_id: pat.id, doctor_id: doc.id, date: localDate(), status: "scheduled", type: "routine" });
   const cons = await saveConsultation(null, { patient_id: pat.id, doctor_id: doc.id, appointment_id: appt.id, date: localDate(), diagnosis: "Test" });
   const rx = await prescriptionsRepo.create({ consultation_id: cons.id, patient_id: pat.id, doctor_id: null, date: localDate(), status: "draft", pharmacy_tenant_id: null, sent_at: null, acknowledged_at: null, dispensed_at: null, notes: null });
   await saveRxItems(rx.id, [{ prescription_id: rx.id, product_id: null, product_name: "Panadol", strength: null, dosage_form: null, dose: null, route: null, frequency: null, duration: null, qty: 2, instructions: null }]);

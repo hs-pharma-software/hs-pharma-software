@@ -110,32 +110,34 @@ test("patient: edit keeps the same row and MRN; blank name refused; data persist
 
 // ── Appointments ───────────────────────────────────────────────────────────
 
-test("appointment: walk-in without a doctor, with a doctor, listed with names", async () => {
+test("appointment: a doctor is required; tokens are given per doctor and day; listed with names", async () => {
   const p = await savePatient(null, { name: "Zara" });
   const d = await doctorsRepo.create({ name: "Dr Q" });
-  const walkIn = await saveAppointment(null, { patient_id: p.id, doctor_id: null, date: TODAY, status: "scheduled", type: "emergency", reason: "Fever" });
-  const booked = await saveAppointment(null, { patient_id: p.id, doctor_id: d.id, date: TODAY, time: "10:30", token_no: 5, status: "scheduled", type: "follow_up" });
+  const e = await doctorsRepo.create({ name: "Dr E" });
+  await assert.rejects(saveAppointment(null, { patient_id: p.id, doctor_id: null, date: TODAY, status: "scheduled", type: "emergency" }), /Select the doctor/);
+  const first = await saveAppointment(null, { patient_id: p.id, doctor_id: d.id, date: TODAY, status: "scheduled", type: "emergency", reason: "Fever" });
+  const booked = await saveAppointment(null, { patient_id: p.id, doctor_id: d.id, date: TODAY, time: "10:30", token_no: 99, status: "scheduled", type: "follow_up" });
+  const other = await saveAppointment(null, { patient_id: p.id, doctor_id: e.id, date: TODAY, status: "scheduled", type: "routine" });
+  assert.deepEqual([first.token_no, booked.token_no, other.token_no], [1, 2, 1], "next token of that doctor; a typed token is ignored");
   const rows = await listAppointments({ date: TODAY });
-  assert.equal(rows.length, 2);
-  const w = rows.find((r) => r.id === walkIn.id)!;
+  assert.equal(rows.length, 3);
   const b = rows.find((r) => r.id === booked.id)!;
-  assert.equal(w.doctor_name, null);
-  assert.equal(w.patient_name, "Zara");
-  assert.equal(w.reason, "Fever");
-  assert.equal(b.doctor_name, "Dr Q");
-  assert.equal(b.time, "10:30");
-  assert.equal(b.token_no, 5);
-  assert.equal(b.type, "follow_up");
+  assert.deepEqual([b.doctor_name, b.patient_name, b.time, b.type], ["Dr Q", "Zara", "10:30", "follow_up"]);
+  assert.equal(rows.find((r) => r.id === first.id)!.reason, "Fever");
+
+  const kept = await saveAppointment(first.id, { patient_id: p.id, doctor_id: d.id, date: TODAY, time: "09:00", status: "arrived", type: "emergency" });
+  assert.equal(kept.token_no, 1, "editing keeps the token");
+  const movedDoctor = await saveAppointment(first.id, { patient_id: p.id, doctor_id: e.id, date: TODAY, status: "scheduled", type: "emergency" });
+  assert.equal(movedDoctor.token_no, 2, "moved to another doctor: his next token");
 });
 
-test("appointment: reschedule, cancel, double booking and token clashes, bad dates", async () => {
+test("appointment: reschedule, cancel, double booking, bad dates", async () => {
   const p = await savePatient(null, { name: "P1" });
   const q = await savePatient(null, { name: "P2" });
   const d = await doctorsRepo.create({ name: "Dr R" });
   const a1 = await saveAppointment(null, { patient_id: p.id, doctor_id: d.id, date: TODAY, time: "11:00", token_no: 1, status: "scheduled", type: "routine" });
 
   await assert.rejects(saveAppointment(null, { patient_id: q.id, doctor_id: d.id, date: TODAY, time: "11:00", status: "scheduled", type: "routine" }), /already has an appointment/);
-  await assert.rejects(saveAppointment(null, { patient_id: q.id, doctor_id: d.id, date: TODAY, time: "12:00", token_no: 1, status: "scheduled", type: "routine" }), /Token 1/);
   await assert.rejects(saveAppointment(null, { patient_id: q.id, doctor_id: d.id, date: "2026-13-45", status: "scheduled", type: "routine" }), /valid appointment date/);
   await assert.rejects(saveAppointment(null, { patient_id: "", doctor_id: d.id, date: TODAY, status: "scheduled", type: "routine" }), /Select a patient/);
   assert.equal(count("clinic_appointments"), 1, "rejected requests created nothing");
@@ -260,7 +262,8 @@ test("tenant isolation: another clinic cannot read, change, link or list these r
   assert.equal(row.name, "A Patient", "update from another tenant changed nothing");
   assert.equal((sql.prepare(`SELECT deleted_at FROM clinic_doctors WHERE id = ?`).get(d.id) as { deleted_at: string | null }).deleted_at, null);
 
-  await assert.rejects(saveAppointment(null, { patient_id: p.id, doctor_id: null, date: TODAY, status: "scheduled", type: "routine" }), /Patient not found in this business/);
+  const ownDoctor = await doctorsRepo.create({ name: "Dr B" });
+  await assert.rejects(saveAppointment(null, { patient_id: p.id, doctor_id: ownDoctor.id, date: TODAY, status: "scheduled", type: "routine" }), /Patient not found in this business/);
   await assert.rejects(saveConsultation(null, { patient_id: p.id, date: TODAY }), /Patient not found in this business/);
   await assert.rejects(saveRxItems(rx.id, []), /Prescription not found/);
   await assert.rejects(patientsRepo.create({ name: "x", tenant_id: A } as never), /another business/);
