@@ -45,9 +45,9 @@ export default function StaffPage() {
       ? [
           { header: "Licence", render: (s: Staff) => (s.license_no ? `${s.license_type ?? ""} ${s.license_no}` : "\u2014") },
           { header: "Department", render: (s: Staff) => s.department ?? "\u2014" },
-          { header: "Login", render: (s: Staff) => (s.user_id ? <span className="text-emerald-700">Yes</span> : <span className="text-neutral-400">No</span>) },
         ]
       : []),
+    { header: "Login", render: (s: Staff) => (s.user_id ? <span className="text-emerald-700">Linked</span> : <span className="text-neutral-400">Not linked</span>) },
     { header: "Phone No", render: (s) => s.phone ?? "\u2014" },
     { header: "CNIC", render: (s) => s.cnic ?? "\u2014" },
     { header: "Date Of Joining", render: (s) => s.date_of_joining ?? "\u2014" },

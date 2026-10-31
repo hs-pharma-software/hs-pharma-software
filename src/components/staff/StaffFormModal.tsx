@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
-import { staffRepo } from "@/lib/repo/staff";
+import { staffRepo, saveStaffWithLogin } from "@/lib/repo/staff";
+import { listUsersForTenant } from "@/lib/repo/users";
+import { isTauri } from "@/lib/platform";
+import type { UserAccount } from "@/lib/types2";
 import type { Staff } from "@/lib/types";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
@@ -45,11 +48,26 @@ function GeneralStaffForm({
     staff?.date_of_joining ?? new Date().toISOString().slice(0, 10)
   );
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // The login this staff member uses (one staff member per login).
+  const [userId, setUserId] = useState(staff?.user_id ?? "");
+  const [logins, setLogins] = useState<UserAccount[]>([]);
+  const [taken, setTaken] = useState<Set<string>>(new Set());
+  const tenantId = useAuthStore((st) => st.currentTenant?.id ?? null);
+
+  useEffect(() => {
+    if (!isTauri() || !tenantId) return;
+    void listUsersForTenant(tenantId).then((u) => setLogins(u.filter((x) => x.role !== "super_admin"))).catch(() => setLogins([]));
+    void staffRepo.list({ where: "user_id IS NOT NULL" })
+      .then((rows) => setTaken(new Set(rows.filter((r) => r.id !== staff?.id && r.user_id).map((r) => r.user_id as string))))
+      .catch(() => setTaken(new Set()));
+  }, [tenantId, staff?.id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !designation.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       const payload = {
         name: name.trim(),
@@ -62,12 +80,10 @@ function GeneralStaffForm({
         basic_pay: Number(basicPay) || 0,
         date_of_joining: dateOfJoining || null,
       };
-      if (isEdit && staff) {
-        await staffRepo.update(staff.id, payload);
-      } else {
-        await staffRepo.create(payload);
-      }
+      await saveStaffWithLogin(isEdit && staff ? staff.id : null, payload, userId || null);
       onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -108,6 +124,18 @@ function GeneralStaffForm({
             <Input type="number" min="0" step="any" value={basicPay} onChange={(e) => setBasicPay(e.target.value)} required />
           </Field>
         </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Login (user)">
+            <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
+              <option value="">— Not linked —</option>
+              {logins.filter((u) => u.id === userId || (u.is_active && !taken.has(u.id))).map((u) => (
+                <option key={u.id} value={u.id}>{u.display_name ? `${u.display_name} (${u.username})` : u.username}{u.role === "owner" ? " - owner" : ""}</option>
+              ))}
+            </Select>
+          </Field>
+          <p className="self-end pb-2 text-xs text-neutral-500">The login this person signs in with. Their name and designation then show on what they record.</p>
+        </div>
+        {error && <p className="text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Reset
