@@ -10,7 +10,6 @@ import {
   listInvoicesForGrid, invoicesRepo, convertMemorizedInvoice, deleteMemorizedInvoice, type InvoiceListRow,
 } from "@/lib/repo/invoices";
 import { isTauri, useIsTauri } from "@/lib/platform";
-import { useAuthStore } from "@/store/authStore";
 import { useFormTabs } from "@/store/formTabsStore";
 import { useCan } from "@/lib/actionPermissions";
 import { localDate } from "@/lib/localDate";
@@ -19,7 +18,8 @@ import type { Invoice } from "@/lib/types2";
 type ViewRow = { invoice: Invoice; customerName: string; salesmanName: string | null };
 
 /** Memorized (draft) invoices: saved without taking stock. View and print for
- * everyone; edit, delete and convert to a real invoice for admins. */
+ * everyone; edit, delete and convert to a real invoice for the owner, and for
+ * staff the owner allowed (User Logins > Permissions > Memorized Invoices). */
 export default function MemorizedInvoicesPage() {
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
   const [viewing, setViewing] = useState<ViewRow | null>(null);
@@ -27,10 +27,10 @@ export default function MemorizedInvoicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const openEditTab = useFormTabs((s) => s.openEditInvoice);
   const savedTick = useFormTabs((s) => s.savedTick.invoice);
-  // Admin: the business owner or a full-access login.
-  const isAdmin = useAuthStore((s) => Boolean(s.currentUser && (s.currentUser.role !== "staff" || s.currentUser.permissions === null)));
-  const canEdit = useCan("invoice.edit") && isAdmin;
-  const canDelete = useCan("invoice.delete") && isAdmin;
+  // The owner always; a staff login when the owner ticked it on User Logins > Permissions.
+  const canEdit = useCan("memorized.edit");
+  const canDelete = useCan("memorized.delete");
+  const canConvert = useCan("memorized.convert");
 
   async function reload() {
     if (!isTauri()) return;
@@ -95,7 +95,7 @@ export default function MemorizedInvoicesPage() {
               <Trash2 size={16} />
             </button>
           )}
-          {canEdit && (
+          {canConvert && (
             <Button variant="secondary" disabled={busyId === r.id} onClick={() => convert(r)} className="ml-1">
               <FileCheck2 size={14} />{busyId === r.id ? "Converting…" : "Convert to Invoice"}
             </Button>

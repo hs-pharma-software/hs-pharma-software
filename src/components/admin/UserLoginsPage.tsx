@@ -13,7 +13,7 @@ import { changePassword, updateUserPermissions } from "@/lib/auth";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { NAV } from "@/config/nav";
-import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions";
+import { ACTION_PERMISSIONS, parseDeniedActions, staffAllows, toggleStaffAction, staffListFor, restrictedCount } from "@/lib/actionPermissions";
 import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import type { Tenant, UserAccount } from "@/lib/types2";
 
@@ -86,7 +86,7 @@ export function UserLoginsPage({
   }
 
   function toggleAction(key: string) {
-    setDeniedState((d) => (d.includes(key) ? d.filter((k) => k !== key) : [...d, key]));
+    setDeniedState((d) => toggleStaffAction(d, key));
   }
 
   /** NAV items that are relevant to the tenant whose user is being edited. */
@@ -121,16 +121,16 @@ export function UserLoginsPage({
   }
 
   /** Action groups visible for the tenant whose user is being edited. */
-  function visibleActionGroups(u: UserAccount | null): Array<"Invoices" | "Purchases" | "Restaurant"> {
-    if (!u) return ["Invoices", "Purchases"];
+  function visibleActionGroups(u: UserAccount | null): Array<"Invoices" | "Memorized Invoices" | "Purchases" | "Restaurant"> {
+    if (!u) return ["Invoices", "Memorized Invoices", "Purchases"];
     const tenant = u.tenant_id == null
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
     const bt = businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
     const typeId = bt.id;
-    return (["Invoices", "Purchases", "Restaurant"] as const).filter((group) => {
+    return (["Invoices", "Memorized Invoices", "Purchases", "Restaurant"] as const).filter((group) => {
       if (group === "Restaurant") return typeId === "restaurant";
-      if (group === "Invoices") return moduleAllowedForType(typeId, "invoices");
+      if (group === "Invoices" || group === "Memorized Invoices") return moduleAllowedForType(typeId, "invoices");
       if (group === "Purchases") return moduleAllowedForType(typeId, "purchase");
       return true;
     });
@@ -333,13 +333,13 @@ export function UserLoginsPage({
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Actions</span>
                     <div className="flex gap-2 text-xs">
-                      <button type="button" onClick={() => setDeniedState([])} className="text-amber-600 hover:underline">
+                      <button type="button" onClick={() => setDeniedState(staffListFor(true, visibleActions.map((a) => a.key)))} className="text-amber-600 hover:underline">
                         Allow All
                       </button>
                       <span className="text-neutral-300">|</span>
                       <button
                         type="button"
-                        onClick={() => setDeniedState(visibleActions.map((a) => a.key))}
+                        onClick={() => setDeniedState(staffListFor(false, visibleActions.map((a) => a.key)))}
                         className="text-rose-600 hover:underline"
                       >
                         Block All
@@ -354,7 +354,7 @@ export function UserLoginsPage({
                           <label key={a.key} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
                             <input
                               type="checkbox"
-                              checked={!deniedState.includes(a.key)}
+                              checked={staffAllows(deniedState, a.key)}
                               onChange={() => toggleAction(a.key)}
                               className="accent-amber-500"
                             />
@@ -375,7 +375,7 @@ export function UserLoginsPage({
                   : permsState.length === 0
                   ? "No access \u2014 all modules are blocked."
                   : `${permsState.length} of ${visibleNav.length} modules allowed.`}
-                {deniedState.length > 0 && ` ${deniedState.length} action(s) restricted.`}
+                {restrictedCount(deniedState, visibleActions.map((a) => a.key)) > 0 && ` ${restrictedCount(deniedState, visibleActions.map((a) => a.key))} action(s) restricted.`}
               </p>
               <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
                 <Button type="button" onClick={() => setEditingPerms(null)}>
