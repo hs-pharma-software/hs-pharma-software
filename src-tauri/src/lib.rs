@@ -1337,6 +1337,15 @@ fn schema_sql_v44() -> &'static str {
 /// transfused, returned, discarded), requests, compatibility tests, issues
 /// and the bedside transfusion, and transfusion reactions with the report to
 /// the Authority.
+/// Salesman login and target: the login a salesman uses (their invoices are
+/// put on them) and a monthly sales target for their progress.
+fn schema_sql_v62() -> &'static str {
+    r#"
+    ALTER TABLE salesmen ADD COLUMN user_id TEXT;
+    ALTER TABLE salesmen ADD COLUMN monthly_target REAL DEFAULT 0;
+    "#
+}
+
 /// Purchase bonus: free units the supplier adds to a purchase line.
 fn schema_sql_v61() -> &'static str {
     r#"
@@ -3079,6 +3088,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 61,
             description: "purchase_items_bonus_qty",
             sql: schema_sql_v61(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 62,
+            description: "salesmen_user_target",
+            sql: schema_sql_v62(),
             kind: MigrationKind::Up,
         },
     ]

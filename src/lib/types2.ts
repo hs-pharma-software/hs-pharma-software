@@ -3,6 +3,10 @@
 export interface Salesman extends TenantRow {
   name: string;
   phone: string | null;
+  /** The login this salesman uses (v62): invoices they create are put on them. */
+  user_id?: string | null;
+  /** Monthly net sales target (v62); 0 = none. */
+  monthly_target?: number | null;
 }
 
 export interface Bank extends TenantRow {

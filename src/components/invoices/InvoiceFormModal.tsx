@@ -184,7 +184,15 @@ export function InvoiceFormModal({
 
   useEffect(() => {
     void customersRepo.list().then(setCustomers);
-    void salesmenRepo.list().then(setSalesmen);
+    void salesmenRepo.list().then((list) => {
+      setSalesmen(list);
+      // A new invoice by a salesman's own login goes on that salesman (his sales and progress).
+      if (!invoice) {
+        const uid = useAuthStore.getState().currentUser?.id;
+        const mine = list.find((s) => s.user_id && s.user_id === uid);
+        if (mine) setSalesmanId((cur) => cur || mine.id);
+      }
+    });
     void listUomsWithShared().then(setUoms);
     void loadFbrSettings().then((s) => {
       setFbrEnabled(s.enabled);
