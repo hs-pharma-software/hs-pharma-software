@@ -506,6 +506,54 @@ export async function getTodayAppointments(limit = 20): Promise<TodayAppointment
   );
 }
 
+/** A name without "Dr", dots and spaces, to match a staff record to a clinic doctor. */
+const doctorKey = (n: string | null | undefined) => (n ?? "").toLowerCase().replace(/\bdr\b\.?/g, "").replace(/[^a-z0-9]/g, "");
+
+/** The clinic doctor the logged-in user is: their login is linked to a staff
+ * member (Staff > Login) with the same name as the doctor. Null when none. */
+export async function myClinicDoctorId(): Promise<string | null> {
+  const uid = useAuthStore.getState().currentUser?.id;
+  if (!uid) return null;
+  const tenantId = requireCurrentTenantId();
+  const me = (await dbSelect<{ name: string }>(`SELECT name FROM staff WHERE tenant_id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1`, [tenantId, uid]))[0];
+  const key = doctorKey(me?.name ?? useAuthStore.getState().currentUser?.displayName);
+  if (!key) return null;
+  const doctors = await dbSelect<{ id: string; name: string }>(`SELECT id, name FROM clinic_doctors WHERE tenant_id = ? AND deleted_at IS NULL`, [tenantId]);
+  return doctors.find((d) => doctorKey(d.name) === key)?.id ?? null;
+}
+
+export interface QueueRow {
+  id: string;
+  patient_id: string;
+  patient_name: string;
+  mrn: string | null;
+  doctor_id: string | null;
+  doctor_name: string | null;
+  date: string;
+  time: string | null;
+  token_no: number | null;
+  status: ClinicAppointment["status"];
+  type: ClinicAppointment["type"];
+  reason: string | null;
+  /** The consultation already started from this appointment, if any. */
+  consultation_id: string | null;
+}
+
+/** Patients waiting to be seen on a day (scheduled, arrived, in consultation), in token order. */
+export async function listConsultQueue(date: string): Promise<QueueRow[]> {
+  const tenantId = requireCurrentTenantId();
+  return dbSelect<QueueRow>(
+    `SELECT a.id, a.patient_id, pt.name AS patient_name, pt.mrn, a.doctor_id, d.name AS doctor_name, a.date, a.time, a.token_no, a.status, a.type, a.reason,
+            (SELECT c.id FROM clinic_consultations c WHERE c.tenant_id = a.tenant_id AND c.appointment_id = a.id AND c.deleted_at IS NULL LIMIT 1) AS consultation_id
+     FROM clinic_appointments a
+     LEFT JOIN clinic_patients pt ON pt.id = a.patient_id
+     LEFT JOIN clinic_doctors d ON d.id = a.doctor_id
+     WHERE a.tenant_id = ? AND a.date = ? AND a.deleted_at IS NULL AND a.status IN ('scheduled', 'arrived', 'in_consultation')
+     ORDER BY CASE a.status WHEN 'in_consultation' THEN 0 WHEN 'arrived' THEN 1 ELSE 2 END, COALESCE(a.token_no, 9999), COALESCE(a.time, '99:99')`,
+    [tenantId, date]
+  );
+}
+
 export interface AppointmentWithNames extends ClinicAppointment {
   patient_name: string;
   doctor_name: string | null;
