@@ -8,7 +8,10 @@ import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { suppliersRepo } from "@/lib/repo/suppliers";
-import { ordersRepo, orderItemsRepo } from "@/lib/repo/orders";
+import { orderItemsRepo, saveOrder } from "@/lib/repo/orders";
+import { productsRepo } from "@/lib/repo/products";
+import { localDate } from "@/lib/localDate";
+import type { OrderRow } from "@/lib/types2";
 import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Supplier, Product, Uom } from "@/lib/types";
@@ -20,16 +23,32 @@ interface Line {
   unit: "base" | "secondary";
 }
 
-export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+/** Add an order, or edit one (`order`) that is not converted to a purchase yet. */
+export function OrderFormModal({ order, onClose, onSaved }: { order?: OrderRow | null; onClose: () => void; onSaved: () => void }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [supplierId, setSupplierId] = useState("");
+  const [supplierId, setSupplierId] = useState(order?.supplier_id ?? "");
   const [quickAddSupplier, setQuickAddSupplier] = useState(false);
-  const [orderType, setOrderType] = useState("Stock Level Order");
+  const [orderType, setOrderType] = useState(order?.order_type ?? "Stock Level Order");
   const [lines, setLines] = useState<Line[]>([]);
-  const [advancePayment, setAdvancePayment] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState("Cash");
-  const [description, setDescription] = useState("");
+  const [advancePayment, setAdvancePayment] = useState(String(order?.advance_payment ?? 0));
+  const [paymentMethod, setPaymentMethod] = useState(order?.payment_method ?? "Cash");
+  const [description, setDescription] = useState(order?.description ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Edit: the saved lines (base units).
+  useEffect(() => {
+    if (!order) return;
+    void (async () => {
+      const items = await orderItemsRepo.list({ where: "order_id = ?", params: [order.id], orderBy: "created_at ASC" });
+      const loaded: Line[] = [];
+      for (const it of items) {
+        const product = await productsRepo.get(it.product_id);
+        if (product) loaded.push({ product, purchasePrice: Number(it.purchase_price) || 0, qty: Number(it.qty) || 0, unit: "base" });
+      }
+      setLines(loaded);
+    })();
+  }, [order]);
   const [uoms, setUoms] = useState<Uom[]>([]);
 
   useEffect(() => {
@@ -75,43 +94,37 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
     e.preventDefault();
     if (!supplierId || lines.length === 0) return;
     setSaving(true);
+    setError(null);
     try {
-      const order = await ordersRepo.create({
-        date: new Date().toISOString().slice(0, 10),
-        supplier_id: supplierId,
-        order_type: orderType,
-        estimated_price: estimatedPrice,
-        advance_payment: Number(advancePayment) || 0,
-        payment_method: paymentMethod,
-        bank_id: null,
-        description: description || null,
-      });
-      for (const line of lines) {
-        // Normalized to base units (packs) - same convention as
-        // product_batches/purchase_items everywhere else in the app.
-        const isSecondary = line.unit === "secondary";
-        const packing = line.product.packing || 1;
-        const finalQty = toBaseUnitQty(line.qty, isSecondary, packing);
-        const finalPurchasePrice = isSecondary ? line.purchasePrice * packing : line.purchasePrice;
-        await orderItemsRepo.create({
-          order_id: order.id,
-          product_id: line.product.id,
-          packing: line.product.packing,
-          uom_id: line.product.base_unit_id,
-          purchase_price: finalPurchasePrice,
-          qty: finalQty,
-          avail_qty: null,
-          max_stock_qty: line.product.max_stock_qty,
-        });
-      }
+      // Normalized to base units (packs) - same convention as
+      // product_batches/purchase_items everywhere else in the app.
+      await saveOrder(
+        order?.id ?? null,
+        { supplierId, orderType, advancePayment: Number(advancePayment) || 0, paymentMethod, description },
+        lines.map((line) => {
+          const isSecondary = line.unit === "secondary";
+          const packing = line.product.packing || 1;
+          return {
+            productId: line.product.id,
+            packing: line.product.packing,
+            uomId: line.product.base_unit_id,
+            maxStockQty: line.product.max_stock_qty,
+            qty: toBaseUnitQty(line.qty, isSecondary, packing),
+            purchasePrice: isSecondary ? line.purchasePrice * packing : line.purchasePrice,
+          };
+        }),
+        localDate()
+      );
       onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title="Add Order" onClose={onClose} width="max-w-4xl">
+    <Modal title={order ? `Edit Order${order.order_no ? ` #${order.order_no}` : ""}` : "Add Order"} onClose={onClose} width="max-w-4xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex items-end gap-1.5 sm:col-span-2">
@@ -135,6 +148,7 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
             <Select value={orderType} onChange={(e) => setOrderType(e.target.value)}>
               <option value="Stock Level Order">Stock Level Order</option>
               <option value="Manual Order">Manual Order</option>
+              <option value="Auto: stock out">Auto: stock out</option>
             </Select>
           </Field>
         </div>
@@ -229,9 +243,10 @@ export function OrderFormModal({ onClose, onSaved }: { onClose: () => void; onSa
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
+        {error && <p className="text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
-            Reset
+            {order ? "Cancel" : "Reset"}
           </Button>
           <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
             {saving ? "Saving..." : "Save"}

@@ -17,6 +17,7 @@ import {
   applyPurchaseReversal,
 } from "@/lib/repo/purchases";
 import { receiveStock } from "@/lib/repo/stock";
+import type { OrderForPurchase } from "@/lib/repo/orders";
 import { purchaseLineMath } from "@/lib/purchaseMath";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { getLatestPrice, priceListRepo, productsRepo } from "@/lib/repo/products";
@@ -99,6 +100,7 @@ export function PurchaseFormModal({
   initialProducts,
   purchase,
   draftId,
+  fromOrder,
   active = true,
 }: {
   onClose: () => void;
@@ -111,6 +113,9 @@ export function PurchaseFormModal({
   purchase?: Purchase | null;
   /** Resume a saved draft. */
   draftId?: string;
+  /** Convert an order: its supplier, products, quantities and rates are filled
+   * in; the user adds batch, expiry and what was actually received. */
+  fromOrder?: OrderForPurchase;
   /** False while another tab is in front: shortcuts are ignored. */
   active?: boolean;
 }) {
@@ -121,7 +126,7 @@ export function PurchaseFormModal({
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [quickAddSupplier, setQuickAddSupplier] = useState(false);
-  const [supplierId, setSupplierId] = useState(purchase?.supplier_id ?? "");
+  const [supplierId, setSupplierId] = useState(purchase?.supplier_id ?? fromOrder?.supplierId ?? "");
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState(purchase?.supplier_invoice_no ?? "");
   const [lines, setLines] = useState<Line[]>((initialProducts ?? []).map(makeLine));
   const [discountRs, setDiscountRs] = useState(String(purchase?.discount_rs ?? 0));
@@ -130,7 +135,7 @@ export function PurchaseFormModal({
   const [description, setDescription] = useState(purchase?.description ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(draftId));
+  const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(draftId) || Boolean(fromOrder));
   const [uoms, setUoms] = useState<Uom[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
   /** Snapshot of the saved lines; if unchanged, an edit only updates the
@@ -173,6 +178,23 @@ export function PurchaseFormModal({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [purchase?.id]);
+
+  // Converting an order: its lines, in base units, with the current retail price.
+  useEffect(() => {
+    if (!fromOrder || isEdit) return;
+    void (async () => {
+      const built: Line[] = [];
+      for (const l of fromOrder.lines) {
+        const product = await productsRepo.get(l.productId);
+        if (!product) continue;
+        const salePrice = (await getLatestPrice(l.productId))?.salePrice ?? 0;
+        built.push({ ...makeLine(product), qty: l.qty, purchasePrice: l.purchasePrice, salePrice, initialSalePrice: salePrice });
+      }
+      setLines(built);
+      setLoadingExisting(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromOrder?.orderId]);
 
   function unitName(id: string | null) {
     return uoms.find((u) => u.id === id)?.name ?? "Unit";
@@ -400,7 +422,7 @@ export function PurchaseFormModal({
           ...header,
           purchase_no: await nextPurchaseNo(),
           date: new Date().toISOString().slice(0, 10),
-          order_id: null,
+          order_id: fromOrder?.orderId ?? null,
           discount_pct: 0,
           bank_id: null,
           slip_no: null,
