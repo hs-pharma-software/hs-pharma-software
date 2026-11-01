@@ -62,11 +62,18 @@ export async function addStockToBatch(batchId: string, qty: number, purchasePric
 
 /** Deducts sold/returned-out stock from a specific batch. Throws if the
  * batch doesn't have enough available quantity. Used by Invoice creation. */
+/** Stock differences below this (in packs) are rounding, not stock. */
+const STOCK_EPS = 1e-6;
+
 export async function deductStock(batchId: string, qty: number): Promise<void> {
   const batch = await productBatchesRepo.get(batchId);
   if (!batch) throw new Error("Batch not found");
-  if (batch.qty < qty) throw new Error(`Not enough stock in batch (avail ${batch.qty}, need ${qty})`);
-  await productBatchesRepo.update(batchId, { qty: batch.qty - qty });
+  // Loose units are fractions of a pack (2 of 30 tablets = 0.0666...), and
+  // quantities are rounded to 6 decimals: a difference that small is the
+  // same stock, so selling the last tablets is not refused.
+  const left = batch.qty - qty;
+  if (left < -STOCK_EPS) throw new Error(`Not enough stock in batch (avail ${batch.qty}, need ${qty})`);
+  await productBatchesRepo.update(batchId, { qty: Math.abs(left) <= STOCK_EPS ? 0 : left });
 }
 
 export async function restoreStock(batchId: string, qty: number): Promise<void> {
