@@ -202,11 +202,7 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
       <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{title}</p>
       <ul className="list-disc pl-5">
         {rows.map((o) => (
-          <li key={o.id}>
-            {o.name}
-            {o.status === "reported" && o.kind === "lab" && o.result_value ? <span className="text-neutral-600">: {o.result_value} {o.unit ?? ""}{o.flag && o.flag !== "N" ? ` (${FLAG[o.flag]})` : ""}</span> : null}
-            {o.status === "reported" && o.kind === "radiology" && o.impression ? <span className="text-neutral-600">: {o.impression}</span> : null}
-          </li>
+          <li key={o.id}>{o.name}</li>
         ))}
       </ul>
     </div>
