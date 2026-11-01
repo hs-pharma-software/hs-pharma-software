@@ -372,3 +372,74 @@ export async function deleteInvoiceWithStockRestore(invoiceId: string, reason?: 
   }
   await invoicesRepo.remove(invoiceId, reason, "Invoice");
 }
+
+export interface SaleReturnEdit {
+  date: string;
+  paid: number;
+  description: string | null;
+  /** New returned quantity of each line (0 removes the line). */
+  lines: { itemId: string; qty: number }[];
+}
+
+/** Changes a sale return: date, amount paid back, description and the
+ * quantities returned. Stock follows the difference (more returned goes back
+ * into stock, less comes out again), and a product is never returned beyond
+ * what the original bill sold. Handsets (IMEI) keep their quantity. */
+export async function editSaleReturn(returnId: string, edit: SaleReturnEdit): Promise<Invoice> {
+  const ret = await invoicesRepo.get(returnId);
+  if (!ret || ret.deleted_at || !ret.is_return) throw new Error("Return not found.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(edit.date)) throw new Error("Choose the return date.");
+  const items = await listItemsForInvoice(returnId);
+  const want = new Map(edit.lines.map((l) => [l.itemId, Math.max(0, Number(l.qty) || 0)]));
+  const imei = await imeiTrackedIds([...new Set(items.map((i) => i.product_id))]);
+
+  // Never more than the original bill sold, counting the other returns of it.
+  if (ret.original_invoice_id) {
+    const sold = new Map<string, number>();
+    for (const i of await listItemsForInvoice(ret.original_invoice_id)) sold.set(i.product_id, (sold.get(i.product_id) ?? 0) + Number(i.qty));
+    const returnedAll = await getReturnedQtyByProduct(ret.original_invoice_id);
+    const thisReturn = new Map<string, number>();
+    const newThis = new Map<string, number>();
+    for (const i of items) {
+      thisReturn.set(i.product_id, (thisReturn.get(i.product_id) ?? 0) + Number(i.qty));
+      newThis.set(i.product_id, (newThis.get(i.product_id) ?? 0) + (want.get(i.id) ?? Number(i.qty)));
+    }
+    for (const i of items) {
+      const others = (returnedAll.get(i.product_id) ?? 0) - (thisReturn.get(i.product_id) ?? 0);
+      const max = (sold.get(i.product_id) ?? 0) - others;
+      if ((newThis.get(i.product_id) ?? 0) > max + 1e-9) throw new Error(`${i.product_name}: at most ${Math.max(0, max)} can be returned against this bill.`);
+    }
+  }
+
+  let total = 0;
+  for (const i of items) {
+    const qty = want.get(i.id) ?? Number(i.qty);
+    if (imei.has(i.product_id) && Math.abs(qty - Number(i.qty)) > 1e-9) {
+      throw new Error(`${i.product_name} is a handset (IMEI): its quantity can't be changed here. Delete this return and make it again.`);
+    }
+    total += qty * Number(i.sale_price);
+  }
+  if (total <= 0) throw new Error("A return needs at least one item. To undo it completely, delete it instead.");
+  const paid = Math.max(0, Number(edit.paid) || 0);
+  if (paid > total + 1e-9) throw new Error(`Paid back can't be more than the return total (${total.toFixed(2)}).`);
+
+  for (const i of items) {
+    const qty = want.get(i.id) ?? Number(i.qty);
+    const delta = qty - Number(i.qty);
+    if (Math.abs(delta) < 1e-9) continue;
+    if (delta > 0) {
+      await receiveStock({ productId: i.product_id, batchNo: i.batch_no, qty: delta, purchasePrice: i.purchase_price, expiryDate: null, location: null });
+    } else {
+      const batches = await listAvailableBatches(i.product_id);
+      const batch = batches.find((b) => b.batch_no === i.batch_no) ?? batches[0];
+      if (!batch || batch.qty < -delta) throw new Error(`${i.product_name}: the returned stock is already sold, so the return can't be reduced by ${-delta}.`);
+      await deductStock(batch.id, -delta);
+    }
+    if (qty <= 0) await invoiceItemsRepo.remove(i.id);
+    else await invoiceItemsRepo.update(i.id, { qty, total: qty * Number(i.sale_price) });
+  }
+  return (await invoicesRepo.update(returnId, {
+    date: edit.date, description: edit.description?.trim() || null,
+    total, payable: total, paid, balance: total - paid,
+  }))!;
+}

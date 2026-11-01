@@ -1040,7 +1040,8 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       if (prev) {
         const hours = (new Date(now).getTime() - new Date(prev.recorded_at).getTime()) / 36e5;
         const km = distanceKm(prev, { lat: Number(p.lat), lng: Number(p.lng) });
-        if (km > 1 && hours > 0 && km / hours > settings.location.maxSpeedKmh) flag = `implausible jump ${km.toFixed(1)} km`;
+        // No time between two fixes far apart is a jump too.
+        if (km > 1 && (hours <= 0 || km / hours > settings.location.maxSpeedKmh)) flag = `implausible jump ${km.toFixed(1)} km`;
       }
       if (p.deviceAt && Math.abs(new Date(p.deviceAt).getTime() - new Date(now).getTime()) > 10 * 60e3) flag = flag ?? "device clock differs from server by over 10 min";
       const row = await insert<Base & { id: string }>("dist_loc_points", { session_id: session.id, salesman_id: me.id, lat: Number(p.lat), lng: Number(p.lng), accuracy, device_at: trimOrNull(p.deviceAt), recorded_at: now, flag } as never);
