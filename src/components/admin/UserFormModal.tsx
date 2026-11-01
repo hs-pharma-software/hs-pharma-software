@@ -5,7 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { createUser, AuthError } from "@/lib/auth";
-import { NAV } from "@/config/nav";
+import { visibleNavFor } from "@/config/navFilter";
+import { useAuthStore } from "@/store/authStore";
 import type { Tenant, UserRole } from "@/lib/types2";
 
 /** Creates a new login. Two modes:
@@ -35,17 +36,22 @@ export function UserFormModal({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Only the sections of this business's type (a clinic sees clinic sections).
+  const ownType = useAuthStore((s) => s.currentTenant?.businessType ?? null);
+  const typeOfTenant = scope === "own" ? ownType : tenants.find((t) => t.id === (fixedTenantId ?? tenantId))?.business_type ?? null;
+  const modules = visibleNavFor(typeOfTenant, null, null);
+
   const effectiveRole = scope === "own" ? "staff" : role;
   const showPermissions = effectiveRole === "staff";
 
   function toggleModule(key: string) {
     if (permissions === null) {
-      setPermissions(NAV.map((n) => n.moduleKey).filter((k) => k !== key));
+      setPermissions(modules.map((n) => n.moduleKey).filter((k) => k !== key));
     } else if (permissions.includes(key)) {
       setPermissions(permissions.filter((k) => k !== key));
     } else {
       const updated = [...permissions, key];
-      if (updated.length === NAV.length) setPermissions(null);
+      if (modules.every((n) => updated.includes(n.moduleKey))) setPermissions(null);
       else setPermissions(updated);
     }
   }
@@ -94,7 +100,7 @@ export function UserFormModal({
         {scope === "all" && (
           <>
             <Field label="Tenant" required>
-              <Select value={tenantId} onChange={(e) => setTenantId(e.target.value)} required>
+              <Select value={tenantId} onChange={(e) => { setTenantId(e.target.value); setPermissions(null); }} required>
                 <option value="">Select...</option>
                 {tenants.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -129,7 +135,7 @@ export function UserFormModal({
               </div>
             </div>
             <div className="grid grid-cols-3 gap-1.5">
-              {NAV.map((item) => (
+              {modules.map((item) => (
                 <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
                   <input
                     type="checkbox"
