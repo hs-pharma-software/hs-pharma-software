@@ -10,7 +10,9 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { MeasurementForm } from "@/components/cloth/MeasurementForm";
 import { isTauri } from "@/lib/platform";
 import { printDirect } from "@/lib/print";
-import { measurementsRepo, measurementSummary, parseMeasurements, searchMeasurements, type ClothMeasurement } from "@/lib/cloth";
+import { measurementCategory, measurementsRepo, measurementSummary, parseMeasurements, searchMeasurements, type ClothMeasurement } from "@/lib/cloth";
+
+const catLabel = (m: ClothMeasurement) => ({ male: "Male", female: "Female" } as const)[measurementCategory(m) ?? "male"] ?? "";
 
 /** Cloth store: customers' custom sizes, kept for next time and found by
  * name or mobile. */
@@ -43,7 +45,7 @@ export default function MeasurementsPage() {
 
   const columns: Column<ClothMeasurement>[] = [
     { header: "Customer", render: (m) => <span><span className="font-medium">{m.customer_name}</span>{m.mobile && <span className="block text-xs text-neutral-500">{m.mobile}</span>}</span> },
-    { header: "Garment", render: (m) => m.garment },
+    { header: "Garment", render: (m) => <span>{m.garment}{measurementCategory(m) && <span className="block text-xs text-neutral-500">{catLabel(m)}</span>}</span> },
     { header: "Measurements", render: (m) => <span title={measurementSummary(m)} className="inline-block max-w-[28rem] truncate align-bottom text-xs text-neutral-700">{measurementSummary(m) || "—"}</span> },
     { header: "Last used", render: (m) => (m.last_used_at ?? m.updated_at).slice(0, 10) },
     {
@@ -84,7 +86,7 @@ function MeasurementSlip({ m, onClose }: { m: ClothMeasurement; onClose: () => v
         <style>{"@media print { @page { size: 80mm auto; margin: 3mm; } }"}</style>
         <p className="text-center text-sm font-bold uppercase tracking-wide">Measurements</p>
         <p className="mt-1"><b>{m.customer_name}</b>{m.mobile ? ` · ${m.mobile}` : ""}</p>
-        <p>{m.garment} · {(m.last_used_at ?? m.updated_at).slice(0, 10)}</p>
+        <p>{m.garment}{measurementCategory(m) ? ` (${catLabel(m)})` : ""} · {(m.last_used_at ?? m.updated_at).slice(0, 10)}</p>
         <table className="mt-2 w-full border-collapse">
           <tbody>
             {values.map(([k, v]) => (

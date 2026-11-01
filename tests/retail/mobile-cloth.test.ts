@@ -148,3 +148,19 @@ test("size Multiple: one name per size", async () => {
   ]);
   assert.ok(MULTI_SIZE_DEFAULT.every((s) => MULTI_SIZE_CHOICES.includes(s)));
 });
+
+test("measurements: product types are garments; male / female general points; category kept", async () => {
+  as("cloth-a", "cloth_store");
+  const { garmentChoices, pointsFor, saveMeasurement, measurementCategory, parseMeasurements, measurementSummary } = await import("@/lib/cloth");
+  const g = garmentChoices(["Kurta", "Abaya", "Prince Coat", "Unstitched Fabric"]);
+  assert.ok(g.includes("Abaya") && g.includes("Prince Coat") && !g.includes("Unstitched Fabric"));
+  assert.equal(g.filter((x) => x === "Kurta").length, 1);
+  assert.equal(g[g.length - 1], "Other");
+  assert.ok(pointsFor("Abaya", "female").includes("Bust"));
+  assert.ok(pointsFor("Prince Coat", "male").includes("Chest"));
+  assert.ok(pointsFor("Kurta", "female").includes("Collar"), "a garment with its own points keeps them");
+  const m = await saveMeasurement(null, { customer_name: "Sana", garment: "Abaya", category: "female", values: { Bust: "34", Length: "56" } });
+  assert.equal(measurementCategory(m), "female");
+  assert.deepEqual(parseMeasurements(m.measurements), { Bust: "34", Length: "56" });
+  assert.equal(measurementSummary(m), "Female: Bust 34 · Length 56");
+});
