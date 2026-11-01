@@ -9,6 +9,8 @@ import { normalizeNtn } from "./fbrData";
 
 const GW = "https://gw.fbr.gov.pk";
 const POST_URL = { sandbox: `${GW}/di_data/v1/di/postinvoicedata_sb`, production: `${GW}/di_data/v1/di/postinvoicedata` };
+/** Checks an invoice without recording it: used to test a token. */
+const VALIDATE_URL = { sandbox: `${GW}/di_data/v1/di/validateinvoicedata_sb`, production: `${GW}/di_data/v1/di/validateinvoicedata` };
 const TIMEOUT_MS = 45_000;
 
 export interface FbrSettings {
@@ -178,6 +180,26 @@ export async function submitInvoiceToFbr(payload: FbrInvoicePayload, settings: F
     );
   }
   return fail(`${vr?.error || "FBR validation failed"}${vr?.errorCode ? ` [${vr.errorCode}]` : ""}`, json);
+}
+
+/** Tests a token on FBR's validate endpoint of that environment with an
+ * empty invoice: nothing is recorded. FBR answers 401 to a token it does not
+ * accept there; any other answer (it reports the invoice as invalid) means the
+ * token works. */
+export async function testFbrToken(token: string, environment: "sandbox" | "production"): Promise<{ ok: boolean; message: string }> {
+  const t = token.trim();
+  if (!t) return { ok: false, message: `Enter the ${environment} token first.` };
+  let res: Response;
+  try {
+    res = await fbrFetch(VALIDATE_URL[environment], t, { method: "POST", body: "{}" });
+  } catch (e) {
+    const err = e as Error;
+    if (err.name === "TimeoutError") return { ok: false, message: "FBR did not respond within 45 seconds. Check the internet connection." };
+    return { ok: false, message: `Could not reach FBR (${err.message}). The browser may block FBR; test from the desktop app.` };
+  }
+  if (res.status === 401 || res.status === 403) return { ok: false, message: `FBR rejected this token for ${environment} (HTTP ${res.status}). Check it is the ${environment} token issued by PRAL.` };
+  if (res.status >= 500) return { ok: false, message: `FBR server error (HTTP ${res.status}). Try again later.` };
+  return { ok: true, message: `Token accepted by FBR ${environment} (HTTP ${res.status}).` };
 }
 
 /** QR code content: the FBR invoice number itself (spec section 6). */

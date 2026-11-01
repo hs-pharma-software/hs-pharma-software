@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { FBR_PROVINCES } from "@/lib/fbrData";
+import { testFbrToken } from "@/lib/fbr";
 
 const PROVINCES = FBR_PROVINCES.map((p) => p.label);
 
 /** FBR Digital Invoicing: on / off, sandbox or production token, and the
  * seller's details (Settings, and the clinic's profile page). */
-export function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
+export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { tauriReady: boolean; tenantId?: string; embedded?: boolean }) {
   const [enabled, setEnabled] = useState("false");
   const [env, setEnv] = useState("sandbox");
   const [sbToken, setSbToken] = useState("");
@@ -24,19 +25,35 @@ export function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
   const [saved, setSaved] = useState(false);
   const [showSbToken, setShowSbToken] = useState(false);
   const [showProdToken, setShowProdToken] = useState(false);
+  const [testing, setTesting] = useState<"sandbox" | "production" | null>(null);
+  const [tests, setTests] = useState<Partial<Record<"sandbox" | "production", { ok: boolean; message: string }>>>({});
+
+  async function test(environment: "sandbox" | "production") {
+    setTesting(environment);
+    try {
+      const r = await testFbrToken(environment === "sandbox" ? sbToken : prodToken, environment);
+      setTests((t) => ({ ...t, [environment]: r }));
+    } finally {
+      setTesting(null);
+    }
+  }
+  const testResult = (environment: "sandbox" | "production") => {
+    const r = tests[environment];
+    return r ? <p className={`mt-1 text-xs ${r.ok ? "text-emerald-700" : "text-rose-600"}`}>{r.ok ? "✓ " : "✕ "}{r.message}</p> : null;
+  };
 
   useEffect(() => {
     if (!isTauri()) return;
     void Promise.all([
-      getSetting("fbr_enabled"),
-      getSetting("fbr_environment"),
-      getSetting("fbr_sandbox_token"),
-      getSetting("fbr_production_token"),
-      getSetting("fbr_seller_ntn"),
-      getSetting("fbr_seller_name"),
-      getSetting("fbr_seller_province"),
-      getSetting("fbr_seller_address"),
-      getSetting("fbr_retailer"),
+      getSetting("fbr_enabled", tenantId),
+      getSetting("fbr_environment", tenantId),
+      getSetting("fbr_sandbox_token", tenantId),
+      getSetting("fbr_production_token", tenantId),
+      getSetting("fbr_seller_ntn", tenantId),
+      getSetting("fbr_seller_name", tenantId),
+      getSetting("fbr_seller_province", tenantId),
+      getSetting("fbr_seller_address", tenantId),
+      getSetting("fbr_retailer", tenantId),
     ]).then(([en, ev, sb, prod, n, nm, prov, addr, ret]) => {
       setRetailer(ret === "true");
       if (en) setEnabled(en);
@@ -48,26 +65,26 @@ export function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
       if (prov) setProvince(prov);
       if (addr) setAddress(addr);
     });
-  }, []);
+  }, [tenantId]);
 
   async function save() {
     await Promise.all([
-      setSetting("fbr_enabled", enabled),
-      setSetting("fbr_environment", env),
-      setSetting("fbr_sandbox_token", sbToken),
-      setSetting("fbr_production_token", prodToken),
-      setSetting("fbr_seller_ntn", ntn),
-      setSetting("fbr_seller_name", name),
-      setSetting("fbr_seller_province", province),
-      setSetting("fbr_seller_address", address),
-      setSetting("fbr_retailer", retailer ? "true" : "false"),
+      setSetting("fbr_enabled", enabled, tenantId),
+      setSetting("fbr_environment", env, tenantId),
+      setSetting("fbr_sandbox_token", sbToken, tenantId),
+      setSetting("fbr_production_token", prodToken, tenantId),
+      setSetting("fbr_seller_ntn", ntn, tenantId),
+      setSetting("fbr_seller_name", name, tenantId),
+      setSetting("fbr_seller_province", province, tenantId),
+      setSetting("fbr_seller_address", address, tenantId),
+      setSetting("fbr_retailer", retailer ? "true" : "false", tenantId),
     ]);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+    <div className={embedded ? "" : "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]"}>
       {/* Header */}
       <div className="mb-4 flex items-center gap-3">
         {/* FBR Badge */}
@@ -119,6 +136,10 @@ export function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
               {showSbToken ? "Hide" : "Show"}
             </button>
           </div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <Button onClick={() => void test("sandbox")} disabled={testing !== null || !sbToken.trim()}>{testing === "sandbox" ? "Testing…" : "Test sandbox token"}</Button>
+          </div>
+          {testResult("sandbox")}
         </Field>
         <Field label="Production Bearer Token">
           <div className="relative">
@@ -137,6 +158,10 @@ export function FbrSettingsCard({ tauriReady }: { tauriReady: boolean }) {
               {showProdToken ? "Hide" : "Show"}
             </button>
           </div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <Button onClick={() => void test("production")} disabled={testing !== null || !prodToken.trim()}>{testing === "production" ? "Testing…" : "Test production token"}</Button>
+          </div>
+          {testResult("production")}
         </Field>
 
         {/* Seller info */}

@@ -11,6 +11,7 @@ import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions"
 import { PAPERS, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/lib/printTemplates";
 import { NAV } from "@/config/nav";
 import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
+import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { linkOfTenant, unlinkPharmacy } from "@/lib/repo/pharmacyLink";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
 import {
@@ -78,6 +79,7 @@ export function TenantDetailPanel({
   const [templatesEditable, setTemplatesEditable] = useState(tenant.print_templates_editable !== 0);
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [fbrSetupOpen, setFbrSetupOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -231,10 +233,19 @@ export function TenantDetailPanel({
             <Toggle on={fbrAllowed} onChange={setFbrAllowed} onLabel="Allowed" offLabel="Not Allowed" />
             <span className="text-[11px] text-neutral-500">
               {fbrAllowed
-                ? "The pharmacy can set up FBR and submit invoices."
+                ? "The business can set up FBR and submit invoices."
                 : "FBR settings are hidden and no invoice is sent to FBR."}
             </span>
           </div>
+          {fbrAllowed && (
+            <div className="mt-3 border-t border-neutral-200 pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] text-neutral-500">Set up FBR for this business: environment, sandbox and production tokens (with a test), seller details.</p>
+                <Button onClick={() => setFbrSetupOpen((v) => !v)}>{fbrSetupOpen ? "Hide FBR setup" : "FBR setup"}</Button>
+              </div>
+              {fbrSetupOpen && <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-neutral-200"><FbrSettingsCard tauriReady tenantId={tenant.id} embedded /></div>}
+            </div>
+          )}
         </Section>
 
         <Section
