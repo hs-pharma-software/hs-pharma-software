@@ -229,7 +229,7 @@ export const DIST_PERMS = [
   "customers.view", "customers.add", "customers.edit", "customers.verify",
   "catalog.view", "catalog.manage", "companies.manage",
   "bookings.create", "bookings.submit", "bookings.approve", "bookings.view_all",
-  "invoices.view", "invoices.create", "invoices.edit_lines", "invoices.edit_qty", "invoices.edit_price", "invoices.discount",
+  "invoices.view", "invoices.create", "invoices.edit_lines", "invoices.edit_qty", "invoices.edit_price", "invoices.discount", "invoices.view_cost",
   "invoices.edit_description", "invoices.edit_tax_base", "invoices.edit_wht_rate", "invoices.edit_wht_amount", "invoices.edit_customer", "invoices.return",
   "purchases.view", "purchases.create", "purchases.edit_qty", "purchases.edit_price", "purchases.discount", "purchases.edit_tax", "purchases.return",
   "payments.receive", "reports.view", "locations.view", "targets.view", "salesmen.view",

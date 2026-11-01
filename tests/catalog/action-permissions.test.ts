@@ -38,3 +38,12 @@ test("ticking, Allow All / Block All and the restricted count", () => {
   assert.equal(restrictedCount([], keys), 1);
   assert.equal(restrictedCount(staffListFor(true, keys), keys), 0);
 });
+
+test("purchase rate while billing: the owner always, staff only when ticked", () => {
+  as("owner", []);
+  assert.equal(can("invoice.purchase_rate"), true);
+  as("staff", []);
+  assert.equal(can("invoice.purchase_rate"), false);
+  as("staff", toggleStaffAction([], "invoice.purchase_rate"));
+  assert.equal(can("invoice.purchase_rate"), true);
+});

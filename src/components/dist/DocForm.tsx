@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { dist, errorText } from "@/lib/dist";
 import type { DistProduct } from "@/lib/dist/store";
 import { Err, money, useLoad, type DistCtx } from "./ui";
-import { PurchaseRateBubble, useShowsPurchaseRate } from "@/components/invoices/PurchaseRateBubble";
+import { PurchaseRateBubble } from "@/components/invoices/PurchaseRateBubble";
 
 interface Line {
   key: string;
@@ -54,8 +54,8 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof dist.previewWht>> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The admin sees a line's purchase rate while in its quantity box.
-  const showsRate = useShowsPurchaseRate();
+  // The administrator, and sub-users allowed in Permissions > Invoices.
+  const showsRate = c.can("invoices.view_cost");
   const [rateKey, setRateKey] = useState<string | null>(null);
   const rateLine = rateKey ? lines.find((l) => l.key === rateKey) : undefined;
   const toLines = () => lines.map((l) => ({ productId: l.p.id, qty: Number(l.qty), price: c.can("invoices.edit_price") ? Number(l.price) : null, discount: Number(l.discount) || 0 }));

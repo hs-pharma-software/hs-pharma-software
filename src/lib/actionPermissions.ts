@@ -8,6 +8,7 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
   { key: "invoice.edit", label: "Edit invoices", group: "Invoices" },
   { key: "invoice.delete", label: "Delete invoices", group: "Invoices" },
   { key: "invoice.fbr_submit", label: "Submit invoices to FBR", group: "Invoices" },
+  { key: "invoice.purchase_rate", label: "See purchase rate while billing", group: "Invoices", optIn: true },
   { key: "memorized.edit", label: "Edit memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.delete", label: "Delete memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.convert", label: "Convert to invoice", group: "Memorized Invoices", optIn: true },
@@ -22,7 +23,7 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
 ];
 
 export type ActionKey =
-  | "invoice.edit" | "invoice.delete" | "invoice.fbr_submit"
+  | "invoice.edit" | "invoice.delete" | "invoice.fbr_submit" | "invoice.purchase_rate"
   | "memorized.edit" | "memorized.delete" | "memorized.convert"
   | "purchase.edit" | "purchase.delete"
   | "rest.order" | "rest.discount" | "rest.void" | "rest.refund" | "rest.menu" | "rest.settings";

@@ -3,14 +3,18 @@
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useCan } from "@/lib/actionPermissions";
 
 /** Business types whose admin sees the purchase rate while billing. */
 const RATE_HINT_TYPES = new Set(["retail_pharmacy", "medical_store", "general_store", "hospital_pharmacy", "distributor"]);
 
-/** Whether the logged-in user is the business's admin (owner) of a type that
- * sees the purchase rate on the invoice form. */
+/** Whether the logged-in user sees the purchase rate on the invoice form: the
+ * admin (owner) always, staff when allowed (User Permissions > Invoices >
+ * See purchase rate while billing), in the business types above. */
 export function useShowsPurchaseRate(): boolean {
-  return useAuthStore((s) => s.currentUser?.role === "owner" && RATE_HINT_TYPES.has(s.currentTenant?.businessType ?? ""));
+  const allowed = useCan("invoice.purchase_rate");
+  const type = useAuthStore((s) => s.currentTenant?.businessType ?? "");
+  return allowed && RATE_HINT_TYPES.has(type);
 }
 
 /** A small circle at the top right of the window with a product's purchase
