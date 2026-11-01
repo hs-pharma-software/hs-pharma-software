@@ -788,6 +788,22 @@ export function InvoiceFormModal({
                 {measurement ? "Change" : "Add custom size"}
               </button>
               {measurement && <button type="button" onClick={() => setMeasurement(null)} className="text-violet-700 hover:underline">Remove</button>}
+              {measurement && (
+                <label className="flex basis-full items-center gap-2 sm:basis-auto">
+                  <span className="font-semibold">Custom charges (Rs)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    aria-label="Custom charges"
+                    value={charges}
+                    onChange={(e) => setCharges(e.target.value)}
+                    placeholder="Stitching / alteration"
+                    className="w-28 rounded-lg border border-violet-300 bg-white px-2 py-0.5 text-right text-sm tabular-nums text-neutral-900"
+                  />
+                  <span className="text-violet-700">added to the total</span>
+                </label>
+              )}
             </div>
           )}
           {pickingMeasurement && (
@@ -1025,7 +1041,7 @@ export function InvoiceFormModal({
           <Field label="Total">
             <Input value={total.toFixed(2)} disabled />
           </Field>
-          <Field label="Charges">
+          <Field label={isClothStore && measurement ? "Charges (incl. custom)" : "Charges"}>
             <Input type="number" min="0" step="any" value={charges} onChange={(e) => setCharges(e.target.value)} />
           </Field>
           <Field label="Discount Rs (F12)">
