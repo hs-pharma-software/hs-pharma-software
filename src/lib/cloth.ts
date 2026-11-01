@@ -4,6 +4,8 @@ import { dbSelect } from "./db";
 import { createTenantRepo, requireCurrentTenantId, type TenantRow } from "./repo/base";
 import { nowIso } from "./id";
 import { isMissingSchemaError } from "./dbErrors";
+import { getSetting, setSetting } from "./repo/settings";
+import { productsRepo } from "./repo/products";
 
 export const CLOTH_TYPES = [
   "Shalwar Kameez", "Kurta", "Kameez", "Shalwar", "Shirt", "Trouser", "Waistcoat", "Coat", "Sherwani", "Prince Coat",
@@ -11,6 +13,14 @@ export const CLOTH_TYPES = [
 ];
 
 export const CLOTH_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "Free size", "Custom"];
+
+/** Size "Multiple" on a new product: one product per size ticked. */
+export const MULTIPLE_SIZE = "Multiple";
+export const MULTI_SIZE_CHOICES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+export const MULTI_SIZE_DEFAULT = ["XS", "S", "M", "L", "XL"];
+
+/** "FlexOn - Navy Blue" + "M" -> "FlexOn - Navy Blue - M". */
+export const sizedName = (name: string, size: string) => `${name.trim()} - ${size}`;
 
 /** Measurement points (inches) for each kind of garment. */
 export const MEASUREMENT_POINTS: Record<string, string[]> = {
@@ -100,4 +110,63 @@ export async function searchMeasurements(term: string): Promise<ClothMeasurement
 /** Marks a measurement used on a bill (it then comes first in searches). */
 export async function touchMeasurement(id: string): Promise<void> {
   await measurementsRepo.update(id, { last_used_at: nowIso() });
+}
+
+// ── Product types (Products > Product Types) ─────────────────────────────
+
+const TYPES_KEY = "cloth.types";
+
+/** The store's garment types: its own list once saved, else the standard one. */
+export async function loadClothTypes(): Promise<string[]> {
+  const raw = await getSetting(TYPES_KEY).catch(() => null);
+  if (!raw) return [...CLOTH_TYPES];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.map(String) : [...CLOTH_TYPES];
+  } catch {
+    return [...CLOTH_TYPES];
+  }
+}
+
+async function storeTypes(list: string[]): Promise<string[]> {
+  const clean = [...new Map(list.map((t) => t.trim()).filter(Boolean).map((t) => [t.toLowerCase(), t])).values()];
+  await setSetting(TYPES_KEY, JSON.stringify(clean));
+  return clean;
+}
+
+/** Products of each type (by name, case-insensitive). */
+export async function clothTypeCounts(): Promise<Map<string, number>> {
+  const rows = await dbSelect<{ t: string; n: number }>(
+    `SELECT LOWER(attr_type) AS t, COUNT(*) AS n FROM products WHERE tenant_id = ? AND deleted_at IS NULL AND attr_type IS NOT NULL AND attr_type != '' GROUP BY LOWER(attr_type)`,
+    [requireCurrentTenantId()]
+  ).catch(() => []);
+  return new Map(rows.map((r) => [r.t, Number(r.n)]));
+}
+
+export async function addClothType(name: string): Promise<string[]> {
+  const t = name.trim();
+  if (!t) throw new Error("Enter the type.");
+  const list = await loadClothTypes();
+  if (list.some((x) => x.toLowerCase() === t.toLowerCase())) throw new Error(`${t} is already in the list.`);
+  return storeTypes([...list, t]);
+}
+
+/** Renames a type; its products move to the new name. */
+export async function renameClothType(from: string, to: string): Promise<string[]> {
+  const t = to.trim();
+  if (!t) throw new Error("Enter the type.");
+  const list = await loadClothTypes();
+  if (t.toLowerCase() !== from.toLowerCase() && list.some((x) => x.toLowerCase() === t.toLowerCase())) throw new Error(`${t} is already in the list.`);
+  const products = await dbSelect<{ id: string }>(
+    `SELECT id FROM products WHERE tenant_id = ? AND deleted_at IS NULL AND LOWER(attr_type) = LOWER(?)`, [requireCurrentTenantId(), from]
+  ).catch(() => []);
+  for (const p of products) await productsRepo.update(p.id, { attr_type: t });
+  return storeTypes(list.map((x) => (x.toLowerCase() === from.toLowerCase() ? t : x)));
+}
+
+/** Removes a type no product uses. */
+export async function deleteClothType(name: string): Promise<string[]> {
+  const used = (await clothTypeCounts()).get(name.toLowerCase()) ?? 0;
+  if (used) throw new Error(`${used} product${used === 1 ? " is" : "s are"} of type ${name}. Change ${used === 1 ? "it" : "them"} first, or rename the type.`);
+  return storeTypes((await loadClothTypes()).filter((x) => x.toLowerCase() !== name.toLowerCase()));
 }

@@ -83,3 +83,10 @@ test("a lab login sees only the desks it was given (receptionist, technologist, 
   assert.deepEqual(visibleNavFor("lab", null, ["lab_samples"]).map((i) => i.label), ["Samples & Results"]);
   assert.deepEqual(visibleNavFor("lab", null, ["lab_verify", "lab_reports"]).map((i) => i.label), ["Pathologist", "Reports"]);
 });
+
+test("Products > Product Types is a cloth store tab only", () => {
+  const children = (type: string) => visibleNavFor(type, businessType(type).defaultModules, null).find((i) => i.moduleKey === "products")?.children?.map((c) => c.label) ?? [];
+  assert.ok(children("cloth_store").includes("Product Types"));
+  assert.ok(children("cloth_store").includes("Product Detail"));
+  for (const t of ["general_store", "mobile_shop", "retail_pharmacy"]) assert.ok(!children(t).includes("Product Types"), t);
+});

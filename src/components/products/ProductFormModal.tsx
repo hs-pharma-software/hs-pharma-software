@@ -23,7 +23,7 @@ import { useAuthStore } from "@/store/authStore";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Category, SubCategory, Uom, Product } from "@/lib/types";
 import { imeiListProblem, parseImeis, receiveImeis } from "@/lib/repo/imei";
-import { CLOTH_SIZES, CLOTH_TYPES } from "@/lib/cloth";
+import { CLOTH_SIZES, CLOTH_TYPES, MULTIPLE_SIZE, MULTI_SIZE_CHOICES, MULTI_SIZE_DEFAULT, loadClothTypes, sizedName } from "@/lib/cloth";
 
 function UomCombobox({ value, onChange, uoms, required, placeholder }: {
   value: string;
@@ -101,6 +101,12 @@ export function ProductFormModal({
   const [attrType, setAttrType] = useState(product?.attr_type ?? "");
   const [attrColor, setAttrColor] = useState(product?.attr_color ?? "");
   const [attrSize, setAttrSize] = useState(product?.attr_size ?? "");
+  const [clothTypes, setClothTypes] = useState<string[]>(CLOTH_TYPES);
+  // Size "Multiple" (new product): one product per size, each with its opening quantity.
+  const [multiSizes, setMultiSizes] = useState<string[]>(MULTI_SIZE_DEFAULT);
+  const [multiQty, setMultiQty] = useState<Record<string, string>>({});
+  const multiple = isClothStore && !isEdit && attrSize.trim().toLowerCase() === MULTIPLE_SIZE.toLowerCase();
+  useEffect(() => { if (isClothStore) void loadClothTypes().then(setClothTypes).catch(() => undefined); }, [isClothStore]);
 
   const [isNarcotic, setIsNarcotic] = useState(Boolean(product?.is_narcotic));
   const [narcoticTouched, setNarcoticTouched] = useState(isEdit);
@@ -320,6 +326,10 @@ export function ProductFormModal({
       return;
     }
     if (saving) return;
+    if (multiple) {
+      if (!multiSizes.length) { window.alert("Tick at least one size."); return; }
+      if (barcode.trim()) { window.alert("One barcode can't be shared by several sizes. Leave Barcode empty, then add each size's barcode by editing it."); return; }
+    }
     const openingImeiList = isMobileShop && trackImei && !isEdit ? parseImeis(openingImeis) : [];
     if (isMobileShop && trackImei && !isEdit) {
       const units = toBaseUnitQty(Number(quantity) || 0, openingStockUnit === "secondary", Number(packing) || 1);
@@ -384,17 +394,26 @@ export function ProductFormModal({
         }
       } else {
         const isSecondary = openingStockUnit === "secondary";
-        const finalQty = toBaseUnitQty(Number(quantity) || 0, isSecondary, packingNum);
+        const baseQty = toBaseUnitQty(Number(quantity) || 0, isSecondary, packingNum);
         const finalPurchasePrice = isSecondary ? (Number(purchasePrice) || 0) * packingNum : Number(purchasePrice) || 0;
         const finalSalePrice = isSecondary ? (Number(salePrice) || 0) * packingNum : Number(salePrice) || 0;
         const finalWholesalePrice = isSecondary ? (Number(wholesalePrice) || 0) * packingNum : Number(wholesalePrice) || 0;
         const finalMrp = isSecondary ? (Number(mrp) || 0) * packingNum : Number(mrp) || 0;
 
+        // Size "Multiple": the same product once per size ticked, in size order.
+        const variants = multiple
+          ? MULTI_SIZE_CHOICES.filter((sz) => multiSizes.includes(sz)).map((sz) => ({
+              payload: { ...payload, name: sizedName(name, sz), attr_size: sz },
+              qty: toBaseUnitQty(Number(multiQty[sz]) || 0, isSecondary, packingNum),
+            }))
+          : [{ payload, qty: baseQty }];
+        for (const v of variants) {
+        const finalQty = v.qty;
         // Shared catalog products (pharmacy/general-store) use createSharedProduct
         // to bypass tenant_id stamping; all others use the normal repo.
         const created = catalogGroup
-          ? await createSharedProduct(payload)
-          : await productsRepo.create(payload);
+          ? await createSharedProduct(v.payload)
+          : await productsRepo.create(v.payload);
 
         if (finalQty > 0) {
           await productBatchesRepo.create({
@@ -416,6 +435,7 @@ export function ProductFormModal({
             mrp: finalMrp,
             comment: null,
           });
+        }
         }
       }
       onSaved();
@@ -543,15 +563,36 @@ export function ProductFormModal({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Type">
               <Input id="pf-attr-type" list="pf-cloth-types" value={attrType} onChange={(e) => setAttrType(e.target.value)} placeholder="e.g. Shalwar Kameez" />
-              <datalist id="pf-cloth-types">{CLOTH_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
+              <datalist id="pf-cloth-types">{clothTypes.map((t) => <option key={t} value={t} />)}</datalist>
             </Field>
             <Field label="Colour">
               <Input id="pf-attr-color" value={attrColor} onChange={(e) => setAttrColor(e.target.value)} placeholder="e.g. Black" />
             </Field>
             <Field label="Size">
               <Input id="pf-attr-size" list="pf-cloth-sizes" value={attrSize} onChange={(e) => setAttrSize(e.target.value)} placeholder="S / M / L / XL / Custom" />
-              <datalist id="pf-cloth-sizes">{CLOTH_SIZES.map((t) => <option key={t} value={t} />)}</datalist>
+              <datalist id="pf-cloth-sizes">{(isEdit ? CLOTH_SIZES : [...CLOTH_SIZES, MULTIPLE_SIZE]).map((t) => <option key={t} value={t} />)}</datalist>
             </Field>
+          </div>
+        )}
+        {multiple && (
+          <div className="rounded-lg bg-violet-50 px-3 py-2 ring-1 ring-violet-200">
+            <p className="mb-2 text-xs text-violet-900">
+              One product per size ticked: {multiSizes.length ? MULTI_SIZE_CHOICES.filter((sz) => multiSizes.includes(sz)).map((sz) => sizedName(name || "Name", sz)).join(", ") : "tick the sizes"}.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {MULTI_SIZE_CHOICES.map((sz) => {
+                const on = multiSizes.includes(sz);
+                return (
+                  <div key={sz} className={`flex items-center gap-1.5 rounded-lg px-2 py-1 ring-1 ${on ? "bg-white ring-violet-300" : "bg-violet-50 ring-violet-100"}`}>
+                    <label className="flex items-center gap-1 text-sm font-medium">
+                      <input type="checkbox" checked={on} onChange={() => setMultiSizes((x) => (x.includes(sz) ? x.filter((y) => y !== sz) : [...x, sz]))} />
+                      {sz}
+                    </label>
+                    {on && <Input aria-label={`Opening quantity of ${sz}`} className="!w-16 !py-0.5 text-right tabular-nums" type="number" min="0" step="any" placeholder="Qty" value={multiQty[sz] ?? ""} onChange={(e) => setMultiQty((q) => ({ ...q, [sz]: e.target.value }))} />}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -789,9 +830,11 @@ export function ProductFormModal({
                   <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />
                 </Field>
               )}
-              <Field label={`Quantity (${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName})`}>
-                <Input type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-              </Field>
+              {!multiple && (
+                <Field label={`Quantity (${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName})`}>
+                  <Input type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                </Field>
+              )}
               {!isClothStore && (
                 <Field label="Expiry Date">
                   <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />

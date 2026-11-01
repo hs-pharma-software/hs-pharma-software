@@ -124,3 +124,27 @@ test("cloth store: custom sizes saved, found by name or mobile, latest use first
   as("cloth-b", "cloth_store");
   assert.equal((await searchMeasurements("")).length, 0, "another store's book is its own");
 });
+
+test("cloth store: product types list; rename moves products; delete only when unused", async () => {
+  as("cloth-a", "cloth_store");
+  const { loadClothTypes, addClothType, renameClothType, deleteClothType, clothTypeCounts } = await import("@/lib/cloth");
+  assert.ok((await loadClothTypes()).includes("Kurta"), "starts with the standard list");
+  await addClothType("Waistcoat Fancy");
+  await assert.rejects(addClothType("waistcoat fancy"), /already in the list/);
+  const p = await productsRepo.create({ name: "Kurta Black M", packing: 1, attr_type: "Kurta" } as never);
+  await assert.rejects(deleteClothType("Kurta"), /1 product is of type Kurta/);
+  await renameClothType("Kurta", "Kurta (Cotton)");
+  assert.equal((await productsRepo.get(p.id))?.attr_type, "Kurta (Cotton)");
+  assert.equal((await clothTypeCounts()).get("kurta (cotton)"), 1);
+  const list = await deleteClothType("Waistcoat Fancy");
+  assert.ok(!list.includes("Waistcoat Fancy"));
+  assert.ok(list.includes("Kurta (Cotton)") && !list.includes("Kurta"));
+});
+
+test("size Multiple: one name per size", async () => {
+  const { sizedName, MULTI_SIZE_CHOICES, MULTI_SIZE_DEFAULT } = await import("@/lib/cloth");
+  assert.deepEqual(MULTI_SIZE_DEFAULT.map((s) => sizedName(" FlexOn - Navy Blue ", s)), [
+    "FlexOn - Navy Blue - XS", "FlexOn - Navy Blue - S", "FlexOn - Navy Blue - M", "FlexOn - Navy Blue - L", "FlexOn - Navy Blue - XL",
+  ]);
+  assert.ok(MULTI_SIZE_DEFAULT.every((s) => MULTI_SIZE_CHOICES.includes(s)));
+});
