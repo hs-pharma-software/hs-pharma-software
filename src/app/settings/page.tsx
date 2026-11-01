@@ -15,6 +15,7 @@ import { useAuthStore } from "@/store/authStore";
 import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { LinkedClinicsCard } from "@/components/settings/LinkedClinicsCard";
+import { ServiceFbrCard } from "@/components/settings/ServiceFbrCard";
 import {
   PAPERS,
   loadDefaultPaper,
@@ -519,6 +520,9 @@ export default function GeneralSettingsPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const fbrAllowed = useAuthStore((s) => s.currentTenant?.fbrAllowed !== false);
   const hospitalPharmacy = useAuthStore((s) => s.currentTenant?.businessType === "hospital_pharmacy");
+  // Lab and banquet bills are services: their FBR item details are set once.
+  const serviceBills = useAuthStore((s) => s.currentTenant?.businessType === "lab" || s.currentTenant?.businessType === "banquet_hall");
+  const isLab = useAuthStore((s) => s.currentTenant?.businessType === "lab");
 
   const tauriReady = useIsTauri();
 
@@ -555,6 +559,9 @@ export default function GeneralSettingsPage() {
       )}
 
       {hospitalPharmacy && <LinkedClinicsCard />}
+      {fbrAllowed && serviceBills && (
+        <ServiceFbrCard hint={isLab ? "Lab bills are sent to FBR with these details on every test line." : "Booking bills are sent to FBR with these details on every line (menu, hall, extras)."} />
+      )}
 
       <BilloriCard tauriReady={tauriReady} />
 

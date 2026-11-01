@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import { DescriptionCombobox } from "@/components/ui/DescriptionCombobox";
 import { SuggestInput } from "@/components/ui/SuggestInput";
 import { SearchSelect } from "@/components/ui/SearchSelect";
@@ -22,6 +22,8 @@ import { isPharmacyFamilyType } from "@/lib/catalogAccess";
 import { useAuthStore } from "@/store/authStore";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Category, SubCategory, Uom, Product } from "@/lib/types";
+import { imeiListProblem, parseImeis, receiveImeis } from "@/lib/repo/imei";
+import { CLOTH_SIZES, CLOTH_TYPES } from "@/lib/cloth";
 
 function UomCombobox({ value, onChange, uoms, required, placeholder }: {
   value: string;
@@ -50,6 +52,8 @@ export function ProductFormModal({
   const { currentTenant } = useAuthStore.getState();
   const isPharmacyTenant = isPharmacyFamilyType(currentTenant?.businessType);
   const isGeneralStoreTenant = currentTenant?.businessType === "general_store";
+  const isMobileShop = currentTenant?.businessType === "mobile_shop";
+  const isClothStore = currentTenant?.businessType === "cloth_store";
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
@@ -90,6 +94,13 @@ export function ProductFormModal({
   const [sroNo, setSroNo] = useState(product?.sro_no ?? "");
   const [sroItemSerialNo, setSroItemSerialNo] = useState(product?.sro_item_serial_no ?? "");
   const [fbrQtyFactor, setFbrQtyFactor] = useState(String(product?.fbr_qty_factor || 1));
+
+  // Mobile shop: IMEI per handset; cloth store: type / colour / size.
+  const [trackImei, setTrackImei] = useState(Boolean(product?.track_imei));
+  const [openingImeis, setOpeningImeis] = useState("");
+  const [attrType, setAttrType] = useState(product?.attr_type ?? "");
+  const [attrColor, setAttrColor] = useState(product?.attr_color ?? "");
+  const [attrSize, setAttrSize] = useState(product?.attr_size ?? "");
 
   const [isNarcotic, setIsNarcotic] = useState(Boolean(product?.is_narcotic));
   const [narcoticTouched, setNarcoticTouched] = useState(isEdit);
@@ -309,6 +320,15 @@ export function ProductFormModal({
       return;
     }
     if (saving) return;
+    const openingImeiList = isMobileShop && trackImei && !isEdit ? parseImeis(openingImeis) : [];
+    if (isMobileShop && trackImei && !isEdit) {
+      const units = toBaseUnitQty(Number(quantity) || 0, openingStockUnit === "secondary", Number(packing) || 1);
+      const problem = units > 0 ? imeiListProblem(openingImeiList, units, "Opening stock") : null;
+      if (problem) {
+        window.alert(problem);
+        return;
+      }
+    }
     setSaving(true);
     try {
       // Determine if this product should go into the shared catalog.
@@ -343,6 +363,8 @@ export function ProductFormModal({
         is_narcotic: isNarcotic ? 1 : 0,
         catalog_group: catalogGroup,
         product_classification: catalogGroup,
+        ...(isMobileShop ? { track_imei: trackImei ? 1 : 0 } : {}),
+        ...(isClothStore ? { attr_type: attrType.trim() || null, attr_color: attrColor.trim() || null, attr_size: attrSize.trim() || null } : {}),
       };
 
       if (isEdit && product) {
@@ -383,6 +405,7 @@ export function ProductFormModal({
             location: location || null,
             purchase_price: finalPurchasePrice,
           });
+          if (openingImeiList.length) await receiveImeis({ productId: created.id, imeis: openingImeiList, purchaseId: null, price: finalPurchasePrice });
         }
         if (finalSalePrice > 0 || finalMrp > 0) {
           await priceListRepo.create({
@@ -508,6 +531,31 @@ export function ProductFormModal({
           />
         </Field>
 
+        {isMobileShop && (
+          <label className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ring-1 ${trackImei ? "bg-sky-50 text-sky-900 ring-sky-200" : "bg-neutral-50 text-neutral-600 ring-black/[0.04]"}`}>
+            <input type="checkbox" checked={trackImei} onChange={(e) => setTrackImei(e.target.checked)} className="h-4 w-4 accent-sky-600" />
+            <span className="font-medium">Track IMEI</span>
+            <span className="text-xs opacity-75">Handsets: each unit is bought and sold by its IMEI, with the buyer&apos;s CNIC and mobile. Leave off for accessories.</span>
+          </label>
+        )}
+
+        {isClothStore && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label="Type">
+              <Input id="pf-attr-type" list="pf-cloth-types" value={attrType} onChange={(e) => setAttrType(e.target.value)} placeholder="e.g. Shalwar Kameez" />
+              <datalist id="pf-cloth-types">{CLOTH_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
+            </Field>
+            <Field label="Colour">
+              <Input id="pf-attr-color" value={attrColor} onChange={(e) => setAttrColor(e.target.value)} placeholder="e.g. Black" />
+            </Field>
+            <Field label="Size">
+              <Input id="pf-attr-size" list="pf-cloth-sizes" value={attrSize} onChange={(e) => setAttrSize(e.target.value)} placeholder="S / M / L / XL / Custom" />
+              <datalist id="pf-cloth-sizes">{CLOTH_SIZES.map((t) => <option key={t} value={t} />)}</datalist>
+            </Field>
+          </div>
+        )}
+
+        {!isMobileShop && !isClothStore && (
         <label
           className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm ring-1 ${
             isNarcotic ? "bg-rose-50 text-rose-800 ring-rose-200" : "bg-neutral-50 text-neutral-600 ring-black/[0.04]"
@@ -529,6 +577,7 @@ export function ProductFormModal({
               : "Invoices with this product will need customer name and mobile."}
           </span>
         </label>
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex items-end gap-1.5">
@@ -757,6 +806,11 @@ export function ProductFormModal({
                 <Input type="number" min="0" step="any" value={mrp} onChange={(e) => setMrp(e.target.value)} />
               </Field>
             </div>
+            {isMobileShop && trackImei && Number(quantity) > 0 && (
+              <Field label={`IMEIs of the opening stock (${parseImeis(openingImeis).length} of ${quantity})`}>
+                <Textarea id="pf-opening-imeis" rows={3} value={openingImeis} onChange={(e) => setOpeningImeis(e.target.value)} placeholder="Scan or type one IMEI per line" className="font-mono" />
+              </Field>
+            )}
           </>
         )}
 

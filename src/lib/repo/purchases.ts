@@ -2,6 +2,7 @@
 import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { deductStock, listAvailableBatches } from "./stock";
+import { imeisOfPurchase, removePurchaseImeis, returnImeisToSupplier } from "./imei";
 import type { Purchase, PurchaseItem } from "../types2";
 
 export const purchasesRepo = createTenantRepo<Purchase>("purchases");
@@ -163,6 +164,8 @@ export async function deletePurchaseWithStockReversal(purchaseId: string, reason
   if (reversal.problems.length > 0) {
     throw new Error(`This purchase can't be deleted:\n${reversal.problems.join("\n")}`);
   }
+  // Mobile shop: its handsets come out too (refused when one is sold).
+  await removePurchaseImeis(purchaseId);
   await applyPurchaseReversal(reversal);
   for (const item of await listItemsForPurchase(purchaseId)) await purchaseItemsRepo.remove(item.id);
   await purchasesRepo.remove(purchaseId, reason, "Purchase");
@@ -204,6 +207,19 @@ export async function returnWholePurchase(purchaseId: string, paidAmount = 0): P
     .filter((l) => l.returnQty > 0);
 
   if (lines.length === 0) throw new Error("Nothing left to return on this purchase \u2014 every item was already returned.");
+
+  // Mobile shop: every handset of this purchase still to return must be in stock.
+  const units = await imeisOfPurchase(purchaseId);
+  const goingBack: string[] = [];
+  for (const [productId, us] of units) {
+    const need = lines.filter((l) => l.item.product_id === productId).reduce((t, l) => t + l.returnQty, 0);
+    const inStock = us.filter((u) => u.status === "in_stock").map((u) => u.imei);
+    if (inStock.length < need) {
+      const sold = us.filter((u) => u.status === "sold").map((u) => u.imei);
+      throw new Error(`Not every handset of this purchase is in stock (${sold.slice(0, 3).join(", ")} sold). Return the others with Purchase Item Return.`);
+    }
+    goingBack.push(...inStock.slice(0, need));
+  }
 
   const payable = lines.reduce((s, l) => s + l.item.purchase_price * l.returnQty, 0);
 
@@ -253,5 +269,6 @@ export async function returnWholePurchase(purchaseId: string, paidAmount = 0): P
     });
   }
 
+  if (goingBack.length) await returnImeisToSupplier(goingBack);
   return ret.id;
 }

@@ -153,11 +153,13 @@ export function ClinicWorklist({ kind }: { kind: "lab" | "radiology" }) {
 
 /** Result entry for one patient's visit: the tests as tabs on the left, the
  * selected test's fields on the right. Saving moves on to the next test. */
-function ResultWorkspace({ kind, rows, startId, onClose }: {
+export function ResultWorkspace({ kind, rows, startId, onClose, awaitVerification = false }: {
   kind: "lab" | "radiology";
   rows: ClinicWorkRow[];
   startId: string;
   onClose: () => void;
+  /** A diagnostic lab: results go to the pathologist instead of being reported. */
+  awaitVerification?: boolean;
 }) {
   const lab = kind === "lab";
   const [current, setCurrent] = useState(startId);
@@ -175,7 +177,7 @@ function ResultWorkspace({ kind, rows, startId, onClose }: {
   return (
     <Modal title={`${lab ? "Results" : "Reports"}: ${p.patient_name}`} onClose={onClose} width="max-w-6xl">
       <p className="mb-3 text-sm text-neutral-600">
-        {p.mrn ?? ""}{p.gender ? ` · ${p.gender}` : ""}{p.doctor_name ? ` · Dr. ${p.doctor_name}` : ""} · {done.size} of {rows.length} saved
+        {p.mrn ?? ""}{p.gender ? ` · ${p.gender}` : ""}{p.doctor_name ? ` · ${awaitVerification ? "Ref" : "Dr."} ${p.doctor_name}` : ""} · {done.size} of {rows.length} saved
       </p>
       <div className="grid min-h-[60vh] grid-cols-1 gap-4 md:grid-cols-[240px_1fr]">
         <nav aria-label={lab ? "Tests" : "Studies"} className="flex gap-1 overflow-x-auto border-neutral-200 pb-2 md:flex-col md:overflow-y-auto md:border-r md:pb-0 md:pr-3">
@@ -198,38 +200,39 @@ function ResultWorkspace({ kind, rows, startId, onClose }: {
         </nav>
         <section className="min-w-0">
           <h3 className="mb-2 text-base font-semibold text-neutral-900">{row.name}</h3>
+          {row.pathologist_note?.startsWith("Recheck:") && <p className="mb-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900 ring-1 ring-amber-200">Pathologist: {row.pathologist_note}</p>}
           {lab
             ? (panelFor(row.name)
-              ? <PanelResultForm key={row.id} row={row} onSaved={saved} onCancel={onClose} />
-              : <SingleResultForm key={row.id} row={row} onSaved={saved} onCancel={onClose} />)
+              ? <PanelResultForm key={row.id} row={row} onSaved={saved} onCancel={onClose} awaitVerification={awaitVerification} />
+              : <SingleResultForm key={row.id} row={row} onSaved={saved} onCancel={onClose} awaitVerification={awaitVerification} />)
             : <RadiologyReportForm key={row.id} row={row} onSaved={saved} onCancel={onClose} />}
-          {done.size === rows.length && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">All {rows.length} saved. Print them together from the Reported tab.</p>}
+          {done.size === rows.length && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">All {rows.length} saved. {awaitVerification ? "They now wait for the pathologist to verify." : "Print them together from the Reported tab."}</p>}
         </section>
       </div>
     </Modal>
   );
 }
 
-type FormProps = { row: ClinicWorkRow; onSaved: () => void; onCancel: () => void };
+type FormProps = { row: ClinicWorkRow; onSaved: () => void; onCancel: () => void; awaitVerification?: boolean };
 
 /** CBC, LFT, RFT, lipid profile, electrolytes, urine R/E: every parameter. */
-function PanelResultForm({ row, onSaved, onCancel }: FormProps) {
+function PanelResultForm({ row, onSaved, onCancel, awaitVerification }: FormProps) {
   const [saving, setSaving] = useState(false);
   async function save(components: LabComponent[]) {
     setSaving(true);
-    try { await enterClinicLabResult(row.id, { value: "", components }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
+    try { await enterClinicLabResult(row.id, { value: "", components }, { awaitVerification }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   }
   return <LabPanelForm panel={panelFor(row.name)!} gender={row.gender} saved={parseComponents(row.components)} saving={saving} onSave={(c) => void save(c)} onCancel={onCancel} />;
 }
 
-function SingleResultForm({ row, onSaved, onCancel }: FormProps) {
+function SingleResultForm({ row, onSaved, onCancel, awaitVerification }: FormProps) {
   const [value, setValue] = useState(row.result_value ?? "");
   const [unit, setUnit] = useState(row.unit ?? "");
   const [range, setRange] = useState(row.ref_range ?? "");
   const [saving, setSaving] = useState(false);
   async function save() {
     setSaving(true);
-    try { await enterClinicLabResult(row.id, { value, unit, refRange: range }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
+    try { await enterClinicLabResult(row.id, { value, unit, refRange: range }, { awaitVerification }); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { setSaving(false); }
   }
   return (
     <div className="max-w-md">

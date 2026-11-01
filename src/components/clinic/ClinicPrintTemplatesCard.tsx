@@ -12,7 +12,8 @@ import {
 /** Paper and layout of the clinic's invoice, lab report and prescription.
  * The Super Admin passes the clinic's tenantId; the clinic sees it read-only
  * when its templates are fixed. */
-export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false }: { tenantId?: string; editable: boolean; embedded?: boolean }) {
+export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false, docs }: { tenantId?: string; editable: boolean; embedded?: boolean; docs?: ClinicDoc[] }) {
+  const shownDocs = docs ? CLINIC_DOCS.filter((d) => docs.includes(d.id)) : CLINIC_DOCS;
   const [t, setT] = useState<Record<ClinicDoc, ClinicPrintTemplate>>(DEFAULT_CLINIC_TEMPLATES);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -31,7 +32,7 @@ export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false 
   async function save() {
     setSaving(true);
     try {
-      for (const d of CLINIC_DOCS) await saveClinicTemplate(d.id, t[d.id], tenantId);
+      for (const d of shownDocs) await saveClinicTemplate(d.id, t[d.id], tenantId);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -51,7 +52,7 @@ export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false 
         </>
       )}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        {CLINIC_DOCS.map((d) => {
+        {shownDocs.map((d) => {
           const x = t[d.id];
           return (
             <fieldset key={d.id} disabled={!editable} className="flex flex-col gap-2 rounded-xl border border-neutral-200 p-3">

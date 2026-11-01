@@ -2,6 +2,7 @@ import { dbSelect } from "../db";
 import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { receiveStock, deductStock, listAvailableBatches } from "./stock";
+import { imeiTrackedIds, releaseInvoiceImeis } from "./imei";
 import type { Invoice, InvoiceItem } from "../types2";
 
 export const invoicesRepo = createTenantRepo<Invoice>("invoices");
@@ -321,6 +322,13 @@ export async function restoreInvoiceStock(items: InvoiceItem[]): Promise<void> {
  * stock, so its lines are taken from stock now (each from its own batch);
  * nothing is taken unless every line has enough. */
 export async function convertMemorizedInvoice(invoiceId: string, today: string): Promise<Invoice> {
+  // Handsets need their IMEIs picked: those drafts are converted by editing and saving them as an invoice.
+  {
+    const items = await listItemsForInvoice(invoiceId);
+    if ((await imeiTrackedIds([...new Set(items.map((x) => x.product_id))])).size) {
+      throw new Error("This draft has handsets: open it with Edit, pick their IMEIs, then save it as an invoice.");
+    }
+  }
   const inv = await invoicesRepo.get(invoiceId);
   if (!inv) throw new Error("Draft invoice not found.");
   if (!inv.is_memorized) throw new Error("This invoice is already converted.");
@@ -357,6 +365,8 @@ export async function deleteMemorizedInvoice(invoiceId: string, reason?: string)
 export async function deleteInvoiceWithStockRestore(invoiceId: string, reason?: string): Promise<void> {
   const items = await listItemsForInvoice(invoiceId);
   await restoreInvoiceStock(items);
+  // Mobile shop: the handsets sold on it are in stock again.
+  await releaseInvoiceImeis(invoiceId);
   for (const item of items) {
     await invoiceItemsRepo.remove(item.id);
   }

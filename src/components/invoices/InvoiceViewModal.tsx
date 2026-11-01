@@ -22,6 +22,7 @@ import {
   type PrintTemplate,
 } from "@/lib/printTemplates";
 import { printDirect } from "@/lib/print";
+import { measurementsRepo, measurementSummary } from "@/lib/cloth";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -52,6 +53,13 @@ export function InvoiceViewModal({
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
   const [fbrInvoiceNo, setFbrInvoiceNo] = useState<string | null>(row.invoice.fbr_invoice_no ?? null);
   const [fbrSubmitting, setFbrSubmitting] = useState(false);
+  // Cloth store: the customer's custom size printed on the bill.
+  const [customSize, setCustomSize] = useState<string | null>(null);
+  useEffect(() => {
+    const id = row.invoice.measurement_id;
+    if (!id) return;
+    void measurementsRepo.get(id).then((m) => setCustomSize(m ? `Custom size (${m.garment}, ${m.customer_name}): ${measurementSummary(m)}` : null)).catch(() => setCustomSize(null));
+  }, [row.invoice.measurement_id]);
   const [fbrError, setFbrError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
@@ -194,7 +202,7 @@ export function InvoiceViewModal({
       paid: inv.paid,
       balance: inv.balance,
     },
-    note: inv.description || null,
+    note: [inv.description, customSize].filter(Boolean).join("\n") || null,
     fbrInvoiceNo,
   };
 

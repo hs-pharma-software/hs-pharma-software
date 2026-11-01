@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useCan } from "@/lib/actionPermissions";
 
 /** Business types whose admin sees the purchase rate while billing. */
-const RATE_HINT_TYPES = new Set(["retail_pharmacy", "medical_store", "general_store", "hospital_pharmacy", "distributor"]);
+const RATE_HINT_TYPES = new Set(["retail_pharmacy", "medical_store", "general_store", "hospital_pharmacy", "distributor", "mobile_shop", "cloth_store"]);
 
 /** Whether the logged-in user sees the purchase rate on the invoice form: the
  * admin (owner) always, staff when allowed (User Permissions > Invoices >

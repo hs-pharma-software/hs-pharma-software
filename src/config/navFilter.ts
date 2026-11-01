@@ -49,7 +49,19 @@ export const HOSPITAL_NAV_ORDER = [
   "hospital_logins",
 ];
 
-const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER };
+/** Diagnostic lab sidebar, top to bottom: the desks in the order a sample moves. */
+export const LAB_NAV_ORDER = [
+  "lab_dashboard", "lab_reception", "lab_patients", "lab_samples", "lab_verify", "lab_reports", "lab_bills", "lab_tests", "lab_profile",
+  "staff", "cash_register", "banks", "expenses", "utilities", "settings",
+];
+
+/** Marquee / banquet hall sidebar, top to bottom. */
+export const BANQUET_NAV_ORDER = [
+  "banquet_dashboard", "banquet_bookings", "banquet_calendar", "banquet_menu", "banquet_halls", "banquet_reports",
+  "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings",
+];
+
+const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER, lab: LAB_NAV_ORDER, banquet_hall: BANQUET_NAV_ORDER };
 
 /** Top-level sidebar entries for a tenant: business-type sections follow the
  * type, shared sections follow the plan, and sub-users only see what they were

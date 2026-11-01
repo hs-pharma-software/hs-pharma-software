@@ -50,6 +50,15 @@ import {
   Activity,
   Bed,
   Scissors,
+  Smartphone,
+  Ruler,
+  TestTube,
+  Microscope,
+  Gauge,
+  PartyPopper,
+  CalendarRange,
+  Soup,
+  DoorOpen,
 } from "lucide-react";
 
 export interface NavChild {
@@ -454,6 +463,36 @@ const BASE_NAV: NavItem[] = [
       { label: "Users", href: "/clinic/settings/users" },
     ],
   },
+  // ── Mobile shop / cloth store (own extras; the rest is the store system) ──
+  { label: "IMEI Register", href: "/mobile/imei", icon: Smartphone, moduleKey: "mobile_imei", onlyFor: ["mobile_shop"] },
+  { label: "Measurements", href: "/cloth/measurements", icon: Ruler, moduleKey: "cloth_measurements", onlyFor: ["cloth_store"] },
+  // ── Diagnostic lab (shown only to lab tenants) ─────────────────────────
+  { label: "Lab Dashboard", href: "/lab", icon: Gauge, moduleKey: "lab_dashboard", onlyFor: ["lab"] },
+  { label: "Reception", href: "/lab/reception", icon: ClipboardList, moduleKey: "lab_reception", onlyFor: ["lab"] },
+  { label: "Patients", href: "/lab/patients", icon: UserRoundPlus, moduleKey: "lab_patients", onlyFor: ["lab"] },
+  { label: "Samples & Results", href: "/lab/samples", icon: TestTube, moduleKey: "lab_samples", onlyFor: ["lab"] },
+  { label: "Pathologist", href: "/lab/verify", icon: Microscope, moduleKey: "lab_verify", onlyFor: ["lab"] },
+  { label: "Reports", href: "/lab/reports", icon: FileCheck2, moduleKey: "lab_reports", onlyFor: ["lab"] },
+  { label: "Bills", href: "/lab/bills", icon: Receipt, moduleKey: "lab_bills", onlyFor: ["lab"] },
+  { label: "Tests & Rates", href: "/lab/tests", icon: FlaskConical, moduleKey: "lab_tests", onlyFor: ["lab"] },
+  { label: "Lab Profile", href: "/lab/profile", icon: Building2, moduleKey: "lab_profile", onlyFor: ["lab"] },
+  // ── Marquee / banquet hall (shown only to banquet tenants) ─────────────
+  { label: "Banquet Dashboard", href: "/banquet", icon: PartyPopper, moduleKey: "banquet_dashboard", onlyFor: ["banquet_hall"] },
+  {
+    label: "Bookings",
+    href: "/banquet/bookings",
+    icon: CalendarDays,
+    moduleKey: "banquet_bookings",
+    onlyFor: ["banquet_hall"],
+    children: [
+      { label: "Booking List", href: "/banquet/bookings" },
+      { label: "New Booking", href: "/banquet/bookings/new" },
+    ],
+  },
+  { label: "Calendar", href: "/banquet/calendar", icon: CalendarRange, moduleKey: "banquet_calendar", onlyFor: ["banquet_hall"] },
+  { label: "Menu & Packages", href: "/banquet/menu", icon: Soup, moduleKey: "banquet_menu", onlyFor: ["banquet_hall"] },
+  { label: "Halls", href: "/banquet/halls", icon: DoorOpen, moduleKey: "banquet_halls", onlyFor: ["banquet_hall"] },
+  { label: "Banquet Reports", href: "/banquet/reports", icon: LineChart, moduleKey: "banquet_reports", onlyFor: ["banquet_hall"] },
   // ── Pharmacy Rx Inbox (hospital_pharmacy only) ──────────────────────────
   {
     label: "Rx Inbox",

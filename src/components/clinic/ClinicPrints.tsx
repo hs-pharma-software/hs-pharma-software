@@ -93,12 +93,16 @@ export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { or
   const radiology = orders.filter((o) => o.kind === "radiology");
   const narrow = t?.paper === "thermal";
   const reportedBy = [...new Set(orders.map((o) => o.reported_by).filter(Boolean))].join(", ");
+  // A diagnostic lab: the pathologist verified the results, with any comments.
+  const verified = orders.some((o) => o.verified_by);
+  const comments = [...new Set(orders.map((o) => o.pathologist_note).filter((n): n is string => Boolean(n) && !n!.startsWith("Recheck:")))];
+  const byLabel = verified ? "Verified by" : "Reported by";
   const lastReported = orders.map((o) => o.reported_at ?? "").sort().at(-1) || "—";
   return (
     <Modal title={orders.length ? `${radiology.length && !lab.length ? "Radiology report" : "Lab report"}: ${r?.patient?.name ?? ""}` : "Report"} onClose={onClose} width="max-w-3xl">
       {!r || !profile || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={reportedBy ? `Reported by: ${reportedBy}` : "Reported by"}>
+          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={reportedBy ? `${byLabel}: ${reportedBy}` : byLabel}>
             <p className="mt-3 text-center text-sm font-bold uppercase tracking-widest">{lab.length ? "Laboratory Report" : "Radiology Report"}</p>
             <div className={`mt-3 grid ${narrow ? "grid-cols-1" : "grid-cols-2"} gap-x-6 gap-y-1 border-y border-neutral-300 py-2`}>
               <div><span className="text-neutral-500">Patient: </span><b>{r.patient?.name ?? "—"}</b></div>
@@ -156,7 +160,13 @@ export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { or
                 <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Impression</p><p className="whitespace-pre-line font-semibold">{o.impression}</p></div>
               </div>
             ))}
-            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">Reported by: {reportedBy || "—"}</p>}
+            {comments.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pathologist&apos;s comments</p>
+                {comments.map((c) => <p key={c} className="whitespace-pre-line">{c}</p>)}
+              </div>
+            )}
+            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">{byLabel}: {reportedBy || "—"}</p>}
           </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>

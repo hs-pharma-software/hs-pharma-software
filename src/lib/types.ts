@@ -67,6 +67,12 @@ export interface Product extends TenantRow {
    * pharmacy-type tenants to separate pharmaceutical items from general store
    * goods. NULL for non-pharmacy tenants' products. */
   product_classification: string | null;
+  /** Mobile shop: every unit has an IMEI (v67). */
+  track_imei?: number;
+  /** Cloth store: type, colour and size (v67). */
+  attr_type?: string | null;
+  attr_color?: string | null;
+  attr_size?: string | null;
 }
 
 export interface ProductBatch extends TenantRow {

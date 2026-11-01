@@ -80,13 +80,21 @@ export interface ClinicOrder extends TenantRow {
   ordered_at: string;
   notes: string | null;
   invoice_id: string | null;
+  /** Diagnostic lab (v67): the reception visit, sample collection, and the
+   * pathologist's verification before the report is released. */
+  lab_visit_id?: string | null;
+  collected_by?: string | null;
+  collected_at?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  pathologist_note?: string | null;
 }
 
 export const clinicServicesRepo = createTenantRepo<ClinicService>("clinic_services");
 export const clinicOrdersRepo = createTenantRepo<ClinicOrder>("clinic_orders");
 
 const round = (n: number) => Math.round(n * 100) / 100;
-const actorName = () => {
+export const actorName = () => {
   const u = useAuthStore.getState().currentUser;
   return u?.displayName || u?.username || "User";
 };
@@ -163,7 +171,7 @@ export async function loadStandardClinicServices(kind: "lab" | "radiology"): Pro
 
 // ── Orders from a consultation ────────────────────────────────────────────
 
-async function nextClinicOrderNo(kind: ClinicServiceCategory): Promise<string> {
+export async function nextClinicOrderNo(kind: ClinicServiceCategory): Promise<string> {
   const prefix = kind === "lab" ? "LAB" : kind === "radiology" ? "RAD" : "SRV";
   const day = localDate().replace(/-/g, "");
   const rows = await dbSelect<{ n: number }>(
@@ -244,17 +252,26 @@ export async function markClinicOrderStarted(orderId: string): Promise<void> {
 /** Enters a lab result; the flag (high / low / normal) follows from the range
  * and the patient's sex. A panel (CBC, LFT...) is entered parameter by
  * parameter (`components`); its summary becomes the result. */
-export async function enterClinicLabResult(orderId: string, r: { value: string; unit?: string | null; refRange?: string | null; components?: LabComponent[] }): Promise<ClinicOrder> {
+export async function enterClinicLabResult(
+  orderId: string,
+  r: { value: string; unit?: string | null; refRange?: string | null; components?: LabComponent[] },
+  opts: { awaitVerification?: boolean } = {}
+): Promise<ClinicOrder> {
   const o = await clinicOrdersRepo.get(orderId);
   if (!o || o.kind !== "lab") throw new Error("Lab order not found.");
   if (o.status === "cancelled") throw new Error("This test is cancelled.");
+  // A diagnostic lab: the result waits for the pathologist (performed), who releases it.
+  if (opts.awaitVerification && o.status === "reported") throw new Error("This report is verified and released; it can no longer be changed.");
+  const done = opts.awaitVerification
+    ? { status: "performed" as const, reported_by: null, reported_at: null, ...(o.status === "ordered" ? { collected_by: actorName(), collected_at: localDateTime() } : {}) }
+    : { status: "reported" as const, reported_by: actorName(), reported_at: localDateTime() };
   if (r.components) {
     const parts = r.components.filter((c) => c.value.trim());
     if (!parts.length) throw new Error("Enter at least one result.");
     try {
       return (await clinicOrdersRepo.update(orderId, {
         components: JSON.stringify(parts), result_value: summarizeComponents(parts), unit: null, ref_range: null, flag: null,
-        status: "reported", reported_by: actorName(), reported_at: localDateTime(),
+        ...done,
       }))!;
     } catch (e) {
       if (isMissingSchemaError(e)) throw new Error("Panel results (CBC, LFT...) need the latest database update (v64). Ask the administrator to run it.");
@@ -267,7 +284,7 @@ export async function enterClinicLabResult(orderId: string, r: { value: string; 
   const range = clean(r.refRange) ?? o.ref_range;
   return (await clinicOrdersRepo.update(orderId, {
     result_value: value, unit: clean(r.unit) ?? o.unit, ref_range: range, flag: flagFor(value, range, patient?.gender ?? null),
-    status: "reported", reported_by: actorName(), reported_at: localDateTime(),
+    ...done,
   }))!;
 }
 

@@ -182,7 +182,9 @@ export default function DashboardPage() {
   if (tenant && businessType(tenant.businessType).id === "restaurant") return <RestaurantDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === ELECTRIC_TYPE) return <ElectricDashboard name={tenant.name} />;
   if (tenant && businessType(tenant.businessType).id === "distributor") return <DistDashboard name={tenant.name} />;
-  if (tenant && businessType(tenant.businessType).id === "general_store") return <GeneralStoreDashboard />;
+  if (tenant && ["general_store", "mobile_shop", "cloth_store"].includes(businessType(tenant.businessType).id)) return <GeneralStoreDashboard />;
+  if (tenant && businessType(tenant.businessType).id === "lab") return <RedirectTo href="/lab" />;
+  if (tenant && businessType(tenant.businessType).id === "banquet_hall") return <RedirectTo href="/banquet" />;
   if (tenant && businessType(tenant.businessType).id === "clinic") return <RedirectTo href="/clinic" />;
   if (tenant && businessType(tenant.businessType).id === "hospital") return <HospitalLanding />;
   return <GeneralDashboard />;

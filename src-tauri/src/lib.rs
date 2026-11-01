@@ -1350,6 +1350,91 @@ fn schema_sql_v65() -> &'static str {
     "#
 }
 
+/// Four more business types (additive only; nothing existing changes):
+/// - Mobile shop: IMEI-tracked handsets, each unit bought and sold by IMEI.
+/// - Cloth store: type / colour / size on products, a saved measurements book
+///   (custom sizes) found by name or mobile, and the measurement on a bill.
+/// - Diagnostic lab: visits at reception (on the clinic patient / service /
+///   order tables), sample collection, results, and the pathologist's
+///   verification before a report is released.
+/// - Marquee / banquet hall: halls, dishes and menu packages, event bookings
+///   with dishes and extras, payments.
+fn schema_sql_v67() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN track_imei INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE products ADD COLUMN attr_type TEXT;
+    ALTER TABLE products ADD COLUMN attr_color TEXT;
+    ALTER TABLE products ADD COLUMN attr_size TEXT;
+    CREATE TABLE IF NOT EXISTS mobile_imei_units (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, imei TEXT NOT NULL, imei2 TEXT,
+        status TEXT NOT NULL DEFAULT 'in_stock', purchase_id TEXT, purchase_price REAL NOT NULL DEFAULT 0,
+        invoice_id TEXT, sold_at TEXT, customer_name TEXT, customer_mobile TEXT, customer_cnic TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_mobile_imei ON mobile_imei_units (tenant_id, imei);
+    CREATE INDEX IF NOT EXISTS ix_mobile_imei_product ON mobile_imei_units (tenant_id, product_id, status);
+    CREATE INDEX IF NOT EXISTS ix_mobile_imei_invoice ON mobile_imei_units (tenant_id, invoice_id);
+    CREATE TABLE IF NOT EXISTS cloth_measurements (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, customer_name TEXT NOT NULL, mobile TEXT, garment TEXT NOT NULL,
+        measurements TEXT NOT NULL DEFAULT '{}', notes TEXT, last_used_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_cloth_measurements_mobile ON cloth_measurements (tenant_id, mobile);
+    CREATE INDEX IF NOT EXISTS ix_cloth_measurements_name ON cloth_measurements (tenant_id, customer_name);
+    ALTER TABLE invoices ADD COLUMN measurement_id TEXT;
+    CREATE TABLE IF NOT EXISTS lab_visits (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, visit_no TEXT NOT NULL, patient_id TEXT NOT NULL, referred_by TEXT,
+        priority TEXT NOT NULL DEFAULT 'routine', status TEXT NOT NULL DEFAULT 'registered', notes TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_lab_visits ON lab_visits (tenant_id, created_at);
+    ALTER TABLE clinic_orders ADD COLUMN lab_visit_id TEXT;
+    ALTER TABLE clinic_orders ADD COLUMN collected_by TEXT;
+    ALTER TABLE clinic_orders ADD COLUMN collected_at TEXT;
+    ALTER TABLE clinic_orders ADD COLUMN verified_by TEXT;
+    ALTER TABLE clinic_orders ADD COLUMN verified_at TEXT;
+    ALTER TABLE clinic_orders ADD COLUMN pathologist_note TEXT;
+    CREATE INDEX IF NOT EXISTS ix_clinic_orders_lab_visit ON clinic_orders (tenant_id, lab_visit_id);
+    CREATE TABLE IF NOT EXISTS banquet_halls (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, capacity INTEGER, rent REAL NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS banquet_dishes (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, price_per_head REAL NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS banquet_packages (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, price_per_head REAL NOT NULL DEFAULT 0,
+        dish_ids TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL DEFAULT 1, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS banquet_bookings (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, booking_no TEXT NOT NULL, customer_name TEXT NOT NULL, mobile TEXT NOT NULL,
+        cnic TEXT, address TEXT, event_type TEXT NOT NULL, event_date TEXT NOT NULL, slot TEXT NOT NULL, start_time TEXT, end_time TEXT,
+        hall_id TEXT, guests INTEGER NOT NULL DEFAULT 0, package_id TEXT, per_head_rate REAL NOT NULL DEFAULT 0,
+        hall_rent REAL NOT NULL DEFAULT 0, extras_amount REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'confirmed', notes TEXT,
+        invoice_id TEXT, created_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_banquet_bookings_date ON banquet_bookings (tenant_id, event_date, slot);
+    CREATE TABLE IF NOT EXISTS banquet_booking_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, booking_id TEXT NOT NULL, kind TEXT NOT NULL, dish_id TEXT, name TEXT NOT NULL,
+        qty REAL NOT NULL DEFAULT 1, rate REAL NOT NULL DEFAULT 0, amount REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_banquet_booking_items ON banquet_booking_items (tenant_id, booking_id);
+    CREATE TABLE IF NOT EXISTS banquet_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, booking_id TEXT NOT NULL, date TEXT NOT NULL, amount REAL NOT NULL,
+        method TEXT NOT NULL DEFAULT 'cash', note TEXT, received_by TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_banquet_payments ON banquet_payments (tenant_id, booking_id)
+    "#
+}
+
 /// Linking a clinic / hospital to a hospital pharmacy by token: the clinic
 /// makes a one-time token (only its SHA-256 hash is kept), the pharmacy enters
 /// it in its settings, and the verified link is then fixed (only the Super
@@ -3193,6 +3278,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 66,
             description: "pharmacy_link_tokens",
             sql: schema_sql_v66(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 67,
+            description: "lab_banquet_mobile_cloth",
+            sql: schema_sql_v67(),
             kind: MigrationKind::Up,
         },
     ]

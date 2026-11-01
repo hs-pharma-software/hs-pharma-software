@@ -34,6 +34,7 @@ import type { Purchase } from "@/lib/types2";
 import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
 import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
+import { imeiListProblem, imeisOfPurchase, parseImeis, receiveImeis, removePurchaseImeis } from "@/lib/repo/imei";
 import type { Supplier, Product, Uom } from "@/lib/types";
 
 interface Line {
@@ -55,6 +56,8 @@ interface Line {
    * in - everything is normalized back to base units (packs) on save, same
    * as product_batches/price_list always store. */
   unit: "base" | "secondary";
+  /** Mobile shop: the IMEIs of an IMEI-tracked product's handsets, one per line. */
+  imeis?: string;
 }
 
 /** Stock-relevant content of the line grid, in base units. */
@@ -73,6 +76,7 @@ function linesKey(lines: Line[]): string {
         l.stPct,
         l.whtPct,
         sec ? l.salePrice * packing : l.salePrice,
+        parseImeis(l.imeis ?? "").join(","),
       ];
     })
   );
@@ -153,6 +157,8 @@ export function PurchaseFormModal({
     if (!purchase) return;
     void (async () => {
       const items = await listItemsForPurchase(purchase.id);
+      // IMEIs of the purchase, handed out to its lines of that product in order.
+      const imeiPool = await imeisOfPurchase(purchase.id);
       const rebuilt: Line[] = [];
       for (const item of items) {
         const product = await productsRepo.get(item.product_id);
@@ -170,6 +176,12 @@ export function PurchaseFormModal({
           salePrice,
           initialSalePrice: salePrice,
           unit: "base",
+          imeis: (() => {
+            const pool = imeiPool.get(item.product_id);
+            if (!pool?.length) return undefined;
+            const take = pool.splice(0, item.received_qty + Number(item.bonus_qty ?? 0));
+            return take.map((u) => u.imei).join("\n");
+          })(),
         });
       }
       setLines(rebuilt);
@@ -385,6 +397,19 @@ export function PurchaseFormModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!supplierId || lines.length === 0) return;
+    // Mobile shop: one IMEI per handset received, none repeated.
+    const seen = new Set<string>();
+    for (const l of lines) {
+      if (!l.product.track_imei) continue;
+      const sec = l.unit === "secondary";
+      const units = toBaseUnitQty(l.qty, sec, l.product.packing || 1) + toBaseUnitQty(l.bonusQty, sec, l.product.packing || 1);
+      const list = parseImeis(l.imeis ?? "");
+      const problem = imeiListProblem(list, units, l.product.name) ?? list.map((i) => (seen.has(i) ? `IMEI ${i} is entered twice.` : (seen.add(i), null))).find(Boolean) ?? null;
+      if (problem) {
+        setError(problem);
+        return;
+      }
+    }
     setSaving(true);
     setError(null);
     try {
@@ -413,6 +438,8 @@ export function PurchaseFormModal({
         if (reversal.problems.length > 0) {
           throw new Error(`This purchase can't be edited:\n${reversal.problems.join("\n")}`);
         }
+        // Its handsets come out too (refused when one is sold already).
+        await removePurchaseImeis(purchase.id);
         await applyPurchaseReversal(reversal);
         for (const item of await listItemsForPurchase(purchase.id)) await purchaseItemsRepo.remove(item.id);
         await purchasesRepo.update(purchase.id, header);
@@ -456,6 +483,7 @@ export function PurchaseFormModal({
           expiryDate: l.expiryDate || null,
           location: null,
         });
+        if (l.product.track_imei) await receiveImeis({ productId: l.product.id, imeis: parseImeis(l.imeis ?? ""), purchaseId, price: netRate });
         const item = {
           purchase_id: purchaseId,
           product_id: l.product.id,
@@ -572,7 +600,22 @@ export function PurchaseFormModal({
               ) : (
                 lines.map((l, idx) => (
                   <tr key={idx} data-row={idx} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-2 py-1.5">{l.product.name}</td>
+                    <td className="px-2 py-1.5">
+                      {l.product.name}
+                      {Boolean(l.product.track_imei) && (
+                        <div className="mt-1">
+                          <textarea
+                            aria-label={`IMEIs of ${l.product.name}`}
+                            rows={2}
+                            value={l.imeis ?? ""}
+                            onChange={(e) => updateLine(idx, { imeis: e.target.value })}
+                            placeholder="Scan IMEIs, one per line"
+                            className="w-56 rounded border border-neutral-300 px-1.5 py-1 font-mono text-xs"
+                          />
+                          <span className="block text-[10px] text-neutral-500">{parseImeis(l.imeis ?? "").length} IMEI(s) for {l.qty + l.bonusQty} unit(s)</span>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5">
                       {hasSecondaryUnit(l.product) ? (
                         <UnitToggle

@@ -36,7 +36,7 @@ const LEVEL_CLS: Record<Level, string> = {
 };
 
 const CAPS = Object.keys(CAPABILITY_LABELS) as CapabilityKey[];
-const FAMILIES: Family[] = ["pharmacy", "retail", "clinic", "hospital"];
+const FAMILIES: Family[] = ["pharmacy", "retail", "clinic", "lab", "hospital", "events"];
 type Tab = "overview" | "product" | "service" | "rules" | "tenants";
 
 function LevelChip({ cap, level }: { cap: CapabilityKey; level: Level }) {

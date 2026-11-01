@@ -1,5 +1,5 @@
 /**
- * The ten POS business types a tenant can be. Each definition is the
+ * The POS business types a tenant can be. Each definition is the
  * requirements analysis for that type (fields, rules, workflow) and also
  * drives the app: default sidebar sections for a new tenant of that type and
  * which capabilities are core / optional / not required.
@@ -12,7 +12,7 @@
 
 export type FieldRule = "REQUIRED" | "OPTIONAL" | "CONDITIONAL" | "NOT APPLICABLE";
 export type Level = "Core" | "Optional" | "Not Required";
-export type Family = "pharmacy" | "retail" | "clinic" | "hospital";
+export type Family = "pharmacy" | "retail" | "clinic" | "hospital" | "lab" | "events";
 
 export interface TypeField {
   label: string;
@@ -104,6 +104,14 @@ export const FAMILY_LABELS: Record<Family, { label: string; blurb: string }> = {
   clinic: {
     label: "Clinic Management",
     blurb: "Service-first: the patient visit is the transaction, billed from consultations and procedures.",
+  },
+  lab: {
+    label: "Diagnostic Lab",
+    blurb: "Tests are the transaction: registered at reception, sampled, resulted, verified by the pathologist, then released.",
+  },
+  events: {
+    label: "Events & Hospitality",
+    blurb: "Bookings are the transaction: a hall, a date and slot, a menu per head, extras, and payments before the event.",
   },
   hospital: {
     label: "Hospital Management",
@@ -577,6 +585,145 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     defaultModules: m("staff").filter((k) => k !== "products" && k !== "customers"),
     excludedModules: ["products", "customers"],
     planned: ["Clinic service master"],
+  },
+  {
+    id: "mobile_shop",
+    label: "Mobile Shop",
+    family: "retail",
+    status: "ready",
+    purpose: "Mobile phones and accessories: the general store system with every handset bought and sold by IMEI, and the buyer's CNIC and mobile on the bill.",
+    workflow: ["Purchase: enter each handset's IMEI", "Scan / search product", "Pick the IMEI(s) sold", "Buyer name, CNIC, mobile", "Bill and receipt", "IMEI register: trace any handset"],
+    capabilities: c("Core", "Not Required", "Core", "Not Required", "Optional", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required"),
+    productForm: {
+      title: "Mobile / accessory entry",
+      fields: [
+        F("Product name (brand + model + storage)", "REQUIRED", "Item master"),
+        F("Track IMEI", "OPTIONAL", "Item master", "Handsets: every unit has its IMEI; accessories: off"),
+        F("Barcode", "OPTIONAL", "Item master"),
+        F("Category", "OPTIONAL", "Item master"),
+        F("Colour / variant", "OPTIONAL", "Item master"),
+        F("Sale price", "REQUIRED", "Price list"),
+        F("Purchase cost", "REQUIRED", "Batch"),
+        F("IMEI 1 / IMEI 2", "CONDITIONAL", "Serial unit", "Required for IMEI-tracked products, one per unit"),
+        ...FBR_ITEM_FIELDS,
+      ],
+    },
+    serviceForm: null,
+    notApplicable: ["Batch / expiry", "Generic name / DRAP", "Prescriptions", "Recipes", "Admissions"],
+    inventoryRules: ["IMEI-tracked: stock is the IMEIs in stock", "An IMEI is unique per shop", "A sold IMEI cannot be sold again until returned"],
+    pricingRules: ["Sale price per model", "Discount per bill"],
+    units: ["Piece"],
+    purchasing: ["Supplier invoice", "One IMEI per handset bought", "Purchase cost per handset"],
+    billing: ["IMEI picked for each handset sold", "Buyer name, CNIC and mobile required for handsets", "Thermal / A5 / A4 print"],
+    reports: ["Sales and profit", "IMEI register (in stock / sold, to whom)", "Stock"],
+    validations: ["IMEI 15 digits", "IMEI count equals quantity", "CNIC 13 digits", "Mobile 03XXXXXXXXX"],
+    mvp: ["IMEI purchase and sale", "Buyer CNIC and mobile", "IMEI search", "FBR DI"],
+    advanced: ["PTA status check", "Instalments", "Repairs"],
+    defaultModules: m("purchase", "stock", "suppliers", "staff", "other_revenue", "mobile_imei"),
+    planned: ["PTA approval check", "Repair job cards"],
+  },
+  {
+    id: "cloth_store",
+    label: "Cloth Store",
+    family: "retail",
+    status: "ready",
+    purpose: "Garments and fabric: the general store system with type, colour and size on every product, and a book of customers' custom sizes (measurements) found by name or mobile.",
+    workflow: ["Products by type, colour and size", "Bill", "Custom size: pick or save the customer's measurements", "Measurements kept for next time", "Receipt"],
+    capabilities: c("Core", "Not Required", "Not Required", "Not Required", "Optional", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required"),
+    productForm: {
+      title: "Garment / fabric entry",
+      fields: [
+        F("Product name", "REQUIRED", "Item master"),
+        F("Type", "OPTIONAL", "Item master", "e.g. Shalwar Kameez, Kurta, Shirt, Trouser, Unstitched fabric"),
+        F("Colour", "OPTIONAL", "Item master"),
+        F("Size", "OPTIONAL", "Item master", "S / M / L / XL ... or Custom"),
+        F("Barcode", "OPTIONAL", "Item master"),
+        F("Unit (piece / metre / suit)", "REQUIRED", "Item master"),
+        F("Sale price", "REQUIRED", "Price list"),
+        F("Purchase cost", "REQUIRED", "Batch"),
+        ...FBR_ITEM_FIELDS,
+      ],
+    },
+    serviceForm: null,
+    notApplicable: ["Batch / expiry", "Generic name / DRAP", "Prescriptions", "IMEI", "Admissions"],
+    inventoryRules: ["One product per type / colour / size", "Fabric in metres"],
+    pricingRules: ["Sale price per product", "Discount per bill"],
+    units: ["Piece", "Suit", "Metre"],
+    purchasing: ["Supplier invoice", "Quantity per size and colour"],
+    billing: ["Custom size: the customer's saved measurements on the bill", "Thermal / A5 / A4 print"],
+    reports: ["Sales by type / colour / size", "Profit", "Stock"],
+    validations: ["Measurements need a name; mobile 03XXXXXXXXX when given"],
+    mvp: ["Type / colour / size", "Measurements book with search", "FBR DI"],
+    advanced: ["Stitching orders and delivery dates", "Size charts"],
+    defaultModules: m("purchase", "stock", "suppliers", "staff", "other_revenue", "cloth_measurements"),
+    planned: ["Stitching orders with delivery dates"],
+  },
+  {
+    id: "lab",
+    label: "Diagnostic Lab",
+    family: "lab",
+    status: "ready",
+    purpose: "Pathology laboratory: reception registers the patient and the tests and takes payment, the technologist collects samples and enters results, the pathologist verifies them before the report is released.",
+    workflow: ["Reception: patient + tests + bill", "Sample collection", "Results (panels parameter by parameter)", "Pathologist verifies / comments", "Report released and printed", "FBR submission (if registered)"],
+    capabilities: c("Not Required", "Not Required", "Not Required", "Not Required", "Core", "Core", "Not Required", "Not Required", "Not Required", "Not Required", "Not Required"),
+    productForm: null,
+    serviceForm: {
+      title: "Lab test entry",
+      fields: [
+        F("Test name", "REQUIRED", "Service"),
+        F("Section (Haematology, Chemistry...)", "OPTIONAL", "Service"),
+        F("Sample type", "OPTIONAL", "Service"),
+        F("Unit / normal range", "OPTIONAL", "Service", "Panels (CBC, LFT...) carry every parameter"),
+        F("Rate", "REQUIRED", "Service"),
+        ...FBR_SERVICE_FIELDS,
+      ],
+    },
+    notApplicable: ["Product stock", "Batches", "Prescriptions", "Admissions"],
+    inventoryRules: [],
+    pricingRules: ["Rate per test", "Discount per visit"],
+    units: ["Test"],
+    purchasing: [],
+    billing: ["One bill per visit", "Partial payment and balance", "Thermal / A5 / A4 print with the store's template"],
+    reports: ["Daily tests and collection", "Pending / verified", "Released reports"],
+    validations: ["A report is released only after the pathologist verifies it"],
+    mvp: ["Reception and billing", "Sample collection", "Result entry with panels", "Pathologist verification", "Report print"],
+    advanced: ["Online report by QR", "Machine interfacing"],
+    defaultModules: ["dashboard", "lab_dashboard", "lab_reception", "lab_patients", "lab_samples", "lab_verify", "lab_reports", "lab_bills", "lab_tests", "lab_profile", "staff", "cash_register", "banks", "expenses", "utilities", "settings"],
+    excludedModules: [...PHARMACY_CATALOG_MODULES, "customers", "suppliers"],
+    planned: ["Online report by QR", "Analyser interfacing"],
+  },
+  {
+    id: "banquet_hall",
+    label: "Marquee / Banquet Hall",
+    family: "events",
+    status: "ready",
+    purpose: "Marquees and banquet halls: book halls for weddings and events by date and slot, choose dishes or a menu package per head, add extras, take advance and final payments.",
+    workflow: ["Check the date and slot", "Booking: customer, event, hall, guests", "Menu: package or dishes per head", "Extras (decor, stage, sound)", "Advance payment", "Final bill and payment"],
+    capabilities: c("Not Required", "Not Required", "Not Required", "Optional", "Core", "Not Required", "Not Required", "Core", "Not Required", "Not Required", "Not Required"),
+    productForm: null,
+    serviceForm: {
+      title: "Dish / package entry",
+      fields: [
+        F("Dish name", "REQUIRED", "Menu"),
+        F("Category (starter, main, rice, BBQ, dessert, drinks)", "REQUIRED", "Menu"),
+        F("Price per head", "REQUIRED", "Menu"),
+        F("Package: dishes and price per head", "OPTIONAL", "Menu"),
+        ...FBR_SERVICE_FIELDS,
+      ],
+    },
+    notApplicable: ["Product stock", "Batches", "Patients", "Prescriptions"],
+    inventoryRules: [],
+    pricingRules: ["Per-head menu rate x guests", "Hall rent", "Extras", "Discount"],
+    units: ["Per head", "Item"],
+    purchasing: [],
+    billing: ["Advance and part payments", "Balance due before the event", "Thermal / A5 / A4 print with the store's template"],
+    reports: ["Bookings by date", "Payments and balances", "Events by type"],
+    validations: ["One booking per hall, date and slot", "Guests within hall capacity (warning)", "Mobile required"],
+    mvp: ["Halls", "Dishes and packages", "Bookings with availability", "Payments", "Invoice print"],
+    advanced: ["Kitchen sheets", "Staff duty roster"],
+    defaultModules: ["dashboard", "banquet_dashboard", "banquet_bookings", "banquet_calendar", "banquet_menu", "banquet_halls", "banquet_reports", "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings"],
+    excludedModules: [...PHARMACY_CATALOG_MODULES, "customers", "suppliers"],
+    planned: ["Kitchen production sheet"],
   },
 ];
 

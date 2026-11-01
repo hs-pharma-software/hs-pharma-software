@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { PurchaseRateBubble, useShowsPurchaseRate } from "@/components/invoices/PurchaseRateBubble";
+import { ImeiPicker } from "@/components/mobile/ImeiPicker";
+import { MeasurementPicker } from "@/components/cloth/MeasurementPicker";
+import { measurementsRepo, measurementSummary, touchMeasurement, type ClothMeasurement } from "@/lib/cloth";
+import { imeisOfInvoice, sellImeis } from "@/lib/repo/imei";
 import { ProductPicker, type ProductPickerHandle } from "@/components/products/ProductPicker";
 import { customersRepo } from "@/lib/repo/customers";
 import { salesmenRepo } from "@/lib/repo/salesmen";
@@ -65,6 +69,8 @@ interface Line {
    * everything is normalized back to base units (packs) on save, matching
    * how invoice_items/product_batches always store it. */
   unit: "base" | "secondary";
+  /** Mobile shop: the IMEIs of the handsets sold on this line. */
+  imeis?: string[];
 }
 
 // Column indices for the editable inputs in each line row.
@@ -123,6 +129,16 @@ export function InvoiceFormModal({
   // The admin sees a line's purchase rate while in its quantity box.
   const showsRate = useShowsPurchaseRate();
   const [rateLine, setRateLine] = useState<number | null>(null);
+  // Mobile shop: the line whose handsets are being picked.
+  const [imeiLine, setImeiLine] = useState<number | null>(null);
+  // Cloth store: the customer's saved custom size on this bill.
+  const isClothStore = useAuthStore((s) => s.currentTenant?.businessType) === "cloth_store";
+  const [measurement, setMeasurement] = useState<ClothMeasurement | null>(null);
+  const [pickingMeasurement, setPickingMeasurement] = useState(false);
+  useEffect(() => {
+    const id = (invoice as { measurement_id?: string | null } | null)?.measurement_id;
+    if (id) void measurementsRepo.get(id).then(setMeasurement).catch(() => setMeasurement(null));
+  }, [invoice]);
   const [originalItems, setOriginalItems] = useState<InvoiceItemWithProduct[]>([]);
   const [loadingExisting, setLoadingExisting] = useState(isEdit);
 
@@ -218,6 +234,13 @@ export function InvoiceFormModal({
   }
 
   function validateBuyer(): string | null {
+    // A handset is sold to a known buyer: name, CNIC and mobile on the bill.
+    if (lines.some((l) => l.product.track_imei)) {
+      if (!customerName.trim() || !customerPhone.trim() || !buyerNtn.trim()) {
+        return "Selling a handset: enter the buyer's name, CNIC and mobile number.";
+      }
+      if (normalizeNtn(buyerNtn).length !== 13) return "Enter the buyer's 13-digit CNIC.";
+    }
     if (narcoticNames.length > 0) {
       if (!customerName.trim() || !customerPhone.trim()) {
         return `Customer name and mobile number are required for narcotic products (${narcoticNames.join(", ")}).`;
@@ -301,6 +324,12 @@ export function InvoiceFormModal({
           // Stored items are already normalized to base units.
           unit: "base",
         });
+      }
+      // The handsets sold on this bill go back on their lines.
+      const sold = draft ? new Map<string, string[]>() : await imeisOfInvoice(invoice.id);
+      for (const l of reconstructed) {
+        const pool = sold.get(l.product.id);
+        if (pool?.length) l.imeis = pool.splice(0, l.qty + l.bonusQty);
       }
       // Saved in base units: show each line in the unit it was entered in (3 CAP, not 0.43 Pack).
       setLines(reconstructed.map((l) => {
@@ -496,6 +525,16 @@ export function InvoiceFormModal({
     }
   }
 
+  /** Every handset line has one IMEI per unit sold. */
+  function imeiProblem(): string | null {
+    for (const l of lines) {
+      if (!l.product.track_imei) continue;
+      const units = toBaseUnitQty(l.qty, l.unit === "secondary", l.product.packing || 1) + toBaseUnitQty(l.bonusQty, l.unit === "secondary", l.product.packing || 1);
+      if ((l.imeis ?? []).length !== units) return `${l.product.name}: pick ${units} IMEI${units === 1 ? "" : "s"} (${(l.imeis ?? []).length} picked). Click IMEI on the line.`;
+    }
+    return null;
+  }
+
   /** Before anything is saved: every product's lines fit in its stock (all
    * batches, plus what this invoice already holds when it is edited). */
   function stockProblem(): string | null {
@@ -529,6 +568,7 @@ export function InvoiceFormModal({
       buyer_province: buyerProvince || null,
       buyer_address: buyerAddress.trim() || null,
       buyer_registration_type: buyerRegType,
+      ...(isClothStore ? { measurement_id: measurement?.id ?? null } : {}),
       total,
       charges: Number(charges) || 0,
       discount_pct: 0,
@@ -553,6 +593,11 @@ export function InvoiceFormModal({
     const stockError = stockProblem();
     if (stockError) {
       setError(stockError);
+      return;
+    }
+    const imeiError = imeiProblem();
+    if (imeiError) {
+      setError(imeiError);
       return;
     }
     const buyerError = validateBuyer();
@@ -596,6 +641,15 @@ export function InvoiceFormModal({
         invoiceId = created.id;
       }
       await buildLineItems(invoiceId, isDraft);
+      if (isClothStore && measurement) await touchMeasurement(measurement.id).catch(() => undefined);
+      // Handsets: sold to this buyer (an edited bill's earlier ones go back first).
+      if (!isDraft && (lines.some((l) => l.product.track_imei) || isEdit)) {
+        await sellImeis(
+          invoiceId,
+          lines.filter((l) => l.product.track_imei).map((l) => ({ productId: l.product.id, productName: l.product.name, imeis: l.imeis ?? [] })),
+          { name: customerName.trim() || null, mobile: customerPhone.trim() || null, cnic: normalizeNtn(buyerNtn) || null }
+        );
+      }
       // Billed from a received prescription: mark it invoiced so it is not billed twice.
       if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
       onSaved();
@@ -722,6 +776,32 @@ export function InvoiceFormModal({
               Narcotic product on this invoice ({narcoticNames.join(", ")}). Customer name and mobile number are required.
             </p>
           )}
+          {isClothStore && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-900 ring-1 ring-violet-200">
+              <span className="font-semibold">Custom size:</span>
+              {measurement ? (
+                <span className="min-w-0 flex-1 truncate" title={measurementSummary(measurement)}>
+                  {measurement.customer_name} · {measurement.garment} · {measurementSummary(measurement)}
+                </span>
+              ) : <span className="flex-1 text-violet-700">none (standard size)</span>}
+              <button type="button" onClick={() => setPickingMeasurement(true)} className="rounded-full bg-white px-2.5 py-0.5 font-medium ring-1 ring-violet-300 hover:bg-violet-100">
+                {measurement ? "Change" : "Add custom size"}
+              </button>
+              {measurement && <button type="button" onClick={() => setMeasurement(null)} className="text-violet-700 hover:underline">Remove</button>}
+            </div>
+          )}
+          {pickingMeasurement && (
+            <MeasurementPicker
+              defaults={{ customer_name: customerName, mobile: customerPhone }}
+              onClose={() => setPickingMeasurement(false)}
+              onPick={(m) => {
+                setMeasurement(m);
+                setPickingMeasurement(false);
+                if (!customerName.trim()) setCustomerName(m.customer_name);
+                if (!customerPhone.trim() && m.mobile) setCustomerPhone(m.mobile);
+              }}
+            />
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Customer Name" required={narcoticNames.length > 0}>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in Customer" />
@@ -806,6 +886,21 @@ export function InvoiceFormModal({
                           NARCOTIC
                         </span>
                       )}
+                      {isClothStore && [l.product.attr_type, l.product.attr_color, l.product.attr_size].some(Boolean) && (
+                        <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+                          {[l.product.attr_type, l.product.attr_color, l.product.attr_size].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                      {Boolean(l.product.track_imei) && (() => {
+                        const need = toBaseUnitQty(l.qty, isSecondary, pk) + toBaseUnitQty(l.bonusQty, isSecondary, pk);
+                        const have = (l.imeis ?? []).length;
+                        return (
+                          <button type="button" onClick={() => setImeiLine(idx)} title={(l.imeis ?? []).join(", ") || "Pick the IMEIs sold"}
+                            className={`ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold ${have === need ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                            IMEI {have}/{need}
+                          </button>
+                        );
+                      })()}
                     </td>
                     <td className="px-2 py-1.5">
                       {hasSecondaryUnit(l.product) ? (
@@ -896,6 +991,22 @@ export function InvoiceFormModal({
               )}
             </tbody>
           </table>
+          {imeiLine != null && lines[imeiLine] && (() => {
+            const l = lines[imeiLine];
+            const pk = l.product.packing || 1;
+            const sec = l.unit === "secondary";
+            return (
+              <ImeiPicker
+                productId={l.product.id}
+                productName={l.product.name}
+                count={toBaseUnitQty(l.qty, sec, pk) + toBaseUnitQty(l.bonusQty, sec, pk)}
+                current={l.imeis ?? []}
+                elsewhere={lines.filter((_, i) => i !== imeiLine).flatMap((x) => x.imeis ?? [])}
+                onClose={() => setImeiLine(null)}
+                onDone={(imeis) => { updateLine(imeiLine, { imeis }); setImeiLine(null); }}
+              />
+            );
+          })()}
           {showsRate && active && rateLine != null && lines[rateLine] && (() => {
             const l = lines[rateLine];
             const secondary = l.unit === "secondary";

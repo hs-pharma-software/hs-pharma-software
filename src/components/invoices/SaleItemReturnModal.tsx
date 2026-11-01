@@ -15,6 +15,7 @@ import {
   type InvoiceItemWithProduct,
 } from "@/lib/repo/invoices";
 import { receiveStock } from "@/lib/repo/stock";
+import { imeisOfInvoice, returnSoldImeis } from "@/lib/repo/imei";
 import type { Invoice } from "@/lib/types2";
 
 interface ReturnLine {
@@ -22,6 +23,9 @@ interface ReturnLine {
   alreadyReturned: number;
   remaining: number;
   returnQty: number;
+  /** Mobile shop: the handsets of this line still with the buyer, and those coming back. */
+  imeiChoices?: string[];
+  returnImeis?: string[];
 }
 
 export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -38,17 +42,20 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
     setLoadingLines(true);
     setError(null);
     try {
-      const [full, items, returnedMap] = await Promise.all([
+      const [full, items, returnedMap, sold] = await Promise.all([
         invoicesRepo.get(row.id),
         listItemsForInvoice(row.id),
         getReturnedQtyByProduct(row.id),
+        imeisOfInvoice(row.id),
       ]);
       setOriginalInvoice(full);
       setLines(
         items.map((item) => {
           const alreadyReturned = returnedMap.get(item.product_id) ?? 0;
           const remaining = Math.max(0, item.qty - alreadyReturned);
-          return { item, alreadyReturned, remaining, returnQty: 0 };
+          const pool = sold.get(item.product_id);
+          const imeiChoices = pool ? pool.splice(0, Math.max(0, remaining)) : undefined;
+          return { item, alreadyReturned, remaining, returnQty: 0, ...(imeiChoices ? { imeiChoices, returnImeis: [] } : {}) };
         })
       );
     } finally {
@@ -69,11 +76,21 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
   }
 
   function returnAll() {
-    setLines((prev) => prev.map((l) => ({ ...l, returnQty: l.remaining })));
+    setLines((prev) => prev.map((l) => (l.imeiChoices ? { ...l, returnImeis: l.imeiChoices, returnQty: l.imeiChoices.length } : { ...l, returnQty: l.remaining })));
   }
 
   function clearAll() {
-    setLines((prev) => prev.map((l) => ({ ...l, returnQty: 0 })));
+    setLines((prev) => prev.map((l) => ({ ...l, returnQty: 0, ...(l.imeiChoices ? { returnImeis: [] } : {}) })));
+  }
+
+  /** A handset coming back: the return quantity follows the ticked IMEIs. */
+  function toggleImei(idx: number, imei: string) {
+    setLines((prev) => prev.map((l, i) => {
+      if (i !== idx) return l;
+      const cur = l.returnImeis ?? [];
+      const next = cur.includes(imei) ? cur.filter((x) => x !== imei) : [...cur, imei];
+      return { ...l, returnImeis: next, returnQty: next.length };
+    }));
   }
 
   const activeLines = lines.filter((l) => l.returnQty > 0);
@@ -139,6 +156,8 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
           total: l.item.sale_price * l.returnQty,
         });
       }
+      const backImeis = activeLines.flatMap((l) => l.returnImeis ?? []);
+      if (backImeis.length) await returnSoldImeis(backImeis, `Returned on bill #${invoiceNo}`);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -216,7 +235,19 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
                   ) : (
                     lines.map((l, idx) => (
                       <tr key={l.item.id} className="border-b border-neutral-100 last:border-0">
-                        <td className="px-2 py-1.5">{l.item.product_name}</td>
+                        <td className="px-2 py-1.5">
+                          {l.item.product_name}
+                          {l.imeiChoices && (
+                            <div className="mt-1 flex flex-col gap-0.5">
+                              {l.imeiChoices.map((imei) => (
+                                <label key={imei} className="flex items-center gap-1.5 font-mono text-[11px]">
+                                  <input type="checkbox" checked={(l.returnImeis ?? []).includes(imei)} onChange={() => toggleImei(idx, imei)} />
+                                  {imei}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5">{l.item.batch_no ?? "\u2014"}</td>
                         <td className="px-2 py-1.5">{l.item.qty}</td>
                         <td className="px-2 py-1.5">{l.alreadyReturned || "\u2014"}</td>
@@ -228,7 +259,8 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
                             max={l.remaining}
                             step="any"
                             value={l.returnQty}
-                            disabled={l.remaining === 0}
+                            disabled={l.remaining === 0 || Boolean(l.imeiChoices)}
+                            title={l.imeiChoices ? "Tick the IMEIs coming back" : undefined}
                             onChange={(e) => updateQty(idx, Number(e.target.value))}
                             className="w-20 rounded border border-neutral-300 px-1.5 py-1 disabled:bg-neutral-100"
                           />

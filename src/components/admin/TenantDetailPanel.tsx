@@ -347,6 +347,12 @@ export function TenantDetailPanel({
               <ClinicPrintTemplatesCard tenantId={tenant.id} editable embedded />
             </div>
           )}
+          {typeId === "lab" && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-medium text-neutral-600">Lab report (bills use the templates above)</p>
+              <ClinicPrintTemplatesCard tenantId={tenant.id} editable embedded docs={["lab"]} />
+            </div>
+          )}
         </Section>
 
         {(typeId === "clinic" || typeId === "hospital") && (
