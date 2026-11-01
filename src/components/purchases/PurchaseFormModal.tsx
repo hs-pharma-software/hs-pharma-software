@@ -35,6 +35,7 @@ import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
 import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import { imeiListProblem, imeisOfPurchase, parseImeis, receiveImeis, removePurchaseImeis } from "@/lib/repo/imei";
+import { useAuthStore } from "@/store/authStore";
 import type { Supplier, Product, Uom } from "@/lib/types";
 
 interface Line {
@@ -133,6 +134,8 @@ export function PurchaseFormModal({
   const [supplierId, setSupplierId] = useState(purchase?.supplier_id ?? fromOrder?.supplierId ?? "");
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState(purchase?.supplier_invoice_no ?? "");
   const [lines, setLines] = useState<Line[]>((initialProducts ?? []).map(makeLine));
+  // A cloth store keeps no batches or expiry dates.
+  const noBatches = useAuthStore((s) => s.currentTenant?.businessType) === "cloth_store";
   const [discountRs, setDiscountRs] = useState(String(purchase?.discount_rs ?? 0));
   const [paidAmount, setPaidAmount] = useState(String(purchase?.paid_amount ?? 0));
   const [paymentMethod, setPaymentMethod] = useState(purchase?.payment_method ?? "Cash");
@@ -577,8 +580,8 @@ export function PurchaseFormModal({
               <tr className="bg-neutral-900 text-left text-white">
                 <th className="px-2 py-2">Product</th>
                 <th className="px-2 py-2">Unit</th>
-                <th className="px-2 py-2">Batch No</th>
-                <th className="px-2 py-2">Expiry</th>
+                {!noBatches && <th className="px-2 py-2">Batch No</th>}
+                {!noBatches && <th className="px-2 py-2">Expiry</th>}
                 <th className="px-2 py-2">Pur Price</th>
                 <th className="px-2 py-2">Retail</th>
                 <th className="px-2 py-2">Rec Qty</th>
@@ -593,7 +596,7 @@ export function PurchaseFormModal({
             <tbody ref={linesRef} onKeyDown={onLineKeyDown}>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-2 py-6 text-center text-neutral-400">
+                  <td colSpan={noBatches ? 11 : 13} className="px-2 py-6 text-center text-neutral-400">
                     No content in table
                   </td>
                 </tr>
@@ -628,15 +631,15 @@ export function PurchaseFormModal({
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">
+                    {!noBatches && <td className="px-2 py-1.5">
                       <input
                         data-cell="batch"
                         value={l.batchNo}
                         onChange={(e) => updateLine(idx, { batchNo: e.target.value })}
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
                       />
-                    </td>
-                    <td className="px-2 py-1.5">
+                    </td>}
+                    {!noBatches && <td className="px-2 py-1.5">
                       <input
                         data-cell="expiry"
                         type="date"
@@ -644,7 +647,7 @@ export function PurchaseFormModal({
                         onChange={(e) => updateLine(idx, { expiryDate: e.target.value })}
                         className="w-36 rounded border border-neutral-300 px-1.5 py-1"
                       />
-                    </td>
+                    </td>}
                     <td className="px-2 py-1.5">
                       <input
                         type="number"

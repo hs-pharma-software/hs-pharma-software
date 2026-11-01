@@ -784,15 +784,19 @@ export function ProductFormModal({
               )}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Batch No">
-                <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />
-              </Field>
+              {!isClothStore && (
+                <Field label="Batch No">
+                  <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />
+                </Field>
+              )}
               <Field label={`Quantity (${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName})`}>
                 <Input type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
               </Field>
-              <Field label="Expiry Date">
-                <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
-              </Field>
+              {!isClothStore && (
+                <Field label="Expiry Date">
+                  <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+                </Field>
+              )}
               <Field label={`Pur Price / ${openingStockUnit === "secondary" ? secondaryUnitName : baseUnitName}`}>
                 <Input type="number" min="0" step="any" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
               </Field>

@@ -853,7 +853,7 @@ export function InvoiceFormModal({
               <tr className="bg-neutral-900 text-left text-white">
                 <th className="px-2 py-2">Product</th>
                 <th className="px-2 py-2">Unit</th>
-                <th className="px-2 py-2">Batch</th>
+                {!isClothStore && <th className="px-2 py-2">Batch</th>}
                 <th className="px-2 py-2">Avail</th>
                 <th className="px-2 py-2">Qty</th>
                 <th className="px-2 py-2">Bonus</th>
@@ -867,7 +867,7 @@ export function InvoiceFormModal({
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-2 py-6 text-center text-neutral-400">
+                  <td colSpan={isClothStore ? 10 : 11} className="px-2 py-6 text-center text-neutral-400">
                     No content in table
                   </td>
                 </tr>
@@ -914,7 +914,7 @@ export function InvoiceFormModal({
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>
+                    {!isClothStore && <td className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>}
                     <td className="px-2 py-1.5">{availInLineUnit}</td>
                     <td className="px-2 py-1.5">
                       <input
