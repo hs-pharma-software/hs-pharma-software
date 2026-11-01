@@ -64,13 +64,18 @@ export async function getBusinessProfitLoss(fromDate: string, toDate: string): P
   );
 
   // Memorized (draft) invoices: not sales yet (no stock taken, no money); shown apart.
-  const draftRows = await dbSelect<{ n: number; total: number; cogs: number }>(
-    `SELECT COUNT(*) AS n, COALESCE(SUM(i.total), 0) AS total,
+  const draftRows = await dbSelect<{ n: number; total: number; paid: number; cogs: number }>(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(i.total), 0) AS total, COALESCE(SUM(i.paid), 0) AS paid,
             COALESCE((SELECT SUM(ii.purchase_price * ii.qty) FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
                       WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 1 AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS cogs
      FROM invoices i WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 1 AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}`,
     [tenantId, ...inv.params, tenantId, ...inv.params]
   );
+
+  const draftTotal = Number(draftRows[0]?.total ?? 0);
+  const draftPaid = Number(draftRows[0]?.paid ?? 0);
+  // The drafts' profit; the part of it already received is at the same margin.
+  const draftProfit = draftTotal - Number(draftRows[0]?.cogs ?? 0);
 
   const s = salesRows[0];
   const netSales = s.sales - s.returns;
@@ -87,8 +92,10 @@ export async function getBusinessProfitLoss(fromDate: string, toDate: string): P
     { id: "4", metric: "Expenses", amount: expenses },
     { id: "5", metric: "Other Revenue", amount: otherRevenue },
     { id: "6", metric: "Net Profit / Loss", amount: netProfit },
-    { id: "7", metric: `Memorized Invoices Total (${Number(draftRows[0]?.n ?? 0)} draft${Number(draftRows[0]?.n ?? 0) === 1 ? "" : "s"}, not in sales)`, amount: Number(draftRows[0]?.total ?? 0) },
-    { id: "8", metric: "Memorized Invoices Profit (if converted)", amount: Number(draftRows[0]?.total ?? 0) - Number(draftRows[0]?.cogs ?? 0) },
+    { id: "7", metric: `Memorized Invoices Total (${Number(draftRows[0]?.n ?? 0)} draft${Number(draftRows[0]?.n ?? 0) === 1 ? "" : "s"}, not in sales)`, amount: draftTotal },
+    { id: "8", metric: "Memorized Invoices Profit (if converted)", amount: draftProfit },
+    { id: "9", metric: "Memorized Invoices Paid", amount: draftPaid },
+    { id: "10", metric: "Profit on Paid Amount", amount: draftTotal > 0 ? Math.round(draftProfit * (Math.min(draftPaid, draftTotal) / draftTotal) * 100) / 100 : 0 },
   ];
 }
 
