@@ -6,6 +6,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
+import { PurchaseRateBubble, useShowsPurchaseRate } from "@/components/invoices/PurchaseRateBubble";
 import { ProductPicker, type ProductPickerHandle } from "@/components/products/ProductPicker";
 import { customersRepo } from "@/lib/repo/customers";
 import { salesmenRepo } from "@/lib/repo/salesmen";
@@ -119,6 +120,9 @@ export function InvoiceFormModal({
   const [fbrEnabled, setFbrEnabled] = useState(false);
 
   const [lines, setLines] = useState<Line[]>([]);
+  // The admin sees a line's purchase rate while in its quantity box.
+  const showsRate = useShowsPurchaseRate();
+  const [rateLine, setRateLine] = useState<number | null>(null);
   const [originalItems, setOriginalItems] = useState<InvoiceItemWithProduct[]>([]);
   const [loadingExisting, setLoadingExisting] = useState(isEdit);
 
@@ -827,6 +831,8 @@ export function InvoiceFormModal({
                         value={l.qty}
                         onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_QTY)}
+                        onFocus={() => setRateLine(idx)}
+                        onBlur={() => setRateLine((cur) => (cur === idx ? null : cur))}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
@@ -890,6 +896,18 @@ export function InvoiceFormModal({
               )}
             </tbody>
           </table>
+          {showsRate && active && rateLine != null && lines[rateLine] && (() => {
+            const l = lines[rateLine];
+            const secondary = l.unit === "secondary";
+            const rate = secondary ? l.batch.purchase_price / (l.product.packing || 1) : l.batch.purchase_price;
+            return (
+              <PurchaseRateBubble
+                rate={rate}
+                unit={unitName(secondary ? l.product.secondary_unit_id : l.product.base_unit_id)}
+                onClose={() => setRateLine(null)}
+              />
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

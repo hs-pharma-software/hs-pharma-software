@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { dist, errorText } from "@/lib/dist";
 import type { DistProduct } from "@/lib/dist/store";
 import { Err, money, useLoad, type DistCtx } from "./ui";
+import { PurchaseRateBubble, useShowsPurchaseRate } from "@/components/invoices/PurchaseRateBubble";
 
 interface Line {
   key: string;
@@ -53,6 +54,10 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
   const [reason, setReason] = useState("");
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof dist.previewWht>> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The admin sees a line's purchase rate while in its quantity box.
+  const showsRate = useShowsPurchaseRate();
+  const [rateKey, setRateKey] = useState<string | null>(null);
+  const rateLine = rateKey ? lines.find((l) => l.key === rateKey) : undefined;
   const toLines = () => lines.map((l) => ({ productId: l.p.id, qty: Number(l.qty), price: c.can("invoices.edit_price") ? Number(l.price) : null, discount: Number(l.discount) || 0 }));
   useEffect(() => {
     if (!customerId || !lines.length) return setPreview(null);
@@ -77,7 +82,8 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
             {lines.map((l) => (
               <tr key={l.key} className="border-t border-neutral-100">
                 <td>{l.p.name} <span className="text-[11px] text-neutral-400">stock {l.p.stock}</span></td>
-                <td><Input className="!w-20" type="number" min="0" step="any" value={l.qty} onChange={(e) => patch(l.key, { qty: e.target.value })} /></td>
+                <td><Input className="!w-20" type="number" min="0" step="any" value={l.qty} onChange={(e) => patch(l.key, { qty: e.target.value })}
+                  onFocus={() => setRateKey(l.key)} onBlur={() => setRateKey((k) => (k === l.key ? null : k))} /></td>
                 <td><Input className="!w-28" type="number" min="0" step="any" disabled={!c.can("invoices.edit_price")} value={l.price} onChange={(e) => patch(l.key, { price: e.target.value })} /></td>
                 <td><Input className="!w-24" type="number" min="0" step="any" disabled={!c.can("invoices.discount")} value={l.discount} onChange={(e) => patch(l.key, { discount: e.target.value })} /></td>
                 <td><Button variant="ghost" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><Trash2 size={14} /></Button></td>
@@ -85,6 +91,7 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
             ))}
           </tbody>
         </table>
+        {showsRate && rateLine && <PurchaseRateBubble rate={Number(rateLine.p.cost) || 0} onClose={() => setRateKey(null)} />}
         {c.can("invoices.edit_description") && <Field label="Description"><Input value={description} onChange={(e) => setDescription(e.target.value)} /></Field>}
         {preview && (
           <div className="rounded-xl bg-neutral-50 p-3">
