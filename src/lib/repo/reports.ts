@@ -26,6 +26,10 @@ export interface BusinessPL {
   amount: number;
 }
 
+/** An invoice's sale after its discounts: gross total less the line
+ * discounts and the bill discount (tax and charges are not sales). */
+const NET = `(i.total - COALESCE(i.discount_rs, 0) - COALESCE((SELECT SUM(d.discount_rs) FROM invoice_items d WHERE d.invoice_id = i.id AND d.deleted_at IS NULL), 0))`;
+
 export async function getBusinessProfitLoss(fromDate: string, toDate: string): Promise<BusinessPL[]> {
   const tenantId = currentTenantId();
   const inv = dateFilter("i.date", fromDate, toDate);
@@ -36,8 +40,8 @@ export async function getBusinessProfitLoss(fromDate: string, toDate: string): P
     dbSelect<{ sales: number; returns: number; cogs: number; cogs_return: number }>(
       `
       SELECT
-        COALESCE((SELECT SUM(i.total) FROM invoices i WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS sales,
-        COALESCE((SELECT SUM(i.total) FROM invoices i WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 1 AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS returns,
+        COALESCE((SELECT SUM(${NET}) FROM invoices i WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS sales,
+        COALESCE((SELECT SUM(${NET}) FROM invoices i WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 1 AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS returns,
         COALESCE((SELECT SUM(ii.purchase_price * ii.qty) FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS cogs,
         COALESCE((SELECT SUM(ii.purchase_price * ii.qty) FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 1 AND i.is_memorized = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS cogs_return
     `,
@@ -65,7 +69,7 @@ export async function getBusinessProfitLoss(fromDate: string, toDate: string): P
 
   // Memorized (draft) invoices: not sales yet (no stock taken, no money); shown apart.
   const draftRows = await dbSelect<{ n: number; total: number; paid: number; cogs: number }>(
-    `SELECT COUNT(*) AS n, COALESCE(SUM(i.total), 0) AS total, COALESCE(SUM(i.paid), 0) AS paid,
+    `SELECT COUNT(*) AS n, COALESCE(SUM(${NET}), 0) AS total, COALESCE(SUM(i.paid), 0) AS paid,
             COALESCE((SELECT SUM(ii.purchase_price * ii.qty) FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
                       WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 1 AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}), 0) AS cogs
      FROM invoices i WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 1 AND i.is_return = 0 AND i.is_quotation = 0 ${inv.clause}`,
@@ -98,6 +102,12 @@ export async function getBusinessProfitLoss(fromDate: string, toDate: string): P
     { id: "10", metric: "Profit on Paid Amount", amount: draftTotal > 0 ? Math.round(draftProfit * (Math.min(draftPaid, draftTotal) / draftTotal) * 100) / 100 : 0 },
   ];
 }
+
+/** A line's sale (invoice_items ii of invoices i) after its own discount and
+ * its share of the bill discount, so line reports add up to Net Sales. */
+const LINE_NET = "(COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0) - COALESCE(ii.discount_rs, 0))";
+const BILL_LINES = "(SELECT SUM(COALESCE(x.sale_price, 0) * COALESCE(x.qty, 0) - COALESCE(x.discount_rs, 0)) FROM invoice_items x WHERE x.invoice_id = i.id AND x.deleted_at IS NULL)";
+const lineSale = `(${LINE_NET} - COALESCE(i.discount_rs, 0) * ${LINE_NET} / NULLIF(${BILL_LINES}, 0))`;
 
 export interface GroupedPL {
   id: string;
@@ -149,9 +159,9 @@ async function groupedProfitLoss(
       ${groupExpr} AS id,
       ${nameExpr} AS name,
       COALESCE(SUM(${sign} * COALESCE(ii.qty, 0)), 0) AS qty,
-      COALESCE(SUM(${sign} * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales,
+      COALESCE(SUM(${sign} * ${lineSale}), 0) AS sales,
       COALESCE(SUM(${sign} * COALESCE(ii.purchase_price, 0) * COALESCE(ii.qty, 0)), 0) AS cogs,
-      COALESCE(SUM(${sign} * (COALESCE(ii.sale_price, 0) - COALESCE(ii.purchase_price, 0)) * COALESCE(ii.qty, 0)), 0) AS profit,
+      COALESCE(SUM(${sign} * (${lineSale} - COALESCE(ii.purchase_price, 0) * COALESCE(ii.qty, 0))), 0) AS profit,
       ${groupBy === "product" ? "MAX(COALESCE(p.packing, 1)) AS packing, MAX(bu.name) AS base_unit, MAX(su.name) AS secondary_unit" : "NULL AS packing, NULL AS base_unit, NULL AS secondary_unit"}
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
@@ -192,7 +202,7 @@ export async function getProductWiseSales(fromDate: string, toDate: string): Pro
     `
     SELECT p.id, p.name,
            COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.qty, 0)), 0) AS qty,
-           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales,
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * ${lineSale}), 0) AS sales,
            MAX(COALESCE(p.packing, 1)) AS packing, MAX(bu.name) AS base_unit, MAX(su.name) AS secondary_unit
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
@@ -218,7 +228,7 @@ export async function getCategoryWiseSales(fromDate: string, toDate: string): Pr
   return dbSelect<CategorySalesRow>(
     `
     SELECT COALESCE(cat.id, 'none') AS id, COALESCE(cat.name, 'Uncategorized') AS name,
-           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * COALESCE(ii.sale_price, 0) * COALESCE(ii.qty, 0)), 0) AS sales
+           COALESCE(SUM(CASE WHEN i.is_return = 0 THEN 1 ELSE -1 END * ${lineSale}), 0) AS sales
     FROM invoice_items ii
     JOIN invoices i ON i.id = ii.invoice_id
     JOIN products p ON p.id = ii.product_id

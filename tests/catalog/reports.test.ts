@@ -44,13 +44,15 @@ test("every sales report works for a pharmacy selling shared catalog products", 
   await line("shared-brufen", 1, 300, null);
 
   const pl = await getProductProfitLoss("", "");
-  assert.deepEqual(pl.map((r) => [r.name, r.qty, r.sales, r.cogs, r.profit]).sort(), [["Brufen", 1, 300, 0, 300], ["Panadol", 10, 1000, 700, 300]]);
+  // Sales are after discounts: Panadol 1000 - 20 = 980, Brufen 300; the bill's 50 split 980 : 300.
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  assert.deepEqual(pl.map((r) => [r.name, r.qty, r2(r.sales), r.cogs, r2(r.profit)]).sort(), [["Brufen", 1, 288.28, 0, 288.28], ["Panadol", 10, 941.72, 700, 241.72]]);
   assert.deepEqual((await getCompanyProfitLoss("", "")).map((r) => [r.id, r.name]).sort(), [["GSK", "GSK"], ["Unspecified", "Unspecified"]]);
   assert.deepEqual((await getCategoryProfitLoss("", "")).map((r) => r.name).sort(), ["PAIN KILLER", "Uncategorized"]);
   assert.equal((await getSubCategoryProfitLoss("", "")).length, 1);
   assert.deepEqual((await getCustomerProfitLoss("", "")).map((r) => [r.id, r.name]), [["walk-in", "Walk-in"]]);
-  assert.equal((await getProductWiseSales("", "")).reduce((s, r) => s + r.sales, 0), 1300);
-  assert.deepEqual((await getCategoryWiseSales("", "")).map((r) => [r.name, r.sales]).sort(), [["PAIN KILLER", 1000], ["Uncategorized", 300]]);
+  assert.equal(r2((await getProductWiseSales("", "")).reduce((s, r) => s + r.sales, 0)), 1230);
+  assert.deepEqual((await getCategoryWiseSales("", "")).map((r) => [r.name, r2(r.sales)]).sort(), [["PAIN KILLER", 941.72], ["Uncategorized", 288.28]]);
   assert.deepEqual((await getBonusAndDiscountReport("", "")).map((r) => [r.name, r.bonus_qty, r.bonus_value, r.discount_rs]), [["Panadol", 2, 200, 20]]);
   assert.equal((await getTaxReport("", ""))[0].sales_tax, 0);
   assert.ok((await getTrialBalance()).length >= 5);
