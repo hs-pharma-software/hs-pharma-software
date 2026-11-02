@@ -9,6 +9,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { isTursoConfigured } from "@/lib/sync/engine";
 import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { getSetting, setSetting } from "@/lib/repo/settings";
+import { loadCompanyProfile, saveCompanyProfile, type CompanyProfile, type RegNumber } from "@/lib/companyProfile";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
 import { BILLORI_ENABLED_SETTING } from "@/lib/gemini";
 import { useAuthStore } from "@/store/authStore";
@@ -250,38 +251,22 @@ function CustomizationModal({ onClose, tauriReady }: { onClose: () => void; taur
 
 function CompanyProfileCard({ tauriReady }: { tauriReady: boolean }) {
   const tenantName = useAuthStore((s) => s.currentTenant?.name ?? "");
-  const [ntn, setNtn] = useState("");
-  const [stn, setStn] = useState("");
-  const [contact, setContact] = useState("");
-  const [address, setAddress] = useState("");
-  const [pra, setPra] = useState("");
+  const [profile, setProfile] = useState<CompanyProfile>({
+    ntn: "", stn: "", pra: "", contact: "", address: "", showName: true, printName: "", numbers: [],
+  });
   const [saved, setSaved] = useState(false);
+  const set = (patch: Partial<CompanyProfile>) => setProfile((p) => ({ ...p, ...patch }));
+  const setNumber = (i: number, patch: Partial<RegNumber>) =>
+    set({ numbers: profile.numbers.map((n, j) => (j === i ? { ...n, ...patch } : n)) });
 
   useEffect(() => {
     if (!isTauri()) return;
-    void Promise.all([
-      getSetting("company_ntn"),
-      getSetting("company_stn"),
-      getSetting("company_contact"),
-      getSetting("company_address"),
-      getSetting("company_pra"),
-    ]).then(([n, s, c, a, p]) => {
-      if (n) setNtn(n);
-      if (s) setStn(s);
-      if (c) setContact(c);
-      if (a) setAddress(a);
-      if (p) setPra(p);
-    });
+    void loadCompanyProfile().then(setProfile);
   }, []);
 
   async function save() {
-    await Promise.all([
-      setSetting("company_ntn", ntn.trim()),
-      setSetting("company_stn", stn.trim()),
-      setSetting("company_contact", contact.trim()),
-      setSetting("company_address", address.trim()),
-      setSetting("company_pra", pra.trim()),
-    ]);
+    await saveCompanyProfile(profile);
+    setProfile(await loadCompanyProfile());
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -299,24 +284,63 @@ function CompanyProfileCard({ tauriReady }: { tauriReady: boolean }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="Company Name">
-          <Input value={tenantName} readOnly className="bg-neutral-50 text-neutral-500 cursor-not-allowed" />
+        <Field label="Company Name on invoice">
+          <Input
+            value={profile.printName}
+            onChange={(e) => set({ printName: e.target.value })}
+            placeholder={tenantName || "Business name"}
+            disabled={!profile.showName}
+          />
+          <label className="mt-1 flex items-center gap-2 text-xs text-neutral-600">
+            <input type="checkbox" checked={profile.showName} onChange={(e) => set({ showName: e.target.checked })} />
+            Print the company name (untick to leave it off; blank = {tenantName || "account name"})
+          </label>
         </Field>
         <Field label="Contact No">
-          <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. 0300-1234567" />
+          <Input value={profile.contact} onChange={(e) => set({ contact: e.target.value })} placeholder="e.g. 0300-1234567" />
         </Field>
         <Field label="NTN No">
-          <Input value={ntn} onChange={(e) => setNtn(e.target.value)} placeholder="7-digit NTN" />
+          <Input value={profile.ntn} onChange={(e) => set({ ntn: e.target.value })} placeholder="7-digit NTN" />
         </Field>
         <Field label="STN No">
-          <Input value={stn} onChange={(e) => setStn(e.target.value)} placeholder="Sales Tax Number" />
+          <Input value={profile.stn} onChange={(e) => set({ stn: e.target.value })} placeholder="Sales Tax Number" />
         </Field>
         <Field label="PRA No">
-          <Input value={pra} onChange={(e) => setPra(e.target.value)} placeholder="Punjab Revenue Authority No (if applicable)" />
+          <Input value={profile.pra} onChange={(e) => set({ pra: e.target.value })} placeholder="Punjab Revenue Authority No (if applicable)" />
         </Field>
         <Field label="Address">
-          <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Business address" />
+          <Input value={profile.address} onChange={(e) => set({ address: e.target.value })} placeholder="Business address" />
         </Field>
+      </div>
+
+      <div className="mt-4">
+        <p className="text-xs font-semibold text-neutral-700">More numbers on the invoice</p>
+        <p className="mb-2 text-[11px] text-neutral-400">Printed under the address, e.g. PST, CDSL No, STRN No, Drug Sale License.</p>
+        <div className="space-y-2">
+          {profile.numbers.map((n, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                aria-label="Heading"
+                value={n.label}
+                onChange={(e) => setNumber(i, { label: e.target.value })}
+                placeholder="Heading, e.g. PST"
+                className="!w-36 sm:!w-44"
+              />
+              <Input aria-label="Number" value={n.value} onChange={(e) => setNumber(i, { value: e.target.value })} placeholder="Number" />
+              <button
+                type="button"
+                title="Remove"
+                onClick={() => set({ numbers: profile.numbers.filter((_, j) => j !== i) })}
+                className="rounded-full px-2 py-1 text-sm text-neutral-400 hover:bg-rose-50 hover:text-rose-600"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <Button type="button" onClick={() => set({ numbers: [...profile.numbers, { label: "", value: "" }] })}>
+            + Add number
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3">

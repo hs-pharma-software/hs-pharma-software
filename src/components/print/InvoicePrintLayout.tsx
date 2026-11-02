@@ -11,6 +11,7 @@ import {
   type PrintStyle,
   type PrintTemplate,
 } from "@/lib/printTemplates";
+import type { RegNumber } from "@/lib/companyProfile";
 
 export interface PrintItem {
   id: string;
@@ -27,7 +28,8 @@ export interface PrintItem {
 }
 
 export interface PrintData {
-  business: { name: string; address: string | null; phone: string | null; ntn: string | null; stn: string | null; pra: string | null };
+  /** name "" = the business chose to leave its name off. */
+  business: { name: string; address: string | null; phone: string | null; ntn: string | null; stn: string | null; pra: string | null; numbers?: RegNumber[] };
   logo: string | null;
   /** "INVOICE", "RECEIPT", "RETURN"... */
   title: string;
@@ -42,6 +44,8 @@ export interface PrintData {
   /** total = gross before discount and tax; discount = line + bill discount. */
   totals: { total: number; discount: number; tax: number; charges: number; payable: number; paid: number; balance: number };
   note: string | null;
+  /** Medicine invoices: the drug-sale warranty, printed in the note section. */
+  warranty?: string | null;
   fbrInvoiceNo: string | null;
 }
 
@@ -259,13 +263,16 @@ export function InvoicePrintLayout({
             </svg>
           </div>
         )}
-        <div style={{ fontWeight: 700, fontSize: "1.25em", color: nameColor }}>{data.business.name}</div>
+        {data.business.name && <div style={{ fontWeight: 700, fontSize: "1.25em", color: nameColor }}>{data.business.name}</div>}
         {/* Contact lines stay smaller than the name, even at Large size. */}
         {data.business.address && <div style={sub}>{data.business.address}</div>}
         {data.business.phone && <div style={sub}>{tx(blk, "phone")} {data.business.phone}</div>}
         {data.business.ntn && <div style={sub}>{tx(blk, "ntn")} {data.business.ntn}</div>}
         {data.business.stn && <div style={sub}>{tx(blk, "stn")} {data.business.stn}</div>}
         {data.business.pra && <div style={sub}>{tx(blk, "pra")} {data.business.pra}</div>}
+        {(data.business.numbers ?? []).map((n, i) => (
+          <div key={i} style={sub}>{/:\s*$/.test(n.label) ? n.label : `${n.label}:`} {n.value}</div>
+        ))}
       </div>
     );
   }
@@ -508,12 +515,22 @@ export function InvoicePrintLayout({
         return renderItems(blk);
       case "totals":
         return renderTotals(blk);
-      case "note":
+      case "note": {
+        const box: CSSProperties = { textAlign: blk.align, ...font(blk), ...(colored ? { background: tint(A, 0.12), padding: "4px 8px", borderRadius: 4 } : {}) };
+        if (data.warranty) {
+          return (
+            <div style={box}>
+              <div><span style={label}>{tx(blk, "warranty")}</span>{data.note ? ` ${data.note}` : ""}</div>
+              <div style={{ marginTop: 2, textAlign: "justify", fontSize: "0.92em", lineHeight: 1.4 }}>{data.warranty}</div>
+            </div>
+          );
+        }
         return data.note ? (
-          <div style={{ textAlign: blk.align, ...font(blk), ...(colored ? { background: tint(A, 0.12), padding: "4px 8px", borderRadius: 4 } : {}) }}>
+          <div style={box}>
             <span style={label}>{tx(blk, "note")}</span> {data.note}
           </div>
         ) : null;
+      }
       case "fbr": {
         if (!data.fbrInvoiceNo) return null;
         // FBR Digital Invoicing logo and the invoice QR, same size, side by side.

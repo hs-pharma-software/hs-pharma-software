@@ -8,7 +8,7 @@ import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePr
 import { DEFAULT_TEMPLATES, loadDefaultPaper, loadLogo, loadTemplate, type PrintTemplate } from "@/lib/printTemplates";
 import { printDirect } from "@/lib/print";
 import { isTauri } from "@/lib/platform";
-import { getSetting } from "@/lib/repo/settings";
+import { loadCompanyProfile, printedBusinessName, type CompanyProfile } from "@/lib/companyProfile";
 import { invoicesRepo } from "@/lib/repo/invoices";
 import { loadFbrSettings } from "@/lib/fbr";
 import { submitServiceInvoiceToFbr, type ServiceLine } from "@/lib/serviceFbr";
@@ -31,7 +31,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
   const [inv, setInv] = useState<Invoice | null>(null);
   const [template, setTemplate] = useState<PrintTemplate | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
-  const [company, setCompany] = useState<{ ntn: string | null; stn: string | null; contact: string | null; address: string | null; pra: string | null }>({ ntn: null, stn: null, contact: null, address: null, pra: null });
+  const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [fbrOn, setFbrOn] = useState(false);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -49,8 +49,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
     void loadDefaultPaper().then(loadTemplate).then(setTemplate);
     void loadLogo().then(setLogo);
     void loadFbrSettings().then((s) => setFbrOn(s.enabled)).catch(() => setFbrOn(false));
-    void Promise.all(["company_ntn", "company_stn", "company_contact", "company_address", "company_pra"].map((k) => getSetting(k)))
-      .then(([ntn, stn, contact, address, pra]) => setCompany({ ntn: ntn || null, stn: stn || null, contact: contact || null, address: address || null, pra: pra || null }));
+    void loadCompanyProfile().then(setCompany);
   }, [invoiceId]);
 
   async function print() {
@@ -85,7 +84,15 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
 
   const gross = lines.reduce((t, l) => t + l.qty * l.rate, 0);
   const data: PrintData | null = inv && {
-    business: { name: tenantName || "Business", address: company.address, phone: company.contact, ntn: company.ntn, stn: company.stn, pra: company.pra },
+    business: {
+      name: company ? printedBusinessName(company, tenantName || "Business") : tenantName || "Business",
+      address: company?.address || null,
+      phone: company?.contact || null,
+      ntn: company?.ntn || null,
+      stn: company?.stn || null,
+      pra: company?.pra || null,
+      numbers: company?.numbers ?? [],
+    },
     logo,
     title: template?.paper === "thermal" ? "RECEIPT" : title.toUpperCase(),
     number: `#${inv.invoice_no ?? "-"}`,

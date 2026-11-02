@@ -1,4 +1,6 @@
 import { getSetting, setSetting } from "./repo/settings";
+import { MEDICINE_WARRANTY_TEXT } from "./companyProfile";
+import { PHARMACY_FAMILY_TYPES } from "./catalogAccess";
 
 export type PaperSize = "a4" | "a5" | "thermal";
 export type BlockId = "logo" | "business" | "title" | "meta" | "customer" | "items" | "totals" | "note" | "fbr" | "thanks";
@@ -45,7 +47,11 @@ export const BLOCK_TEXTS: Partial<Record<BlockId, { key: string; label: string; 
     { key: "grand", label: "Grand total", text: "Grand Total" }, { key: "paid", label: "Paid", text: "Paid" },
     { key: "balance", label: "Balance", text: "Balance" },
   ],
-  note: [{ key: "note", label: "Note", text: "Note:" }],
+  note: [
+    { key: "note", label: "Note", text: "Note:" },
+    { key: "warranty", label: "Warranty heading (Medicine invoices)", text: "Warranty:" },
+    { key: "warrantyText", label: "Warranty statement (Medicine invoices; {owner}, {business}, {address} are filled in)", text: MEDICINE_WARRANTY_TEXT },
+  ],
   fbr: [
     { key: "heading", label: "Heading", text: "FBR Digital Invoice" }, { key: "number", label: "Invoice number", text: "FBR Invoice No:" },
     { key: "hint", label: "QR hint", text: "Scan the QR code to verify this invoice on the FBR portal" },
@@ -143,6 +149,13 @@ export const BLOCK_LABELS: Record<BlockId, string> = {
   fbr: "FBR invoice no & QR",
   thanks: "Thank-you message",
 };
+
+/** Section names in the template editor: "Pharmacy ..." only for pharmacy
+ * businesses, "Business ..." for every other type. */
+export function blockLabel(id: BlockId, businessType: string | null | undefined): string {
+  const label = BLOCK_LABELS[id];
+  return (PHARMACY_FAMILY_TYPES as readonly string[]).includes(businessType ?? "") ? label : label.replace(/^Pharmacy/, "Business");
+}
 
 /** Printed under every template; not editable. */
 export const DEVELOPER_CREDIT = "UhuD Developers, +92 3006049200";

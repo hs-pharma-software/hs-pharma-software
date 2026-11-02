@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { AlignCenter, AlignLeft, AlignRight, Bold, CaseUpper, Eye, EyeOff, GripVertical, ImagePlus, Italic, Pencil, RotateCcw, Trash2, Underline } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePrintLayout";
 import {
-  BLOCK_LABELS,
+  blockLabel,
   BLOCK_TEXTS,
   DEFAULT_TEMPLATES,
   PAPERS,
@@ -28,6 +28,7 @@ import {
 import { useAuthStore } from "@/store/authStore";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { getSetting } from "@/lib/repo/settings";
+import { loadCompanyProfile, printedBusinessName } from "@/lib/companyProfile";
 import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 
@@ -62,13 +63,16 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
   const [templates, setTemplates] = useState<Partial<Record<PaperSize, PrintTemplate>>>({});
   const [dirty, setDirty] = useState<Set<PaperSize>>(new Set());
   const [logo, setLogo] = useState<string | null>(null);
-  const [business, setBusiness] = useState<PrintData["business"]>({ name: "Your Pharmacy", address: null, phone: null, ntn: null, stn: null, pra: null });
+  const [business, setBusiness] = useState<PrintData["business"]>({ name: "Your Business", address: null, phone: null, ntn: null, stn: null, pra: null });
   const [selected, setSelected] = useState<BlockId | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const dragId = useRef<BlockId | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const sessionTenant = useAuthStore((s) => s.currentTenant);
+  // The edited business's type: "Pharmacy logo" or "Business logo".
+  const [bizType, setBizType] = useState<string | null>(tenantId ? null : sessionTenant?.businessType ?? null);
+  const labelOf = (id: BlockId) => blockLabel(id, bizType);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -78,17 +82,20 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
     void loadLogo(tenantId).then(setLogo);
     void (async () => {
       const id = tenantId ?? sessionTenant?.id;
-      const [tenant, ntn] = await Promise.all([
+      const [tenant, ntn, profile] = await Promise.all([
         id ? tenantsRepo.get(id) : Promise.resolve(null),
         getSetting("fbr_seller_ntn", tenantId),
+        loadCompanyProfile(tenantId),
       ]);
+      if (tenant) setBizType(tenant.business_type ?? null);
       setBusiness({
-        name: tenant?.name ?? sessionTenant?.name ?? "Your Pharmacy",
-        address: tenant?.address ?? null,
-        phone: tenant?.phone ?? null,
-        ntn: (ntn ?? "").replace(/[s-]/g, "") || null,
-        stn: null,
-        pra: null,
+        name: printedBusinessName(profile, tenant?.name ?? sessionTenant?.name ?? "Your Business"),
+        address: profile.address || tenant?.address || null,
+        phone: profile.contact || tenant?.phone || null,
+        ntn: profile.ntn || (ntn ?? "").replace(/[s-]/g, "") || null,
+        stn: profile.stn || null,
+        pra: profile.pra || null,
+        numbers: profile.numbers,
       });
     })();
   }, [tenantId, sessionTenant?.id, sessionTenant?.name]);
@@ -228,7 +235,7 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
           {/* ── Controls ── */}
           <div className="space-y-4 text-sm">
             <div className="rounded-xl border border-neutral-200 p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">Pharmacy logo</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">{labelOf("logo")}</p>
               <div className="flex items-center gap-3">
                 <div className="flex h-14 w-24 items-center justify-center overflow-hidden rounded-lg bg-neutral-50 ring-1 ring-neutral-200">
                   {logo ? (
@@ -365,13 +372,13 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                   >
                     <GripVertical size={14} className="shrink-0 text-neutral-400" />
                     <span className={`flex-1 truncate ${blk.visible ? "text-neutral-800" : "text-neutral-400 line-through"}`}>
-                      {BLOCK_LABELS[blk.id]}
+                      {labelOf(blk.id)}
                     </span>
                     {(BLOCK_TEXTS[blk.id] || blk.id === "thanks") && (
                       <button
                         type="button"
                         title="Edit text"
-                        aria-label={`Edit text of ${BLOCK_LABELS[blk.id]}`}
+                        aria-label={`Edit text of ${labelOf(blk.id)}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           editText(blk.id);
@@ -399,7 +406,7 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
 
             {sel && (
               <div className="rounded-xl border border-[#006633]/30 bg-[#006633]/[0.03] p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#006633]">{BLOCK_LABELS[sel.id]}</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#006633]">{labelOf(sel.id)}</p>
                 <div className="flex items-center gap-3">
                   <div className="flex gap-0.5">
                     {alignBtn("left", AlignLeft)}
@@ -465,12 +472,22 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
                       {BLOCK_TEXTS[sel.id]!.map((t, i) => (
                         <div key={t.key} className={t.text.length > 24 || t.key === "title" ? "col-span-2" : ""}>
                           <Field label={t.label}>
-                            <Input
-                              id={`blk-text-${sel.id}-${i}`}
-                              value={sel.labels?.[t.key] ?? ""}
-                              placeholder={t.text || "Automatic"}
-                              onChange={(e) => setLabel(sel.id, t.key, e.target.value)}
-                            />
+                            {t.text.length > 80 ? (
+                              <Textarea
+                                id={`blk-text-${sel.id}-${i}`}
+                                rows={5}
+                                value={sel.labels?.[t.key] ?? ""}
+                                placeholder={t.text}
+                                onChange={(e) => setLabel(sel.id, t.key, e.target.value)}
+                              />
+                            ) : (
+                              <Input
+                                id={`blk-text-${sel.id}-${i}`}
+                                value={sel.labels?.[t.key] ?? ""}
+                                placeholder={t.text || "Automatic"}
+                                onChange={(e) => setLabel(sel.id, t.key, e.target.value)}
+                              />
+                            )}
                           </Field>
                         </div>
                       ))}

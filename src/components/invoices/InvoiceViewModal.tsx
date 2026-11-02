@@ -8,7 +8,6 @@ import { useAuthStore } from "@/store/authStore";
 import { isTauri } from "@/lib/platform";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { loadFbrSettings, type FbrSettings } from "@/lib/fbr";
-import { getSetting } from "@/lib/repo/settings";
 import { submitInvoiceToFbrById } from "@/lib/fbrSubmit";
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Invoice, Tenant } from "@/lib/types2";
@@ -16,6 +15,7 @@ import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePr
 import {
   DEFAULT_TEMPLATES,
   PAPERS,
+  blockText,
   loadDefaultPaper,
   loadLogo,
   loadTemplate,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/printTemplates";
 import { printDirect } from "@/lib/print";
 import { measurementsRepo, measurementSummary } from "@/lib/cloth";
+import { fillWarranty, loadCompanyProfile, printedBusinessName, type CompanyProfile } from "@/lib/companyProfile";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -56,7 +57,7 @@ export function InvoiceViewModal({
   const [template, setTemplate] = useState<PrintTemplate | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
   const [sellerNtn, setSellerNtn] = useState<string | null>(null);
-  const [companyProfile, setCompanyProfile] = useState<{ ntn: string | null; stn: string | null; contact: string | null; address: string | null; pra: string | null }>({ ntn: null, stn: null, contact: null, address: null, pra: null });
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
   const [fbrSettings, setFbrSettings] = useState<FbrSettings | null>(null);
   const [fbrInvoiceNo, setFbrInvoiceNo] = useState<string | null>(row.invoice.fbr_invoice_no ?? null);
   const [fbrSubmitting, setFbrSubmitting] = useState(false);
@@ -90,23 +91,7 @@ export function InvoiceViewModal({
         : null,
       tauri ? loadDefaultPaper().then(loadTemplate).then(setTemplate) : setTemplate(structuredClone(DEFAULT_TEMPLATES.a4)),
       tauri ? loadLogo().then(setLogo) : null,
-      tauri
-        ? Promise.all([
-            getSetting("company_ntn"),
-            getSetting("company_stn"),
-            getSetting("company_contact"),
-            getSetting("company_address"),
-            getSetting("company_pra"),
-          ]).then(([ntn, stn, contact, address, pra]) =>
-            setCompanyProfile({
-              ntn: ntn || null,
-              stn: stn || null,
-              contact: contact || null,
-              address: address || null,
-              pra: pra || null,
-            })
-          )
-        : null,
+      tauri ? loadCompanyProfile().then(setCompanyProfile) : null,
     ]).finally(() => setLoading(false));
   }, [row.invoice.id, row.invoice.original_invoice_id, sessionTenant?.id]);
 
@@ -153,14 +138,25 @@ export function InvoiceViewModal({
   const inv = row.invoice;
 
   const fmtQty = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(2));
+  const accountName = tenantInfo?.name ?? sessionTenant?.name ?? "Business";
+  const noteBlock = template?.blocks.find((b) => b.id === "note");
+  // Medicine invoices (contractor) carry the drug-sale warranty.
+  const warranty = inv.invoice_type === "medicine" && noteBlock
+    ? fillWarranty(blockText(noteBlock, "warrantyText"), {
+        owner: tenantInfo?.owner_name || "",
+        business: accountName,
+        address: companyProfile?.address || tenantInfo?.address || "",
+      })
+    : null;
   const printData: PrintData = {
     business: {
-      name: tenantInfo?.name ?? sessionTenant?.name ?? "Pharmacy",
-      address: companyProfile.address || tenantInfo?.address || null,
-      phone: companyProfile.contact || tenantInfo?.phone || null,
-      ntn: companyProfile.ntn || sellerNtn,
-      stn: companyProfile.stn,
-      pra: companyProfile.pra,
+      name: companyProfile ? printedBusinessName(companyProfile, accountName) : accountName,
+      address: companyProfile?.address || tenantInfo?.address || null,
+      phone: companyProfile?.contact || tenantInfo?.phone || null,
+      ntn: companyProfile?.ntn || sellerNtn,
+      stn: companyProfile?.stn || null,
+      pra: companyProfile?.pra || null,
+      numbers: companyProfile?.numbers ?? [],
     },
     logo,
     title: inv.is_return ? "RETURN" : template?.paper === "thermal" ? "RECEIPT" : "INVOICE",
@@ -210,6 +206,7 @@ export function InvoiceViewModal({
       balance: inv.balance,
     },
     note: [inv.description, customSize].filter(Boolean).join("\n") || null,
+    warranty,
     fbrInvoiceNo,
   };
 
