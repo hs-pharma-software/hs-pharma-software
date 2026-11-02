@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
+import { Modal } from "@/components/ui/Modal";
+import { PackagePlus } from "lucide-react";
+import { addProductStock } from "@/lib/repo/stock";
+import { businessType } from "@/config/businessTypes";
+import { useAuthStore } from "@/store/authStore";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ProductFormModal } from "@/components/products/ProductFormModal";
 import { listProductsForGrid, productsRepo, type ProductListRow } from "@/lib/repo/products";
@@ -18,6 +23,32 @@ export default function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  // Contractors top up stock by hand per item, here as on the Stock page.
+  const sessionTenant = useAuthStore((s) => s.currentTenant);
+  const canTopUp = businessType(sessionTenant?.businessType).id === "contractor" && !sessionTenant?.sourceTenantId;
+  const [topUp, setTopUp] = useState<ProductListRow | null>(null);
+  const [topUpQty, setTopUpQty] = useState("");
+  const [topUpPrice, setTopUpPrice] = useState("");
+  const [topUpError, setTopUpError] = useState<string | null>(null);
+  const [topUpSaving, setTopUpSaving] = useState(false);
+
+  async function saveTopUp() {
+    if (!topUp) return;
+    const qty = Number(topUpQty);
+    if (!(qty > 0)) return setTopUpError("Enter a quantity greater than 0.");
+    setTopUpSaving(true);
+    setTopUpError(null);
+    try {
+      await addProductStock(topUp.id, qty, Number(topUpPrice) || undefined);
+      setTopUp(null);
+      void reload();
+    } catch (e) {
+      setTopUpError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTopUpSaving(false);
+    }
+  }
 
   async function reload() {
     if (!isTauri()) {
@@ -86,6 +117,25 @@ export default function ProductsPage() {
     },
     { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "—") },
     { header: "HS Code", render: (r) => r.hs_code ?? "—" },
+    ...(canTopUp ? [{
+      header: "Stock",
+      render: (r: ProductListRow) => (
+        <button
+          type="button"
+          title="Add stock to this item"
+          onClick={(e) => {
+            e.stopPropagation();
+            setTopUp(r);
+            setTopUpQty("");
+            setTopUpPrice("");
+            setTopUpError(null);
+          }}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+        >
+          <PackagePlus size={15} /> Add
+        </button>
+      ),
+    }] : []),
   ];
 
   const tauriReady = useIsTauri();
@@ -158,6 +208,40 @@ export default function ProductsPage() {
       )}
 
       {loading && tauriReady && <p className="mt-2 text-xs text-neutral-400">Loading...</p>}
+
+      {topUp && (
+        <Modal title="Add Stock" onClose={() => setTopUp(null)} width="max-w-sm">
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveTopUp();
+            }}
+          >
+            <div className="rounded-lg bg-neutral-50 px-3 py-2 text-sm">
+              <p className="font-medium text-neutral-800">{topUp.name}</p>
+              <p className="text-xs text-neutral-500">
+                In stock: {topUp.avail_qty} {topUp.base_unit_name ?? ""}
+              </p>
+            </div>
+            <Field label={`Quantity to add${topUp.base_unit_name ? ` (${topUp.base_unit_name})` : ""}`} required>
+              <Input type="number" min="0" step="any" value={topUpQty} onChange={(e) => setTopUpQty(e.target.value)} autoFocus required />
+            </Field>
+            <Field label="Purchase price / item (optional)">
+              <Input type="number" min="0" step="any" value={topUpPrice} onChange={(e) => setTopUpPrice(e.target.value)} />
+            </Field>
+            {topUpError && <p className="text-sm text-rose-600">{topUpError}</p>}
+            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+              <Button type="button" onClick={() => setTopUp(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={topUpSaving}>
+                {topUpSaving ? "Saving..." : "Add Stock"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {modalOpen && (
         <ProductFormModal

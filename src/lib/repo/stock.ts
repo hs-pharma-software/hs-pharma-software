@@ -81,6 +81,20 @@ export async function addStockToBatch(batchId: string, qty: number, purchasePric
   await changeBatchQty(batchId, qty, purchasePrice && purchasePrice > 0 ? { purchase_price: purchasePrice } : {});
 }
 
+/** Manually adds quantity (base units) to a product: into its newest
+ * no-batch-number stock row of the logged-in tenant, or a new one. */
+export async function addProductStock(productId: string, qty: number, purchasePrice?: number): Promise<void> {
+  if (!(qty > 0)) throw new Error("Enter a quantity greater than 0.");
+  const rows = await dbSelect<{ id: string }>(
+    `SELECT id FROM product_batches
+     WHERE product_id = ? AND tenant_id = ? AND deleted_at IS NULL AND (batch_no IS NULL OR batch_no = '')
+     ORDER BY created_at DESC LIMIT 1`,
+    [productId, currentTenantId()]
+  );
+  if (rows[0]) return addStockToBatch(rows[0].id, qty, purchasePrice);
+  await receiveStock({ productId, batchNo: null, qty, purchasePrice: purchasePrice && purchasePrice > 0 ? purchasePrice : 0, expiryDate: null, location: null });
+}
+
 /** Deducts sold/returned-out stock from a specific batch. Throws if the
  * batch doesn't have enough available quantity. Used by Invoice creation. */
 
