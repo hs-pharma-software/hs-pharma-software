@@ -1,7 +1,9 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck } from "lucide-react";
+import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck, Copy } from "lucide-react";
+import { businessType } from "@/config/businessTypes";
+import { useAuthStore } from "@/store/authStore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -36,6 +38,8 @@ export default function InvoicesPage() {
   const openNewTab = useFormTabs((s) => s.openNew);
   const openNewFromRxTab = useFormTabs((s) => s.openNewFromRx);
   const openEditTab = useFormTabs((s) => s.openEditInvoice);
+  const openCloneTab = useFormTabs((s) => s.openCloneInvoice);
+  const isContractor = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id === "contractor";
   const savedTick = useFormTabs((s) => s.savedTick.invoice);
   const [viewing, setViewing] = useState<{ invoice: Invoice; customerName: string; salesmanName: string | null } | null>(
     null
@@ -90,6 +94,12 @@ export default function InvoicesPage() {
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     openEditTab(full);
+  }
+
+  // Contractors: start a new invoice copied from this one.
+  async function openClone(row: InvoiceListRow) {
+    const full = await invoicesRepo.get(row.id);
+    if (full) openCloneTab(full);
   }
 
   async function openView(row: InvoiceListRow) {
@@ -183,6 +193,16 @@ export default function InvoicesPage() {
               className="hover:text-amber-700"
             >
               <Pencil size={16} />
+            </button>
+          )}
+          {isContractor && !isServiceBill(r) && (
+            <button
+              type="button"
+              title="Clone (new invoice with the same customer and items)"
+              onClick={(e) => { e.stopPropagation(); void openClone(r); }}
+              className="hover:text-amber-700"
+            >
+              <Copy size={16} />
             </button>
           )}
           {canEdit && r.balance > 0.005 && (

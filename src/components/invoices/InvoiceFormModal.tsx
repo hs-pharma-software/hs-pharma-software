@@ -89,6 +89,7 @@ const LAST_COL = COL_DISC;
 export function InvoiceFormModal({
   invoice,
   rxId,
+  cloneFrom,
   onClose,
   onSaved,
   active = true,
@@ -97,6 +98,8 @@ export function InvoiceFormModal({
   invoice?: Invoice | null;
   /** Prescription ID: pre-populate invoice lines from this prescription's rx items. */
   rxId?: string;
+  /** Start a new invoice as a copy of this one (customer, buyer details, lines). */
+  cloneFrom?: Invoice | null;
   onClose: () => void;
   onSaved: () => void;
   /** False while another invoice tab is in front: keyboard shortcuts are
@@ -108,8 +111,10 @@ export function InvoiceFormModal({
   const isDraft = Boolean(invoice?.is_memorized);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
-  const [customerId, setCustomerId] = useState(invoice?.customer_id ?? "");
-  const [salesmanId, setSalesmanId] = useState(invoice?.salesman_id ?? "");
+  // Edited invoice, or the one being cloned: the header starts from it.
+  const base = invoice ?? cloneFrom ?? null;
+  const [customerId, setCustomerId] = useState(base?.customer_id ?? "");
+  const [salesmanId, setSalesmanId] = useState(base?.salesman_id ?? "");
   const [quickAddCustomer, setQuickAddCustomer] = useState(false);
   const [quickAddSalesman, setQuickAddSalesman] = useState(false);
   const [invOn, setInvOn] = useState(invoice ? (invoice.inv_on === "credit" ? "Credit" : "Cash") : "Cash");
@@ -122,8 +127,8 @@ export function InvoiceFormModal({
   const [customerOwes, setCustomerOwes] = useState<number | null>(null);
   const [invoiceDate, setInvoiceDate] = useState(invoice?.date ?? localToday());
   const [invoiceType, setInvoiceType] = useState(
-    invoice
-      ? ({ wholesale: "Wholesale", medicine: "Medicine", general: "General" } as Record<string, string>)[invoice.invoice_type ?? ""] ??
+    base
+      ? ({ wholesale: "Wholesale", medicine: "Medicine", general: "General" } as Record<string, string>)[base.invoice_type ?? ""] ??
           (isContractor ? "General" : "Retail")
       : isContractor ? "General" : "Retail"
   );
@@ -131,14 +136,14 @@ export function InvoiceFormModal({
   // the Super Admin) take a batch written on each line, printed on the invoice.
   const medicineAllowed = useAuthStore((s) => s.currentTenant?.medicineInvoiceAllowed === true);
   const contractorKind = isContractor ? (invoiceType === "Medicine" ? "medicine" : "general") : null;
-  const [description, setDescription] = useState(invoice?.description ?? "");
+  const [description, setDescription] = useState(base?.description ?? "");
 
-  const [customerName, setCustomerName] = useState(invoice?.customer_name ?? "");
-  const [customerPhone, setCustomerPhone] = useState(invoice?.customer_phone ?? "");
-  const [buyerNtn, setBuyerNtn] = useState(invoice?.buyer_ntn_cnic ?? "");
-  const [buyerProvince, setBuyerProvince] = useState(invoice?.buyer_province ?? "");
-  const [buyerAddress, setBuyerAddress] = useState(invoice?.buyer_address ?? "");
-  const [buyerRegType, setBuyerRegType] = useState(invoice?.buyer_registration_type ?? "Unregistered");
+  const [customerName, setCustomerName] = useState(base?.customer_name ?? "");
+  const [customerPhone, setCustomerPhone] = useState(base?.customer_phone ?? "");
+  const [buyerNtn, setBuyerNtn] = useState(base?.buyer_ntn_cnic ?? "");
+  const [buyerProvince, setBuyerProvince] = useState(base?.buyer_province ?? "");
+  const [buyerAddress, setBuyerAddress] = useState(base?.buyer_address ?? "");
+  const [buyerRegType, setBuyerRegType] = useState(base?.buyer_registration_type ?? "Unregistered");
   const [fbrEnabled, setFbrEnabled] = useState(false);
 
   const [lines, setLines] = useState<Line[]>([]);
@@ -156,10 +161,10 @@ export function InvoiceFormModal({
     if (id) void measurementsRepo.get(id).then(setMeasurement).catch(() => setMeasurement(null));
   }, [invoice]);
   const [originalItems, setOriginalItems] = useState<InvoiceItemWithProduct[]>([]);
-  const [loadingExisting, setLoadingExisting] = useState(isEdit);
+  const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(cloneFrom));
 
-  const [discountRs, setDiscountRs] = useState(String(invoice?.discount_rs ?? 0));
-  const [charges, setCharges] = useState(String(invoice?.charges ?? 0));
+  const [discountRs, setDiscountRs] = useState(String(base?.discount_rs ?? 0));
+  const [charges, setCharges] = useState(String(base?.charges ?? 0));
   const [paid, setPaid] = useState(String(invoice?.paid ?? 0));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -318,12 +323,15 @@ export function InvoiceFormModal({
 
   // Edit mode: load the invoice's existing line items and reconstruct the
   // line editor from them (current batch qty where that batch still exists).
+  // Clone: the same lines on a new invoice (stock is taken again on save).
   useEffect(() => {
-    if (!invoice) return;
+    const src = invoice ?? cloneFrom;
+    if (!src) return;
+    const cloning = !invoice;
     (async () => {
-      const items = await listItemsForInvoice(invoice.id);
-      setOriginalItems(items);
-      const draft = Boolean(invoice.is_memorized);
+      const items = await listItemsForInvoice(src.id);
+      if (!cloning) setOriginalItems(items);
+      const draft = cloning || Boolean(src.is_memorized);
       const reconstructed: Line[] = [];
       // A line sold from several batches was saved as one item per batch: show it as one line again.
       for (const item of items) {
@@ -362,7 +370,7 @@ export function InvoiceFormModal({
         });
       }
       // The handsets sold on this bill go back on their lines.
-      const sold = draft ? new Map<string, string[]>() : await imeisOfInvoice(invoice.id);
+      const sold = draft ? new Map<string, string[]>() : await imeisOfInvoice(src.id);
       for (const l of reconstructed) {
         const pool = sold.get(l.product.id);
         if (pool?.length) l.imeis = pool.splice(0, l.qty + l.bonusQty);
@@ -382,7 +390,7 @@ export function InvoiceFormModal({
       setLoadingExisting(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoice?.id]);
+  }, [invoice?.id, cloneFrom?.id]);
 
   // Pre-populate lines from a prescription's rx items (one-click Create Invoice from Rx).
   useEffect(() => {
