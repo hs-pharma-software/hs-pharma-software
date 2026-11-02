@@ -21,7 +21,7 @@ export async function listItemsForAudit(auditId: string): Promise<AuditItemWithP
     SELECT ai.*, p.name AS product_name,
            COALESCE((SELECT SUM(qty) FROM product_batches WHERE product_id = ai.product_id AND tenant_id = ? AND deleted_at IS NULL), 0) AS system_qty
     FROM audit_items ai
-    LEFT JOIN products p ON p.id = ai.product_id AND p.tenant_id = ai.tenant_id
+    LEFT JOIN products p ON p.id = ai.product_id AND (p.tenant_id = ai.tenant_id OR p.tenant_id IS NULL)
     WHERE ai.audit_id = ? AND ai.deleted_at IS NULL
   `,
     [tenantId, auditId]

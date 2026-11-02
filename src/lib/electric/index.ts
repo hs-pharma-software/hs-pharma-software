@@ -11,6 +11,7 @@ import { businessType } from "@/config/businessTypes";
 import { restaurantContext } from "@/lib/restaurant";
 import { PAPERS, type PaperSize } from "@/lib/printTemplates";
 import { createElectricStore, EsError } from "./store.ts";
+import { isTauriShell } from "@/lib/platform";
 import { isJameelNoori, readFontNames } from "./fontName.ts";
 
 export const ELECTRIC_TYPE = "electronics_solar";
@@ -66,6 +67,9 @@ function bufferToB64(buf: ArrayBuffer): string {
 /** Registers the stored Jameel font with the browser (and so the PDF engine). */
 export async function loadUrduFont(): Promise<void> {
   const st = useUrduFont.getState();
+  // The font file is kept on the desktop computer only (local_assets); the
+  // web version has no such store.
+  if (!isTauriShell()) return st.set("missing", "Jameel Noori Nastaleeq can be added in the desktop app.");
   try {
     const rows = await dbSelect<{ data: string }>(`SELECT data FROM local_assets WHERE key = ?`, [FONT_KEY]);
     if (!rows[0]) return st.set("missing", "Jameel Noori Nastaleeq has not been added on this computer.");
@@ -81,6 +85,7 @@ export async function loadUrduFont(): Promise<void> {
 /** Checks the file is a TTF/OTF whose internal name is Jameel Noori
  * Nastaleeq, stores it on this computer only, and loads it. */
 export async function installUrduFont(file: File): Promise<{ family: string | null }> {
+  if (!isTauriShell()) throw new Error("The Urdu font is added in the desktop app (it is kept on that computer only).");
   if (file.size > 15 * 1024 * 1024) throw new Error("Font file is too large.");
   const buf = await file.arrayBuffer();
   const names = readFontNames(buf);

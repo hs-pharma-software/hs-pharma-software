@@ -43,10 +43,13 @@ export const restaurant = createRestaurantStore(
 export const praToken = {
   key: () => `${restaurant.tenant()}::pra_token`,
   async get(): Promise<string | null> {
+    // Kept on the desktop computer only: the web version has no local store.
+    if (!isTauriShell()) return null;
     const rows = await dbSelect<{ value: string }>(`SELECT value FROM local_secrets WHERE key = ?`, [praToken.key()]);
     return rows[0]?.value ?? null;
   },
   async set(value: string | null) {
+    if (!isTauriShell()) throw new Error("The PRA token is saved in the desktop app (it is kept on that computer only).");
     if (!value) {
       await dbExecute(`DELETE FROM local_secrets WHERE key = ?`, [praToken.key()]);
       return;

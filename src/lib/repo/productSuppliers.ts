@@ -21,7 +21,7 @@ export async function listAssignedProducts(supplierId: string): Promise<Assigned
     `
     SELECT ps.id, p.id AS product_id, p.name AS product_name, p.barcode, p.company_name
     FROM product_suppliers ps
-    JOIN products p ON p.id = ps.product_id AND p.tenant_id = ps.tenant_id
+    JOIN products p ON p.id = ps.product_id AND (p.tenant_id = ps.tenant_id OR p.tenant_id IS NULL)
     WHERE ps.supplier_id = ? AND ps.tenant_id = ? AND ps.deleted_at IS NULL
     ORDER BY p.name ASC
   `,

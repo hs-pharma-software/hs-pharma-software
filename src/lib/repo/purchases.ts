@@ -92,7 +92,7 @@ export async function listItemsForPurchase(purchaseId: string): Promise<Purchase
     `
     SELECT pi.*, p.name AS product_name, p.barcode
     FROM purchase_items pi
-    LEFT JOIN products p ON p.id = pi.product_id AND p.tenant_id = pi.tenant_id
+    LEFT JOIN products p ON p.id = pi.product_id AND (p.tenant_id = pi.tenant_id OR p.tenant_id IS NULL)
     WHERE pi.purchase_id = ? AND pi.tenant_id = ? AND pi.deleted_at IS NULL
   `,
     [purchaseId, currentTenantId()]

@@ -25,8 +25,8 @@ export function Topbar() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/80 px-4 backdrop-blur-xl">
-      <div className="flex items-center gap-2.5">
+    <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] bg-white/80 px-2 backdrop-blur-xl sm:px-4">
+      <div className="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
         {/* Hamburger — mobile only */}
         <button
           type="button"
@@ -49,7 +49,8 @@ export function Topbar() {
         </span>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* Tight on a phone so every control fits in 390px. */}
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         <LanguageToggle />
         <div className="relative">
           <motion.button
@@ -61,7 +62,7 @@ export function Topbar() {
               void triggerManualSync();
             }}
             title="Sync now"
-            className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 shadow-sm hover:bg-neutral-50"
+            className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2 py-1.5 text-xs font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 sm:px-3"
           >
             {online ? (
               <Wifi size={14} className="text-emerald-600" />
@@ -90,7 +91,7 @@ export function Topbar() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="text-neutral-400"
+                  className="hidden text-neutral-400 sm:inline"
                 >
                   synced
                 </motion.span>

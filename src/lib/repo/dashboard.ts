@@ -15,8 +15,12 @@ function currentBusinessType(): string | null {
  * tenant: includes their own products + only the shared catalog groups they
  * are allowed to see (e.g. general_store tenants only see general_store
  * shared catalog, not the pharma catalog). */
-function productScopeClause(tenantId: string) {
-  return sharedCatalogWhereClause(tenantId, sharedCatalogGroupsFor(currentBusinessType()));
+/** Which products this business sees. With `alias`, the columns are those
+ * of that table (a query joining batches or units, which also have tenant_id,
+ * would otherwise be ambiguous). */
+function productScopeClause(tenantId: string, alias?: string) {
+  const s = sharedCatalogWhereClause(tenantId, sharedCatalogGroupsFor(currentBusinessType()));
+  return alias ? { ...s, clause: s.clause.replace(/\b(tenant_id|catalog_group)\b/g, `${alias}.$1`) } : s;
 }
 
 export interface LowStockRow {
@@ -32,7 +36,7 @@ export interface LowStockRow {
  * tenants see general_store catalog, pharmacy tenants see pharma + general_store). */
 export async function getLowStockProducts(limit = 8): Promise<LowStockRow[]> {
   const tenantId = currentTenantId() ?? "";
-  const { clause, params } = productScopeClause(tenantId);
+  const { clause, params } = productScopeClause(tenantId, "p");
   return dbSelect<LowStockRow>(
     `
     SELECT * FROM (
@@ -136,7 +140,7 @@ export interface InventoryUnitRow {
  * groups the current tenant can access. */
 export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
   const tenantId = currentTenantId() ?? "";
-  const { clause, params } = productScopeClause(tenantId);
+  const { clause, params } = productScopeClause(tenantId, "p");
   return dbSelect<InventoryUnitRow>(
     `
     SELECT
@@ -168,7 +172,7 @@ export interface InventoryCategoryRow {
  * general_store categories, pharmacy sees pharma + general_store). */
 export async function getInventoryByCategory(): Promise<InventoryCategoryRow[]> {
   const tenantId = currentTenantId() ?? "";
-  const { clause, params } = productScopeClause(tenantId);
+  const { clause, params } = productScopeClause(tenantId, "p");
   return dbSelect<InventoryCategoryRow>(
     `
     SELECT
