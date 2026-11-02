@@ -266,13 +266,17 @@ export function InvoicePrintLayout({
         {data.business.name && <div style={{ fontWeight: 700, fontSize: "1.25em", color: nameColor }}>{data.business.name}</div>}
         {/* Contact lines stay smaller than the name, even at Large size. */}
         {data.business.address && <div style={sub}>{data.business.address}</div>}
-        {data.business.phone && <div style={sub}>{tx(blk, "phone")} {data.business.phone}</div>}
-        {data.business.ntn && <div style={sub}>{tx(blk, "ntn")} {data.business.ntn}</div>}
-        {data.business.stn && <div style={sub}>{tx(blk, "stn")} {data.business.stn}</div>}
-        {data.business.pra && <div style={sub}>{tx(blk, "pra")} {data.business.pra}</div>}
-        {(data.business.numbers ?? []).map((n, i) => (
-          <div key={i} style={sub}>{/:\s*$/.test(n.label) ? n.label : `${n.label}:`} {n.value}</div>
-        ))}
+        {(() => {
+          // Phone and every registration / licence number on one line.
+          const parts = [
+            data.business.phone && `${tx(blk, "phone")} ${data.business.phone}`,
+            data.business.ntn && `${tx(blk, "ntn")} ${data.business.ntn}`,
+            data.business.stn && `${tx(blk, "stn")} ${data.business.stn}`,
+            data.business.pra && `${tx(blk, "pra")} ${data.business.pra}`,
+            ...(data.business.numbers ?? []).map((n) => `${/:\s*$/.test(n.label) ? n.label : `${n.label}:`} ${n.value}`),
+          ].filter(Boolean);
+          return parts.length > 0 && <div style={sub}>{parts.join("  |  ")}</div>;
+        })()}
       </div>
     );
   }
