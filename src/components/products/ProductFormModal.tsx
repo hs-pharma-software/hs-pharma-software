@@ -54,6 +54,7 @@ export function ProductFormModal({
   const isGeneralStoreTenant = currentTenant?.businessType === "general_store";
   const isMobileShop = currentTenant?.businessType === "mobile_shop";
   const isClothStore = currentTenant?.businessType === "cloth_store";
+  const isContractor = currentTenant?.businessType === "contractor";
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
@@ -94,6 +95,7 @@ export function ProductFormModal({
   const [sroNo, setSroNo] = useState(product?.sro_no ?? "");
   const [sroItemSerialNo, setSroItemSerialNo] = useState(product?.sro_item_serial_no ?? "");
   const [fbrQtyFactor, setFbrQtyFactor] = useState(String(product?.fbr_qty_factor || 1));
+  const [fbrArticleName, setFbrArticleName] = useState(product?.fbr_article_name ?? "");
 
   // Mobile shop: IMEI per handset; cloth store: type / colour / size.
   const [trackImei, setTrackImei] = useState(Boolean(product?.track_imei));
@@ -370,6 +372,7 @@ export function ProductFormModal({
         sro_no: sroNo || null,
         sro_item_serial_no: sroItemSerialNo || null,
         fbr_qty_factor: Number(fbrQtyFactor) > 0 ? Number(fbrQtyFactor) : 1,
+        ...(isContractor ? { fbr_article_name: fbrArticleName.trim() || null } : {}),
         is_narcotic: isNarcotic ? 1 : 0,
         catalog_group: catalogGroup,
         product_classification: catalogGroup,
@@ -746,6 +749,18 @@ export function ProductFormModal({
               Undo
             </button>
           </div>
+        )}
+        {isContractor && (
+          <Field label="Article Name for FBR">
+            <Input
+              value={fbrArticleName}
+              onChange={(e) => setFbrArticleName(e.target.value)}
+              placeholder={name.trim() ? `Same as product name: ${name.trim()}` : "Name sent to FBR"}
+            />
+            <span className="text-[11px] text-neutral-400">
+              Sent to FBR as the item description. The product name above is printed on your invoice.
+            </span>
+          </Field>
         )}
         <ProductFbrFields
           hsCode={hsCode}

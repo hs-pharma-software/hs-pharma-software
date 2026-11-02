@@ -20,7 +20,7 @@ export async function submitInvoiceToFbrById(invoiceId: string, settings: FbrSet
   const items = await dbSelect<FbrItemRow>(
     `
     SELECT ii.qty, ii.sale_price, ii.tax_pct, ii.further_tax_pct, ii.discount_rs,
-           p.name AS product_name, p.hs_code, p.fbr_sale_type, p.fbr_sale_rate, p.fbr_uom,
+           COALESCE(NULLIF(TRIM(p.fbr_article_name), ''), p.name) AS product_name, p.hs_code, p.fbr_sale_type, p.fbr_sale_rate, p.fbr_uom,
            p.sro_no, p.sro_item_serial_no, p.fbr_qty_factor
     FROM invoice_items ii
     LEFT JOIN products p ON p.id = ii.product_id AND (p.tenant_id = ii.tenant_id OR p.tenant_id IS NULL)

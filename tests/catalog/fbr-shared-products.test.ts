@@ -57,3 +57,21 @@ test("shared catalog products carry their FBR details to the submission", async 
   assert.equal(item.productDescription, "Panadol 500mg");
   assert.equal(item.uoM, "Numbers, pieces, units");
 });
+
+test("a contractor product's FBR article name is sent instead of its invoice name", async () => {
+  db.prepare(`INSERT INTO products (id, tenant_id, name, fbr_article_name, packing, hs_code, fbr_sale_type, fbr_sale_rate, fbr_uom, created_at, updated_at)
+    VALUES ('own-1', ?, 'BLOOD TRANSFUSSION SET', 'Blood transfusion set, sterile', 1, '3004.9099', 'Goods at standard rate (default)', 18, 'Numbers, pieces, units', 'x', 'x')`).run(T);
+  const inv = await invoicesRepo.create({
+    invoice_no: 2, date: "2026-11-02", inv_on: "cash", invoice_type: "retail", description: null, salesman_id: null, customer_id: null,
+    customer_name: "Walk-in", total: 1000, charges: 0, discount_pct: 0, discount_rs: 0, tax_pct: 0, payable: 1000, paid: 1000, balance: 0,
+    is_return: 0, is_memorized: 0, converted_invoice_id: null, buyer_province: "Punjab", buyer_registration_type: "Unregistered",
+  } as never);
+  await invoiceItemsRepo.create({
+    invoice_id: inv.id, product_id: "own-1", batch_no: null, packing: 1, uom_id: null, avail_qty: null, qty: 10, bonus_qty: 0,
+    purchase_price: 60, sale_price: 100, tax_pct: 18, further_tax_pct: 0, tax_rs: 180, discount_pct: 0, discount_rs: 0, total: 1180,
+  } as never);
+  const r = await submitInvoiceToFbrById(inv.id, settings);
+  assert.equal(r.error, null);
+  const item = (posted as { items: { productDescription: string }[] }).items[0];
+  assert.equal(item.productDescription, "Blood transfusion set, sterile");
+});

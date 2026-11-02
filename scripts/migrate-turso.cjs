@@ -347,6 +347,7 @@ const MIGRATIONS = [
   { version: 65, label: 'clinic: admission advised by the consultant', statements: rustSchemaStatements(65) },
   { version: 66, label: 'pharmacy link by token (clinic / hospital to hospital pharmacy)', statements: rustSchemaStatements(66) },
   { version: 67, label: 'business types: lab, banquet hall, mobile shop (IMEI), cloth store (measurements)', statements: rustSchemaStatements(67) },
+  { version: 68, label: 'products: FBR article name (contractor)', statements: rustSchemaStatements(68) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

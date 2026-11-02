@@ -1435,6 +1435,14 @@ fn schema_sql_v67() -> &'static str {
     "#
 }
 
+/// v68 — contractor products: the article name sent to FBR when it differs
+/// from the name printed on the invoice.
+fn schema_sql_v68() -> &'static str {
+    r#"
+    ALTER TABLE products ADD COLUMN fbr_article_name TEXT;
+    "#
+}
+
 /// Linking a clinic / hospital to a hospital pharmacy by token: the clinic
 /// makes a one-time token (only its SHA-256 hash is kept), the pharmacy enters
 /// it in its settings, and the verified link is then fixed (only the Super
@@ -3284,6 +3292,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 67,
             description: "lab_banquet_mobile_cloth",
             sql: schema_sql_v67(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 68,
+            description: "products_fbr_article_name",
+            sql: schema_sql_v68(),
             kind: MigrationKind::Up,
         },
     ]
