@@ -79,3 +79,16 @@ export async function getPartyTradeBalance(partyType: PartyType, partyId: string
   }
   return 0;
 }
+
+/** What a customer still owes on saved sale invoices (unpaid balances less
+ * credit returns), leaving out drafts, quotations and the invoice being edited. */
+export async function getCustomerUnpaidTotal(customerId: string, excludeInvoiceId?: string | null): Promise<number> {
+  const rows = await dbSelect<{ n: number | null }>(
+    `SELECT SUM(CASE WHEN is_return = 0 THEN balance ELSE -balance END) as n
+     FROM invoices
+     WHERE customer_id = ? AND tenant_id = ? AND deleted_at IS NULL AND is_quotation = 0
+       AND COALESCE(is_memorized, 0) = 0 AND id <> ?`,
+    [customerId, currentTenantId(), excludeInvoiceId ?? ""]
+  );
+  return rows[0]?.n ?? 0;
+}

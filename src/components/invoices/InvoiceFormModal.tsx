@@ -43,6 +43,8 @@ import { loadFbrSettings } from "@/lib/fbr";
 import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "@/lib/fbrData";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
+import { CustomerPicker } from "@/components/invoices/CustomerPicker";
+import { getCustomerUnpaidTotal } from "@/lib/repo/ledger";
 import { businessType } from "@/config/businessTypes";
 import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
 import { localDate } from "@/lib/localDate";
@@ -111,7 +113,11 @@ export function InvoiceFormModal({
   const [invOn, setInvOn] = useState(invoice ? (invoice.inv_on === "credit" ? "Credit" : "Cash") : "Cash");
   // Contractors may date an invoice in the past (work billed later); other
   // types always use today's date.
-  const canPickDate = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id === "contractor";
+  const isContractor = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id === "contractor";
+  const canPickDate = isContractor;
+  // Contractors see what the customer still owes (on screen only, never
+  // printed) instead of Cash / Credit; the invoice is credit when unpaid.
+  const [customerOwes, setCustomerOwes] = useState<number | null>(null);
   const [invoiceDate, setInvoiceDate] = useState(invoice?.date ?? localToday());
   const [invoiceType, setInvoiceType] = useState(
     invoice ? (invoice.invoice_type === "wholesale" ? "Wholesale" : "Retail") : "Retail"
@@ -229,10 +235,24 @@ export function InvoiceFormModal({
     const c = customers.find((x) => x.id === id);
     setCustomerName(c?.name ?? "");
     setCustomerPhone(c?.phone ?? "");
-    setBuyerNtn(c?.cnic_ntn ?? "");
+    setBuyerNtn((isContractor ? c?.ntn || c?.cnic_ntn : c?.cnic_ntn) ?? "");
     setBuyerAddress(c?.address ?? "");
     if (c?.province) setBuyerProvince(c.province);
+    // Contractors: the customer's saved FBR registration fills the buyer type too.
+    if (isContractor) {
+      const reg = (c?.registration_type ?? "").toLowerCase();
+      setBuyerRegType(reg.startsWith("reg") ? "Registered" : reg.startsWith("unreg") ? "Unregistered" : c?.ntn ? "Registered" : "Unregistered");
+    }
   }
+
+  useEffect(() => {
+    if (!isContractor || !customerId) return setCustomerOwes(null);
+    let live = true;
+    getCustomerUnpaidTotal(customerId, invoice?.id).then((n) => live && setCustomerOwes(n), () => live && setCustomerOwes(null));
+    return () => {
+      live = false;
+    };
+  }, [isContractor, customerId, invoice?.id]);
 
   function validateBuyer(): string | null {
     // A handset is sold to a known buyer: name, CNIC and mobile on the bill.
@@ -558,7 +578,7 @@ export function InvoiceFormModal({
   function invoiceHeader() {
     return {
       date: canPickDate ? invoiceDate : invoice?.date ?? localToday(),
-      inv_on: invOn.toLowerCase(),
+      inv_on: isContractor ? (balance > 0.005 ? "credit" : "cash") : invOn.toLowerCase(),
       invoice_type: invoiceType.toLowerCase(),
       description: description || null,
       salesman_id: salesmanId || null,
@@ -720,18 +740,30 @@ export function InvoiceFormModal({
               )}
             </Field>
           )}
-          <Field label="Inv On (F9)" required>
-            <Select value={invOn} onChange={(e) => setInvOn(e.target.value)} required>
-              <option value="Cash">Cash</option>
-              <option value="Credit">Credit</option>
-            </Select>
-          </Field>
+          {isContractor ? (
+            <Field label="Customer Balance">
+              <div
+                title="Unpaid invoices of this customer. Shown here only, not printed."
+                className={`rounded-lg border px-3 py-1.5 text-sm tabular-nums ${customerOwes && customerOwes > 0.005 ? "border-amber-300 bg-amber-50 font-semibold text-amber-800" : "border-neutral-200 bg-neutral-50 text-neutral-500"}`}
+              >
+                {customerId ? (customerOwes == null ? "..." : `Rs ${customerOwes.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`) : "Walk-in"}
+              </div>
+            </Field>
+          ) : (
+            <Field label="Inv On (F9)" required>
+              <Select value={invOn} onChange={(e) => setInvOn(e.target.value)} required>
+                <option value="Cash">Cash</option>
+                <option value="Credit">Credit</option>
+              </Select>
+            </Field>
+          )}
           <Field label="Invoice Type">
             <Select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)}>
               <option value="Retail">Retail</option>
               <option value="Wholesale">Wholesale</option>
             </Select>
           </Field>
+          {!isContractor && (
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Salesman (Optional)">
@@ -749,17 +781,28 @@ export function InvoiceFormModal({
               +
             </Button>
           </div>
+          )}
           <div className="flex items-end gap-1.5">
             <div className="flex-1">
               <Field label="Customer Name (F3)">
-                <Select value={customerId} onChange={(e) => onCustomerChange(e.target.value)}>
-                  <option value="">Walk-in</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
+                {isContractor ? (
+                  <CustomerPicker
+                    customers={customers}
+                    value={customerId}
+                    onSelect={onCustomerChange}
+                    onFreeText={(name) => setCustomerName(name)}
+                    placeholder="Walk-in - type to search"
+                  />
+                ) : (
+                  <Select value={customerId} onChange={(e) => onCustomerChange(e.target.value)}>
+                    <option value="">Walk-in</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
               </Field>
             </div>
             <Button type="button" onClick={() => setQuickAddCustomer(true)}>
