@@ -11,13 +11,15 @@ interface Props {
   /** A name typed that matches no saved customer (a walk-in by name). */
   onFreeText?: (name: string) => void;
   placeholder?: string;
+  /** A taller, larger search bar. */
+  large?: boolean;
 }
 
 const WALK_IN = { id: "", name: "Walk-in" } as const;
 
 /** Customer search for the invoice: type a name, mobile or NTN/CNIC, move
  * with the arrow keys and pick with Enter (Esc closes). */
-export function CustomerPicker({ customers, value, onSelect, onFreeText, placeholder = "Search customer..." }: Props) {
+export function CustomerPicker({ customers, value, onSelect, onFreeText, placeholder = "Search customer...", large }: Props) {
   const selected = customers.find((c) => c.id === value) ?? null;
   const [query, setQuery] = useState(selected?.name ?? "");
   const [open, setOpen] = useState(false);
@@ -107,7 +109,7 @@ export function CustomerPicker({ customers, value, onSelect, onFreeText, placeho
         }}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
-        className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-black/[0.06]"
+        className={`w-full rounded-lg border border-neutral-200 bg-white px-3 text-neutral-800 outline-none transition focus:border-neutral-400 focus:ring-2 focus:ring-black/[0.06] ${large ? "py-2.5 text-base font-medium" : "py-1.5 text-sm"}`}
       />
       {open && (
         <ul

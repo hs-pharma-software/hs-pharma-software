@@ -217,6 +217,8 @@ export interface InvoiceItem extends TenantRow {
   invoice_id: string;
   product_id: string;
   batch_no: string | null;
+  /** Contractor Medicine invoice: batch written on the line (print only). */
+  line_batch?: string | null;
   packing: number;
   uom_id: string | null;
   avail_qty: number | null;
@@ -291,6 +293,8 @@ export interface Tenant extends BaseRow {
   denied_actions?: string | null;
   fbr_allowed?: number;
   print_templates_editable?: number;
+  /** Contractor: Medicine invoices (with a written batch) allowed. */
+  medicine_invoice_allowed?: number;
 }
 
 export interface UserAccount extends BaseRow {

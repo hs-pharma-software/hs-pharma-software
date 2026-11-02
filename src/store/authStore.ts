@@ -40,6 +40,8 @@ export interface SessionTenant {
   businessType?: string | null;
   fbrAllowed?: boolean;
   printTemplatesEditable?: boolean;
+  /** Contractor: may make Medicine invoices (Super Admin). */
+  medicineInvoiceAllowed?: boolean;
 }
 
 interface AuthState {

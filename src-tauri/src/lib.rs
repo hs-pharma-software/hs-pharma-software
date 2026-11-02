@@ -1443,6 +1443,16 @@ fn schema_sql_v68() -> &'static str {
     "#
 }
 
+/// v69 — contractor Medicine / General invoices: the Super Admin allows
+/// Medicine invoices per tenant; a Medicine invoice line carries a batch
+/// written by hand (printed only, not tied to stock batches).
+fn schema_sql_v69() -> &'static str {
+    r#"
+    ALTER TABLE tenants ADD COLUMN medicine_invoice_allowed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE invoice_items ADD COLUMN line_batch TEXT;
+    "#
+}
+
 /// Linking a clinic / hospital to a hospital pharmacy by token: the clinic
 /// makes a one-time token (only its SHA-256 hash is kept), the pharmacy enters
 /// it in its settings, and the verified link is then fixed (only the Super
@@ -3298,6 +3308,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 68,
             description: "products_fbr_article_name",
             sql: schema_sql_v68(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 69,
+            description: "contractor_medicine_invoices",
+            sql: schema_sql_v69(),
             kind: MigrationKind::Up,
         },
     ]

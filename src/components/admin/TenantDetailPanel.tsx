@@ -77,6 +77,7 @@ export function TenantDetailPanel({
   const [denied, setDenied] = useState<string[]>(parseDeniedActions(tenant.denied_actions));
   const [fbrAllowed, setFbrAllowed] = useState(tenant.fbr_allowed !== 0);
   const [templatesEditable, setTemplatesEditable] = useState(tenant.print_templates_editable !== 0);
+  const [medicineAllowed, setMedicineAllowed] = useState(tenant.medicine_invoice_allowed === 1);
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [editorOpen, setEditorOpen] = useState(false);
   const [fbrSetupOpen, setFbrSetupOpen] = useState(false);
@@ -125,6 +126,7 @@ export function TenantDetailPanel({
         denied_actions: denied.length ? JSON.stringify(denied) : null,
         fbr_allowed: fbrAllowed ? 1 : 0,
         print_templates_editable: templatesEditable ? 1 : 0,
+        medicine_invoice_allowed: medicineAllowed ? 1 : 0,
       });
       await saveDefaultPaper(paper, tenant.id);
       setMessage({ ok: true, text: "Saved. Applies to this pharmacy's logins on their next screen change." });
@@ -227,6 +229,19 @@ export function TenantDetailPanel({
             )}
           </div>
         </Section>
+
+        {type.id === "contractor" && (
+          <Section title="Invoice Types">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Toggle on={medicineAllowed} onChange={setMedicineAllowed} onLabel="Medicine + General" offLabel="General only" />
+              <span className="text-[11px] text-neutral-500">
+                {medicineAllowed
+                  ? "Invoices can be General or Medicine. A Medicine invoice has a batch on each line, printed on the invoice."
+                  : "Invoices are General only: no batch on the invoice."}
+              </span>
+            </div>
+          </Section>
+        )}
 
         <Section title="FBR Digital Integration">
           <div className="flex flex-wrap items-center justify-between gap-2">

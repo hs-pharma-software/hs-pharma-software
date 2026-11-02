@@ -33,6 +33,13 @@ interface InvoiceViewRow {
 /** Invoice detail + print, using the default print template from Settings.
  * Only `.print-area` is visible in print CSS (globals.css). With `autoPrint`
  * nothing is shown: the invoice goes straight to the printer, then closes. */
+/** Contractor invoices: a Medicine invoice always prints its batch column, a
+ * General one never does. */
+function contractorTemplate(template: PrintTemplate, invoiceType: string | null | undefined): PrintTemplate {
+  if (invoiceType !== "medicine" && invoiceType !== "general") return template;
+  return { ...template, columns: { ...template.columns, batch: invoiceType === "medicine" } };
+}
+
 export function InvoiceViewModal({
   row,
   onClose,
@@ -161,7 +168,7 @@ export function InvoiceViewModal({
     returnOf: inv.is_return && originalInvoiceNo ? `#${originalInvoiceNo}` : null,
     date: inv.date,
     payment: inv.inv_on === "credit" ? "Credit" : "Cash",
-    invoiceType: inv.invoice_type ?? null,
+    invoiceType: inv.invoice_type === "medicine" ? "Medicine" : inv.invoice_type === "general" ? "General" : inv.invoice_type ?? null,
     salesman: row.salesmanName,
     customer: {
       name: inv.customer_name || row.customerName,
@@ -181,7 +188,7 @@ export function InvoiceViewModal({
         id: item.id,
         name: item.product_name,
         hsCode: item.hs_code ?? null,
-        batch: item.batch_no ?? null,
+        batch: inv.invoice_type === "general" ? null : item.line_batch || item.batch_no || null,
         qty: `${fmtQty(qty)}${unit}`,
         bonus: bonus > 0 ? `${fmtQty(bonus)}${unit}` : null,
         price: isFractional ? item.sale_price / packing : item.sale_price,
@@ -209,7 +216,7 @@ export function InvoiceViewModal({
   const printArea =
     template && !loading ? (
       <div ref={areaRef} id="invoice-print-area" className="print-area mx-auto w-fit bg-white p-3 print:p-0">
-        <InvoicePrintLayout template={template} data={printData} />
+        <InvoicePrintLayout template={contractorTemplate(template, inv.invoice_type)} data={printData} />
       </div>
     ) : null;
 

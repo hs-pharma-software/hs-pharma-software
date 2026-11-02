@@ -83,6 +83,7 @@ async function buildSessionTenant(tenant: Tenant): Promise<SessionTenant> {
     businessType: tenant.business_type ?? null,
     fbrAllowed: tenant.fbr_allowed !== 0,
     printTemplatesEditable: tenant.print_templates_editable !== 0,
+    medicineInvoiceAllowed: tenant.medicine_invoice_allowed === 1,
   };
 }
 

@@ -74,6 +74,8 @@ interface Line {
   unit: "base" | "secondary";
   /** Mobile shop: the IMEIs of the handsets sold on this line. */
   imeis?: string[];
+  /** Contractor Medicine invoice: batch written on the line (print only). */
+  printBatch?: string;
 }
 
 // Column indices for the editable inputs in each line row.
@@ -120,8 +122,15 @@ export function InvoiceFormModal({
   const [customerOwes, setCustomerOwes] = useState<number | null>(null);
   const [invoiceDate, setInvoiceDate] = useState(invoice?.date ?? localToday());
   const [invoiceType, setInvoiceType] = useState(
-    invoice ? (invoice.invoice_type === "wholesale" ? "Wholesale" : "Retail") : "Retail"
+    invoice
+      ? ({ wholesale: "Wholesale", medicine: "Medicine", general: "General" } as Record<string, string>)[invoice.invoice_type ?? ""] ??
+          (isContractor ? "General" : "Retail")
+      : isContractor ? "General" : "Retail"
   );
+  // Contractors: General invoices have no batch; Medicine ones (allowed by
+  // the Super Admin) take a batch written on each line, printed on the invoice.
+  const medicineAllowed = useAuthStore((s) => s.currentTenant?.medicineInvoiceAllowed === true);
+  const contractorKind = isContractor ? (invoiceType === "Medicine" ? "medicine" : "general") : null;
   const [description, setDescription] = useState(invoice?.description ?? "");
 
   const [customerName, setCustomerName] = useState(invoice?.customer_name ?? "");
@@ -237,7 +246,12 @@ export function InvoiceFormModal({
     setCustomerPhone(c?.phone ?? "");
     setBuyerNtn((isContractor ? c?.ntn || c?.cnic_ntn : c?.cnic_ntn) ?? "");
     setBuyerAddress(c?.address ?? "");
-    if (c?.province) setBuyerProvince(c.province);
+    if (c?.province) {
+      // Contractors: match the saved province to FBR's list (any letter case).
+      const p = c.province.trim().toLowerCase();
+      const match = isContractor ? FBR_PROVINCES.find((x) => x.label.toLowerCase() === p || x.fbr.toLowerCase() === p) : null;
+      setBuyerProvince(match?.label ?? c.province);
+    }
     // Contractors: the customer's saved FBR registration fills the buyer type too.
     if (isContractor) {
       const reg = (c?.registration_type ?? "").toLowerCase();
@@ -342,6 +356,7 @@ export function InvoiceFormModal({
           salePrice: item.sale_price,
           taxPct: item.tax_pct,
           discountPct: item.discount_pct,
+          printBatch: item.line_batch ?? undefined,
           // Stored items are already normalized to base units.
           unit: "base",
         });
@@ -528,6 +543,7 @@ export function InvoiceFormModal({
           invoice_id: invoiceId,
           product_id: l.product.id,
           batch_no: part.batch.batch_no,
+          line_batch: contractorKind === "medicine" ? l.printBatch?.trim() || null : null,
           packing: l.product.packing,
           uom_id: l.product.base_unit_id,
           avail_qty: part.batch.qty,
@@ -759,8 +775,17 @@ export function InvoiceFormModal({
           )}
           <Field label="Invoice Type">
             <Select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)}>
-              <option value="Retail">Retail</option>
-              <option value="Wholesale">Wholesale</option>
+              {isContractor ? (
+                <>
+                  <option value="General">General</option>
+                  {(medicineAllowed || invoiceType === "Medicine") && <option value="Medicine">Medicine</option>}
+                </>
+              ) : (
+                <>
+                  <option value="Retail">Retail</option>
+                  <option value="Wholesale">Wholesale</option>
+                </>
+              )}
             </Select>
           </Field>
           {!isContractor && (
@@ -782,7 +807,7 @@ export function InvoiceFormModal({
             </Button>
           </div>
           )}
-          <div className="flex items-end gap-1.5">
+          <div className={`flex items-end gap-1.5 ${isContractor ? "sm:col-span-4" : ""}`}>
             <div className="flex-1">
               <Field label="Customer Name (F3)">
                 {isContractor ? (
@@ -791,7 +816,8 @@ export function InvoiceFormModal({
                     value={customerId}
                     onSelect={onCustomerChange}
                     onFreeText={(name) => setCustomerName(name)}
-                    placeholder="Walk-in - type to search"
+                    placeholder="Walk-in - type a name, mobile or NTN/CNIC to search"
+                    large
                   />
                 ) : (
                   <Select value={customerId} onChange={(e) => onCustomerChange(e.target.value)}>
@@ -915,7 +941,7 @@ export function InvoiceFormModal({
               <tr className="bg-neutral-900 text-left text-white">
                 <th className="px-2 py-2">Product</th>
                 <th className="px-2 py-2">Unit</th>
-                {!isClothStore && <th className="px-2 py-2">Batch</th>}
+                {!isClothStore && contractorKind !== "general" && <th className="px-2 py-2">Batch</th>}
                 <th className="px-2 py-2">Avail</th>
                 <th className="px-2 py-2">Qty</th>
                 <th className="px-2 py-2">Bonus</th>
@@ -929,7 +955,7 @@ export function InvoiceFormModal({
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={isClothStore ? 10 : 11} className="px-2 py-6 text-center text-neutral-400">
+                  <td colSpan={isClothStore || contractorKind === "general" ? 10 : 11} className="px-2 py-6 text-center text-neutral-400">
                     No content in table
                   </td>
                 </tr>
@@ -976,7 +1002,17 @@ export function InvoiceFormModal({
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    {!isClothStore && <td className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>}
+                    {contractorKind === "medicine" ? (
+                      <td className="px-2 py-1.5">
+                        <input
+                          value={l.printBatch ?? ""}
+                          onChange={(e) => updateLine(idx, { printBatch: e.target.value })}
+                          placeholder="Batch no"
+                          aria-label={`Batch of ${l.product.name}`}
+                          className="w-24 rounded border border-neutral-300 px-1.5 py-1"
+                        />
+                      </td>
+                    ) : !isClothStore && contractorKind !== "general" && <td className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>}
                     <td className="px-2 py-1.5">{availInLineUnit}</td>
                     <td className="px-2 py-1.5">
                       <input
