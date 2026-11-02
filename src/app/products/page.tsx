@@ -11,6 +11,8 @@ import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ProductFormModal } from "@/components/products/ProductFormModal";
+import { ProductImportModal } from "@/components/products/ProductImportModal";
+import { PRODUCT_IMPORT_HEADERS } from "@/lib/productImport";
 import { listProductsForGrid, productsRepo, type ProductListRow } from "@/lib/repo/products";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
@@ -23,6 +25,7 @@ export default function ProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Contractors top up stock by hand per item, here as on the Stock page.
   const sessionTenant = useAuthStore((s) => s.currentTenant);
@@ -170,16 +173,18 @@ export default function ProductsPage() {
             </Button>
             <Button
               onClick={() => {
-                const headers = ["Name*","Barcode","Company","Category","Sub Category","UOM*","Sale Price","Wholesale Price","MRP","HS Code","Generic Name","Packing (units per box)"];
                 const sample = [
-                  ["PARACETAMOL 500MG TAB","5000168002658","GSK","Analgesics","Tablets","Tablet","5.00","4.50","5.50","3004.9090","Paracetamol","10"],
-                  ["AMOXICILLIN 250MG CAP","5000168007553","Pharmatec","Antibiotics","Capsules","Capsule","15.00","13.50","16.00","3004.2090","Amoxicillin","14"],
-                  ["(* = required)","","","","","","","","","","",""],
+                  ["PARACETAMOL 500MG TAB","5000168002658","GSK","Analgesics","Tablets","Tablet","4.20","5.00","4.50","5.50","3004.9090","10","0"],
+                  ["AMOXICILLIN 250MG CAP","5000168007553","Pharmatec","Antibiotics","Capsules","Capsule","12.00","15.00","13.50","16.00","3004.2090","14","0"],
+                  ["(* = required)","","","","","","","","","","","",""],
                 ];
-                downloadCsv("products-import-sample.csv", buildCsv(headers, sample));
+                downloadCsv("products-import-sample.csv", buildCsv(PRODUCT_IMPORT_HEADERS, sample));
               }}
             >
               Sample File
+            </Button>
+            <Button onClick={() => setImportOpen(true)} disabled={!tauriReady}>
+              Import CSV
             </Button>
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
@@ -242,6 +247,8 @@ export default function ProductsPage() {
           </form>
         </Modal>
       )}
+
+      {importOpen && <ProductImportModal onClose={() => setImportOpen(false)} onDone={() => void reload()} />}
 
       {modalOpen && (
         <ProductFormModal
