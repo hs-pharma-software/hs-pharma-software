@@ -348,7 +348,7 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     validations: ["Buyer NTN/CNIC for registered clients", "At least one line", "Tax profile set when submitting to FBR"],
     mvp: ["Clients", "Service items", "Quotation", "Invoice", "Payments", "FBR DI"],
     advanced: ["Projects with BOQ", "Running / progress bills", "Retention money", "Mobilisation advance"],
-    defaultModules: m("quotation", "staff"),
+    defaultModules: m("quotation", "stock", "staff"),
     planned: ["Service items (non-stock)", "Projects / jobs", "Running bills & retention"],
   },
   {
