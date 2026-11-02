@@ -79,7 +79,7 @@ export function printedBusinessName(p: Pick<CompanyProfile, "showName" | "printN
 /** Medicine invoices (contractor): the drug-sale warranty printed instead of
  * the plain note. Placeholders are filled from the business. */
 export const MEDICINE_WARRANTY_TEXT =
-  "Under Section 23(i) of the Drugs Act 1976, I {owner} being a person resident in Pakistan carrying on business under the name of {business}, {address}, being an authorized dealer, do hereby give this warranty that the drugs hereunder described as sold in the bill of sale invoice referred. “I will not contravene in any way the provision of Section 23 of the Drugs Act 1976.”";
+  "Under Section 23(i) of the Drugs Act 1976, I {owner} being a person resident in Pakistan carrying on business under the name of {business}, {address}, being an authorized dealer, do hereby give this warranty that the drugs hereunder described as sold in the bill of sale invoice referred.\n“I’ll not contravene in any way the provision of Section 23 of the Drugs Act 1976.”";
 
 export function fillWarranty(text: string, v: { owner: string; business: string; address: string }): string {
   return text.replace(/\{owner\}/g, v.owner).replace(/\{business\}/g, v.business).replace(/\{address\}/g, v.address);

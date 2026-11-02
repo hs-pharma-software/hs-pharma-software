@@ -521,7 +521,7 @@ export function InvoicePrintLayout({
           return (
             <div style={box}>
               <div><span style={label}>{tx(blk, "warranty")}</span>{data.note ? ` ${data.note}` : ""}</div>
-              <div style={{ marginTop: 2, textAlign: "justify", fontSize: "0.92em", lineHeight: 1.4 }}>{data.warranty}</div>
+              <div style={{ marginTop: 2, textAlign: "justify", fontSize: "0.92em", lineHeight: 1.4, whiteSpace: "pre-line" }}>{data.warranty}</div>
             </div>
           );
         }
@@ -607,11 +607,48 @@ export function InvoicePrintLayout({
         ? { border: `4px double ${P}`, padding: 10 }
         : {};
 
+  // A4 / A5 print: what comes after the items and totals (note / warranty,
+  // FBR, thank-you, credit line) sits at the foot of the page.
+  const visible = template.blocks.filter((blk) => blk.visible);
+  const pinFooter = !editor && !thermal;
+  const lastBody = Math.max(visible.findIndex((b) => b.id === "items"), visible.map((b) => b.id).lastIndexOf("totals"));
+  const splitAt = pinFooter && lastBody >= 0 ? lastBody + 1 : visible.length;
+  const pageHeightMm = template.paper === "a5" ? 210 : 297;
+
+  function blockView(blk: BlockConfig) {
+    const content = renderBlock(blk);
+    if (!editor) return content ? <div key={blk.id} style={{ marginBottom: 6, ...textStyle(blk) }}>{content}</div> : null;
+    const isSel = editor.selected === blk.id;
+    return (
+      <div
+        key={blk.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          editor.onDragStart(blk.id);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          editor.onDropOn(blk.id);
+        }}
+        onClick={() => editor.onSelect(blk.id)}
+        title="Drag to move, click to edit"
+        style={{ marginBottom: 6, cursor: "grab", ...textStyle(blk) }}
+        className={`rounded outline-dashed outline-1 outline-offset-2 ${isSel ? "outline-[#006633] bg-[#006633]/[0.04]" : "outline-transparent hover:outline-neutral-300"}`}
+      >
+        {content ?? <div className="text-[11px] text-neutral-300">[ {blk.id} - nothing to show in this sample ]</div>}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         width: `${contentMm}mm`,
         boxSizing: "border-box",
+        // One full page high (a little under, so it never spills onto a blank second page).
+        ...(pinFooter ? { minHeight: `${pageHeightMm - paper.marginMm * 2 - 3}mm`, display: "flex", flexDirection: "column" } : {}),
         color: "#111",
         fontFamily: "Arial, Helvetica, sans-serif",
         lineHeight: 1.35,
@@ -623,34 +660,9 @@ export function InvoicePrintLayout({
     >
       <style>{`@media print { @page { size: ${paper.css}; margin: ${paper.marginMm}mm; } }`}</style>
       {decor(skin.top)}
-      {template.blocks
-        .filter((blk) => blk.visible)
-        .map((blk) => {
-          const content = renderBlock(blk);
-          if (!editor) return content ? <div key={blk.id} style={{ marginBottom: 6, ...textStyle(blk) }}>{content}</div> : null;
-          const isSel = editor.selected === blk.id;
-          return (
-            <div
-              key={blk.id}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                editor.onDragStart(blk.id);
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                editor.onDropOn(blk.id);
-              }}
-              onClick={() => editor.onSelect(blk.id)}
-              title="Drag to move, click to edit"
-              style={{ marginBottom: 6, cursor: "grab", ...textStyle(blk) }}
-              className={`rounded outline-dashed outline-1 outline-offset-2 ${isSel ? "outline-[#006633] bg-[#006633]/[0.04]" : "outline-transparent hover:outline-neutral-300"}`}
-            >
-              {content ?? <div className="text-[11px] text-neutral-300">[ {blk.id} - nothing to show in this sample ]</div>}
-            </div>
-          );
-        })}
+      {visible.slice(0, splitAt).map(blockView)}
+      <div style={pinFooter ? { marginTop: "auto", paddingTop: 8 } : undefined}>
+      {visible.slice(splitAt).map(blockView)}
       {decor(skin.bottom, true)}
       <div
         style={{
@@ -663,6 +675,7 @@ export function InvoicePrintLayout({
         }}
       >
         {DEVELOPER_CREDIT}
+      </div>
       </div>
     </div>
   );
