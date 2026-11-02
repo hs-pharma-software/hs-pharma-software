@@ -6,6 +6,7 @@
 import { getSetting } from "./repo/settings";
 import { useAuthStore } from "../store/authStore";
 import { normalizeNtn } from "./fbrData";
+import { localDate } from "./localDate";
 
 const GW = "https://gw.fbr.gov.pk";
 const POST_URL = { sandbox: `${GW}/di_data/v1/di/postinvoicedata_sb`, production: `${GW}/di_data/v1/di/postinvoicedata` };
@@ -233,7 +234,7 @@ function ddMonYyyy(d = new Date()) {
   return `${String(d.getDate()).padStart(2, "0")}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`;
 }
 function isoDate(d = new Date()) {
-  return d.toISOString().slice(0, 10);
+  return localDate(d);
 }
 
 export interface FbrRate {

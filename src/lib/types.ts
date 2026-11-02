@@ -1,4 +1,4 @@
-﻿import type { BaseRow, TenantRow } from "./repo/base";
+﻿import type { TenantRow } from "./repo/base";
 
 export interface Category extends TenantRow {
   name: string;

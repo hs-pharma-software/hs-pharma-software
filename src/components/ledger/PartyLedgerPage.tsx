@@ -10,6 +10,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { ledgerRepo, listLedgerForParty, getPartyTradeBalance } from "@/lib/repo/ledger";
 import type { PartyType, LedgerAdjustment } from "@/lib/types2";
 import type { BaseRow } from "@/lib/repo/base";
+import { localDate } from "@/lib/localDate";
 
 interface PartyRow extends BaseRow {
   name: string;
@@ -131,7 +132,7 @@ export function PartyLedgerPage({
                 await ledgerRepo.create({
                   party_type: partyType,
                   party_id: selected.id,
-                  date: new Date().toISOString().slice(0, 10),
+                  date: localDate(),
                   invoice_no: null,
                   balance_type: "adjustment",
                   payment_method: paymentMethod,

@@ -4,9 +4,27 @@ import { useAuthStore } from "../../store/authStore";
 import { receiveStock, deductStock, listAvailableBatches } from "./stock";
 import { imeiTrackedIds, releaseInvoiceImeis } from "./imei";
 import { STOCK_EPS } from "../batchAllocation";
+import { INVOICE_NUMBERS, nextDocNo, settleCode, settleDocNo } from "./docNumbers";
 import type { Invoice, InvoiceItem } from "../types2";
+import { localDate } from "../localDate";
 
-export const invoicesRepo = createTenantRepo<Invoice>("invoices");
+const baseInvoicesRepo = createTenantRepo<Invoice>("invoices");
+/** Invoices; a saved bill keeps a number no other bill of the business has. */
+export const invoicesRepo = {
+  ...baseInvoicesRepo,
+  async create(data: Partial<Invoice>): Promise<Invoice> {
+    const created = await baseInvoicesRepo.create(data);
+    const q = created as Invoice & { is_quotation?: number; quotation_no?: number | null };
+    if (q.is_quotation && q.quotation_no != null) {
+      // Quotations have their own numbers, settled the same way.
+      const no = await settleCode({ table: "invoices", column: "quotation_no", id: created.id, createdAt: created.created_at, value: Number(q.quotation_no), scope: { sql: "is_quotation = 1", params: [] }, regenerate: () => nextQuotationNo() });
+      return no === Number(q.quotation_no) ? created : ({ ...created, quotation_no: no } as Invoice);
+    }
+    if (created.invoice_no == null || q.is_quotation) return created;
+    const no = await settleDocNo(INVOICE_NUMBERS, created.id, Number(created.invoice_no), created.created_at);
+    return no === Number(created.invoice_no) ? created : { ...created, invoice_no: no };
+  },
+};
 export const invoiceItemsRepo = createTenantRepo<InvoiceItem>("invoice_items", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {
@@ -135,12 +153,10 @@ export async function searchInvoicesForReturn(term: string): Promise<InvoiceList
   );
 }
 
+/** One more than any bill number the business ever used (deleted bills too,
+ * so a number is never given out twice). */
 export async function nextInvoiceNo(): Promise<number> {
-  const rows = await dbSelect<{ n: number | null }>(
-    `SELECT MAX(invoice_no) as n FROM invoices WHERE deleted_at IS NULL AND tenant_id = ?`,
-    [currentTenantId()]
-  );
-  return (rows[0]?.n ?? 0) + 1;
+  return nextDocNo(INVOICE_NUMBERS);
 }
 
 export async function nextQuotationNo(): Promise<number> {
@@ -202,7 +218,7 @@ export async function convertQuotationToInvoice(quotationId: string): Promise<st
   const invoiceNo = await nextInvoiceNo();
   const created = await invoicesRepo.create({
     invoice_no: invoiceNo,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate(),
     inv_on: quotation.inv_on,
     invoice_type: quotation.invoice_type,
     description: quotation.description,

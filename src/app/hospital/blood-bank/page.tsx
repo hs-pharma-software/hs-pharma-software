@@ -28,7 +28,7 @@ const UNIT_STATUS: Record<BbUnit["status"], [string, string]> = {
 const URGENCY_CLS: Record<BbRequest["urgency"], string> = { Emergency: "bg-rose-100 text-rose-700", Urgent: "bg-amber-100 text-amber-800", Routine: "bg-neutral-100 text-neutral-600" };
 const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
 const pill = (label: string, cls: string) => <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>{label}</span>;
-const inDays = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+const inDays = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return localDate(x); };
 
 type Tab = "requests" | "stock" | "donors" | "reactions" | "indicators";
 const TABS: [Tab, string][] = [["requests", "Requests and issue"], ["stock", "Stock"], ["donors", "Donors"], ["reactions", "Reactions"], ["indicators", "Indicators"]];

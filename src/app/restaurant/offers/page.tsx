@@ -68,7 +68,7 @@ function OfferModal({ offer, onClose, onSaved }: { offer: Partial<Offer>; onClos
     <Modal title={offer.id ? `Edit ${offer.name}` : "Add Offer"} onClose={onClose} width="max-w-3xl">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Field label="Code" required><Input value={f.code ?? ""} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} /></Field>
             <div className="col-span-2"><Field label="Offer name" required><Input value={f.name ?? ""} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Field></div>
           </div>
@@ -89,7 +89,7 @@ function OfferModal({ offer, onClose, onSaved }: { offer: Partial<Offer>; onClos
             )}
           </div>
           {(f.type === "bogo" || f.type === "buy_x_get_y") && <p className="text-[11px] text-neutral-500">The cheapest qualifying items are the free ones.</p>}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Field label="Min bill (Rs)"><Input type="number" min="0" value={f.min_order ?? ""} onChange={(e) => setF({ ...f, min_order: num(e.target.value) })} /></Field>
             <Field label="Min items"><Input type="number" min="0" value={f.min_qty ?? ""} onChange={(e) => setF({ ...f, min_qty: num(e.target.value) })} /></Field>
             <Field label="Max discount (Rs)"><Input type="number" min="0" value={f.max_discount ?? ""} onChange={(e) => setF({ ...f, max_discount: num(e.target.value) })} /></Field>

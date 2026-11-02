@@ -24,6 +24,7 @@ import { createLabRequest, enterLabResult, labCapabilities, labRequestsRepo, col
 
 const labRequestsRepoCenters = (id: string) => collectionCentersRepo.get(id);
 import type { HospitalEpisode, HospitalRxItem, HospitalLabOrder, HospitalImagingOrder, HospitalService, LabRequest, PaymentMethod } from "../types-hospital";
+import { settleCode } from "./docNumbers";
 
 // ── HR: staff with designation, licence and automatic employee id ─────────
 
@@ -139,6 +140,11 @@ export async function bookOpdVisit(input: { patientId: string; doctorId: string;
     episode_no: await nextEpisodeNo("opd", date), type: "opd", patient_id: patient.id, doctor_id: doctor.id, department: doctor.department ?? null,
     date, time: input.time ?? localDateTime().slice(11), status: "open", room_ward: null, bed_no: null, admission_date: null, discharge_date: null,
     diagnosis: null, notes: input.notes ?? null, token_no: token, consult_status: "waiting",
+  });
+  // Two receptionists booking the same doctor at the same moment: the later visit takes the next token.
+  episode.token_no = await settleCode({
+    table: "hospital_episodes", column: "token_no", id: episode.id, createdAt: episode.created_at, value: token,
+    scope: { sql: "doctor_id = ? AND date = ?", params: [doctor.id, date] }, regenerate: () => nextToken(doctor.id, date),
   });
   const fee = Math.max(0, Number(doctor.consultation_fee) || 0);
   let paid = 0;

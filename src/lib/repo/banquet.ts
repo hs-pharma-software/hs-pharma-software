@@ -11,6 +11,7 @@ import { actorName } from "./clinicServices";
 import { isMissingSchemaError } from "../dbErrors";
 import type { Invoice } from "../types2";
 import type { ServiceLine } from "../serviceFbr";
+import { settlingCreate } from "./docNumbers";
 
 export const BANQUET_INVOICE_TYPE = "banquet_booking";
 
@@ -94,7 +95,8 @@ export interface BookingPayment extends TenantRow {
 export const hallsRepo = createTenantRepo<BanquetHall>("banquet_halls");
 export const dishesRepo = createTenantRepo<BanquetDish>("banquet_dishes");
 export const packagesRepo = createTenantRepo<BanquetPackage>("banquet_packages");
-export const bookingsRepo = createTenantRepo<BanquetBooking>("banquet_bookings");
+/** Bookings; two made at the same moment never share a booking number. */
+export const bookingsRepo = settlingCreate(createTenantRepo<BanquetBooking>("banquet_bookings"), "banquet_bookings", "booking_no", { regenerate: () => nextBookingNo() });
 export const bookingItemsRepo = createTenantRepo<BookingItem>("banquet_booking_items");
 export const bookingPaymentsRepo = createTenantRepo<BookingPayment>("banquet_payments");
 

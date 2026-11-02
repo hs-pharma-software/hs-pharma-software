@@ -70,13 +70,11 @@ function DonutChart({ data }: { data: InventoryUnitRow[] }) {
     );
   }
 
-  let cumOffset = 0;
+  // Each segment starts where the ones before it end.
   const segments = data.map((row, i) => {
     const frac = row.product_count / total;
-    const dashLen = frac * CIRCUMFERENCE;
-    const offset = cumOffset;
-    cumOffset += frac;
-    return { ...row, frac, dashLen, offset, color: DONUT_COLORS[i % DONUT_COLORS.length] };
+    const offset = data.slice(0, i).reduce((s, r) => s + r.product_count / total, 0);
+    return { ...row, frac, dashLen: frac * CIRCUMFERENCE, offset, color: DONUT_COLORS[i % DONUT_COLORS.length] };
   });
 
   return (
@@ -463,7 +461,7 @@ function GeneralStoreDashboard() {
       </Card>
 
       {/* ── Footer counts ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Link href="/customers" className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] hover:shadow-md transition-shadow">
           <span className="text-xs font-medium text-neutral-500">Customers</span>
           <span className="text-sm font-bold text-neutral-900">{stats.customers}</span>
@@ -703,7 +701,7 @@ function GeneralDashboard() {
       </div>
 
       {/* ── Quick counts footer ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Link href="/customers" className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] hover:shadow-md transition-shadow">
           <span className="text-xs font-medium text-neutral-500">Customers</span>
           <span className="text-sm font-bold text-neutral-900">{stats.customers}</span>

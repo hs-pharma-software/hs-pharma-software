@@ -218,7 +218,7 @@ export function BillModal({ bill, onClose, onBilled }: { bill: VisitBill; onClos
               <tr><td className="pt-2 font-semibold">Total</td><td className="pt-2 text-right font-semibold tabular-nums">{money(bill.total)}</td></tr>
             </tbody>
           </table>
-          <div className="mt-3 grid grid-cols-3 gap-3">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Discount (Rs)"><Input id="bill-disc" type="number" min="0" step="any" value={discount} onChange={(e) => { setDiscount(e.target.value); setPaid(String(Math.max(0, bill.total - (Number(e.target.value) || 0)))); }} /></Field>
             <Field label="Payable"><Input value={money(payable)} readOnly className="bg-neutral-50 font-semibold" /></Field>
             <Field label="Paid now (Rs)"><Input id="bill-paid" type="number" min="0" step="any" value={paid} onChange={(e) => setPaid(e.target.value)} /></Field>

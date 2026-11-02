@@ -2,8 +2,10 @@
 import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { OrderRow, OrderItem } from "../types2";
+import { settlingCreate } from "./docNumbers";
 
-export const ordersRepo = createTenantRepo<OrderRow>("orders");
+/** Purchase orders; two saved at the same moment never share an order number. */
+export const ordersRepo = settlingCreate(createTenantRepo<OrderRow>("orders"), "orders", "order_no", { regenerate: () => nextOrderNo() });
 export const orderItemsRepo = createTenantRepo<OrderItem>("order_items", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {

@@ -5,7 +5,7 @@ import { useAppStore } from "@/store/appStore";
 import { syncNow, isTursoConfigured } from "@/lib/sync/engine";
 import { countPendingOutbox } from "@/lib/sync/outbox";
 import { nowIso } from "@/lib/id";
-import { isTauri } from "@/lib/platform";
+import { isTauriShell } from "@/lib/platform";
 
 const SYNC_INTERVAL_MS = 60_000;
 
@@ -21,8 +21,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const setLastError = useAppStore((s) => s.setLastError);
   const runningRef = useRef(false);
 
+  // Only the desktop app keeps a local copy to sync; the web version works on
+  // the server database directly and has nothing to sync.
   const refreshPendingCount = useCallback(async () => {
-    if (!isTauri()) return;
+    if (!isTauriShell()) return;
     try {
       setPendingCount(await countPendingOutbox());
     } catch {
@@ -32,7 +34,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   const runSync = useCallback(async () => {
     if (runningRef.current) return;
-    if (!isTauri()) return;
+    if (!isTauriShell()) return;
     if (!isTursoConfigured()) return;
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
@@ -91,6 +93,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 /** Manual "Sync Now" trigger for the topbar button. */
 export async function triggerManualSync() {
   const store = useAppStore.getState();
+  if (!isTauriShell()) return;
   if (!isTursoConfigured()) {
     store.setLastError("Turso is not configured yet (see README).");
     return;

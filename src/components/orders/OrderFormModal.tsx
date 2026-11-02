@@ -12,7 +12,7 @@ import { orderItemsRepo, saveOrder } from "@/lib/repo/orders";
 import { productsRepo } from "@/lib/repo/products";
 import { localDate } from "@/lib/localDate";
 import type { OrderRow } from "@/lib/types2";
-import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
+import { listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Supplier, Product, Uom } from "@/lib/types";
 

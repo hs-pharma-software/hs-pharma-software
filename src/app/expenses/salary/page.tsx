@@ -11,6 +11,7 @@ import { salariesRepo } from "@/lib/repo/salaries";
 import { staffRepo } from "@/lib/repo/staff";
 import type { Staff } from "@/lib/types";
 import type { Salary } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -100,7 +101,7 @@ export default function SalaryDetailsPage() {
               setSaving(true);
               try {
                 await salariesRepo.create({
-                  date: new Date().toISOString().slice(0, 10),
+                  date: localDate(),
                   salary_month: month,
                   salary_year: Number(year),
                   staff_id: staffId,

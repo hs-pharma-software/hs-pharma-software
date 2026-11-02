@@ -11,6 +11,7 @@ import { staffRepo } from "@/lib/repo/staff";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { Staff } from "@/lib/types";
 import type { Attendance } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 interface AttendanceRow extends Attendance {
   staff_name?: string;
@@ -29,7 +30,7 @@ export default function AttendancePage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [staffId, setStaffId] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDate());
   const [timeIn, setTimeIn] = useState("");
   const [timeOut, setTimeOut] = useState("");
   const [saving, setSaving] = useState(false);

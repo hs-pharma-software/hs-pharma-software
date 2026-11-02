@@ -16,6 +16,7 @@ import {
 import { deductStock, listAvailableBatches } from "@/lib/repo/stock";
 import { imeisOfPurchase, returnImeisToSupplier } from "@/lib/repo/imei";
 import type { Purchase } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 interface ReturnLine {
   item: PurchaseItemWithProduct;
@@ -102,7 +103,7 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
     try {
       const returnPurchase = await purchasesRepo.create({
         purchase_no: null,
-        date: new Date().toISOString().slice(0, 10),
+        date: localDate(),
         order_id: null,
         supplier_id: originalPurchase.supplier_id,
         supplier_invoice_no: originalPurchase.supplier_invoice_no,

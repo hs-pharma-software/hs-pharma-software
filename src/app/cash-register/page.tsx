@@ -9,6 +9,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { cashRegisterRepo } from "@/lib/repo/cashRegister";
 import type { CashRegisterEntry } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 export default function CashRegisterPage() {
   const [entries, setEntries] = useState<CashRegisterEntry[]>([]);
@@ -83,7 +84,7 @@ export default function CashRegisterPage() {
               setSaving(true);
               try {
                 await cashRegisterRepo.create({
-                  date: new Date().toISOString().slice(0, 10),
+                  date: localDate(),
                   transaction_type: transactionType,
                   amount: Number(amount) || 0,
                   description: description || null,

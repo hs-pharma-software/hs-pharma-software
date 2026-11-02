@@ -150,7 +150,7 @@ function ItemModal({ item, categories, onClose, onSaved }: { item: Partial<Item>
     <Modal title={item.id ? `Edit ${item.name}` : "Add Dish"} onClose={onClose} width="max-w-3xl">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Field label="Item code" required><Input value={f.code ?? ""} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} /></Field>
             <div className="col-span-2"><Field label="Dish name" required><Input value={f.name ?? ""} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Field></div>
           </div>

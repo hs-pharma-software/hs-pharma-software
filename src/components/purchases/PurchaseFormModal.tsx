@@ -32,11 +32,12 @@ import { newId } from "@/lib/id";
 import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Purchase } from "@/lib/types2";
 import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
-import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
+import { listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import { imeiListProblem, imeisOfPurchase, parseImeis, receiveImeis, removePurchaseImeis } from "@/lib/repo/imei";
 import { useAuthStore } from "@/store/authStore";
 import type { Supplier, Product, Uom } from "@/lib/types";
+import { localDate } from "@/lib/localDate";
 
 interface Line {
   product: Product;
@@ -316,10 +317,12 @@ export function PurchaseFormModal({
 
   // Ctrl+S save, Ctrl+D draft - only in the tab that's in front.
   const keyActions = useRef({ save: () => undefined as void, draft: () => undefined as void });
-  keyActions.current = {
-    save: () => formRef.current?.requestSubmit(),
-    draft: () => void saveAsDraft(),
-  };
+  useEffect(() => {
+    keyActions.current = {
+      save: () => formRef.current?.requestSubmit(),
+      draft: () => void saveAsDraft(),
+    };
+  });
   useEffect(() => {
     if (!active) return;
     function onKey(e: KeyboardEvent) {
@@ -451,7 +454,7 @@ export function PurchaseFormModal({
         const created = await purchasesRepo.create({
           ...header,
           purchase_no: await nextPurchaseNo(),
-          date: new Date().toISOString().slice(0, 10),
+          date: localDate(),
           order_id: fromOrder?.orderId ?? null,
           discount_pct: 0,
           bank_id: null,

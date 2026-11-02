@@ -12,6 +12,7 @@ import type { Staff } from "@/lib/types";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
 import { HospitalStaffFormModal } from "./HospitalStaffFormModal";
+import { localDate } from "@/lib/localDate";
 
 export function StaffFormModal({
   staff,
@@ -45,7 +46,7 @@ function GeneralStaffForm({
   const [cnic, setCnic] = useState(staff?.cnic ?? "");
   const [basicPay, setBasicPay] = useState(String(staff?.basic_pay ?? 0));
   const [dateOfJoining, setDateOfJoining] = useState(
-    staff?.date_of_joining ?? new Date().toISOString().slice(0, 10)
+    staff?.date_of_joining ?? localDate()
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

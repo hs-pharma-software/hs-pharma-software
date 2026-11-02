@@ -12,10 +12,11 @@ import { salesmenRepo } from "@/lib/repo/salesmen";
 import { invoicesRepo, invoiceItemsRepo, nextQuotationNo } from "@/lib/repo/invoices";
 import { listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
 import { getLatestPrice } from "@/lib/repo/products";
-import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
+import { listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, roundPrice, toBaseUnitQty } from "@/lib/uom";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 interface Line {
   product: Product;
@@ -141,7 +142,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
       const quotation = await invoicesRepo.create({
         invoice_no: null,
         quotation_no: quotationNo,
-        date: new Date().toISOString().slice(0, 10),
+        date: localDate(),
         inv_on: "cash",
         invoice_type: invoiceType.toLowerCase(),
         description: description || null,

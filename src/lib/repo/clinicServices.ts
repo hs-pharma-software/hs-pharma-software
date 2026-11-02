@@ -17,6 +17,7 @@ import { isMissingSchemaError } from "../dbErrors";
 import type { LabComponent } from "../types-hospital";
 import type { ClinicConsultation, ClinicDoctor, ClinicPatient } from "../types-clinic";
 import type { Invoice } from "../types2";
+import { settlingCreate } from "./docNumbers";
 
 export type ClinicServiceCategory = "consultation" | "lab" | "radiology" | "procedure" | "room" | "nursing" | "medicine" | "other";
 
@@ -91,7 +92,8 @@ export interface ClinicOrder extends TenantRow {
 }
 
 export const clinicServicesRepo = createTenantRepo<ClinicService>("clinic_services");
-export const clinicOrdersRepo = createTenantRepo<ClinicOrder>("clinic_orders");
+/** Orders; two saved at the same moment never share an order number. */
+export const clinicOrdersRepo = settlingCreate(createTenantRepo<ClinicOrder>("clinic_orders"), "clinic_orders", "order_no", { regenerate: (o) => nextClinicOrderNo(o.kind) });
 
 const round = (n: number) => Math.round(n * 100) / 100;
 export const actorName = () => {

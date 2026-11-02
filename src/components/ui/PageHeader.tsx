@@ -14,10 +14,11 @@ export function PageHeader({
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="mb-5 flex items-center justify-between"
+      className="mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
     >
-      <h1 className="text-2xl font-bold tracking-tight text-neutral-900">{title}</h1>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      <h1 className="min-w-0 text-xl font-bold tracking-tight text-neutral-900 sm:text-2xl">{title}</h1>
+      {/* On a phone the buttons wrap under the title instead of off the screen. */}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </motion.div>
   );
 }

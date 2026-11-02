@@ -81,7 +81,6 @@ export default function AdminCatalogReviewPage() {
   useEffect(() => {
     void loadCounts();
     void loadTab("unowned");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const switchTab = (tab: TabId) => {

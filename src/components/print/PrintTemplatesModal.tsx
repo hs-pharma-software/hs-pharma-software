@@ -29,6 +29,7 @@ import { useAuthStore } from "@/store/authStore";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { getSetting } from "@/lib/repo/settings";
 import { isTauri } from "@/lib/platform";
+import { localDate } from "@/lib/localDate";
 
 function sampleData(business: PrintData["business"], logo: string | null): PrintData {
   return {
@@ -37,7 +38,7 @@ function sampleData(business: PrintData["business"], logo: string | null): Print
     title: "INVOICE",
     number: "#1024",
     returnOf: null,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate(),
     payment: "Cash",
     invoiceType: "Retail",
     salesman: "Ali",

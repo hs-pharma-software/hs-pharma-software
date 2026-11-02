@@ -536,7 +536,7 @@ function ReturnModal({ doc, items, onClose, onDone }: { doc: EsDoc; items: EsDoc
             </div>
           );
         })}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Field label={t("c.reason")} required><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           <Field label={t("pay.refund")}><Input type="number" min="0" value={refund} onChange={(e) => setRefund(e.target.value)} /></Field>
           <Field label={t("pay.method")}>

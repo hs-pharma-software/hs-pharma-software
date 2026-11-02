@@ -17,6 +17,7 @@ import {
 import { receiveStock } from "@/lib/repo/stock";
 import { imeisOfInvoice, returnSoldImeis } from "@/lib/repo/imei";
 import type { Invoice } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 interface ReturnLine {
   item: InvoiceItemWithProduct;
@@ -108,7 +109,7 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
       const invoiceNo = await nextInvoiceNo();
       const returnInvoice = await invoicesRepo.create({
         invoice_no: invoiceNo,
-        date: new Date().toISOString().slice(0, 10),
+        date: localDate(),
         inv_on: originalInvoice.inv_on,
         invoice_type: originalInvoice.invoice_type,
         description: `Return against Bill #${originalInvoice.invoice_no}`,

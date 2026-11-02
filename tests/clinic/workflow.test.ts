@@ -379,3 +379,9 @@ test("sync: clinic and hospital tables are pulled per tenant; the mailbox only b
   assert.equal(mayPush("clinic_patients", "insert", { id: "x", tenant_id: B }, clinic), false);
   assert.equal(mayPush("hospital_patients", "insert", { id: "x", tenant_id: A }, stranger), false);
 });
+
+test("two patients registered at the same moment get different MRNs", async () => {
+  const [a, b, c] = await Promise.all([savePatient(null, { name: "One" }), savePatient(null, { name: "Two" }), savePatient(null, { name: "Three" })]);
+  assert.equal(new Set([a.mrn, b.mrn, c.mrn]).size, 3);
+  await assert.rejects(savePatient(null, { name: "Typed", mrn: a.mrn! }), /already used/, "a typed MRN that is taken is still refused");
+});

@@ -6,12 +6,13 @@ import { Eye, EyeOff } from "lucide-react";
 import { login, AuthError } from "@/lib/auth";
 import { useAuthStore } from "@/store/authStore";
 
-export function LoginScreen() {
+/** `notice`: why the accounts could not be checked (e.g. no connection). */
+export function LoginScreen({ notice = null }: { notice?: string | null } = {}) {
   const setSession = useAuthStore((s) => s.setSession);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(notice ? `Could not reach the server: ${notice}` : null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {

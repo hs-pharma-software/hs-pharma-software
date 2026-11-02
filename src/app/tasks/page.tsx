@@ -12,6 +12,7 @@ import { tasksRepo } from "@/lib/repo/tasks";
 import { salesmenRepo } from "@/lib/repo/salesmen";
 import type { TaskItem } from "@/lib/types2";
 import type { Salesman } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 export default function TasksPage() {
   const [rows, setRows] = useState<TaskItem[]>([]);
@@ -181,7 +182,7 @@ export default function TasksPage() {
               setSaving(true);
               try {
                 const payload = {
-                  assign_date: editing?.assign_date ?? new Date().toISOString().slice(0, 10),
+                  assign_date: editing?.assign_date ?? localDate(),
                   task_name: taskName.trim(),
                   assign_by: assignBy || null,
                   assign_to: assignTo || null,

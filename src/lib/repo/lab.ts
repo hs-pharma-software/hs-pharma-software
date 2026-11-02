@@ -20,6 +20,7 @@ import {
 import type { LabComponent } from "../types-hospital";
 import type { ClinicPatient } from "../types-clinic";
 import type { Invoice } from "../types2";
+import { settlingCreate } from "./docNumbers";
 
 export const LAB_VISIT_INVOICE_TYPE = "lab_visit";
 
@@ -33,7 +34,8 @@ export interface LabVisit extends TenantRow {
   created_by: string | null;
 }
 
-export const labVisitsRepo = createTenantRepo<LabVisit>("lab_visits");
+/** Lab visits; two registered at the same moment never share a visit number. */
+export const labVisitsRepo = settlingCreate(createTenantRepo<LabVisit>("lab_visits"), "lab_visits", "visit_no", { regenerate: () => nextLabVisitNo() });
 
 const round = (n: number) => Math.round(n * 100) / 100;
 const NEEDS_V67 = "The lab needs the latest database update (v67). Ask the administrator to run it.";

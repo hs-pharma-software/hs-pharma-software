@@ -72,7 +72,7 @@ function DealModal({ deal, menu, onClose, onSaved }: { deal: Partial<Deal>; menu
     <Modal title={deal.id ? `Edit ${deal.name}` : "Add Deal"} onClose={onClose} width="max-w-3xl">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Field label="Code" required><Input value={f.code ?? ""} onChange={(e) => setF({ ...f, code: e.target.value.toUpperCase() })} /></Field>
             <div className="col-span-2"><Field label="Deal name" required><Input value={f.name ?? ""} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Field></div>
           </div>

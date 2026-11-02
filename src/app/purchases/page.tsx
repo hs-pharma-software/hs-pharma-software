@@ -15,7 +15,6 @@ import {
   type PurchaseListRow,
 } from "@/lib/repo/purchases";
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
-import type { Purchase } from "@/lib/types2";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAppStore } from "@/store/appStore";
 
@@ -29,7 +28,6 @@ export default function PurchasesPage() {
   // A purchase tab saved: refresh the list.
   useEffect(() => {
     if (savedTick > 0) void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedTick]);
   const canEdit = useCan("purchase.edit");
   const canDelete = useCan("purchase.delete");

@@ -48,7 +48,6 @@ import {
   FlaskConical,
   ScanLine,
   Activity,
-  Bed,
   Scissors,
   Smartphone,
   Ruler,

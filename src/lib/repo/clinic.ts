@@ -15,6 +15,7 @@ import type {
 } from "../types-clinic";
 import { localDate } from "../localDate";
 import { isMissingSchemaError } from "../dbErrors";
+import { settlingCreate } from "./docNumbers";
 
 export type { PharmacyRxNotification } from "../types-clinic";
 
@@ -25,7 +26,13 @@ export const doctorsRepo = createTenantRepo<ClinicDoctor>("clinic_doctors");
 // points at belongs to the logged-in tenant.
 const PATIENT_REF: [string, string, string] = ["patient_id", "clinic_patients", "Patient"];
 const DOCTOR_REF: [string, string, string] = ["doctor_id", "clinic_doctors", "Doctor"];
-export const appointmentsRepo = createTenantRepo<ClinicAppointment>("clinic_appointments", { refs: [PATIENT_REF, DOCTOR_REF] });
+/** Appointments; two booked with a doctor for the same day at the same moment never share a token. */
+export const appointmentsRepo = settlingCreate(
+  createTenantRepo<ClinicAppointment>("clinic_appointments", { refs: [PATIENT_REF, DOCTOR_REF] }),
+  "clinic_appointments",
+  "token_no",
+  { regenerate: (a) => nextAppointmentToken(a.doctor_id!, a.date, a.id), scope: (a) => ({ sql: "doctor_id = ? AND date = ?", params: [a.doctor_id, a.date] }) }
+);
 export const consultationsRepo = createTenantRepo<ClinicConsultation>("clinic_consultations", {
   refs: [PATIENT_REF, DOCTOR_REF, ["appointment_id", "clinic_appointments", "Appointment"]],
 });
@@ -58,19 +65,37 @@ export async function savePatient(id: string | null, data: Partial<ClinicPatient
   const name = (data.name ?? "").trim();
   if (!name) throw new Error("Patient name is required.");
   let mrn = (data.mrn ?? "").trim();
+  // An MRN given out by the app (not typed in) settles to a free one after
+  // saving: two receptionists registering at once can draw the same number.
+  const autoMrn = !mrn && !id;
   if (!mrn) mrn = id ? ((await patientsRepo.get(id))?.mrn ?? (await nextPatientMrn())) : await nextPatientMrn();
-  const clash = await dbSelect<{ id: string; name: string }>(
-    `SELECT id, name FROM clinic_patients WHERE tenant_id = ? AND mrn = ? AND deleted_at IS NULL AND id != ?`,
-    [tenantId, mrn, id ?? ""]
-  );
-  if (clash.length) throw new Error(`MRN ${mrn} is already used by ${clash[0].name}.`);
+  for (let i = 0; ; i++) {
+    const clash = await dbSelect<{ id: string; name: string }>(
+      `SELECT id, name FROM clinic_patients WHERE tenant_id = ? AND mrn = ? AND deleted_at IS NULL AND id != ?`,
+      [tenantId, mrn, id ?? ""]
+    );
+    if (!clash.length) break;
+    if (!autoMrn || i >= 10) throw new Error(`MRN ${mrn} is already used by ${clash[0].name}.`);
+    mrn = await nextPatientMrn();
+  }
   const payload = { ...data, name, mrn };
   if (id) {
     const updated = await patientsRepo.update(id, payload);
     if (!updated) throw new Error("Patient not found.");
     return updated;
   }
-  return patientsRepo.create(payload);
+  const created = await patientsRepo.create(payload);
+  if (!autoMrn) return created;
+  for (let i = 0; i < 10; i++) {
+    const older = await dbSelect<{ id: string }>(
+      `SELECT id FROM clinic_patients WHERE tenant_id = ? AND mrn = ? AND deleted_at IS NULL AND id != ? AND (created_at < ? OR (created_at = ? AND id < ?))`,
+      [tenantId, created.mrn, created.id, created.created_at, created.created_at, created.id]
+    );
+    if (!older.length) return created;
+    const next = await nextPatientMrn();
+    Object.assign(created, (await patientsRepo.update(created.id, { mrn: next })) ?? { mrn: next });
+  }
+  return created;
 }
 
 // ── Appointments ───────────────────────────────────────────────────────────
@@ -231,7 +256,7 @@ export async function listRxNotifications(opts: { status?: string } = {}): Promi
 
 // Re-export as rxNotificationsRepo shape for the inbox page
 export const rxNotificationsRepo = {
-  list: (opts: { orderBy?: string } = {}) => listRxNotifications(),
+  list: (_opts: { orderBy?: string } = {}) => listRxNotifications(),
 };
 
 export async function getPendingRxNotifications(limit = 50): Promise<PharmacyRxNotification[]> {

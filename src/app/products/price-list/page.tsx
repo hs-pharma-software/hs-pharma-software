@@ -139,7 +139,7 @@ export default function PriceListPage() {
             <Field label="Batch No">
               <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />
             </Field>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Field label="Sale Price / Item">
                 <Input type="number" min="0" step="any" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} />
               </Field>

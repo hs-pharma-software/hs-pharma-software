@@ -314,7 +314,7 @@ export function UserLoginsPage({
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {visibleNav.map((item) => (
                     <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
                       <input

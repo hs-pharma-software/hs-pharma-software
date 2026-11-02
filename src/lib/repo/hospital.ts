@@ -15,6 +15,7 @@ import type {
 import { localDate } from "../localDate";
 import { invoicesRepo } from "./invoices";
 import { useAuthStore } from "../../store/authStore";
+import { settlingCreate } from "./docNumbers";
 
 export type { HospitalDepartment, HospitalLabOrder, HospitalImagingOrder, HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
 
@@ -27,8 +28,9 @@ export const hospitalEpisodesRepo = createTenantRepo<HospitalEpisode>("hospital_
 export const hospitalChargesRepo = createTenantRepo<HospitalCharge>("hospital_charges", { refs: [EPISODE_REF] });
 export const hospitalPaymentsRepo = createTenantRepo<HospitalPayment>("hospital_payments", { refs: [EPISODE_REF] });
 export const hospitalDepartmentsRepo = createTenantRepo<HospitalDepartment>("hospital_departments");
-export const hospitalLabRepo = createTenantRepo<HospitalLabOrder>("hospital_lab_orders", { refs: [PATIENT_REF] });
-export const hospitalImagingRepo = createTenantRepo<HospitalImagingOrder>("hospital_imaging_orders", { refs: [PATIENT_REF] });
+/** Lab / imaging orders; two placed at the same moment never share an order number. */
+export const hospitalLabRepo = settlingCreate(createTenantRepo<HospitalLabOrder>("hospital_lab_orders", { refs: [PATIENT_REF] }), "hospital_lab_orders", "order_no", { regenerate: () => nextOrderNo("hospital_lab_orders") });
+export const hospitalImagingRepo = settlingCreate(createTenantRepo<HospitalImagingOrder>("hospital_imaging_orders", { refs: [PATIENT_REF] }), "hospital_imaging_orders", "order_no", { regenerate: () => nextOrderNo("hospital_imaging_orders") });
 
 /** LAB-20261024-0001 / RAD-... : counts the tenant's orders, then skips any number already used. */
 export async function nextOrderNo(table: "hospital_lab_orders" | "hospital_imaging_orders"): Promise<string> {

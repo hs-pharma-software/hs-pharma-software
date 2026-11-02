@@ -1,4 +1,4 @@
-import type { BaseRow, TenantRow } from "./repo/base";
+import type { TenantRow } from "./repo/base";
 
 export interface HospitalPatient extends TenantRow {
   mr_no: string;

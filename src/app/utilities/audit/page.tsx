@@ -22,6 +22,7 @@ import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
 import type { AuditRow } from "@/lib/types2";
 import type { Product } from "@/lib/types";
+import { localDate } from "@/lib/localDate";
 
 interface Line {
   product: Product;
@@ -206,7 +207,7 @@ export default function AuditDetailPage() {
                   auditId = editing.id;
                 } else {
                   const audit = await auditsRepo.create({
-                    date: new Date().toISOString().slice(0, 10),
+                    date: localDate(),
                     audit_name: auditName.trim(),
                     description: description || null,
                   });

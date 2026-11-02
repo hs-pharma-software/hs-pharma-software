@@ -9,6 +9,7 @@ import { DataTable, type Column } from "./DataTable";
 import { QuickAddDialog } from "./QuickAddDialog";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { BaseRow } from "@/lib/repo/base";
+import { localDate } from "@/lib/localDate";
 
 interface CategoryRow extends BaseRow {
   name: string;
@@ -129,7 +130,7 @@ export function CategorizedEntryPage<T extends EntryRow>({
               setSaving(true);
               try {
                 await entryRepo.create({
-                  date: new Date().toISOString().slice(0, 10),
+                  date: localDate(),
                   category_id: categoryId,
                   [byField]: by || null,
                   amount: Number(amount) || 0,

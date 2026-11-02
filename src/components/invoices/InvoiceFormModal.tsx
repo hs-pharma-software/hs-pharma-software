@@ -27,7 +27,7 @@ import { deductStock, listAvailableBatches, type ProductBatchOption } from "@/li
 import { allocateBatches, batchLabel, totalStock, STOCK_EPS } from "@/lib/batchAllocation";
 import { getLatestPrice, productsRepo } from "@/lib/repo/products";
 import { getEffectiveDiscountPct } from "@/lib/repo/categories";
-import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
+import { listUomsWithShared } from "@/lib/repo/uoms";
 import { useAuthStore } from "@/store/authStore";
 import {
   hasSecondaryUnit,
@@ -45,6 +45,7 @@ import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
 import { businessType } from "@/config/businessTypes";
 import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
+import { localDate } from "@/lib/localDate";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -610,7 +611,7 @@ export function InvoiceFormModal({
       if (cap != null) {
         const monthStart = new Date();
         monthStart.setDate(1);
-        const used = await countInvoicesThisMonth(monthStart.toISOString().slice(0, 10));
+        const used = await countInvoicesThisMonth(localDate(monthStart));
         if (used >= cap) {
           setError(`Your plan allows up to ${cap} invoices per month - that limit has been reached for this month.`);
           return;
@@ -692,9 +693,11 @@ export function InvoiceFormModal({
   }
 
   // Ctrl+D always runs the latest handleDraft (it closes over current state).
-  draftRef.current = () => {
-    if (!isEdit && !saving) void handleDraft();
-  };
+  useEffect(() => {
+    draftRef.current = () => {
+      if (!isEdit && !saving) void handleDraft();
+    };
+  });
 
   return (
     <Modal title={isDraft ? "Edit Memorized Invoice" : isEdit ? "Edit Invoice" : "Create Invoice"} onClose={onClose} width="max-w-6xl">

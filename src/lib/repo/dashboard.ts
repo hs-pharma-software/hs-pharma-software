@@ -59,17 +59,20 @@ export interface ExpiringBatchRow {
 }
 
 export async function getExpiringSoonBatches(days = 180, limit = 12): Promise<ExpiringBatchRow[]> {
+  // The cutoff on this computer's calendar (the database's date('now') is UTC).
+  const until = new Date();
+  until.setDate(until.getDate() + days);
   return dbSelect<ExpiringBatchRow>(
     `
     SELECT pb.id, p.name AS product_name, pb.batch_no, pb.expiry_date, pb.qty
     FROM product_batches pb
     JOIN products p ON p.id = pb.product_id AND (p.tenant_id = pb.tenant_id OR p.tenant_id IS NULL)
     WHERE pb.deleted_at IS NULL AND pb.tenant_id = ? AND pb.qty > 0 AND pb.expiry_date IS NOT NULL
-      AND date(pb.expiry_date) <= date('now', '+' || ? || ' days')
+      AND date(pb.expiry_date) <= ?
     ORDER BY pb.expiry_date ASC
     LIMIT ?
   `,
-    [currentTenantId(), days, limit]
+    [currentTenantId(), localDate(until), limit]
   );
 }
 

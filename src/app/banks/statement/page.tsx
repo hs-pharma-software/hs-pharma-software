@@ -9,6 +9,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { banksRepo, bankLedgerRepo } from "@/lib/repo/banks";
 import type { Bank, BankLedgerEntry } from "@/lib/types2";
+import { localDate } from "@/lib/localDate";
 
 export default function BankStatementPage() {
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -113,7 +114,7 @@ export default function BankStatementPage() {
               try {
                 await bankLedgerRepo.create({
                   bank_id: selected.id,
-                  date: new Date().toISOString().slice(0, 10),
+                  date: localDate(),
                   transaction_type: transactionType,
                   slip_no: slipNo || null,
                   amount: Number(amount) || 0,

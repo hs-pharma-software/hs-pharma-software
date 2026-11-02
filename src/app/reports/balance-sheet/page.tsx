@@ -7,9 +7,10 @@ import { Field, Input } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { useIsTauri } from "@/lib/platform";
 import { getBalanceSheet, type BalanceSheetRow } from "@/lib/repo/reports";
+import { localDate } from "@/lib/localDate";
 
 export default function BalanceSheetReportPage() {
-  const [asOfDate, setAsOfDate] = useState(new Date().toISOString().slice(0, 10));
+  const [asOfDate, setAsOfDate] = useState(localDate());
   const [rows, setRows] = useState<BalanceSheetRow[]>([]);
   const [ran, setRan] = useState(false);
 

@@ -4,8 +4,20 @@ import { useAuthStore } from "../../store/authStore";
 import { deductStock, listAvailableBatches } from "./stock";
 import { imeisOfPurchase, removePurchaseImeis, returnImeisToSupplier } from "./imei";
 import type { Purchase, PurchaseItem } from "../types2";
+import { PURCHASE_NUMBERS, nextDocNo, settleDocNo } from "./docNumbers";
+import { localDate } from "../localDate";
 
-export const purchasesRepo = createTenantRepo<Purchase>("purchases");
+const basePurchasesRepo = createTenantRepo<Purchase>("purchases");
+/** Purchases; a saved purchase keeps a number no other purchase has. */
+export const purchasesRepo = {
+  ...basePurchasesRepo,
+  async create(data: Partial<Purchase>): Promise<Purchase> {
+    const created = await basePurchasesRepo.create(data);
+    if (created.purchase_no == null) return created;
+    const no = await settleDocNo(PURCHASE_NUMBERS, created.id, Number(created.purchase_no), created.created_at);
+    return no === Number(created.purchase_no) ? created : { ...created, purchase_no: no };
+  },
+};
 export const purchaseItemsRepo = createTenantRepo<PurchaseItem>("purchase_items", { refs: LINE_REFS });
 
 function currentTenantId(): string | null {
@@ -43,12 +55,9 @@ export async function listPurchasesForGrid(isReturn = false): Promise<PurchaseLi
   );
 }
 
+/** One more than any purchase number ever used (deleted ones too). */
 export async function nextPurchaseNo(): Promise<number> {
-  const rows = await dbSelect<{ n: number | null }>(
-    `SELECT MAX(purchase_no) as n FROM purchases WHERE deleted_at IS NULL AND tenant_id = ?`,
-    [currentTenantId()]
-  );
-  return (rows[0]?.n ?? 0) + 1;
+  return nextDocNo(PURCHASE_NUMBERS);
 }
 
 /** For the Purchase Return flows: find the original purchase to return
@@ -225,7 +234,7 @@ export async function returnWholePurchase(purchaseId: string, paidAmount = 0): P
 
   const ret = await purchasesRepo.create({
     purchase_no: null,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate(),
     order_id: null,
     supplier_id: original.supplier_id,
     supplier_invoice_no: original.supplier_invoice_no,

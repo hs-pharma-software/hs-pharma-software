@@ -40,7 +40,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setError(e instanceof Error ? e.message : String(e));
       }
     }
-    const exists = await anyUserExists();
+    let exists: boolean;
+    try {
+      exists = await anyUserExists();
+    } catch (e) {
+      // The server or database could not be reached: show the sign-in screen
+      // with the reason instead of loading forever.
+      setError(e instanceof Error ? e.message : String(e));
+      setState("login");
+      return;
+    }
     // A synced install with no local users must reach Turso first: creating
     // a new Super Admin here would add a stray admin to the shared database.
     if (!exists) setState(synced ? "offline" : "setup");
@@ -110,5 +119,5 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   // Users exist but not logged in — show login
-  return <LoginScreen />;
+  return <LoginScreen notice={error} />;
 }
