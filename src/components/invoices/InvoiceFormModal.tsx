@@ -24,7 +24,7 @@ import {
   type InvoiceItemWithProduct,
 } from "@/lib/repo/invoices";
 import { deductStock, listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
-import { allocateBatches, batchLabel, totalStock } from "@/lib/batchAllocation";
+import { allocateBatches, batchLabel, totalStock, STOCK_EPS } from "@/lib/batchAllocation";
 import { getLatestPrice, productsRepo } from "@/lib/repo/products";
 import { getEffectiveDiscountPct } from "@/lib/repo/categories";
 import { uomsRepo, listUomsWithShared } from "@/lib/repo/uoms";
@@ -491,7 +491,7 @@ export function InvoiceFormModal({
       const finalBonusQty = toBaseUnitQty(l.bonusQty, isSecondary, packing);
       const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
       const { parts, short } = allocateBatches(batches, finalQty, finalBonusQty, used);
-      if (short > 1e-9) {
+      if (short > STOCK_EPS) {
         if (!skipStockDeduct) throw new Error(`Not enough stock of ${l.product.name}: ${short} more needed than all its batches hold.`);
         // A draft may hold more than is in stock: the rest goes on the last batch (or the line's own).
         if (!parts.length) parts.push({ batch: l.batch, qty: 0, bonus: 0 });
@@ -549,7 +549,7 @@ export function InvoiceFormModal({
       need.set(l.product.id, cur);
     }
     for (const n of need.values()) {
-      if (n.qty > n.avail + 1e-9) return `Only ${Math.round(n.avail * 1000) / 1000} of ${n.name} in stock (all batches), ${Math.round(n.qty * 1000) / 1000} entered.`;
+      if (n.qty > n.avail + STOCK_EPS) return `Only ${Math.round(n.avail * 1000) / 1000} of ${n.name} in stock (all batches), ${Math.round(n.qty * 1000) / 1000} entered.`;
     }
     return null;
   }

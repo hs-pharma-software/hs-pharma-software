@@ -1,6 +1,7 @@
 ﻿import { dbSelect } from "../db";
 import { productBatchesRepo } from "./products";
 import { useAuthStore } from "../../store/authStore";
+import { STOCK_EPS } from "../batchAllocation";
 import type { ProductBatch } from "../types";
 
 function currentTenantId(): string | null {
@@ -62,8 +63,6 @@ export async function addStockToBatch(batchId: string, qty: number, purchasePric
 
 /** Deducts sold/returned-out stock from a specific batch. Throws if the
  * batch doesn't have enough available quantity. Used by Invoice creation. */
-/** Stock differences below this (in packs) are rounding, not stock. */
-const STOCK_EPS = 1e-6;
 
 export async function deductStock(batchId: string, qty: number): Promise<void> {
   const batch = await productBatchesRepo.get(batchId);

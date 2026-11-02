@@ -3,6 +3,7 @@ import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import { receiveStock, deductStock, listAvailableBatches } from "./stock";
 import { imeiTrackedIds, releaseInvoiceImeis } from "./imei";
+import { STOCK_EPS } from "../batchAllocation";
 import type { Invoice, InvoiceItem } from "../types2";
 
 export const invoicesRepo = createTenantRepo<Invoice>("invoices");
@@ -342,7 +343,7 @@ export async function convertMemorizedInvoice(invoiceId: string, today: string):
     const batch = batches.find((b) => b.batch_no === item.batch_no) ?? null;
     const name = (await dbSelect<{ name: string }>(`SELECT name FROM products WHERE id = ?`, [item.product_id]))[0]?.name ?? "item";
     const planned = plan.filter((p) => p.batchId === batch?.id).reduce((s, p) => s + p.qty, 0);
-    if (!batch || batch.qty - planned < need - 1e-9) {
+    if (!batch || batch.qty - planned < need - STOCK_EPS) {
       short.push(`${name}${item.batch_no ? ` (batch ${item.batch_no})` : ""}: need ${need}, in stock ${batch ? batch.qty - planned : 0}`);
       continue;
     }

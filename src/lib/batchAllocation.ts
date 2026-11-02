@@ -20,6 +20,11 @@ export interface BatchPart {
 
 const EPS = 1e-9;
 
+/** Stock differences below this (in packs) are rounding, not stock: loose
+ * units are fractions of a pack (10 of 30 tablets = 0.3333...) and stock
+ * figures are rounded to 6 decimals. */
+export const STOCK_EPS = 1e-6;
+
 /** Splits qty + bonus over the batches in order (paid quantity first, then
  * bonus). `used` holds what earlier lines already took from each batch and is
  * updated. `short` is what could not be covered by stock. */
@@ -44,7 +49,8 @@ export function allocateBatches(
     used.set(b.id, (used.get(b.id) ?? 0) + take);
     parts.push({ batch: b, qty: round(q), bonus: round(bn) });
   }
-  return { parts, short: round(paidLeft + bonusLeft) };
+  const short = round(paidLeft + bonusLeft);
+  return { parts, short: short <= STOCK_EPS ? 0 : short };
 }
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
