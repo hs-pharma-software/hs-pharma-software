@@ -15,10 +15,13 @@ interface Props {
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  /** List every option when focused, filtering only once the user types. */
+  showAllOnFocus?: boolean;
 }
 
-export function FbrCombobox({ value, onChange, options, placeholder = "Search or type...", required, disabled }: Props) {
+export function FbrCombobox({ value, onChange, options, placeholder = "Search or type...", required, disabled, showAllOnFocus }: Props) {
   const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState(false);
   const [query, setQuery] = useState(value);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,7 +29,7 @@ export function FbrCombobox({ value, onChange, options, placeholder = "Search or
   // Keep input text in sync when value changes externally
   useEffect(() => { setQuery(value); }, [value]);
 
-  const filtered = query.trim()
+  const filtered = query.trim() && (typed || !showAllOnFocus)
     ? options.filter(
         (o) =>
           o.value.toLowerCase().includes(query.toLowerCase()) ||
@@ -54,6 +57,7 @@ export function FbrCombobox({ value, onChange, options, placeholder = "Search or
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     setQuery(e.target.value);
+    setTyped(true);
     onChange(e.target.value);
     setOpen(true);
   }
@@ -65,7 +69,10 @@ export function FbrCombobox({ value, onChange, options, placeholder = "Search or
         type="text"
         value={query}
         onChange={handleInputChange}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setTyped(false);
+          setOpen(true);
+        }}
         onBlur={handleBlur}
         placeholder={placeholder}
         required={required}

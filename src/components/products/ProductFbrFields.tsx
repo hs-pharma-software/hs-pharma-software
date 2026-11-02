@@ -13,8 +13,9 @@ import {
   type FbrRate,
   type FbrSroSchedule,
 } from "@/lib/fbr";
-import { FBR_HS_CODES, FBR_SALE_TYPES, FBR_UOM_LIST, fbrProvinceCode, findSaleType } from "@/lib/fbrData";
+import { FBR_HS_CODES, FBR_SALE_TYPES, FBR_SRO_SAMPLES, FBR_UOM_LIST, fbrProvinceCode, findSaleType } from "@/lib/fbrData";
 import { COUNT_UOMS } from "@/lib/fbrPayload";
+import { listUsedSroValues, type UsedSro } from "@/lib/repo/products";
 
 const HS_OPTIONS = FBR_HS_CODES.map((h) => ({ value: h.code, label: h.code, sublabel: h.description }));
 const VALID_HS = new Set(FBR_HS_CODES.map((h) => h.code));
@@ -50,11 +51,14 @@ export function ProductFbrFields(p: Props) {
   const [sroItems, setSroItems] = useState<string[]>([]);
   const [offline, setOffline] = useState(false);
 
+  const [usedSro, setUsedSro] = useState<UsedSro[]>([]);
+
   useEffect(() => {
     void loadFbrSettings().then((s) => {
       setToken(activeToken(s));
       setProvinceCode(fbrProvinceCode(s.sellerProvince));
     });
+    listUsedSroValues().then(setUsedSro, (e) => console.warn("Saved SRO values:", e));
   }, []);
 
   const saleTypeEntry = findSaleType(p.saleType);
@@ -62,7 +66,38 @@ export function ProductFbrFields(p: Props) {
   const rateId = rates.find((r) => r.value === rateNum)?.rateId;
   const needsSro = Boolean(saleTypeEntry) && saleTypeEntry!.value !== "3rd Schedule Goods" &&
     !(saleTypeEntry!.value.startsWith("Goods at standard") && rateNum === 18);
-  const sroId = schedules.find((s) => s.label === p.sroNo)?.sroId;
+  // Only lock the SRO fields once a sale type that needs none is chosen.
+  const sroLocked = Boolean(saleTypeEntry) && !needsSro;
+  const sroId = schedules.find((s) => s.label.toLowerCase() === p.sroNo.trim().toLowerCase())?.sroId;
+
+  // Live FBR lists first; otherwise FBR's sample values and the schedules
+  // already saved on products (same sale type first).
+  const scheduleOptions = (() => {
+    const out = new Map<string, { value: string; label: string; sublabel?: string }>();
+    const add = (v: string, sublabel?: string) => {
+      const k = v.trim().toLowerCase();
+      if (k && !out.has(k)) out.set(k, { value: v.trim(), label: v.trim(), sublabel });
+    };
+    schedules.forEach((s) => add(s.label, "FBR list"));
+    const sameType = (u: UsedSro) => !saleTypeEntry || (u.sale_type ?? "").toLowerCase() === saleTypeEntry.value.toLowerCase();
+    usedSro.filter(sameType).forEach((u) => add(u.sro_no, "Used on your products"));
+    if (schedules.length === 0) {
+      const samples = saleTypeEntry ? FBR_SRO_SAMPLES[saleTypeEntry.value] ?? [] : Object.values(FBR_SRO_SAMPLES).flat();
+      samples.forEach((s) => add(s.schedule, "FBR sample value"));
+      usedSro.forEach((u) => add(u.sro_no, "Used on your products"));
+    }
+    return Array.from(out.values());
+  })();
+
+  const serialOptions = (() => {
+    const sched = p.sroNo.trim().toLowerCase();
+    const out = new Set<string>(sroItems);
+    usedSro.filter((u) => u.sro_no.toLowerCase() === sched && u.sro_item_serial_no).forEach((u) => out.add(u.sro_item_serial_no!));
+    Object.values(FBR_SRO_SAMPLES).flat()
+      .filter((s) => s.schedule.toLowerCase() === sched)
+      .forEach((s) => s.serials.forEach((x) => out.add(x)));
+    return Array.from(out).map((s) => ({ value: s, label: s }));
+  })();
   const hsValid = VALID_HS.has(p.hsCode);
 
   const note = (e: unknown) => {
@@ -173,37 +208,28 @@ export function ProductFbrFields(p: Props) {
           </Field>
         )}
         <Field label="SRO Schedule No" required={needsSro}>
-          {schedules.length > 0 ? (
-            <Select
-              value={p.sroNo}
-              onChange={(e) => {
-                p.setSroNo(e.target.value);
-                p.setSroItem("");
-              }}
-            >
-              <option value="">Select...</option>
-              {schedules.map((s) => (
-                <option key={s.sroId} value={s.label}>
-                  {s.label}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Input
-              value={p.sroNo}
-              onChange={(e) => p.setSroNo(e.target.value)}
-              placeholder={needsSro ? "e.g. 6th Schd Table I" : "Not needed at 18%"}
-              disabled={!needsSro && !p.sroNo}
-            />
-          )}
+          <FbrCombobox
+            value={p.sroNo}
+            onChange={(v) => {
+              if (v.trim().toLowerCase() !== p.sroNo.trim().toLowerCase()) p.setSroItem("");
+              p.setSroNo(v);
+            }}
+            placeholder={sroLocked ? "Not needed for this sale type" : "Select or type, e.g. 6th Schd Table I"}
+            options={scheduleOptions}
+            showAllOnFocus
+            disabled={sroLocked && !p.sroNo}
+          />
         </Field>
         <Field label="SRO Item Serial No" required={needsSro}>
           <FbrCombobox
             value={p.sroItem}
             onChange={p.setSroItem}
-            placeholder={sroItems.length > 0 ? `${sroItems.length} serials - type to search` : "e.g. 100"}
-            options={sroItems.map((s) => ({ value: s, label: s }))}
-            disabled={!needsSro && !p.sroItem}
+            placeholder={
+              sroLocked ? "Not needed for this sale type" : serialOptions.length > 0 ? `${serialOptions.length} serials - select or type` : "e.g. 100"
+            }
+            options={serialOptions}
+            showAllOnFocus
+            disabled={sroLocked && !p.sroItem}
           />
         </Field>
       </div>

@@ -310,3 +310,22 @@ export async function searchSharedCatalog(term: string, group: SharedCatalogGrou
     [group, like, like]
   );
 }
+
+export interface UsedSro {
+  sale_type: string | null;
+  sro_no: string;
+  sro_item_serial_no: string | null;
+}
+
+/** SRO schedule/serial pairs already saved on this tenant's (and the shared
+ * catalog's) products, offered when FBR's live SRO lists can't be loaded. */
+export async function listUsedSroValues(): Promise<UsedSro[]> {
+  const { clause, params } = sharedCatalogWhereClause(requireCurrentTenantId(), sharedCatalogGroupsFor(currentBusinessType()));
+  return dbSelect<UsedSro>(
+    `SELECT DISTINCT fbr_sale_type AS sale_type, TRIM(sro_no) AS sro_no, TRIM(sro_item_serial_no) AS sro_item_serial_no
+     FROM products
+     WHERE deleted_at IS NULL AND ${clause} AND TRIM(COALESCE(sro_no, '')) <> ''
+     LIMIT 500`,
+    params
+  );
+}

@@ -125,6 +125,16 @@ export function findSaleType(value: string | null | undefined): SaleTypeEntry | 
   return FBR_SALE_TYPES.find((t) => t.value.toLowerCase() === v);
 }
 
+// ── SRO schedules (pdi/v1/SroSchedule, pdi/v2/SROItem) ───────────────────────
+// The live lists depend on the token and rate. When they can't be loaded the
+// product form offers these values from FBR's DI sample scenarios, plus the
+// schedules already saved on the tenant's products.
+export const FBR_SRO_SAMPLES: Record<string, { schedule: string; serials: string[] }[]> = {
+  "Goods at Reduced Rate": [{ schedule: "EIGHTH SCHEDULE Table 1", serials: ["82"] }],
+  "Exempt goods": [{ schedule: "6th Schd Table I", serials: ["100"] }],
+  "Goods at zero-rate": [{ schedule: "327(I)/2008", serials: ["1"] }],
+};
+
 // ── UOM (pdi/v1/uom) ─────────────────────────────────────────────────────────
 // Which of these is allowed depends on the HS code (pdi/v2/HS_UOM): medicines
 // (3004.x) take "Packs" or "KG", instruments (9018.x) "Numbers, pieces, units".
