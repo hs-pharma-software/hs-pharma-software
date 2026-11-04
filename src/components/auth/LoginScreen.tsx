@@ -132,7 +132,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         {/* Footer */}
         <p className="mt-8 text-center text-xs text-neutral-400">
           Powered by <span className="font-semibold" style={{ color: "#0b2a6b" }}>MAVIN.pk</span>
-          {" "}— Smart Pharmacy Solutions
+          {" "}— Smarter Solutions. Brighter Future.
         </p>
       </div>
     </div>
