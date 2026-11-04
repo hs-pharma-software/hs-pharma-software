@@ -128,7 +128,7 @@ export function Sidebar() {
                 <Link
                   href={item.href}
                   className={`relative flex items-center gap-3 px-4 py-2.5 font-medium transition-colors hover:bg-white/[0.06] ${
-                    isActive ? "text-amber-400" : "text-neutral-200"
+                    isActive ? "text-[var(--accent)]" : "text-neutral-200"
                   }`}
                 >
                   {isActive && (
@@ -183,7 +183,7 @@ export function Sidebar() {
                                         className={`relative block px-14 py-1.5 text-[13px] transition-all duration-150 hover:text-white ${
                                           leafActive ? "font-semibold" : "text-neutral-400 hover:bg-white/[0.06]"
                                         }`}
-                                        style={leafActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
+                                        style={leafActive ? { background: "var(--accent)", color: "#ffffff" } : {}}
                                       >
                                         {label(leaf)}
                                       </Link>
@@ -204,7 +204,7 @@ export function Sidebar() {
                                 ? "font-semibold hover:ps-11"
                                 : "text-neutral-300 hover:bg-white/[0.06]"
                             }`}
-                            style={childActive ? { background: "var(--accent)", color: "#0f172a" } : {}}
+                            style={childActive ? { background: "var(--accent)", color: "#ffffff" } : {}}
                           >
                             {label(child)}
                           </Link>

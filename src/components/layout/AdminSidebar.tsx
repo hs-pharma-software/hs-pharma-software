@@ -14,7 +14,7 @@ export function AdminSidebar() {
   const norm = normalize(pathname);
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col overflow-y-auto bg-gradient-to-b from-neutral-950 to-neutral-900 text-sm text-neutral-200">
+    <aside className="flex h-full w-64 shrink-0 flex-col overflow-y-auto bg-gradient-to-b from-[var(--sidebar-from)] to-[var(--sidebar-to)] text-sm text-neutral-200">
       <nav className="flex-1 py-1">
         {ADMIN_NAV.map((item) => {
           const href = normalize(item.href);
@@ -25,13 +25,13 @@ export function AdminSidebar() {
               key={item.href}
               href={item.href}
               className={`relative flex items-center gap-3 border-b border-white/5 px-4 py-2.5 font-medium transition-colors hover:bg-white/[0.06] ${
-                isActive ? "text-amber-400" : "text-neutral-200"
+                isActive ? "text-[var(--accent)]" : "text-neutral-200"
               }`}
             >
               {isActive && (
                 <motion.span
                   layoutId="admin-sidebar-active-bar"
-                  className="absolute inset-y-1 left-0 w-[3px] rounded-r-full bg-amber-400"
+                  className="absolute inset-y-1 left-0 w-[3px] rounded-r-full bg-[var(--accent)]"
                   transition={{ type: "spring", stiffness: 500, damping: 40 }}
                 />
               )}

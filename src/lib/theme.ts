@@ -1,5 +1,5 @@
 ﻿export interface AppTheme {
-  accent: string;      // main brand color (default amber #f59e0b)
+  accent: string;      // main brand color (default MAVIN.pk blue #1e88e5)
   sidebarFrom: string; // sidebar gradient top
   sidebarTo: string;   // sidebar gradient bottom
   appBg: string;       // page canvas background
@@ -8,11 +8,11 @@
 }
 
 export const DEFAULT_THEME: AppTheme = {
-  accent: "#f59e0b",
-  sidebarFrom: "#0a0a0a",
-  sidebarTo: "#171717",
+  accent: "#1e88e5",
+  sidebarFrom: "#071640",
+  sidebarTo: "#0b2a6b",
   appBg: "#f5f5f7",
-  modalOverlay: "#171717",
+  modalOverlay: "#071640",
   font: "System Default",
 };
 

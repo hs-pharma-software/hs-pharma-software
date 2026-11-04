@@ -42,10 +42,10 @@ export function Topbar() {
           transition={{ type: "spring", stiffness: 300, damping: 15 }}
           className="flex h-8 w-8 items-center justify-center"
         >
-          <Image src="/logo.png" alt="Billora" width={32} height={32} className="object-contain" />
+          <Image src="/mavin-mark.png" alt="MAVIN.pk" width={32} height={32} className="object-contain" />
         </motion.div>
-        <span className="text-lg font-bold tracking-tight text-[#1a1a6e]">
-          Billora
+        <span className="text-lg font-bold tracking-tight text-[#0b2a6b]">
+          MAVIN<span className="text-[#1e88e5]">.pk</span>
         </span>
       </div>
 

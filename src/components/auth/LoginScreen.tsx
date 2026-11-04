@@ -33,7 +33,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
     <div
       className="flex min-h-screen flex-col items-center justify-center px-4 py-10"
       style={{
-        background: "linear-gradient(135deg, #0f0f4a 0%, #1a1a6e 55%, #22226e 100%)",
+        background: "linear-gradient(135deg, #071640 0%, #0b2a6b 55%, #1565c0 100%)",
       }}
     >
       {/* Subtle decorative circles */}
@@ -43,11 +43,11 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
       >
         <div
           className="absolute -left-32 -top-32 h-96 w-96 rounded-full opacity-10"
-          style={{ background: "#f97316" }}
+          style={{ background: "#1e88e5" }}
         />
         <div
           className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full opacity-10"
-          style={{ background: "#f97316" }}
+          style={{ background: "#22c55e" }}
         />
         <div
           className="absolute left-1/2 top-1/4 h-64 w-64 -translate-x-1/2 rounded-full opacity-5"
@@ -59,18 +59,9 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
       <div className="relative w-full max-w-md rounded-3xl bg-white/95 px-8 py-10 shadow-2xl backdrop-blur-xl ring-1 ring-white/20">
         {/* Branding */}
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div
-            className="flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg"
-            style={{ background: "linear-gradient(135deg, #1a1a6e, #2d2da0)" }}
-          >
-            <Image src="/logo.png" alt="BilloraX" width={40} height={40} className="object-contain" />
-          </div>
-          <div className="text-center">
-            <h1 className="text-3xl font-extrabold tracking-tight" style={{ color: "#1a1a6e" }}>
-              Billora<span style={{ color: "#f97316" }}>X</span>
-            </h1>
-            <p className="mt-1 text-sm text-neutral-500">Pharmacy & Store Management</p>
-          </div>
+          <h1 className="sr-only">MAVIN.pk</h1>
+          <Image src="/mavin-logo.png" alt="MAVIN.pk - Smarter Solutions. Brighter Future." width={1340} height={330} priority className="h-auto w-full max-w-[320px] object-contain" />
+          <p className="text-sm text-neutral-500">Pharmacy & Store Management</p>
         </div>
 
         {/* Form */}
@@ -87,7 +78,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
               autoFocus
               autoComplete="username"
               placeholder="Enter your username"
-              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800 outline-none transition focus:border-[#1a1a6e] focus:bg-white focus:ring-2 focus:ring-[#1a1a6e]/20 placeholder:text-neutral-400"
+              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800 outline-none transition focus:border-[#1e88e5] focus:bg-white focus:ring-2 focus:ring-[#1e88e5]/20 placeholder:text-neutral-400"
             />
           </div>
 
@@ -103,7 +94,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
                 required
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 pr-11 text-sm text-neutral-800 outline-none transition focus:border-[#1a1a6e] focus:bg-white focus:ring-2 focus:ring-[#1a1a6e]/20 placeholder:text-neutral-400"
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 pr-11 text-sm text-neutral-800 outline-none transition focus:border-[#1e88e5] focus:bg-white focus:ring-2 focus:ring-[#1e88e5]/20 placeholder:text-neutral-400"
               />
               <button
                 type="button"
@@ -129,9 +120,9 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
             className="mt-1 w-full rounded-xl py-3 text-sm font-bold text-white shadow-lg transition active:scale-[0.98] disabled:opacity-60"
             style={{
               background: loading
-                ? "#f97316cc"
-                : "linear-gradient(135deg, #f97316, #ea6a00)",
-              boxShadow: "0 4px 14px rgba(249,115,22,0.4)",
+                ? "#1e88e5cc"
+                : "linear-gradient(135deg, #1e88e5, #0b4fb3)",
+              boxShadow: "0 4px 14px rgba(30,136,229,0.4)",
             }}
           >
             {loading ? "Signing in…" : "Sign In"}
@@ -140,7 +131,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
 
         {/* Footer */}
         <p className="mt-8 text-center text-xs text-neutral-400">
-          Powered by <span className="font-semibold" style={{ color: "#1a1a6e" }}>Billora</span>
+          Powered by <span className="font-semibold" style={{ color: "#0b2a6b" }}>MAVIN.pk</span>
           {" "}— Smart Pharmacy Solutions
         </p>
       </div>

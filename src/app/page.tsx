@@ -31,7 +31,7 @@ export default function LandingPage() {
           50%{box-shadow:0 0 0 7px rgba(26,26,110,.0)}
         }
         .shimmer-text {
-          background:linear-gradient(90deg,#1a1a6e 0%,#f97316 30%,#1a1a6e 60%,#f97316 80%,#1a1a6e 100%);
+          background:linear-gradient(90deg,#0b2a6b 0%,#1e88e5 30%,#0b2a6b 60%,#1e88e5 80%,#0b2a6b 100%);
           background-size:200% auto;
           -webkit-background-clip:text;
           background-clip:text;
@@ -48,7 +48,7 @@ export default function LandingPage() {
         .feature-card:hover {
           transform:translateY(-5px);
           box-shadow:0 12px 40px rgba(26,26,110,.1);
-          border-color:#1a1a6e30;
+          border-color:#0b2a6b30;
         }
         .dl-btn {
           transition:transform .2s ease,box-shadow .2s ease;
@@ -80,9 +80,9 @@ export default function LandingPage() {
         <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",overflow:"hidden"}}>
           {([
             {s:500,x:0,y:-10,dur:"20s",del:"0s",c:"rgba(26,26,110,.07)"},
-            {s:400,x:75,y:-5,dur:"24s",del:"3s",c:"rgba(249,115,22,.06)"},
+            {s:400,x:75,y:-5,dur:"24s",del:"3s",c:"rgba(30,136,229,.06)"},
             {s:350,x:60,y:60,dur:"18s",del:"1s",c:"rgba(26,26,110,.05)"},
-            {s:300,x:10,y:75,dur:"26s",del:"5s",c:"rgba(249,115,22,.05)"},
+            {s:300,x:10,y:75,dur:"26s",del:"5s",c:"rgba(30,136,229,.05)"},
           ] as const).map((p,i)=>(
             <div key={i} className="particle" style={{
               "--dur":p.dur,"--del":p.del,
@@ -109,14 +109,14 @@ export default function LandingPage() {
           }}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="Billora" style={{width:36,height:36,objectFit:"contain",flexShrink:0}} />
-              <span style={{fontWeight:800,fontSize:18,letterSpacing:"-.02em",color:"#1a1a6e"}}>
-                Billora
+              <img src="/mavin-mark.png" alt="MAVIN.pk" style={{width:36,height:36,objectFit:"contain",flexShrink:0}} />
+              <span style={{fontWeight:800,fontSize:18,letterSpacing:"-.02em",color:"#0b2a6b"}}>
+                MAVIN.pk
               </span>
             </div>
             <Link href="/dashboard" style={{
               padding:"8px 22px",
-              background:"#1a1a6e",
+              background:"#0b2a6b",
               borderRadius:9,color:"#fff",
               textDecoration:"none",fontSize:14,fontWeight:700,
               letterSpacing:"-.01em",
@@ -137,15 +137,15 @@ export default function LandingPage() {
             <div className="fi1" style={{
               display:"inline-flex",alignItems:"center",gap:8,
               padding:"6px 18px",borderRadius:100,
-              fontSize:13,fontWeight:600,color:"#1a1a6e",
-              marginBottom:28,border:"1.5px solid #1a1a6e30",
-              background:"#1a1a6e08",
+              fontSize:13,fontWeight:600,color:"#0b2a6b",
+              marginBottom:28,border:"1.5px solid #0b2a6b30",
+              background:"#0b2a6b08",
               animation:"badge-pulse 2.8s ease-in-out infinite",
             }}>
               <span style={{
-                width:7,height:7,borderRadius:"50%",background:"#f97316",
+                width:7,height:7,borderRadius:"50%",background:"#1e88e5",
                 display:"inline-block",
-                boxShadow:"0 0 8px rgba(249,115,22,.8)",
+                boxShadow:"0 0 8px rgba(30,136,229,.8)",
                 animation:"pulse-ring 1.8s ease-out infinite",
               }}/>
               Offline-First · Cloud-Synced · FBR Ready
@@ -182,7 +182,7 @@ export default function LandingPage() {
                 style={{
                   display:"inline-flex",alignItems:"center",gap:10,
                   padding:"15px 30px",
-                  background:"linear-gradient(135deg,#1a1a6e 0%,#2d2d9f 100%)",
+                  background:"linear-gradient(135deg,#0b2a6b 0%,#2d2d9f 100%)",
                   borderRadius:13,color:"white",
                   textDecoration:"none",fontSize:16,fontWeight:800,
                   letterSpacing:"-.02em",
@@ -249,7 +249,7 @@ export default function LandingPage() {
                   display:"flex",gap:8,alignItems:"center",
                   boxShadow:"0 1px 4px rgba(0,0,0,.05)",
                 }}>
-                  <span style={{fontWeight:800,color:"#f97316",fontSize:14}}>{s.v}</span>
+                  <span style={{fontWeight:800,color:"#1e88e5",fontSize:14}}>{s.v}</span>
                   <span style={{fontSize:13,color:"#94a3b8"}}>{s.l}</span>
                 </div>
               ))}
@@ -291,7 +291,7 @@ export default function LandingPage() {
           {/* ══════════ DOWNLOAD CTA ══════════ */}
           <section style={{
             padding:"90px 24px",textAlign:"center",
-            background:"linear-gradient(135deg,#1a1a6e08 0%,#f9731608 100%)",
+            background:"linear-gradient(135deg,#0b2a6b08 0%,#1e88e508 100%)",
             borderTop:"1px solid #e2e8f0",
             borderBottom:"1px solid #e2e8f0",
           }}>
@@ -309,7 +309,7 @@ export default function LandingPage() {
                 ))}
                 <div style={{
                   width:84,height:84,
-                  background:"linear-gradient(135deg,#1a1a6e,#2d2d9f)",
+                  background:"linear-gradient(135deg,#0b2a6b,#2d2d9f)",
                   borderRadius:"50%",
                   display:"flex",alignItems:"center",justifyContent:"center",
                   fontSize:34,
@@ -336,7 +336,7 @@ export default function LandingPage() {
                   style={{
                     display:"inline-flex",alignItems:"center",gap:12,
                     padding:"16px 32px",
-                    background:"linear-gradient(135deg,#1a1a6e 0%,#2d2d9f 100%)",
+                    background:"linear-gradient(135deg,#0b2a6b 0%,#2d2d9f 100%)",
                     borderRadius:14,color:"white",
                     textDecoration:"none",fontSize:16,fontWeight:800,
                     letterSpacing:"-.02em",
@@ -378,14 +378,14 @@ export default function LandingPage() {
           }}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="Billora" style={{width:24,height:24,objectFit:"contain"}} />
-              <span style={{fontWeight:700,color:"#1a1a6e"}}>Billora</span>
+              <img src="/mavin-mark.png" alt="MAVIN.pk" style={{width:24,height:24,objectFit:"contain"}} />
+              <span style={{fontWeight:700,color:"#0b2a6b"}}>MAVIN.pk</span>
             </div>
-            <p>© 2026 Billora · Built for Pakistani Pharmacies</p>
+            <p>© 2026 MAVIN.pk · Built for Pakistani Pharmacies</p>
             <p style={{fontSize:12,color:"#cbd5e1",letterSpacing:".01em"}}>
-              Developed by <span style={{color:"#1a1a6e",fontWeight:600}}>HS Software and Technology</span>
+              Developed by <span style={{color:"#0b2a6b",fontWeight:600}}>HS Software and Technology</span>
             </p>
-            <Link href="/dashboard" style={{color:"#f97316",textDecoration:"none",fontSize:13,fontWeight:600}}>
+            <Link href="/dashboard" style={{color:"#1e88e5",textDecoration:"none",fontSize:13,fontWeight:600}}>
               Sign in to Web App →
             </Link>
           </footer>
@@ -413,19 +413,19 @@ function AndroidIcon({ size = 20 }: { size?: number }) {
 }
 
 const FEATURES = [
-  {icon:"🧾",color:"#1a1a6e",title:"Point of Sale Invoicing",
+  {icon:"🧾",color:"#0b2a6b",title:"Point of Sale Invoicing",
    desc:"Keyboard-driven POS with F-key shortcuts, barcode scan, per-line discount, tax, bonus qty & credit/cash invoices."},
   {icon:"📦",color:"#3b82f6",title:"Inventory & Batch Tracking",
    desc:"Batch numbers, expiry dates, FEFO alerts, low-stock warnings, multi-location stock transfers."},
   {icon:"🛒",color:"#8b5cf6",title:"Purchase Management",
    desc:"Order-to-receipt workflow, supplier invoices, ST & WHT tax per line, purchase returns."},
-  {icon:"👥",color:"#f97316",title:"Customers & Suppliers",
+  {icon:"👥",color:"#1e88e5",title:"Customers & Suppliers",
    desc:"Full ledger, receivables/payables, credit limits, outstanding aging, bulk SMS notifications."},
   {icon:"📊",color:"#ef4444",title:"Reports & Analytics",
    desc:"Profit/loss by product, category, customer & company. Tax, bonus-claim, trial balance, balance sheet."},
   {icon:"🏦",color:"#14b8a6",title:"Cash & Bank Management",
    desc:"Multi-bank accounts, cash register in/out, expense categories, salary with deductions."},
-  {icon:"🏛️",color:"#f97316",title:"FBR Tax Compliance",
+  {icon:"🏛️",color:"#1e88e5",title:"FBR Tax Compliance",
    desc:"GST, WHT & Further Tax per line item. SRO / PCT codes on products. Digital invoicing integration."},
   {icon:"☁️",color:"#6366f1",title:"Offline-First + Cloud Sync",
    desc:"Runs without internet, syncs automatically to cloud. Accessible as a web app from anywhere."},

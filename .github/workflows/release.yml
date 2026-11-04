@@ -64,8 +64,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v${{ steps.ver.outputs.VERSION }}
-          releaseName: 'Billora v${{ steps.ver.outputs.VERSION }}'
-          releaseBody: 'New version of Billora. The desktop app will update automatically.'
+          releaseName: 'MAVIN.pk v${{ steps.ver.outputs.VERSION }}'
+          releaseBody: 'New version of MAVIN.pk. The desktop app will update automatically.'
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true

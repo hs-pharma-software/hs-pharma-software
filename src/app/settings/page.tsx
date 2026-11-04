@@ -59,6 +59,7 @@ function ColorSwatch({ label, value, onChange }: { label: string; value: string;
 }
 
 const PRESET_ACCENTS = [
+  { label: "MAVIN",   value: "#1e88e5" },
   { label: "Amber",   value: "#f59e0b" },
   { label: "Blue",    value: "#3b82f6" },
   { label: "Emerald", value: "#10b981" },
@@ -70,6 +71,7 @@ const PRESET_ACCENTS = [
 ];
 
 const PRESET_SIDEBARS = [
+  { label: "MAVIN",    from: "#071640", to: "#0b2a6b" },
   { label: "Midnight", from: "#0a0a0a", to: "#171717" },
   { label: "Navy",     from: "#0f172a", to: "#1e293b" },
   { label: "Forest",   from: "#052e16", to: "#14532d" },

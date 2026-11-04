@@ -357,7 +357,7 @@ export const DICT: Record<string, [en: string, ur: string]> = {
   "set.whatsappCc": ["WhatsApp country code", "واٹس ایپ کنٹری کوڈ"],
   "set.fontLoaded": ["Jameel Noori Nastaleeq is loaded on this computer.", "جمیل نوری نستعلیق اس کمپیوٹر پر لوڈ ہے۔"],
   "set.fontMissing": ["Jameel Noori Nastaleeq is not on this computer. Urdu uses the bundled Noto Nastaliq Urdu (open licence) until you add it.", "جمیل نوری نستعلیق اس کمپیوٹر پر موجود نہیں۔ اسے شامل کرنے تک اردو کے لیے Noto Nastaliq Urdu استعمال ہو گا۔"],
-  "set.fontLicense": ["Billora does not ship Jameel Noori Nastaleeq. Upload a copy you are licensed to use; it is checked by its internal name and stored on this computer only (not synced).", "Billora جمیل نوری نستعلیق فراہم نہیں کرتا۔ اپنی لائسنس شدہ فائل اپ لوڈ کریں؛ اس کا اندرونی نام جانچا جاتا ہے اور یہ صرف اسی کمپیوٹر پر محفوظ ہوتی ہے۔"],
+  "set.fontLicense": ["MAVIN.pk does not ship Jameel Noori Nastaleeq. Upload a copy you are licensed to use; it is checked by its internal name and stored on this computer only (not synced).", "MAVIN.pk جمیل نوری نستعلیق فراہم نہیں کرتا۔ اپنی لائسنس شدہ فائل اپ لوڈ کریں؛ اس کا اندرونی نام جانچا جاتا ہے اور یہ صرف اسی کمپیوٹر پر محفوظ ہوتی ہے۔"],
 
   // ── Invoice document labels ──
   "inv.sale": ["SALES INVOICE", "سیلز انوائس"],

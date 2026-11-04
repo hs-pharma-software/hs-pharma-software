@@ -101,7 +101,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl ring-1 ring-black/5">
           <h1 className="font-serif text-xl text-neutral-800">Connect to the internet</h1>
           <p className="mt-2 text-sm text-neutral-500">
-            This is the first sign-in on this computer. Billora needs an internet connection once to download your
+            This is the first sign-in on this computer. MAVIN.pk needs an internet connection once to download your
             accounts.
           </p>
           {error && <p className="mt-3 break-words rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}

@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Billora",
+  title: "MAVIN.pk",
   description: "Offline-first pharmacy management",
 };
 

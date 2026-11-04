@@ -208,7 +208,7 @@ function classify(p) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('=== Billora Product Catalog Audit ===\n');
+  console.log('=== MAVIN.pk Product Catalog Audit ===\n');
 
   // Fetch all products (including NULL-tenant quarantined rows)
   const products = await query(`

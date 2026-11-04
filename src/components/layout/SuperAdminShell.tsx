@@ -10,7 +10,7 @@ import { PageTransition } from "./PageTransition";
  * cashier/POS shortcuts for the pharmacy screens, not relevant here). */
 export function SuperAdminShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen flex-col bg-gradient-to-br from-neutral-100 via-neutral-100 to-amber-50/40">
+    <div className="flex h-screen flex-col bg-gradient-to-br from-neutral-100 via-neutral-100 to-sky-50/40">
       <Topbar />
       <div className="flex min-h-0 flex-1">
         <AdminSidebar />

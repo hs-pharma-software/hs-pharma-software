@@ -5,11 +5,11 @@
   --foreground: #1d1d1f;
 
   /* Themeable design tokens — overridden at runtime by ThemeProvider */
-  --accent: #f59e0b;
-  --sidebar-from: #0a0a0a;
-  --sidebar-to: #171717;
+  --accent: #1e88e5;
+  --sidebar-from: #071640;
+  --sidebar-to: #0b2a6b;
   --app-bg: #f5f5f7;
-  --modal-overlay: #171717;
+  --modal-overlay: #071640;
   /* --font-body is only set when a custom font is chosen */
 }
 
@@ -55,7 +55,7 @@ body {
 }
 /* Sidebar active bar and text inherit --accent */
 .sidebar-active-text { color: var(--accent); }
-.sidebar-active-bg   { background-color: var(--accent); color: #0f172a; }
+.sidebar-active-bg   { background-color: var(--accent); color: #ffffff; }
 
 @keyframes shimmer {
   0% {
