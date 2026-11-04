@@ -40,13 +40,10 @@ export function Topbar() {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 300, damping: 15 }}
-          className="flex h-8 w-8 items-center justify-center"
+          className="flex items-center"
         >
-          <Image src="/mavin-mark.png" alt="MAVIN.pk" width={32} height={32} className="object-contain" />
+          <Image src="/mavin-logo.png" alt="MAVIN.pk" width={1340} height={330} priority className="h-8 w-auto object-contain sm:h-10" />
         </motion.div>
-        <span className="text-lg font-bold tracking-tight text-[#0b2a6b]">
-          MAVIN<span className="text-[#1e88e5]">.pk</span>
-        </span>
       </div>
 
       {/* Tight on a phone so every control fits in 390px. */}
