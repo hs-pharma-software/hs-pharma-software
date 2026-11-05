@@ -79,6 +79,7 @@ test("proxy: clean paths on the corporate domain only; the app's /products is un
   assert.deepEqual(siteRoute("www.mavin.pk", "/mavin-header.png"), { kind: "pass" }, "assets are served as is");
   assert.deepEqual(siteRoute("app.example.vercel.app", "/products"), { kind: "pass" }, "the app's /products is not rewritten");
   assert.deepEqual(siteRoute(null, "/products"), { kind: "pass" });
+  for (const p of ["/lab-report/", "/report/", "/set-password/"]) assert.deepEqual(siteRoute("www.mavin.pk", p), { kind: "pass" }, `${p} works on the website address too`);
 });
 
 test("public paths: the site and the report link are public, app screens are not", async () => {
