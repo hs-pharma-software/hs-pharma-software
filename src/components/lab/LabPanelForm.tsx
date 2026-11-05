@@ -31,6 +31,21 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
   const set = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const filled = rows.filter((r) => r.value.trim());
 
+  /** Enter in a result: go to the next empty result (wrapping round); when none is left, save. */
+  function onResultKey(e: React.KeyboardEvent<HTMLInputElement>, i: number) {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    const order = [...rows.slice(i + 1), ...rows.slice(0, i)];
+    const next = order.find((r) => !r.value.trim());
+    if (next) {
+      const el = document.getElementById(`panel-${next.key}`) as HTMLInputElement | null;
+      el?.focus();
+      el?.select();
+      return;
+    }
+    if (!saving && filled.length) save();
+  }
+
   function save() {
     onSave(filled.map((r) => {
       const flag = flagOf(r);
@@ -41,7 +56,7 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
   return (
     <div>
       <p className="mb-2 text-xs text-neutral-500">
-        Enter each value. High / low is set from the normal range{gender ? ` for ${gender.toLowerCase()} patients` : ""}; choose a flag to override it. Empty lines are left off the report.
+        Enter each value; press Enter to go to the next empty result, and Enter on the last one saves. High / low is set from the normal range{gender ? ` for ${gender.toLowerCase()} patients` : ""}; choose a flag to override it. Empty lines are left off the report.
       </p>
       <div className="mb-3 max-h-[55vh] overflow-auto">
         <table className="w-full text-sm">
@@ -62,7 +77,8 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
                 <tr key={r.key} className="border-b border-neutral-50">
                   <td className="py-1 pr-2">{r.name}</td>
                   <td className="py-1 pr-2">
-                    <Input id={`panel-${r.key}`} value={r.value} onChange={(e) => set(i, { value: e.target.value })} autoFocus={i === 0}
+                    <Input id={`panel-${r.key}`} value={r.value} onChange={(e) => set(i, { value: e.target.value })} onKeyDown={(e) => onResultKey(e, i)} autoFocus={i === 0}
+                      enterKeyHint="next"
                       className={`w-24 tabular-nums ${flag === "H" || flag === "L" ? "font-semibold text-rose-600" : ""}`} />
                   </td>
                   <td className="py-1 pr-2"><Input aria-label={`${r.name} unit`} value={r.unit} onChange={(e) => set(i, { unit: e.target.value })} className="w-24" /></td>
