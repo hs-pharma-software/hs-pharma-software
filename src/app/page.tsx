@@ -1,8 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { PRODUCT_GROUPS, SITE_PRODUCTS, productFacts, type ProductGroup } from "@/config/siteProducts";
+
+/** Icon and accent per business type (tiles in the Solutions section). */
+const TYPE_ICON: Record<string, string> = {
+  retail_pharmacy: "💊", medical_store: "🩺", hospital_pharmacy: "🏥", general_store: "🛒", contractor: "🧾", restaurant: "🍽️",
+  electronics_solar: "☀️", distributor: "🚚", mobile_shop: "📱", cloth_store: "👔", clinic: "👨‍⚕️", lab: "🧪", hospital: "🏨", banquet_hall: "🎉",
+};
+const GROUP_COLOR: Record<ProductGroup, string> = {
+  Pharmacy: "#0b2a6b", Retail: "#1e88e5", Distribution: "#7c3aed", Healthcare: "#0d9488", "Food & Events": "#ea580c", "Contractor Billing": "#475569",
+};
 
 export default function LandingPage() {
+  const [group, setGroup] = useState<ProductGroup | "All">("All");
+  const solutions = SITE_PRODUCTS.filter((p) => group === "All" || p.group === group);
   return (
     <>
       <style>{`
@@ -55,6 +68,19 @@ export default function LandingPage() {
           box-shadow:0 4px 24px rgba(26,26,110,.25);
         }
         .dl-btn:hover { transform:scale(1.04); box-shadow:0 8px 36px rgba(26,26,110,.35); }
+        .sol-card {
+          display:flex;flex-direction:column;height:100%;
+          background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px;
+          text-decoration:none;color:inherit;
+          transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;
+        }
+        .sol-card:hover { transform:translateY(-4px); box-shadow:0 12px 36px rgba(26,26,110,.1); border-color:#1e88e555; }
+        .sol-card:focus-visible, .sol-tab:focus-visible, .web-btn:focus-visible, .dl-btn:focus-visible { outline:2px solid #1e88e5; outline-offset:3px; }
+        .sol-tab { border:1.5px solid #e2e8f0;background:#fff;color:#334155;border-radius:100px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .18s ease; }
+        .sol-tab[aria-pressed="true"] { background:#0b2a6b;border-color:#0b2a6b;color:#fff; }
+        .nav-link { color:#334155;text-decoration:none;font-size:14px;font-weight:600; }
+        .nav-link:hover { color:#1e88e5; }
+        @media (max-width:640px){ .nav-extra{display:none!important} }
         .web-btn { transition:background .2s ease,border-color .2s ease; }
         .web-btn:hover { background:#f1f5f9!important; border-color:#94a3b8!important; }
         .fi1{animation:fadeUp .7s ease-out .1s both}
@@ -111,14 +137,19 @@ export default function LandingPage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/mavin-header.png" alt="MAVIN.pk" style={{height:40,width:"auto",objectFit:"contain",flexShrink:0}} />
             </div>
-            <Link href="/dashboard" style={{
-              padding:"8px 22px",
-              background:"#0b2a6b",
-              borderRadius:9,color:"#fff",
-              textDecoration:"none",fontSize:14,fontWeight:700,
-              letterSpacing:"-.01em",
-              boxShadow:"0 2px 10px rgba(26,26,110,.25)",
-            }}>Sign In →</Link>
+            <div style={{display:"flex",alignItems:"center",gap:22}}>
+              <a href="#solutions" className="nav-link nav-extra">Solutions</a>
+              <a href="#features" className="nav-link nav-extra">Features</a>
+              <Link href="/site/demo" className="nav-link nav-extra">Book a Demo</Link>
+              <Link href="/dashboard" style={{
+                padding:"8px 22px",
+                background:"#0b2a6b",
+                borderRadius:9,color:"#fff",
+                textDecoration:"none",fontSize:14,fontWeight:700,
+                letterSpacing:"-.01em",
+                boxShadow:"0 2px 10px rgba(26,26,110,.25)",
+              }}>Sign In →</Link>
+            </div>
           </nav>
 
           {/* ══════════ HERO ══════════ */}
@@ -145,7 +176,7 @@ export default function LandingPage() {
                 boxShadow:"0 0 8px rgba(30,136,229,.8)",
                 animation:"pulse-ring 1.8s ease-out infinite",
               }}/>
-              One Platform · 14 Business Solutions · Works Offline
+              One Platform · {SITE_PRODUCTS.length} Business Solutions · FBR Digital Invoicing
             </div>
 
             {/* heading */}
@@ -172,49 +203,26 @@ export default function LandingPage() {
 
             {/* CTA row */}
             <div className="fi4" style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:64}}>
-
-              <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
-                className="dl-btn"
-                style={{
-                  display:"inline-flex",alignItems:"center",gap:10,
-                  padding:"15px 30px",
-                  background:"linear-gradient(135deg,#0b2a6b 0%,#2d2d9f 100%)",
-                  borderRadius:13,color:"white",
-                  textDecoration:"none",fontSize:16,fontWeight:800,
-                  letterSpacing:"-.02em",
-                }}
-              >
-                <WinIcon size={20}/>
-                Download for Windows
-                <span style={{
-                  fontSize:11,fontWeight:700,
-                  background:"rgba(255,255,255,.2)",
-                  padding:"2px 9px",borderRadius:5,letterSpacing:".05em",
-                }}>FREE</span>
+              <a href="#solutions" className="dl-btn" style={{
+                display:"inline-flex",alignItems:"center",gap:10,
+                padding:"15px 30px",
+                background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
+                borderRadius:13,color:"white",
+                textDecoration:"none",fontSize:16,fontWeight:800,
+                letterSpacing:"-.02em",
+              }}>
+                Find Your Solution ↓
               </a>
-
-              <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
-                className="dl-btn"
-                style={{
-                  display:"inline-flex",alignItems:"center",gap:10,
-                  padding:"15px 30px",
-                  background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
-                  borderRadius:13,color:"white",
-                  textDecoration:"none",fontSize:16,fontWeight:800,
-                  letterSpacing:"-.02em",
-                }}
-              >
-                <AndroidIcon size={20}/>
-                Download for Android
-                <span style={{
-                  fontSize:11,fontWeight:700,
-                  background:"rgba(255,255,255,.2)",
-                  padding:"2px 9px",borderRadius:5,letterSpacing:".05em",
-                }}>APK</span>
-              </a>
-
+              <Link href="/site/demo" className="dl-btn" style={{
+                display:"inline-flex",alignItems:"center",gap:10,
+                padding:"15px 30px",
+                background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
+                borderRadius:13,color:"white",
+                textDecoration:"none",fontSize:16,fontWeight:800,
+                letterSpacing:"-.02em",
+              }}>
+                Book a Free Demo
+              </Link>
               <Link href="/dashboard" className="web-btn" style={{
                 display:"inline-flex",alignItems:"center",gap:9,
                 padding:"15px 30px",
@@ -232,11 +240,11 @@ export default function LandingPage() {
             {/* stat pills */}
             <div className="fi5" style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
               {[
-                {v:"14",l:"Business Types"},
+                {v:String(SITE_PRODUCTS.length),l:"Business Types"},
                 {v:"18+",l:"Modules"},
-                {v:"Windows + Web",l:"Platforms"},
+                {v:"Web",l:"Any Browser"},
                 {v:"FBR",l:"Digital Invoicing"},
-                {v:"Offline",l:"Ready"},
+                {v:"Staff",l:"Roles & Permissions"},
               ].map((s,i)=>(
                 <div key={i} style={{
                   padding:"8px 18px",
@@ -253,8 +261,71 @@ export default function LandingPage() {
             </div>
           </section>
 
+          {/* ══════════ SOLUTIONS (one tile per business type) ══════════ */}
+          <section id="solutions" style={{padding:"80px 24px",maxWidth:1200,margin:"0 auto",scrollMarginTop:72}}>
+            <div style={{textAlign:"center",marginBottom:28}}>
+              <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,letterSpacing:"-.03em",marginBottom:10,color:"#0f172a"}}>
+                A Solution for Your Business
+              </h2>
+              <p style={{color:"#64748b",fontSize:16,maxWidth:620,margin:"0 auto"}}>
+                {SITE_PRODUCTS.length} ready-made setups on one platform. Each comes with the screens, stock rules and bills its business needs.
+              </p>
+            </div>
+
+            <div role="group" aria-label="Filter by sector" style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginBottom:28}}>
+              {(["All", ...PRODUCT_GROUPS] as const).map((g) => (
+                <button key={g} type="button" className="sol-tab" aria-pressed={group === g} onClick={() => setGroup(g)}>
+                  {g}{g !== "All" && <span style={{opacity:.6,marginLeft:6}}>{SITE_PRODUCTS.filter((p) => p.group === g).length}</span>}
+                </button>
+              ))}
+            </div>
+
+            <ul style={{listStyle:"none",padding:0,margin:0,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(100%,300px),1fr))",gap:18}}>
+              {solutions.map((p) => {
+                const facts = productFacts(p);
+                const color = GROUP_COLOR[p.group];
+                return (
+                  <li key={p.slug}>
+                    <Link href={`/site/products/${p.slug}`} className="sol-card">
+                      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+                        <span aria-hidden style={{
+                          width:46,height:46,flexShrink:0,borderRadius:12,fontSize:22,
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          background:`${color}12`,border:`1.5px solid ${color}30`,
+                        }}>{TYPE_ICON[p.typeId] ?? "🏷️"}</span>
+                        <div style={{minWidth:0}}>
+                          <p style={{fontSize:11,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color}}>{p.group}</p>
+                          <h3 style={{fontSize:16,fontWeight:700,letterSpacing:"-.01em",color:"#0f172a"}}>{p.name}</h3>
+                        </div>
+                      </div>
+                      <p style={{fontSize:13.5,color:"#475569",lineHeight:1.55,marginBottom:12}}>{p.headline}</p>
+                      <ul style={{listStyle:"none",padding:0,margin:"0 0 14px",display:"flex",flexDirection:"column",gap:6}}>
+                        {facts.mvp.slice(0, 5).map((f) => (
+                          <li key={f} style={{display:"flex",gap:8,fontSize:13,color:"#334155",lineHeight:1.4}}>
+                            <span aria-hidden style={{color:"#16a34a",fontWeight:800}}>✓</span>{f}
+                          </li>
+                        ))}
+                      </ul>
+                      {facts.planned.length > 0 && (
+                        <p style={{fontSize:12,color:"#94a3b8",lineHeight:1.45,marginBottom:14}}>
+                          Coming: {facts.planned.slice(0, 2).join(", ")}{facts.planned.length > 2 ? "…" : ""}
+                        </p>
+                      )}
+                      <div style={{marginTop:"auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                        <span style={{fontSize:13,fontWeight:700,color:"#1e88e5"}}>See details →</span>
+                        {p.cta === "pilot" && (
+                          <span style={{fontSize:11,fontWeight:700,color:"#9a3412",background:"#ffedd5",borderRadius:100,padding:"3px 10px"}}>Pilot</span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
           {/* ══════════ FEATURES ══════════ */}
-          <section style={{padding:"80px 24px",maxWidth:1200,margin:"0 auto"}}>
+          <section id="features" style={{padding:"80px 24px",maxWidth:1200,margin:"0 auto",scrollMarginTop:72}}>
             <div style={{textAlign:"center",marginBottom:52}}>
               <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,letterSpacing:"-.03em",marginBottom:10,color:"#0f172a"}}>
                 Everything Your Business Needs
@@ -311,7 +382,7 @@ export default function LandingPage() {
                   display:"flex",alignItems:"center",justifyContent:"center",
                   fontSize:34,
                   boxShadow:"0 8px 32px rgba(26,26,110,.35)",
-                }}>⬇</div>
+                }}>🚀</div>
               </div>
 
               <h2 style={{
@@ -321,47 +392,34 @@ export default function LandingPage() {
                 Ready to Get Started?
               </h2>
               <p style={{color:"#64748b",fontSize:16,lineHeight:1.7,marginBottom:36}}>
-                Download once, run forever. Works fully offline.
-                Syncs to cloud automatically when internet is available.
+                Tell us your business and how you bill today. We set up the right solution, import your products and train your staff.
               </p>
 
-              {/* Dual download buttons */}
               <div style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:16}}>
-                <a
-                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
-                  className="dl-btn"
-                  style={{
-                    display:"inline-flex",alignItems:"center",gap:12,
-                    padding:"16px 32px",
-                    background:"linear-gradient(135deg,#0b2a6b 0%,#2d2d9f 100%)",
-                    borderRadius:14,color:"white",
-                    textDecoration:"none",fontSize:16,fontWeight:800,
-                    letterSpacing:"-.02em",
-                  }}
-                >
-                  <WinIcon size={20}/>
-                  Download for Windows
-                </a>
-
-                <a
-                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
-                  className="dl-btn"
-                  style={{
-                    display:"inline-flex",alignItems:"center",gap:12,
-                    padding:"16px 32px",
-                    background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
-                    borderRadius:14,color:"white",
-                    textDecoration:"none",fontSize:16,fontWeight:800,
-                    letterSpacing:"-.02em",
-                  }}
-                >
-                  <AndroidIcon size={20}/>
-                  Download for Android
-                </a>
+                <Link href="/site/demo" className="dl-btn" style={{
+                  display:"inline-flex",alignItems:"center",gap:12,
+                  padding:"16px 32px",
+                  background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
+                  borderRadius:14,color:"white",
+                  textDecoration:"none",fontSize:16,fontWeight:800,
+                  letterSpacing:"-.02em",
+                }}>
+                  Book a Free Demo
+                </Link>
+                <Link href="/site/contact" className="web-btn" style={{
+                  display:"inline-flex",alignItems:"center",gap:12,
+                  padding:"16px 32px",
+                  background:"#fff",border:"1.5px solid #e2e8f0",
+                  borderRadius:14,color:"#334155",
+                  textDecoration:"none",fontSize:16,fontWeight:700,
+                  letterSpacing:"-.01em",
+                }}>
+                  Contact Us
+                </Link>
               </div>
 
               <p style={{marginTop:4,fontSize:12.5,color:"#94a3b8",letterSpacing:".02em"}}>
-                WINDOWS 10/11 · ANDROID 7+ · 64-BIT · FREE TO DOWNLOAD
+                RUNS IN ANY MODERN BROWSER · FBR DIGITAL INVOICING · STAFF ROLES & PERMISSIONS
               </p>
             </div>
           </section>
@@ -392,22 +450,6 @@ export default function LandingPage() {
   );
 }
 
-function WinIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.951-1.8"/>
-    </svg>
-  );
-}
-
-function AndroidIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M17.523 15.341A5.522 5.522 0 0 1 12 20.862a5.522 5.522 0 0 1-5.523-5.521V9.66h11.046v5.681zm-9.738-8.5 1.5-2.6a.4.4 0 1 0-.693-.4l-1.54 2.666A7.684 7.684 0 0 0 4.46 9.16H3v.5h18v-.5h-1.461a7.684 7.684 0 0 0-3.592-2.653l-1.54-2.666a.4.4 0 1 0-.693.4l1.5 2.6a7.23 7.23 0 0 0-3.43 0zM9.5 7a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1zm5 0a.5.5 0 1 1 0-1 .5.5 0 0 1 0 1z"/>
-    </svg>
-  );
-}
-
 const FEATURES = [
   {icon:"🧾",color:"#0b2a6b",title:"Point of Sale Invoicing",
    desc:"Keyboard-driven POS with F-key shortcuts, barcode scan, per-line discount, tax, bonus qty & credit/cash invoices."},
@@ -423,8 +465,8 @@ const FEATURES = [
    desc:"Multi-bank accounts, cash register in/out, expense categories, salary with deductions."},
   {icon:"🏛️",color:"#1e88e5",title:"FBR Tax Compliance",
    desc:"GST, WHT & Further Tax per line item. SRO / PCT codes on products. Digital invoicing integration."},
-  {icon:"☁️",color:"#6366f1",title:"Offline-First + Cloud Sync",
-   desc:"Runs without internet, syncs automatically to cloud. Accessible as a web app from anywhere."},
+  {icon:"☁️",color:"#6366f1",title:"Cloud Web App",
+   desc:"Works in any modern browser. Your data stays in one place and is reachable from every counter, office and branch."},
   {icon:"🔐",color:"#ec4899",title:"Staff & Access Control",
    desc:"Role-based access per module, attendance tracking, salary management, employee ledger."},
 ];
