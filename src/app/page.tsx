@@ -145,7 +145,7 @@ export default function LandingPage() {
                 boxShadow:"0 0 8px rgba(30,136,229,.8)",
                 animation:"pulse-ring 1.8s ease-out infinite",
               }}/>
-              Offline-First · Cloud-Synced · FBR Ready
+              One Platform · 14 Business Solutions · Works Offline
             </div>
 
             {/* heading */}
@@ -156,8 +156,8 @@ export default function LandingPage() {
               letterSpacing:"-.04em",
               color:"#0f172a",
             }}>
-              Manage Your Pharmacy<br/>
-              <span className="shimmer-text">Like Never Before</span>
+              One Software for<br/>
+              <span className="shimmer-text">Every Kind of Business</span>
             </h1>
 
             {/* subtext */}
@@ -166,8 +166,8 @@ export default function LandingPage() {
               color:"#64748b",
               maxWidth:520,lineHeight:1.75,marginBottom:44,
             }}>
-              Complete POS, inventory, invoicing, purchasing &amp; accounting {"\u2014"}
-              in one powerful desktop app for Pakistani pharmacies.
+              Billing, stock, purchasing &amp; accounts for pharmacies, stores, restaurants, distributors,
+              clinics, hospitals, labs and more {"\u2014"} one platform built for Pakistani businesses.
             </p>
 
             {/* CTA row */}
@@ -232,11 +232,11 @@ export default function LandingPage() {
             {/* stat pills */}
             <div className="fi5" style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
               {[
+                {v:"14",l:"Business Types"},
                 {v:"18+",l:"Modules"},
-                {v:"12+",l:"Reports"},
-                {v:"Win + Android",l:"Platforms"},
-                {v:"FBR",l:"Compliant"},
-                {v:"Offline",l:"First"},
+                {v:"Windows + Web",l:"Platforms"},
+                {v:"FBR",l:"Digital Invoicing"},
+                {v:"Offline",l:"Ready"},
               ].map((s,i)=>(
                 <div key={i} style={{
                   padding:"8px 18px",
@@ -257,10 +257,10 @@ export default function LandingPage() {
           <section style={{padding:"80px 24px",maxWidth:1200,margin:"0 auto"}}>
             <div style={{textAlign:"center",marginBottom:52}}>
               <h2 style={{fontSize:"clamp(26px,4vw,38px)",fontWeight:800,letterSpacing:"-.03em",marginBottom:10,color:"#0f172a"}}>
-                Everything Your Pharmacy Needs
+                Everything Your Business Needs
               </h2>
               <p style={{color:"#64748b",fontSize:16}}>
-                Built for Pakistani pharmacies {"\u2014"} GST, WHT, batch tracking &amp; FBR digital invoicing
+                Built for Pakistani businesses {"\u2014"} GST, WHT, stock tracking &amp; FBR digital invoicing
               </p>
             </div>
             <div style={{
@@ -377,7 +377,7 @@ export default function LandingPage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/mavin-header.png" alt="MAVIN.pk" style={{height:28,width:"auto",objectFit:"contain"}} />
             </div>
-            <p>© 2026 MAVIN.pk · Built for Pakistani Pharmacies</p>
+            <p>© 2026 MAVIN.pk · Built for Pakistani Businesses</p>
             <p style={{fontSize:12,color:"#cbd5e1",letterSpacing:".01em"}}>
               Developed by <span style={{color:"#0b2a6b",fontWeight:600}}>HS Software and Technology</span>
             </p>
@@ -412,7 +412,7 @@ const FEATURES = [
   {icon:"🧾",color:"#0b2a6b",title:"Point of Sale Invoicing",
    desc:"Keyboard-driven POS with F-key shortcuts, barcode scan, per-line discount, tax, bonus qty & credit/cash invoices."},
   {icon:"📦",color:"#3b82f6",title:"Inventory & Batch Tracking",
-   desc:"Batch numbers, expiry dates, FEFO alerts, low-stock warnings, multi-location stock transfers."},
+   desc:"Batch & expiry for medicines, serial & IMEI numbers for electronics and mobiles, low-stock warnings, multi-location stock."},
   {icon:"🛒",color:"#8b5cf6",title:"Purchase Management",
    desc:"Order-to-receipt workflow, supplier invoices, ST & WHT tax per line, purchase returns."},
   {icon:"👥",color:"#1e88e5",title:"Customers & Suppliers",

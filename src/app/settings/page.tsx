@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { isTursoConfigured } from "@/lib/sync/engine";
-import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { loadCompanyProfile, saveCompanyProfile, type CompanyProfile, type RegNumber } from "@/lib/companyProfile";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
@@ -565,7 +564,6 @@ export default function GeneralSettingsPage() {
 
       <div className="flex flex-wrap gap-2 rounded-2xl bg-white px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <StatusPill ok={isTursoConfigured()} label="Turso sync" />
-        <StatusPill ok={isCloudinaryConfigured()} label="Cloudinary images" />
         <StatusPill ok={tauriReady} label="Desktop shell" />
       </div>
 

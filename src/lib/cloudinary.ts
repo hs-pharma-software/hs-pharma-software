@@ -1,15 +1,15 @@
-﻿/** Unsigned upload to Cloudinary's free tier. Requires an unsigned upload
- * preset configured in the Cloudinary dashboard (Settings -> Upload ->
- * Upload presets -> add preset -> Signing Mode: Unsigned) so the desktop app
- * never needs to embed an API secret. Needs network \u2014 see
- * `isImageUploadAvailable()` before calling this from offline-aware code. */
+﻿/** Cloudinary image upload, server side only. The cloud name and upload
+ * preset are private settings (CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET,
+ * no NEXT_PUBLIC_ prefix): an unsigned preset in the page would let anyone
+ * upload to the account. Nothing in the app uploads to Cloudinary today; a
+ * future upload goes through a server route that calls this. */
+if (typeof window !== "undefined") throw new Error("lib/cloudinary is server-only: call it from a server route.");
+
 export async function uploadImageToCloudinary(file: File | Blob): Promise<string> {
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
   if (!cloudName || !uploadPreset) {
-    throw new Error(
-      "Cloudinary is not configured. Set NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME and NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET in .env.local (see README)."
-    );
+    throw new Error("Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET on the server.");
   }
 
   const formData = new FormData();
@@ -31,7 +31,5 @@ export async function uploadImageToCloudinary(file: File | Blob): Promise<string
 }
 
 export function isCloudinaryConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME && process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
-  );
+  return Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_UPLOAD_PRESET);
 }
