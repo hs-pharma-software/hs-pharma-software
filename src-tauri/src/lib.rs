@@ -1453,6 +1453,130 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Mavin SEO Manager (Super Admin > SEO). Platform tables only: they never
+/// reference or change business (tenant) data. Jobs are read-only audits and
+/// drafts; anything that changes the site waits for approval (a pull request).
+fn schema_sql_v73() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS seo_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS seo_jobs (
+        id TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        cadence TEXT NOT NULL CHECK (cadence IN ('daily','weekly','monthly')),
+        lock_until TEXT,
+        last_run_at TEXT,
+        last_success_at TEXT,
+        last_status TEXT,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS seo_job_runs (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        trigger TEXT NOT NULL CHECK (trigger IN ('schedule','manual')),
+        triggered_by TEXT,
+        status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed','blocked','skipped')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        summary TEXT,
+        error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_seo_job_runs_job ON seo_job_runs(job_id, started_at);
+    CREATE TABLE IF NOT EXISTS seo_activity_log (
+        id TEXT PRIMARY KEY,
+        run_id TEXT,
+        actor TEXT NOT NULL,
+        level TEXT NOT NULL CHECK (level IN ('info','warn','error')),
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_seo_activity_created ON seo_activity_log(created_at);
+    CREATE TABLE IF NOT EXISTS seo_metrics_daily (
+        id TEXT PRIMARY KEY,
+        day TEXT NOT NULL,
+        page TEXT,
+        query TEXT,
+        clicks INTEGER NOT NULL DEFAULT 0,
+        impressions INTEGER NOT NULL DEFAULT 0,
+        ctr REAL,
+        position REAL,
+        source TEXT NOT NULL,
+        fetched_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_seo_metrics ON seo_metrics_daily(day, source, COALESCE(page,''), COALESCE(query,''));
+    CREATE TABLE IF NOT EXISTS seo_audit_findings (
+        id TEXT PRIMARY KEY,
+        check_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('critical','warning','info')),
+        message TEXT NOT NULL,
+        evidence TEXT,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        resolved_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_seo_finding ON seo_audit_findings(check_id, url);
+    CREATE TABLE IF NOT EXISTS seo_keywords (
+        id TEXT PRIMARY KEY,
+        keyword TEXT NOT NULL UNIQUE,
+        product TEXT,
+        intent TEXT,
+        priority INTEGER NOT NULL DEFAULT 0,
+        search_volume INTEGER,
+        volume_source TEXT,
+        competition TEXT,
+        competition_source TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS seo_recommendations (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT,
+        evidence TEXT,
+        url TEXT,
+        impact TEXT,
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed','approved','rejected','done')),
+        decided_by TEXT,
+        decided_at TEXT,
+        decision_note TEXT,
+        pr_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS seo_content_drafts (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('landing','article','meta')),
+        title TEXT NOT NULL,
+        target_keyword TEXT,
+        target_path TEXT,
+        body TEXT,
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','in_review','approved','rejected','published')),
+        checks TEXT,
+        created_by TEXT,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        pr_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS seo_reports (
+        id TEXT PRIMARY KEY,
+        period TEXT NOT NULL UNIQUE,
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    "#
+}
+
 /// Online lab reports for the diagnostic lab: each lab visit gets a random
 /// token; the QR code on its receipt and report opens the verified results
 /// (no login, the token is the key).
@@ -3473,6 +3597,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 72,
             description: "lab_visit_public_token",
             sql: schema_sql_v72(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 73,
+            description: "seo_manager",
+            sql: schema_sql_v73(),
             kind: MigrationKind::Up,
         },
     ]

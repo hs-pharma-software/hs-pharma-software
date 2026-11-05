@@ -10,11 +10,13 @@ import { APP_URL, isSiteHost } from "@/config/site";
  * site is under /site and the app is here. Decided after mount (the server
  * renders the app-address links; only hrefs change). */
 function useLinks() {
-  const [onSite, setOnSite] = useState(false);
+  // null until the browser knows its address: the server-rendered page (what
+  // search engines read) links the app by its full address, which works anywhere.
+  const [onSite, setOnSite] = useState<boolean | null>(null);
   useEffect(() => setOnSite(isSiteHost(window.location.host)), []);
   return {
     site: (path: string) => (onSite ? path : `/site${path}`),
-    app: (path: string) => (onSite ? `${APP_URL}${path}` : path),
+    app: (path: string) => (onSite === false ? path : `${APP_URL}${path}`),
   };
 }
 

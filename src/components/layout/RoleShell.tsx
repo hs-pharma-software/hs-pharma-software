@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { isPublicPath } from "@/lib/publicPaths";
+import { usePublicPage } from "@/components/auth/usePublicPage";
 import { useAuthStore } from "@/store/authStore";
 import { AppShell } from "./AppShell";
 import { SuperAdminShell } from "./SuperAdminShell";
@@ -17,13 +17,14 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
   const role = useAuthStore((s) => s.currentUser?.role);
   const distributor = useAuthStore((s) => s.currentUser?.platformRole === "distributor");
   const pathname = usePathname();
+  const publicPage = usePublicPage();
   const router = useRouter();
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
   const isSubSuperRoute = pathname === "/sub-super" || pathname.startsWith("/sub-super/");
   const isSuperAdmin = role === "super_admin";
 
   useEffect(() => {
-    if (isPublicPath(pathname) || !role) return;
+    if (publicPage || !role) return;
     if (distributor) {
       if (!isSubSuperRoute) router.replace("/sub-super");
       return;
@@ -31,10 +32,10 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
     if (isSubSuperRoute) router.replace(isSuperAdmin ? "/admin/sub-supers" : "/dashboard");
     else if (isSuperAdmin && !isAdminRoute) router.replace("/admin");
     else if (!isSuperAdmin && isAdminRoute) router.replace("/dashboard");
-  }, [pathname, role, distributor, isSuperAdmin, isAdminRoute, isSubSuperRoute, router]);
+  }, [publicPage, role, distributor, isSuperAdmin, isAdminRoute, isSubSuperRoute, router]);
 
   // Landing page — no shell, no sidebar
-  if (isPublicPath(pathname)) return <>{children}</>;
+  if (publicPage) return <>{children}</>;
 
   if (distributor) return <SubSuperShell>{isSubSuperRoute ? children : null}</SubSuperShell>;
   if (isSuperAdmin) {

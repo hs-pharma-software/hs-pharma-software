@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { anyUserExists } from "@/lib/repo/users";
 import { useAuthStore } from "@/store/authStore";
 import { isTauriShell } from "@/lib/platform";
@@ -9,7 +8,7 @@ import { isTursoConfigured, pullAuthData } from "@/lib/sync/engine";
 import { Button } from "@/components/ui/Button";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
 import { LoginScreen } from "./LoginScreen";
-import { isPublicPath } from "@/lib/publicPaths";
+import { usePublicPage } from "./usePublicPage";
 import { SERVER_DB, SESSION_EXPIRED_EVENT, desktopViaServer, serverJson } from "@/lib/serverMode";
 
 type GateState = "checking" | "setup" | "login" | "offline";
@@ -24,7 +23,7 @@ type GateState = "checking" | "setup" | "login" | "offline";
  *   4. Login screen (when no session)
  *   5. The real app (when logged in) */
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const publicPage = usePublicPage();
   const currentUser = useAuthStore((s) => s.currentUser);
   const [state, setState] = useState<GateState>("checking");
   const [error, setError] = useState<string | null>(null);
@@ -80,12 +79,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Landing page and already-logged-in: skip DB check
-    if (isPublicPath(pathname) || currentUser) return;
+    if (publicPage || currentUser) return;
     void check();
-  }, [pathname, currentUser, check]);
+  }, [publicPage, currentUser, check]);
 
   // Landing page and online lab reports are public — no auth needed
-  if (isPublicPath(pathname)) return <>{children}</>;
+  if (publicPage) return <>{children}</>;
 
   // Already logged in — show the app
   if (currentUser) {
