@@ -18,6 +18,7 @@ import { receiveStock } from "@/lib/repo/stock";
 import { imeisOfInvoice, returnSoldImeis } from "@/lib/repo/imei";
 import type { Invoice } from "@/lib/types2";
 import { localDate } from "@/lib/localDate";
+import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 
 interface ReturnLine {
   item: InvoiceItemWithProduct;
@@ -99,6 +100,10 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!can("invoice.refund")) {
+      setError(NO_PERMISSION_MESSAGE);
+      return;
+    }
     if (!originalInvoice || activeLines.length === 0) {
       setError("Select at least one item and a return quantity.");
       return;

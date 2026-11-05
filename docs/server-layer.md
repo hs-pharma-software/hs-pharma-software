@@ -149,6 +149,33 @@ Set `NEXT_PUBLIC_DB_MODE` to anything else and put the `NEXT_PUBLIC_TURSO_*`
 variables back (a new token), then redeploy. This exposes the token again, so
 use it only as a short-term fallback.
 
+## Desktop app through the server
+
+From this release the desktop app holds no database token. It keeps its local
+copy for offline billing and syncs it through `/api/db` with the login's own
+session (sent as `Authorization: Bearer`), so the server's tenant rewrite and
+policy apply to every row it pulls or pushes. Password hashes never leave the
+server: after an online sign-in the desktop stores its own salted check, so
+the next sign-in also works offline.
+
+Order (each step only after the previous one works):
+
+1. The web server must be running the server layer (the steps above:
+   `TURSO_*`, `SESSION_SECRET`, `NEXT_PUBLIC_DB_MODE=server`).
+2. Add the GitHub Actions secret `NEXT_PUBLIC_API_BASE_URL` = the site's
+   address, e.g. `https://mavin.pk` (allowed hosts: mavin.pk, muavin.pk and
+   *.vercel.app, in `src-tauri/capabilities`). The release build refuses to
+   publish without it.
+3. Release a desktop version. Each computer updates, then signs in once while
+   online (offline sign-in keeps working on computers already set up).
+4. When every computer runs the new version, **rotate the Turso token**
+   (step 6 above) and delete the `NEXT_PUBLIC_TURSO_*` GitHub secrets: every
+   installer built before this release contains the old token.
+
+Older desktop copies already downloaded other businesses' login rows. They
+stay in those local files until the app is reinstalled; they are not synced
+back and are no longer refreshed.
+
 ## Local development
 
 `.env.local` keeps `NEXT_PUBLIC_TURSO_*` for the desktop build. To run the web

@@ -119,8 +119,8 @@ export function UserLoginsPage({
   }
 
   /** Action groups visible for the tenant whose user is being edited. */
-  function visibleActionGroups(u: UserAccount | null): Array<"Invoices" | "Memorized Invoices" | "Purchases" | "Restaurant"> {
-    if (!u) return ["Invoices", "Memorized Invoices", "Purchases"];
+  function visibleActionGroups(u: UserAccount | null): Array<"Invoices" | "Memorized Invoices" | "Purchases" | "Data" | "Accounts" | "Restaurant"> {
+    if (!u) return ["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts"];
     const tenant = u.tenant_id == null
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
@@ -128,7 +128,7 @@ export function UserLoginsPage({
     const typeId = bt.id;
     // Only actions of sections this business has in its sidebar.
     const keys = new Set(visibleNavFor(typeId, null, null).flatMap((n) => [n.moduleKey, ...(n.children ?? []).map((c) => c.moduleKey ?? "")]));
-    return (["Invoices", "Memorized Invoices", "Purchases", "Restaurant"] as const).filter((group) => {
+    return (["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts", "Restaurant"] as const).filter((group) => {
       if (group === "Restaurant") return typeId === "restaurant";
       if (group === "Invoices" || group === "Memorized Invoices") return keys.has("invoices") && moduleAllowedForType(typeId, "invoices");
       if (group === "Purchases") return keys.has("purchase") && moduleAllowedForType(typeId, "purchase");

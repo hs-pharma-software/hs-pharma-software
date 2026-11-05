@@ -61,7 +61,6 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         <div className="mb-8 flex flex-col items-center gap-3">
           <h1 className="sr-only">MAVIN.pk</h1>
           <Image src="/mavin-logo.png" alt="MAVIN.pk - Smarter Solutions. Brighter Future." width={1340} height={330} priority className="h-auto w-full max-w-[320px] object-contain" />
-          <p className="text-sm text-neutral-500">Pharmacy & Store Management</p>
         </div>
 
         {/* Form */}

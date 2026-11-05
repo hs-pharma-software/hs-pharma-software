@@ -6,13 +6,13 @@ import { parseDeniedActions } from "./actionPermissions";
 import { isTauriShell } from "./platform";
 import { isTursoConfigured, pullAuthData } from "./sync/engine";
 import type { SubscriptionPlan, Tenant, UserAccount, UserRole } from "./types2";
-import { SERVER_DB, serverJson, ServerRequestError } from "./serverMode";
+import { SERVER_DB, desktopViaServer, serverJson, ServerRequestError, setDesktopSession } from "./serverMode";
+import { dbExecute } from "./db";
 
-/** Client-side password hashing (SHA-256, salted). There is no backend
- * server in this app's architecture \u2014 the desktop client talks directly to
- * the shared Turso database \u2014 so this protects against casual inspection of
- * the `users` table, not against a determined attacker with access to the
- * embedded Turso credential. See the multi-tenant plan's caveat. */
+/** Salted SHA-256, the scheme the server also uses (src/server/db.ts). On the
+ * web and on a desktop that syncs through the server, the server checks
+ * passwords and never sends hashes; the desktop keeps only its own salted
+ * check for signing in offline (desktopLogin). */
 async function sha256Hex(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -114,6 +114,7 @@ export async function login(username: string, password: string): Promise<{ user:
     if (!record) throw new AuthError("Incorrect username or password.");
     return buildSession(record);
   }
+  if (desktopViaServer()) return desktopLogin(username, password);
   let record = await checkCredentials(username, password);
   // Not matched locally: the login (or a password reset) may have been made
   // on another computer. Fetch the latest accounts from Turso and retry once.
@@ -128,6 +129,39 @@ export async function login(username: string, password: string): Promise<{ user:
   if (!record) throw new AuthError("Incorrect username or password.");
   if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
   return buildSession(record);
+}
+
+/** Desktop through the server. Online, the server checks the password and
+ * returns a session; the app then downloads this business's accounts and
+ * keeps its own salted check of the password, so the next sign-in also works
+ * offline. Offline (server unreachable), that local check is used. */
+async function desktopLogin(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
+  let online = true;
+  try {
+    const r = await serverJson<{ token: string; expiresInHours?: number }>("/api/auth/login/", { username, password, client: "desktop" });
+    setDesktopSession(r.token, r.expiresInHours);
+  } catch (e) {
+    // The server answered with a refusal (wrong password, deactivated, too many tries).
+    if (e instanceof ServerRequestError && e.status < 500) throw new AuthError(e.message);
+    online = false;
+  }
+  if (online) {
+    await pullAuthData();
+    const record = await findUserByUsername(username.trim());
+    if (!record) throw new AuthError("Your login could not be downloaded to this computer. Try again.");
+    await storeLocalCheck(record.id, password);
+    return buildSession(record);
+  }
+  const record = await checkCredentials(username, password);
+  if (!record) throw new AuthError("Could not reach the server. Sign in once while online on this computer, then you can sign in offline.");
+  if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
+  return buildSession(record);
+}
+
+/** The desktop's own offline password check. Local only: never synced. */
+async function storeLocalCheck(userId: string, password: string): Promise<void> {
+  const salt = randomSalt();
+  await dbExecute(`UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?`, [await hashPassword(password, salt), salt, userId]);
 }
 
 async function checkCredentials(username: string, password: string): Promise<UserAccount | null> {
@@ -148,10 +182,12 @@ export async function createUser(params: {
   tenantId: string | null;
   displayName?: string | null;
   permissions?: string[] | null;
+  deniedActions?: string[];
 }): Promise<UserAccount> {
-  if (SERVER_DB) {
+  if (SERVER_DB || desktopViaServer()) {
     try {
       const { id } = await serverJson<{ id: string }>("/api/auth/users/", { ...params, tenantId: params.tenantId });
+      if (desktopViaServer()) await pullAuthData(); // the new login reaches this computer
       const created = await usersRepo.get(id);
       if (!created) throw new AuthError("The login was created but could not be read back. Refresh the page.");
       return created;
@@ -184,16 +220,19 @@ export async function createUser(params: {
     display_name: params.displayName ?? null,
     is_active: 1,
     permissions: params.permissions != null ? JSON.stringify(params.permissions) : null,
+    denied_actions: params.role === "staff" && params.deniedActions?.length ? JSON.stringify(params.deniedActions) : null,
   });
 }
 
 export async function changePassword(userId: string, newPassword: string): Promise<void> {
-  if (SERVER_DB) {
+  if (SERVER_DB || desktopViaServer()) {
     try {
       await serverJson("/api/auth/password/", { userId, newPassword });
     } catch (e) {
       throw new AuthError(e instanceof Error ? e.message : String(e));
     }
+    // Own password changed on the desktop: the offline check follows it.
+    if (desktopViaServer() && userId === useAuthStore.getState().currentUser?.id) await storeLocalCheck(userId, newPassword);
     return;
   }
   const salt = randomSalt();
@@ -245,7 +284,7 @@ export async function setupFirstLogins(
   admin: { username: string; password: string },
   owner: { username: string; password: string; displayName?: string | null; tenantId?: string }
 ): Promise<void> {
-  if (SERVER_DB) {
+  if (SERVER_DB || desktopViaServer()) {
     try {
       await serverJson("/api/auth/setup/", { admin, owner });
     } catch (e) {
@@ -257,8 +296,12 @@ export async function setupFirstLogins(
   await createUser({ username: owner.username, password: owner.password, role: "owner", tenantId: owner.tenantId ?? "tenant-default", displayName: owner.displayName ?? null });
 }
 
-/** Ends the server session too (web version through the server). */
+/** Ends the server session too (web version, or the desktop through the server). */
 export async function serverLogout(): Promise<void> {
+  if (desktopViaServer()) {
+    setDesktopSession(null);
+    return;
+  }
   if (!SERVER_DB) return;
   await serverJson("/api/auth/logout/", {}).catch(() => undefined);
 }

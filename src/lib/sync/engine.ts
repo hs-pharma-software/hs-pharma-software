@@ -3,6 +3,7 @@ import { dbExecute, dbSelect } from "../db";
 import { nowIso } from "../id";
 import { CATALOG_TABLES, OWNER_COLUMNS, SYNCABLE_TABLES, TENANT_SCOPED_TABLES } from "./tables";
 import { useAuthStore } from "../../store/authStore";
+import { desktopViaServer, desktopToken, serverJson } from "../serverMode";
 
 export class TursoNotConfiguredError extends Error {
   constructor() {
@@ -13,20 +14,86 @@ export class TursoNotConfiguredError extends Error {
   }
 }
 
+/** The shared database as the sync engine sees it. Through the server
+ * (`viaServer`), every statement runs as the logged-in user and the server
+ * keeps it inside that user's business (src/server/tenantScope.ts); the
+ * direct Turso client is only for builds that still carry a database token
+ * (local development). */
+interface Remote {
+  viaServer: boolean;
+  execute(stmt: { sql: string; args: unknown[] }): Promise<{ columns: string[]; rows: unknown[][]; rowsAffected: number }>;
+}
+
 let client: Client | null = null;
 
-function getRemoteClient(): Client {
+function getRemote(): Remote {
+  if (desktopViaServer()) {
+    return {
+      viaServer: true,
+      async execute(stmt) {
+        const { results } = await serverJson<{ results: { columns: string[]; rows: unknown[][]; rowsAffected: number }[] }>("/api/db/", { statements: [stmt] });
+        return results[0];
+      },
+    };
+  }
   const url = process.env.NEXT_PUBLIC_TURSO_DATABASE_URL;
   const authToken = process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN;
   if (!url || !authToken) throw new TursoNotConfiguredError();
   if (!client) client = createClient({ url, authToken });
-  return client;
+  const c = client;
+  return {
+    viaServer: false,
+    async execute(stmt) {
+      const r = await c.execute({ sql: stmt.sql, args: stmt.args as never[] });
+      return { columns: r.columns, rows: r.rows.map((row) => r.columns.map((_, i) => row[i])), rowsAffected: r.rowsAffected };
+    },
+  };
 }
 
+/** Whether this app can sync: through the server, or (development builds) straight to Turso. */
 export function isTursoConfigured(): boolean {
-  return Boolean(
+  return desktopViaServer() || Boolean(
     process.env.NEXT_PUBLIC_TURSO_DATABASE_URL && process.env.NEXT_PUBLIC_TURSO_AUTH_TOKEN
   );
+}
+
+/** Whether sync can run right now: through the server it needs a login session. */
+export function canSyncNow(): boolean {
+  return desktopViaServer() ? desktopToken() != null : isTursoConfigured();
+}
+
+/** Columns a business login may not set through the server: the record's
+ * business, a login's identity and password, a shared record's two businesses. */
+function lockedColumns(table: string): string[] {
+  const locked = ["id", "tenant_id", ...(OWNER_COLUMNS[table] ?? [])];
+  if (table === "users") locked.push("role", "username", "password_hash", "password_salt");
+  return locked;
+}
+
+/** Writes one row through the server: update it if this business has it,
+ * else insert it. A row that exists but belongs to another business is
+ * neither updated (the server's scope hides it) nor inserted (the id is
+ * taken), so the entry fails and stays in the outbox. */
+async function pushRowViaServer(remote: Remote, table: string, op: OutboxRow["op"], record: Record<string, unknown>): Promise<void> {
+  const insert = () => {
+    const keys = Object.keys(record);
+    return remote.execute({ sql: `INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`, args: keys.map((k) => record[k]) });
+  };
+  if (op === "insert_if_absent") {
+    try {
+      await insert();
+    } catch (e) {
+      if (!/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw e;
+    }
+    return;
+  }
+  const locked = lockedColumns(table);
+  const sets = Object.keys(record).filter((k) => !locked.includes(k));
+  if (sets.length) {
+    const r = await remote.execute({ sql: `UPDATE ${table} SET ${sets.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`, args: [...sets.map((k) => record[k]), record.id] });
+    if (r.rowsAffected > 0) return;
+  }
+  await insert();
 }
 
 type OutboxRow = {
@@ -61,7 +128,7 @@ export function mayPush(table: string, op: OutboxRow["op"], row: Record<string, 
  * already exists remotely (e.g. created on another machine) safely merges
  * instead of erroring. */
 export async function pushOutbox(): Promise<{ pushed: number; errors: number }> {
-  const remote = getRemoteClient();
+  const remote = getRemote();
   const pending = await dbSelect<OutboxRow>(
     `SELECT * FROM sync_outbox WHERE synced_at IS NULL ORDER BY created_at ASC LIMIT 200`
   );
@@ -95,6 +162,8 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
               ? { sql: `UPDATE ${entry.table_name} SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id IS NULL`, args: [ts, ts, entry.row_id] }
               : { sql: `UPDATE ${entry.table_name} SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, args: [ts, ts, entry.row_id, session.tenantId] }
         );
+      } else if (remote.viaServer) {
+        await pushRowViaServer(remote, entry.table_name, entry.op, record!);
       } else {
         const keys = Object.keys(record!);
         const updates = keys.filter((k) => k !== "id").map((k) => `${k} = excluded.${k}`).join(", ");
@@ -123,7 +192,7 @@ export async function pushOutbox(): Promise<{ pushed: number; errors: number }> 
 /** Pulls one batch (up to 500 rows) of a table changed since its cursor.
  * `tenantId` filters tenant-scoped tables. Returns the rows applied and
  * whether a full batch came back (more may be waiting). */
-async function pullTable(remote: Client, table: string, tenantId: string | null, unownedOnly = false): Promise<{ applied: number; more: boolean }> {
+async function pullTable(remote: Remote, table: string, tenantId: string | null, unownedOnly = false): Promise<{ applied: number; more: boolean }> {
   const isTenantScoped = (TENANT_SCOPED_TABLES as readonly string[]).includes(table) && !unownedOnly;
   // Tenant-scoped tables get their own pull cursor per tenant, so
   // switching which tenant is logged in on one device (testing, a shared
@@ -161,8 +230,17 @@ async function pullTable(remote: Client, table: string, tenantId: string | null,
       continue; // local copy is already current or newer
     }
 
+    // The server never sends password columns. A login new to this computer
+    // gets empty ones (it signs in online once, which stores a local check);
+    // an existing login keeps its own.
+    const keep: string[] = [];
+    if (table === "users" && !("password_hash" in record)) {
+      record.password_hash = "";
+      record.password_salt = "";
+      keep.push("password_hash", "password_salt");
+    }
     const keys = Object.keys(record);
-    const updates = keys.filter((k) => k !== "id").map((k) => `${k} = excluded.${k}`).join(", ");
+    const updates = keys.filter((k) => k !== "id" && !keep.includes(k)).map((k) => `${k} = excluded.${k}`).join(", ");
     await dbExecute(
       `INSERT INTO ${table} (${keys.join(", ")})
        VALUES (${keys.map(() => "?").join(", ")})
@@ -184,7 +262,7 @@ async function pullTable(remote: Client, table: string, tenantId: string | null,
 }
 
 export async function pullChanges(): Promise<{ pulled: number }> {
-  const remote = getRemoteClient();
+  const remote = getRemote();
   let pulled = 0;
 
   const session = useAuthStore.getState();
@@ -218,7 +296,7 @@ const AUTH_TABLES = ["subscription_plans", "tenants", "users"] as const;
 /** Brings plans, tenants and users down from Turso before login (all
  * batches). Throws when Turso is not configured or unreachable. */
 export async function pullAuthData(): Promise<number> {
-  const remote = getRemoteClient();
+  const remote = getRemote();
   let pulled = 0;
   for (const table of AUTH_TABLES) {
     for (let more = true; more; ) {

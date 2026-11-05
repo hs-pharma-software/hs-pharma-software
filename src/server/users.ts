@@ -12,7 +12,10 @@ export interface NewLogin {
   role: "super_admin" | "owner" | "staff";
   tenantId: string | null;
   displayName?: string | null;
+  /** Staff sections; null = every section. Left out, a staff login gets none (least privilege). */
   permissions?: string[] | null;
+  /** Staff action list (lib/actionPermissions.ts: denied keys, "+key" for opt-in ones). */
+  deniedActions?: string[];
 }
 
 const MIN_PASSWORD = 4;
@@ -63,13 +66,15 @@ export async function createLogin(caller: Caller | null, l: NewLogin): Promise<{
     if (!row) throw new HttpError(404, "Business not found.");
     if (Number(row.used) >= Number(row.cap)) throw new HttpError(409, `This plan allows up to ${Number(row.cap)} staff login(s); the limit has been reached.`);
   }
+  const permissions = l.permissions === undefined ? (l.role === "staff" ? [] : null) : l.permissions;
+  const actions = l.role === "staff" && Array.isArray(l.deniedActions) ? l.deniedActions.filter((a) => typeof a === "string") : [];
   const id = randomUUID();
   const salt = randomBytes(16).toString("hex");
   const now = new Date().toISOString();
   await db.execute({
-    sql: `INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, is_active, permissions, created_at, updated_at, deleted_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL)`,
-    args: [id, l.tenantId, username, passwordHash(l.password, salt), salt, l.role, l.displayName ?? null, l.permissions != null ? JSON.stringify(l.permissions) : null, now, now],
+    sql: `INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, is_active, permissions, denied_actions, created_at, updated_at, deleted_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)`,
+    args: [id, l.tenantId, username, passwordHash(l.password, salt), salt, l.role, l.displayName ?? null, permissions != null ? JSON.stringify(permissions) : null, actions.length ? JSON.stringify(actions) : null, now, now],
   });
   return { id };
 }

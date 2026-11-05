@@ -5,12 +5,17 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { useIsTauri } from "@/lib/platform";
 import { restoreLocalBackup } from "@/lib/backup";
+import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 
 export default function RestorePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function handleRestore() {
+    if (!can("data.restore")) {
+      setStatus(NO_PERMISSION_MESSAGE);
+      return;
+    }
     if (!confirm("This will overwrite the local database with the selected backup. Continue?")) return;
     setBusy(true);
     setStatus(null);

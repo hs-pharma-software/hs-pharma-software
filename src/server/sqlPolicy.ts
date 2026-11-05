@@ -67,6 +67,24 @@ export interface Caller {
   businessType?: string | null;
   /** Pharmacies this hospital / clinic has linked (their products are readable). */
   linkedPharmacies?: string[];
+  /** Staff action list (lib/actionPermissions.ts: denied keys, "+key" for opt-in ones). */
+  actions?: string[];
+  /** Actions the Super Admin turned off for the whole business. */
+  tenantDeniedActions?: string[];
+}
+
+/** Writes to these tables are an action that needs its permission. */
+export const TABLE_ACTIONS: Record<string, string> = { financial_closings: "finance.close" };
+/** Opt-in actions: staff have them only when ticked ("+key"). Same list as lib/actionPermissions.ts. */
+const OPT_IN_ACTIONS = new Set(["invoice.fbr_submit", "invoice.refund", "invoice.purchase_rate", "data.export", "data.restore", "finance.close", "memorized.edit", "memorized.delete", "memorized.convert"]);
+
+/** Whether the caller may perform an action (same rule as lib/actionPermissions.ts can()). */
+export function callerCan(caller: Caller, action: string): boolean {
+  if (caller.role === "super_admin") return true;
+  if ((caller.tenantDeniedActions ?? []).includes(action)) return false;
+  if (caller.role !== "staff") return true;
+  const list = caller.actions ?? [];
+  return OPT_IN_ACTIONS.has(action) ? list.includes(`+${action}`) : !list.includes(action);
 }
 
 /** Only the Super Admin changes tenants and subscription plans (Admin screens). */
@@ -125,6 +143,7 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
       return { ok: false, reason: "Staff HR records are changed by HR." };
     }
     for (const t of a.tables) {
+      if (TABLE_ACTIONS[t] && !callerCan(caller, TABLE_ACTIONS[t])) return { ok: false, reason: "You don't have permission for this action. Ask the owner (or the administrator) to allow it." };
       if (SUPER_ADMIN_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "Only the Super Admin changes tenants and plans." };
       if (LINK_ONLY_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "A pharmacy is linked by token: the pharmacy enters the clinic's token in its settings." };
       // Profile fields (name, permissions, active) are edited by owners / Super Admin; passwords are blocked above.

@@ -22,6 +22,11 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://*.turso.io/*" },
+        { "url": "https://mavin.pk/*" },
+        { "url": "https://*.mavin.pk/*" },
+        { "url": "https://muavin.pk/*" },
+        { "url": "https://*.muavin.pk/*" },
+        { "url": "https://*.vercel.app/*" },
         { "url": "https://api.cloudinary.com/*" },
         { "url": "https://eapp.dra.gov.pk/*" },
         { "url": "https://api.anthropic.com/*" },

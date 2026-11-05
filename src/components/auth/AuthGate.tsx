@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
 import { LoginScreen } from "./LoginScreen";
 import { isPublicPath } from "@/lib/publicPaths";
-import { SERVER_DB, SESSION_EXPIRED_EVENT, serverJson } from "@/lib/serverMode";
+import { SERVER_DB, SESSION_EXPIRED_EVENT, desktopViaServer, serverJson } from "@/lib/serverMode";
 
 type GateState = "checking" | "setup" | "login" | "offline";
 
@@ -32,6 +32,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const check = useCallback(async () => {
     setState("checking");
     setError(null);
+    // Desktop through the server: the server checks the login, then the app
+    // downloads that business's accounts (lib/auth.ts login).
+    if (desktopViaServer()) {
+      setState("login");
+      return;
+    }
     const synced = isTauriShell() && isTursoConfigured();
     if (synced) {
       try {

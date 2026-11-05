@@ -14,7 +14,7 @@ const WINDOW_MS = 15 * 60_000;
 
 export async function POST(req: Request): Promise<Response> {
   try {
-    const { username, password } = (await req.json()) as { username?: string; password?: string };
+    const { username, password, client } = (await req.json()) as { username?: string; password?: string; client?: string };
     if (!username?.trim() || !password) throw new HttpError(400, "Enter the username and password.");
     const key = `${clientIp(req) ?? "?"}|${username.trim().toLowerCase()}`;
     const f = failures.get(key);
@@ -35,7 +35,9 @@ export async function POST(req: Request): Promise<Response> {
     failures.delete(key);
     const { token } = issueSession(String(u.id), serverConfig().sessionSecret);
     const secure = new URL(req.url).protocol === "https:";
-    return Response.json({ userId: String(u.id) }, { headers: { "Set-Cookie": sessionCookie(token, SESSION_HOURS * 3600, secure) } });
+    // The desktop app keeps the token itself and sends it as a Bearer header.
+    const body = client === "desktop" ? { userId: String(u.id), token, expiresInHours: SESSION_HOURS } : { userId: String(u.id) };
+    return Response.json(body, { headers: { "Set-Cookie": sessionCookie(token, SESSION_HOURS * 3600, secure) } });
   } catch (e) {
     return jsonError(e);
   }

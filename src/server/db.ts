@@ -3,7 +3,7 @@
 import { createClient, type Client, type InStatement, type ResultSet } from "@libsql/client/web";
 import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
-import { verifySession, readCookie } from "./session";
+import { verifySession, requestToken } from "./session";
 import { analyzeSql, authorize, personalScope, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
 import { scopeStatement, ScopeError, type Schema } from "./tenantScope";
 import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
@@ -45,12 +45,21 @@ export class HttpError extends Error {
   }
 }
 
+const jsonList = (raw: unknown): string[] => {
+  try {
+    const v = raw == null ? [] : JSON.parse(String(raw));
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+};
+
 /** The logged-in, active user behind a request. */
 export async function callerOf(req: Request): Promise<Caller> {
-  const claims = verifySession(readCookie(req.headers.get("cookie")), serverConfig().sessionSecret);
+  const claims = verifySession(requestToken(req), serverConfig().sessionSecret);
   if (!claims) throw new HttpError(401, "Your session has ended. Log in again.");
   const rs = await serverDb().execute({
-    sql: `SELECT u.id, u.role, u.tenant_id, u.is_active, u.permissions, t.business_type,
+    sql: `SELECT u.id, u.role, u.tenant_id, u.is_active, u.permissions, u.denied_actions, t.business_type, t.denied_actions AS tenant_denied,
                  (SELECT group_concat(l.pharmacy_tenant_id) FROM clinic_pharmacy_link l WHERE l.clinic_tenant_id = u.tenant_id AND l.is_active = 1) AS linked
           FROM users u LEFT JOIN tenants t ON t.id = u.tenant_id WHERE u.id = ? AND u.deleted_at IS NULL`,
     args: [claims.u],
@@ -70,6 +79,8 @@ export async function callerOf(req: Request): Promise<Caller> {
     userId: String(u.id), role: String(u.role) as Caller["role"], tenantId: u.tenant_id == null ? null : String(u.tenant_id),
     permissions, businessType: u.business_type == null ? null : String(u.business_type),
     linkedPharmacies: u.linked ? String(u.linked).split(",").filter(Boolean) : [],
+    actions: String(u.role) === "staff" ? jsonList(u.denied_actions) : [],
+    tenantDeniedActions: jsonList(u.tenant_denied),
   };
 }
 

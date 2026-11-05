@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useAppStore } from "@/store/appStore";
-import { syncNow, isTursoConfigured } from "@/lib/sync/engine";
+import { syncNow, canSyncNow, isTursoConfigured } from "@/lib/sync/engine";
 import { countPendingOutbox } from "@/lib/sync/outbox";
 import { nowIso } from "@/lib/id";
 import { isTauriShell } from "@/lib/platform";
@@ -35,7 +35,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const runSync = useCallback(async () => {
     if (runningRef.current) return;
     if (!isTauriShell()) return;
-    if (!isTursoConfigured()) return;
+    if (!canSyncNow()) return; // through the server: waits for an online sign-in
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
     runningRef.current = true;
@@ -94,8 +94,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 export async function triggerManualSync() {
   const store = useAppStore.getState();
   if (!isTauriShell()) return;
-  if (!isTursoConfigured()) {
-    store.setLastError("Turso is not configured yet (see README).");
+  if (!canSyncNow()) {
+    store.setLastError(isTursoConfigured() ? "Sign in again while online to sync." : "Sync is not set up in this build.");
     return;
   }
   store.setSyncStatus("syncing");

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import { mayExport } from "@/lib/csv";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
 import { dist, DIST_TYPE, MAPS_KEY, openMaps } from "@/lib/dist";
@@ -339,7 +340,7 @@ export function Bars({ rows, empty = "No data." }: { rows: { label: string; amou
 
 /** CSV download of the rows (only shown to users allowed to see the data). */
 export function downloadCsv(name: string, rows: Record<string, unknown>[]) {
-  if (!rows.length) return;
+  if (!rows.length || !mayExport()) return;
   const keys = Object.keys(rows[0]);
   const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [keys.join(","), ...rows.map((r) => keys.map((k) => esc(r[k])).join(","))].join("\r\n");

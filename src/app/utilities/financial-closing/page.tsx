@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { useIsTauri } from "@/lib/platform";
 import { financialClosingsRepo } from "@/lib/repo/financialClosings";
+import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -24,6 +25,10 @@ export default function FinancialClosingPage() {
   const [busy, setBusy] = useState(false);
 
   async function handleClose() {
+    if (!can("finance.close")) {
+      setError(NO_PERMISSION_MESSAGE);
+      return;
+    }
     if (enteredPassword !== systemPassword) {
       setError("Password does not match.");
       return;

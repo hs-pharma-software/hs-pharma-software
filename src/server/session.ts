@@ -45,6 +45,15 @@ export function sessionCookie(token: string, maxAgeSeconds: number, secure: bool
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure ? "; Secure" : ""}`;
 }
 
+/** The session token of a request: the web page's cookie, or the desktop
+ * app's "Authorization: Bearer" header (its pages are not served from this
+ * site, so they cannot carry the cookie). */
+export function requestToken(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  const bearer = auth && /^Bearer\s+(\S+)$/i.exec(auth.trim());
+  return bearer ? bearer[1] : readCookie(req.headers.get("cookie"));
+}
+
 export function readCookie(header: string | null, name = SESSION_COOKIE): string | null {
   if (!header) return null;
   for (const part of header.split(";")) {
