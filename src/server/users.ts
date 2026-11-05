@@ -100,3 +100,14 @@ export async function needsSetup(): Promise<boolean> {
   const rs = await serverDb().execute(`SELECT COUNT(*) AS n FROM users WHERE deleted_at IS NULL`);
   return Number(rs.rows[0]?.n ?? 0) === 0;
 }
+
+/** Anyone signed in changes their own display name (nothing else, nobody else's). */
+export async function setOwnDisplayName(caller: Caller, name: unknown): Promise<string> {
+  const clean = typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
+  if (clean.length < 2 || clean.length > 60) throw new HttpError(400, "Enter a name of 2 to 60 characters.");
+  await serverDb().execute({
+    sql: `UPDATE users SET display_name = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+    args: [clean, new Date().toISOString(), caller.userId],
+  });
+  return clean;
+}

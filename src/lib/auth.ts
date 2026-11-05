@@ -322,3 +322,23 @@ export async function serverLogout(): Promise<void> {
   if (!SERVER_DB) return;
   await serverJson("/api/auth/logout/", {}).catch(() => undefined);
 }
+
+/** The signed-in user's own display name (Account > Profile). Through the
+ * server it changes only the caller's own login; the session shows it at once. */
+export async function updateOwnDisplayName(name: string): Promise<string> {
+  const clean = name.trim().replace(/\s+/g, " ");
+  if (clean.length < 2 || clean.length > 60) throw new AuthError("Enter a name of 2 to 60 characters.");
+  const user = useAuthStore.getState().currentUser;
+  if (!user) throw new AuthError("Sign in first.");
+  if (SERVER_DB || desktopViaServer()) {
+    try {
+      await serverJson("/api/auth/profile/", { displayName: clean });
+    } catch (e) {
+      throw new AuthError(e instanceof Error ? e.message : String(e));
+    }
+  } else {
+    await usersRepo.update(user.id, { display_name: clean });
+  }
+  useAuthStore.setState((s) => (s.currentUser ? { currentUser: { ...s.currentUser, displayName: clean } } : {}));
+  return clean;
+}

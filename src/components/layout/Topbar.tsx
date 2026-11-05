@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { LanguageToggle } from "@/components/electric/LanguageSync";
 import Image from "next/image";
-import Link from "next/link";
-import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, LogOut, Menu, ClipboardCheck } from "lucide-react";
+import { RefreshCw, Wifi, WifiOff, UserCircle, Calculator, Menu } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAppStore } from "@/store/appStore";
 import { useAuthStore } from "@/store/authStore";
 import { triggerManualSync } from "@/components/sync/SyncProvider";
 import { UpdateChecker } from "./UpdateChecker";
+import { ProfilePanel } from "./ProfilePanel";
 
 export function Topbar() {
   const online = useAppStore((s) => s.online);
@@ -20,8 +20,6 @@ export function Topbar() {
   const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const [showStatus, setShowStatus] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
-  const currentUser = useAuthStore((s) => s.currentUser);
-  const currentTenant = useAuthStore((s) => s.currentTenant);
   const logout = useAuthStore((s) => s.logout);
 
   return (
@@ -146,37 +144,25 @@ export function Topbar() {
 
           <AnimatePresence>
             {showAccount && (
-              <motion.div
-                initial={{ opacity: 0, y: -8, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                className="absolute right-0 top-10 z-20 w-56 rounded-xl border border-neutral-200 bg-white p-3 text-xs shadow-xl ring-1 ring-black/5"
-              >
-                <p className="font-medium text-neutral-800">{currentUser?.displayName || currentUser?.username}</p>
-                <p className="mt-0.5 text-neutral-500">
-                  {currentUser?.role === "super_admin" ? "Super Admin" : currentTenant?.name ?? "\u2014"}
-                </p>
-                {currentUser?.role === "staff" && currentTenant?.businessType === "hospital" && (
-                  <Link
-                    href="/my-appraisals"
-                    onClick={() => setShowAccount(false)}
-                    className="mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-medium text-neutral-700 hover:bg-neutral-50"
-                  >
-                    <ClipboardCheck size={14} /> My appraisals
-                  </Link>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAccount(false);
-                    logout();
-                  }}
-                  className="mt-2 flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-medium text-rose-600 hover:bg-rose-50"
+              <>
+                {/* Click anywhere outside to close. */}
+                <div className="fixed inset-0 z-10" aria-hidden onClick={() => setShowAccount(false)} />
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  className="absolute right-0 top-10 z-20 rounded-xl border border-neutral-200 bg-white p-4 shadow-xl ring-1 ring-black/5"
                 >
-                  <LogOut size={14} /> Logout
-                </button>
-              </motion.div>
+                  <ProfilePanel
+                    onClose={() => setShowAccount(false)}
+                    onLogout={() => {
+                      setShowAccount(false);
+                      logout();
+                    }}
+                  />
+                </motion.div>
+              </>
             )}
           </AnimatePresence>
         </div>
