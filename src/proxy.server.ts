@@ -10,6 +10,12 @@ export default function proxy(req: NextRequest) {
   const route = siteRoute(req.headers.get("host"), req.nextUrl.pathname);
   if (route.kind === "pass") return NextResponse.next();
   const url = req.nextUrl.clone();
+  if (route.kind === "redirect-host") {
+    url.host = route.host;
+    url.port = "";
+    url.protocol = "https:";
+    return NextResponse.redirect(url, 308);
+  }
   url.pathname = route.path;
   if (route.kind === "redirect") return NextResponse.redirect(url, 308);
   const headers = new Headers(req.headers);

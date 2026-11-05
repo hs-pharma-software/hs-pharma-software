@@ -69,12 +69,14 @@ test("one connection is limited to 5 requests in 10 minutes", () => {
 
 test("proxy: clean paths on the corporate domain only; the app's /products is untouched elsewhere", async () => {
   const { siteRoute } = await import("@/lib/siteRoute");
-  assert.deepEqual(siteRoute("mavin.pk", "/products"), { kind: "rewrite", path: "/site/products" });
-  assert.deepEqual(siteRoute("MAVIN.pk:443", "/"), { kind: "rewrite", path: "/site" });
+  assert.deepEqual(siteRoute("www.mavin.pk", "/products"), { kind: "rewrite", path: "/site/products" });
+  assert.deepEqual(siteRoute("WWW.mavin.pk:443", "/"), { kind: "pass" }, "the home page is the main landing page");
+  assert.deepEqual(siteRoute("mavin.pk", "/pricing"), { kind: "redirect-host", host: "www.mavin.pk" }, "mavin.pk goes to the official www address");
   assert.deepEqual(siteRoute("www.mavin.pk", "/robots.txt"), { kind: "rewrite", path: "/site/robots.txt" });
-  assert.deepEqual(siteRoute("mavin.pk", "/site/pricing"), { kind: "redirect", path: "/pricing" });
-  assert.deepEqual(siteRoute("mavin.pk", "/api/site/lead/"), { kind: "pass" }, "the site's API is served as is");
-  assert.deepEqual(siteRoute("mavin.pk", "/mavin-header.png"), { kind: "pass" }, "assets are served as is");
+  assert.deepEqual(siteRoute("app.mavin.pk", "/products"), { kind: "pass" }, "the app address keeps the app");
+  assert.deepEqual(siteRoute("www.mavin.pk", "/site/pricing"), { kind: "redirect", path: "/pricing" });
+  assert.deepEqual(siteRoute("www.mavin.pk", "/api/site/lead/"), { kind: "pass" }, "the site's API is served as is");
+  assert.deepEqual(siteRoute("www.mavin.pk", "/mavin-header.png"), { kind: "pass" }, "assets are served as is");
   assert.deepEqual(siteRoute("app.example.vercel.app", "/products"), { kind: "pass" }, "the app's /products is not rewritten");
   assert.deepEqual(siteRoute(null, "/products"), { kind: "pass" });
 });

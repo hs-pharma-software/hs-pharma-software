@@ -1,7 +1,7 @@
 /** Header, footer and building blocks of the public site (server components). */
 import Link from "next/link";
 import { headers } from "next/headers";
-import { APP_LOGIN_URL, SITE_BASE_HEADER, SITE_NAV, SITE_PUBLISHED } from "@/config/site";
+import { SITE_BASE_HEADER, SITE_NAV, SITE_PUBLISHED, appLoginUrl } from "@/config/site";
 
 /** "" on the corporate domain (clean paths), "/site" on the app's domain. */
 export async function siteBase(): Promise<string> {
@@ -29,7 +29,7 @@ export function SiteHeader({ base }: { base: string }) {
           ))}
         </nav>
         <div className="hidden items-center gap-3 lg:flex">
-          <a href={APP_LOGIN_URL} className="text-sm font-medium text-slate-700 hover:text-[#1565c0]">Client Login</a>
+          <a href={appLoginUrl(base)} className="text-sm font-medium text-slate-700 hover:text-[#1565c0]">Client Login</a>
           <CtaLink href={at(base, "/demo")}>Book a Demo</CtaLink>
         </div>
         {/* Phone and tablet: a disclosure menu that works without JavaScript. */}
@@ -41,7 +41,7 @@ export function SiteHeader({ base }: { base: string }) {
             {SITE_NAV.map((n) => (
               <Link key={n.href} href={at(base, n.href)} className="rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">{n.label}</Link>
             ))}
-            <a href={APP_LOGIN_URL} className="rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Client Login</a>
+            <a href={appLoginUrl(base)} className="rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Client Login</a>
             <Link href={at(base, "/demo")} className="rounded-lg bg-[#0b2a6b] px-3 py-2 text-center font-semibold text-white">Book a Demo</Link>
           </nav>
         </details>

@@ -1,8 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PRODUCT_GROUPS, SITE_PRODUCTS, productFacts, type ProductGroup } from "@/config/siteProducts";
+import { APP_URL, isSiteHost } from "@/config/site";
+
+/** Where this page's links go. On mavin.pk the site pages have clean
+ * addresses and the app lives on app.mavin.pk; on the app's own address the
+ * site is under /site and the app is here. Decided after mount (the server
+ * renders the app-address links; only hrefs change). */
+function useLinks() {
+  const [onSite, setOnSite] = useState(false);
+  useEffect(() => setOnSite(isSiteHost(window.location.host)), []);
+  return {
+    site: (path: string) => (onSite ? path : `/site${path}`),
+    app: (path: string) => (onSite ? `${APP_URL}${path}` : path),
+  };
+}
 
 /** Icon and accent per business type (tiles in the Solutions section). */
 const TYPE_ICON: Record<string, string> = {
@@ -15,6 +29,7 @@ const GROUP_COLOR: Record<ProductGroup, string> = {
 
 export default function LandingPage() {
   const [group, setGroup] = useState<ProductGroup | "All">("All");
+  const link = useLinks();
   const solutions = SITE_PRODUCTS.filter((p) => group === "All" || p.group === group);
   return (
     <>
@@ -140,15 +155,15 @@ export default function LandingPage() {
             <div style={{display:"flex",alignItems:"center",gap:22}}>
               <a href="#solutions" className="nav-link nav-extra">Solutions</a>
               <a href="#features" className="nav-link nav-extra">Features</a>
-              <Link href="/site/demo" className="nav-link nav-extra">Book a Demo</Link>
-              <Link href="/dashboard" style={{
+              <Link href={link.site("/demo")} className="nav-link nav-extra">Book a Demo</Link>
+              <a href={link.app("/dashboard")} style={{
                 padding:"8px 22px",
                 background:"#0b2a6b",
                 borderRadius:9,color:"#fff",
                 textDecoration:"none",fontSize:14,fontWeight:700,
                 letterSpacing:"-.01em",
                 boxShadow:"0 2px 10px rgba(26,26,110,.25)",
-              }}>Sign In →</Link>
+              }}>Sign In →</a>
             </div>
           </nav>
 
@@ -213,7 +228,7 @@ export default function LandingPage() {
               }}>
                 Find Your Solution ↓
               </a>
-              <Link href="/site/demo" className="dl-btn" style={{
+              <Link href={link.site("/demo")} className="dl-btn" style={{
                 display:"inline-flex",alignItems:"center",gap:10,
                 padding:"15px 30px",
                 background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
@@ -223,7 +238,7 @@ export default function LandingPage() {
               }}>
                 Book a Free Demo
               </Link>
-              <Link href="/dashboard" className="web-btn" style={{
+              <a href={link.app("/dashboard")} className="web-btn" style={{
                 display:"inline-flex",alignItems:"center",gap:9,
                 padding:"15px 30px",
                 background:"#fff",
@@ -234,7 +249,7 @@ export default function LandingPage() {
                 boxShadow:"0 2px 8px rgba(0,0,0,.06)",
               }}>
                 🌐 Open Web App
-              </Link>
+              </a>
             </div>
 
             {/* stat pills */}
@@ -286,7 +301,7 @@ export default function LandingPage() {
                 const color = GROUP_COLOR[p.group];
                 return (
                   <li key={p.slug}>
-                    <Link href={`/site/products/${p.slug}`} className="sol-card">
+                    <Link href={link.site(`/products/${p.slug}`)} className="sol-card">
                       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
                         <span aria-hidden style={{
                           width:46,height:46,flexShrink:0,borderRadius:12,fontSize:22,
@@ -396,7 +411,7 @@ export default function LandingPage() {
               </p>
 
               <div style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:16}}>
-                <Link href="/site/demo" className="dl-btn" style={{
+                <Link href={link.site("/demo")} className="dl-btn" style={{
                   display:"inline-flex",alignItems:"center",gap:12,
                   padding:"16px 32px",
                   background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
@@ -406,7 +421,7 @@ export default function LandingPage() {
                 }}>
                   Book a Free Demo
                 </Link>
-                <Link href="/site/contact" className="web-btn" style={{
+                <Link href={link.site("/contact")} className="web-btn" style={{
                   display:"inline-flex",alignItems:"center",gap:12,
                   padding:"16px 32px",
                   background:"#fff",border:"1.5px solid #e2e8f0",
@@ -439,9 +454,9 @@ export default function LandingPage() {
             <p style={{fontSize:12,color:"#cbd5e1",letterSpacing:".01em"}}>
               Developed by <span style={{color:"#0b2a6b",fontWeight:600}}>HS Software and Technology</span>
             </p>
-            <Link href="/dashboard" style={{color:"#1e88e5",textDecoration:"none",fontSize:13,fontWeight:600}}>
+            <a href={link.app("/dashboard")} style={{color:"#1e88e5",textDecoration:"none",fontSize:13,fontWeight:600}}>
               Sign in to Web App →
-            </Link>
+            </a>
           </footer>
 
         </div>

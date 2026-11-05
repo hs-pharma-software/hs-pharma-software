@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { APP_LOGIN_URL } from "@/config/site";
+import { appLoginUrl } from "@/config/site";
 import { PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
 export const metadata: Metadata = {
@@ -21,7 +21,7 @@ export default async function HelpPage() {
   return (
     <>
       <PageIntro eyebrow="Help" title="Help for existing customers.">
-        <a href={APP_LOGIN_URL} className="font-medium text-[#1565c0] hover:underline">Sign in to the app</a>, or find a quick answer below.
+        <a href={appLoginUrl(base)} className="font-medium text-[#1565c0] hover:underline">Sign in to the app</a>, or find a quick answer below.
       </PageIntro>
       <Section title="Common questions">
         <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
