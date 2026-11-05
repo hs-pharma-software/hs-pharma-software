@@ -8,6 +8,10 @@ import { EMPTY_CLINIC_PROFILE, loadClinicProfile, type ClinicProfile } from "@/l
 import { loadClinicTemplate, saveClinicTemplate, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 import { DESIGN_FAMILIES, LAB_REPORT_DESIGNS, labDesign, type DesignFamily, type LabReportDesign } from "@/lib/labReportDesigns";
 import { LabReportDocument, SAMPLE_LAB_REPORT } from "./LabReportDocument";
+import { loadLogo } from "@/lib/printTemplates";
+
+/** Previews show a QR like the real report (it points to no real report). */
+const SAMPLE_QR = "https://app.mavin.pk/lab-report/?t=sample";
 
 /** Settings > Lab Report Templates: pick how printed lab reports look. Each
  * tile is the real report layout with made-up results, so what you choose is
@@ -16,6 +20,7 @@ import { LabReportDocument, SAMPLE_LAB_REPORT } from "./LabReportDocument";
 export function LabReportTemplatesCard({ editable }: { editable: boolean }) {
   const [t, setT] = useState<ClinicPrintTemplate | null>(null);
   const [profile, setProfile] = useState<ClinicProfile>(EMPTY_CLINIC_PROFILE);
+  const [logo, setLogo] = useState<string | null>(null);
   const [family, setFamily] = useState<DesignFamily | "All">("All");
   const [preview, setPreview] = useState<LabReportDesign | null>(null);
   const [saving, setSaving] = useState(false);
@@ -25,6 +30,7 @@ export function LabReportTemplatesCard({ editable }: { editable: boolean }) {
     if (!isTauri()) return;
     void loadClinicTemplate("lab").then(setT);
     void loadClinicProfile().then((p) => setProfile({ ...p, name: p.name || "Your Laboratory" }));
+    void loadLogo().then(setLogo).catch(() => setLogo(null));
   }, []);
 
   async function choose(design: LabReportDesign) {
@@ -79,7 +85,7 @@ export function LabReportTemplatesCard({ editable }: { editable: boolean }) {
                 {/* A scaled-down live report (A4 width 190 mm ≈ 718 px at 0.3). */}
                 <button type="button" onClick={() => setPreview(x)} aria-label={`Preview ${x.name}`} className="relative h-56 overflow-hidden bg-neutral-50 text-left">
                   <div className="pointer-events-none absolute left-1/2 top-3 w-[718px] origin-top -translate-x-1/2 scale-[0.3] bg-white p-4 shadow-sm">
-                    <LabReportDocument view={SAMPLE_LAB_REPORT} design={x} t={previewT} profile={profile} />
+                    <LabReportDocument view={SAMPLE_LAB_REPORT} design={x} t={previewT} profile={profile} logo={logo} qrUrl={SAMPLE_QR} />
                   </div>
                 </button>
                 <div className="flex items-center justify-between gap-2 border-t border-neutral-100 bg-white px-3 py-2">
@@ -106,7 +112,7 @@ export function LabReportTemplatesCard({ editable }: { editable: boolean }) {
         <Modal title={`${preview.name} (${preview.family})`} onClose={() => setPreview(null)} width="max-w-4xl">
           <div className="max-h-[70vh] overflow-auto rounded-lg bg-neutral-100 p-4">
             <div className="mx-auto bg-white p-6 shadow">
-              <LabReportDocument view={SAMPLE_LAB_REPORT} design={preview} t={{ ...previewT, paper: t?.paper ?? "a4" }} profile={profile} />
+              <LabReportDocument view={SAMPLE_LAB_REPORT} design={preview} t={{ ...previewT, paper: t?.paper ?? "a4" }} profile={profile} logo={logo} qrUrl={SAMPLE_QR} />
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between gap-2">

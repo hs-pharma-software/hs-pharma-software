@@ -1453,6 +1453,16 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Online lab reports for the diagnostic lab: each lab visit gets a random
+/// token; the QR code on its receipt and report opens the verified results
+/// (no login, the token is the key).
+fn schema_sql_v72() -> &'static str {
+    r#"
+    ALTER TABLE lab_visits ADD COLUMN public_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_lab_visits_public_token ON lab_visits(public_token) WHERE public_token IS NOT NULL;
+    "#
+}
+
 /// Queries: Contact Us and Book a Demo submissions from the public website,
 /// read by the platform owner in Super Admin > Queries. submission_key is
 /// unique, so a double-click or a retried request saves one query.
@@ -3457,6 +3467,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 71,
             description: "site_queries",
             sql: schema_sql_v71(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 72,
+            description: "lab_visit_public_token",
+            sql: schema_sql_v72(),
             kind: MigrationKind::Up,
         },
     ]

@@ -351,6 +351,7 @@ const MIGRATIONS = [
   { version: 69, label: 'contractor: Medicine / General invoices (admin switch, written batch)', statements: rustSchemaStatements(69) },
   { version: 70, label: 'Sub Supers: distributors, customer onboarding requests, password-setup links', statements: rustSchemaStatements(70) },
   { version: 71, label: 'Queries: website Contact Us / Book a Demo submissions', statements: rustSchemaStatements(71) },
+  { version: 72, label: 'Lab: online report token per lab visit (QR on receipt and report)', statements: rustSchemaStatements(72) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

@@ -32,6 +32,8 @@ export interface LabVisit extends TenantRow {
   status: string;
   notes: string | null;
   created_by: string | null;
+  /** Key of the online report (QR code on the receipt and report), v72. */
+  public_token?: string | null;
 }
 
 /** Lab visits; two registered at the same moment never share a visit number. */
@@ -92,6 +94,7 @@ export async function createLabVisit(input: {
       visit_no: await nextLabVisitNo(), patient_id: patient.id, referred_by: input.referredBy?.trim() || null, priority,
       status: "registered", notes: input.notes?.trim() || null, created_by: actorName(),
     });
+    await ensureLabVisitToken(visit.id).catch(() => null); // before v72 the visit simply has no QR
     const invoice = await invoicesRepo.create({
       invoice_no: await nextInvoiceNo(), date: localDate(), inv_on: paid >= payable ? "cash" : "credit", invoice_type: LAB_VISIT_INVOICE_TYPE,
       description: `Lab visit ${visit.visit_no}${visit.referred_by ? ` - Ref: ${visit.referred_by}` : ""}`, salesman_id: null, customer_id: null,
@@ -109,6 +112,38 @@ export async function createLabVisit(input: {
     }
     return { visit, invoice, orders };
   });
+}
+
+/** A random, unguessable key for the online report. */
+function newReportToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The visit's online-report key, created the first time it is needed. Null when
+ * the visit does not exist or the database is older than v72. */
+export async function ensureLabVisitToken(visitId: string): Promise<string | null> {
+  try {
+    const visit = await labVisitsRepo.get(visitId);
+    if (!visit) return null;
+    if (visit.public_token) return visit.public_token;
+    const token = newReportToken();
+    await labVisitsRepo.update(visitId, { public_token: token } as Partial<LabVisit>);
+    return token;
+  } catch (e) {
+    if (isMissingSchemaError(e)) return null;
+    throw e;
+  }
+}
+
+/** The lab visit of these orders (or of this bill), if they came from the lab reception. */
+export async function labVisitIdFor(by: { orderIds?: string[]; invoiceId?: string }): Promise<string | null> {
+  const rows = by.invoiceId
+    ? await dbSelect<{ v: string | null }>(`SELECT lab_visit_id AS v FROM clinic_orders WHERE invoice_id = ? AND lab_visit_id IS NOT NULL AND deleted_at IS NULL LIMIT 1`, [by.invoiceId])
+    : by.orderIds?.length
+      ? await dbSelect<{ v: string | null }>(`SELECT lab_visit_id AS v FROM clinic_orders WHERE id IN (${by.orderIds.map(() => "?").join(", ")}) AND lab_visit_id IS NOT NULL AND deleted_at IS NULL LIMIT 1`, by.orderIds)
+      : [];
+  return rows[0]?.v ?? null;
 }
 
 export interface LabVisitRow extends LabVisit {

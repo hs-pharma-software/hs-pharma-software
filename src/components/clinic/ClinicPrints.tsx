@@ -13,11 +13,14 @@ import {
 import { getConsultationWithPrescriptions, patientsRepo, doctorsRepo } from "@/lib/repo/clinic";
 import type { ClinicConsultation, ClinicDoctor, ClinicPatient, ClinicRxItem } from "@/lib/types-clinic";
 import { ClinicSlipHeader } from "./ClinicSlipHeader";
-import { parseComponents } from "@/config/labPanels";
 import { PAPERS } from "@/lib/printTemplates";
 import { PAPER_WIDTH, loadClinicTemplate, type ClinicDoc, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 import { labDesign } from "@/lib/labReportDesigns";
-import { LabReportDocument, type LabReportView } from "./LabReportDocument";
+import { LabReportDocument } from "./LabReportDocument";
+import { buildLabReportView, labReportUrl, publicOrigin } from "@/lib/labReportView";
+import { ensureLabVisitToken, labVisitIdFor } from "@/lib/repo/lab";
+import { loadLogo } from "@/lib/printTemplates";
+
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -87,40 +90,30 @@ export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { or
     void getClinicReports(orderIds).then(setR).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The business logo, and the online report's QR code when these tests came from a lab visit.
+  const [logo, setLogo] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    void loadLogo().then(setLogo).catch(() => setLogo(null));
+    void labVisitIdFor({ orderIds })
+      .then((visitId) => (visitId ? ensureLabVisitToken(visitId) : null))
+      .then((token) => setQrUrl(token ? labReportUrl(publicOrigin(), token) : null))
+      .catch(() => setQrUrl(null));
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const t = useTemplate("lab");
-  const { areaRef, printing, print } = usePrint(autoPrint, Boolean(r && profile && t), t?.paper);
+  const { areaRef, printing, print } = usePrint(autoPrint, Boolean(r && profile && t && qrUrl !== undefined), t?.paper);
   const orders = r?.orders ?? [];
   const lab = orders.filter((o) => o.kind === "lab");
   const radiology = orders.filter((o) => o.kind === "radiology");
-  const reportedBy = [...new Set(orders.map((o) => o.reported_by).filter(Boolean))].join(", ");
-  // A diagnostic lab: the pathologist verified the results, with any comments.
-  const verified = orders.some((o) => o.verified_by);
-  const comments = [...new Set(orders.map((o) => o.pathologist_note).filter((n): n is string => Boolean(n) && !n!.startsWith("Recheck:")))];
-  const byLabel = verified ? "Verified by" : "Reported by";
-  const lastReported = orders.map((o) => o.reported_at ?? "").sort().at(-1) || "—";
-  const view: LabReportView | null = r ? {
-    title: lab.length ? "Laboratory Report" : "Radiology Report",
-    info: [
-      { label: "Patient", value: r.patient?.name ?? "—", strong: true },
-      { label: "MRN", value: r.patient?.mrn ?? "—" },
-      { label: "Gender / DOB", value: [r.patient?.gender, r.patient?.dob].filter(Boolean).join(" / ") || "—" },
-      { label: "Referred by", value: r.doctor ? `Dr. ${r.doctor.name}` : "—" },
-      { label: orders.length > 1 ? "Orders" : "Order", value: orders.map((o) => o.order_no).join(", ") },
-      { label: "Reported", value: lastReported },
-    ],
-    lab: lab.map((o) => ({
-      id: o.id, name: o.name, value: o.result_value, unit: o.unit, range: o.ref_range, flag: o.flag,
-      parts: parseComponents(o.components).map((c) => ({ key: c.key, name: c.name, group: c.group, value: c.value, unit: c.unit, range: c.ref_range, flag: c.flag })),
-    })),
-    radiology: radiology.map((o) => ({ id: o.id, name: o.name, findings: o.findings, impression: o.impression })),
-    comments,
-    signedBy: reportedBy ? `${byLabel}: ${reportedBy}` : t?.signature ? byLabel : `${byLabel}: —`,
-  } : null;
+  const view = r && t ? buildLabReportView({
+    orders, patient: r.patient ? { name: r.patient.name, mrn: r.patient.mrn ?? null, gender: r.patient.gender ?? null, dob: r.patient.dob ?? null } : null,
+    referredBy: r.doctor ? `Dr. ${r.doctor.name}` : null, signature: t.signature,
+  }) : null;
   return (
     <Modal title={orders.length ? `${radiology.length && !lab.length ? "Radiology report" : "Lab report"}: ${r?.patient?.name ?? ""}` : "Report"} onClose={onClose} width="max-w-3xl">
       {!r || !profile || !t || !view ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <LabReportDocument view={view} design={labDesign(t.design)} t={t} profile={profile} areaRef={areaRef} />
+          <LabReportDocument view={view} design={labDesign(t.design)} t={t} profile={profile} areaRef={areaRef} logo={logo} qrUrl={qrUrl ?? null} />
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>

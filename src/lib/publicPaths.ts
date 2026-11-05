@@ -6,6 +6,6 @@ import { isSiteHost } from "@/config/site";
  * address the proxy rewrote). */
 export function isPublicPath(pathname: string | null | undefined): boolean {
   const p = (pathname ?? "").replace(/\/+$/, "") || "/";
-  if (p === "/" || p === "/report" || p === "/set-password" || p === "/site" || p.startsWith("/site/")) return true;
+  if (p === "/" || p === "/report" || p === "/lab-report" || p === "/set-password" || p === "/site" || p.startsWith("/site/")) return true;
   return typeof window !== "undefined" && isSiteHost(window.location.host);
 }

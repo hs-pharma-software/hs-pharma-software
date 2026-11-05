@@ -15,6 +15,9 @@ import { submitServiceInvoiceToFbr, type ServiceLine } from "@/lib/serviceFbr";
 import { useCan } from "@/lib/actionPermissions";
 import { useAuthStore } from "@/store/authStore";
 import type { Invoice } from "@/lib/types2";
+import QRCode from "react-qr-code";
+import { LAB_VISIT_INVOICE_TYPE, ensureLabVisitToken, labVisitIdFor } from "@/lib/repo/lab";
+import { labReportUrl, publicOrigin } from "@/lib/labReportView";
 
 /** A service bill (lab visit, banquet booking) printed with the business's
  * own invoice template and theme (General Settings > Print Templates), the
@@ -39,9 +42,18 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
   const printed = useRef(false);
   const tenantName = useAuthStore((s) => s.currentTenant?.name ?? "");
   const canFbr = useCan("invoice.fbr_submit");
+  // A lab visit's bill carries the QR code of its online report (undefined while loading).
+  const [reportUrl, setReportUrl] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    void invoicesRepo.get(invoiceId).then(setInv);
+    void invoicesRepo.get(invoiceId).then((i) => {
+      setInv(i);
+      if (i?.invoice_type !== LAB_VISIT_INVOICE_TYPE) return setReportUrl(null);
+      void labVisitIdFor({ invoiceId })
+        .then((visitId) => (visitId ? ensureLabVisitToken(visitId) : null))
+        .then((token) => setReportUrl(token ? labReportUrl(publicOrigin(), token) : null))
+        .catch(() => setReportUrl(null));
+    });
     if (!isTauri()) {
       setTemplate(structuredClone(DEFAULT_TEMPLATES.a4));
       return;
@@ -61,7 +73,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
     }
   }
   useEffect(() => {
-    if (!autoPrint || !inv || !template || printed.current) return;
+    if (!autoPrint || !inv || !template || reportUrl === undefined || printed.current) return;
     printed.current = true;
     requestAnimationFrame(() => void print());
   });
@@ -117,6 +129,14 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
           <div className="max-h-[65vh] overflow-auto">
             <div ref={areaRef} className="print-area mx-auto w-fit bg-white p-3 print:p-0">
               <InvoicePrintLayout template={template} data={data} />
+              {reportUrl && (
+                <div className="mx-auto mt-3 flex w-fit items-center gap-3 border-t border-dashed border-neutral-400 pt-3 text-neutral-800">
+                  <QRCode value={reportUrl} size={template.paper === "thermal" ? 88 : 96} style={{ width: template.paper === "thermal" ? 88 : 96, height: template.paper === "thermal" ? 88 : 96 }} viewBox="0 0 256 256" />
+                  <p className="max-w-[46mm] text-[11px] leading-snug">
+                    <b>Scan to get your report online.</b><br />Results appear once the pathologist has verified them.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           {message && <p className={`mt-2 whitespace-pre-line text-sm ${message.ok ? "text-emerald-700" : "text-rose-600"}`}>{message.text}</p>}

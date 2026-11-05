@@ -1,24 +1,15 @@
 "use client";
 
 import { Fragment } from "react";
+import QRCode from "react-qr-code";
+import type { LabReportView } from "@/lib/labReportView";
 import type { ClinicProfile } from "@/lib/clinicProfile";
 import { PAPERS } from "@/lib/printTemplates";
 import { PAPER_WIDTH, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 import type { LabReportDesign } from "@/lib/labReportDesigns";
 
-export interface LabPart { key: string; name: string; group: string | null; value: string; unit: string | null; range: string | null; flag: string | null }
-export interface LabLine { id: string; name: string; value: string | null; unit: string | null; range: string | null; flag: string | null; parts: LabPart[] }
-
-/** What a lab report says, independent of how it looks. */
-export interface LabReportView {
-  title: string;
-  info: { label: string; value: string; strong?: boolean }[];
-  lab: LabLine[];
-  radiology: { id: string; name: string; findings: string | null; impression: string | null }[];
-  comments: string[];
-  /** e.g. "Verified by: Dr. Sana" (signature line, or the closing line when there is none). */
-  signedBy: string;
-}
+export type { LabPart, LabLine, LabReportView } from "@/lib/labReportView";
+export { SAMPLE_LAB_REPORT } from "@/lib/labReportView";
 
 const FONT: Record<LabReportDesign["font"], string> = {
   sans: "ui-sans-serif, system-ui, 'Segoe UI', Arial, sans-serif",
@@ -41,12 +32,16 @@ function Flag({ flag, design }: { flag: string | null | undefined; design: LabRe
 
 /** The report, laid out by a design: header, title, patient details, results,
  * radiology, comments, signature and footer. Prints on the template's paper. */
-export function LabReportDocument({ view, design, t, profile, areaRef }: {
+export function LabReportDocument({ view, design, t, profile, areaRef, logo = null, qrUrl = null }: {
   view: LabReportView;
   design: LabReportDesign;
   t: ClinicPrintTemplate;
   profile: ClinicProfile;
   areaRef?: React.RefObject<HTMLDivElement | null>;
+  /** The business logo (Settings > Print Templates), shown in the header. */
+  logo?: string | null;
+  /** Address of the online copy: printed as a QR code. */
+  qrUrl?: string | null;
 }) {
   const p = PAPERS.find((x) => x.id === t.paper)!;
   const narrow = t.paper === "thermal";
@@ -64,10 +59,18 @@ export function LabReportDocument({ view, design, t, profile, areaRef }: {
       }}
     >
       {design.header === "band" && <div className="-mx-0 mb-2 h-2 rounded-sm" style={{ background: acc }} />}
-      <p className={`font-bold leading-tight ${narrow ? "text-base" : "text-xl"}`} style={{ color: design.header === "plain" ? undefined : acc }}>{profile.name || "Laboratory"}</p>
-      {profile.address && <p className="text-[0.85em] text-neutral-700">{profile.address}</p>}
-      {profile.contact && <p className="text-[0.85em] text-neutral-700">Contact: {profile.contact}</p>}
-      {t.showIds && ids && <p className="text-[0.8em] text-neutral-600">{ids}</p>}
+      <div className={`flex items-center gap-3 ${left || design.header === "sidebar" ? "" : "justify-center"} ${narrow ? "flex-col" : ""}`}>
+        {logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" className={`${narrow ? "max-h-10" : "max-h-16"} max-w-[30%] shrink-0 object-contain`} />
+        )}
+        <div>
+          <p className={`font-bold leading-tight ${narrow ? "text-base" : "text-xl"}`} style={{ color: design.header === "plain" ? undefined : acc }}>{profile.name || "Laboratory"}</p>
+          {profile.address && <p className="text-[0.85em] text-neutral-700">{profile.address}</p>}
+          {profile.contact && <p className="text-[0.85em] text-neutral-700">Contact: {profile.contact}</p>}
+          {t.showIds && ids && <p className="text-[0.8em] text-neutral-600">{ids}</p>}
+        </div>
+      </div>
     </div>
   );
 
@@ -186,6 +189,14 @@ export function LabReportDocument({ view, design, t, profile, areaRef }: {
           {view.comments.map((c) => <p key={c} className="whitespace-pre-line">{c}</p>)}
         </div>
       )}
+      {qrUrl && (
+        <div className="mt-5 flex items-center gap-3">
+          <div className="shrink-0 rounded border p-1" style={{ borderColor: acc }}>
+            <QRCode value={qrUrl} size={narrow ? 72 : 84} style={{ width: narrow ? 72 : 84, height: narrow ? 72 : 84 }} viewBox="0 0 256 256" />
+          </div>
+          <p className="text-[0.8em] leading-snug text-neutral-600">Scan to view this report online.<br />Only verified results are shown.</p>
+        </div>
+      )}
       {t.signature ? (
         <div className="mt-10 flex justify-end">
           <div className="min-w-[45%] border-t pt-1 text-center text-xs text-neutral-700" style={{ borderColor: acc }}>{view.signedBy}</div>
@@ -197,31 +208,3 @@ export function LabReportDocument({ view, design, t, profile, areaRef }: {
     </div>
   );
 }
-
-/** A made-up report to preview designs (no real patient). */
-export const SAMPLE_LAB_REPORT: LabReportView = {
-  title: "Laboratory Report",
-  info: [
-    { label: "Patient", value: "Sample Patient", strong: true },
-    { label: "MRN", value: "MRN-000123" },
-    { label: "Gender / DOB", value: "Male / 1990-05-14" },
-    { label: "Referred by", value: "Dr. Sample Doctor" },
-    { label: "Order", value: "LAB-20261105-001" },
-    { label: "Reported", value: "2026-11-05 10:30" },
-  ],
-  lab: [
-    {
-      id: "cbc", name: "Complete Blood Count (CBC)", value: null, unit: null, range: null, flag: null,
-      parts: [
-        { key: "hb", name: "Haemoglobin (Hb)", group: "Red cells", value: "12.1", unit: "g/dL", range: "13.0-17.0", flag: "L" },
-        { key: "rbc", name: "RBC count", group: "Red cells", value: "4.8", unit: "×10⁶/µL", range: "4.5-5.5", flag: "N" },
-        { key: "tlc", name: "Total Leucocyte Count", group: "White cells", value: "12.6", unit: "×10³/µL", range: "4.0-11.0", flag: "H" },
-        { key: "plt", name: "Platelet count", group: "Platelets", value: "250", unit: "×10³/µL", range: "150-400", flag: "N" },
-      ],
-    },
-    { id: "fbs", name: "Blood Sugar (Fasting)", value: "96", unit: "mg/dL", range: "70-110", flag: "N", parts: [] },
-  ],
-  radiology: [],
-  comments: ["Mild anaemia with raised TLC; correlate clinically."],
-  signedBy: "Verified by: Dr. Sample Pathologist",
-};
