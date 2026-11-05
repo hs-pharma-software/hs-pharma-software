@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SITE_PUBLISHED, SITE_URL } from "@/config/site";
 import { DraftNotice, SiteFooter, SiteHeader, siteBase } from "@/components/site/chrome";
+import { SiteAnalytics } from "@/components/site/SiteAnalytics";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -22,6 +23,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <SiteHeader base={base} />
       <main id="main" className="flex-1">{children}</main>
       <SiteFooter base={base} />
+      <SiteAnalytics />
     </div>
   );
 }

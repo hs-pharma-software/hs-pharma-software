@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PRODUCT_GROUPS, SITE_PRODUCTS, productFacts, type ProductGroup } from "@/config/siteProducts";
 import { APP_URL, isSiteHost } from "@/config/site";
+import { SiteAnalytics } from "@/components/site/SiteAnalytics";
 
 /** Where this page's links go. On mavin.pk the site pages have clean
  * addresses and the app lives on app.mavin.pk; on the app's own address the
@@ -35,6 +36,7 @@ export default function LandingPage() {
   const solutions = SITE_PRODUCTS.filter((p) => group === "All" || p.group === group);
   return (
     <>
+      <SiteAnalytics />
       <style>{`
         @keyframes float {
           0%,100%{transform:translateY(0);opacity:.5}

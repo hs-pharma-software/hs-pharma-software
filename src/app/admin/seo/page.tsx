@@ -7,9 +7,11 @@ import { Input, Select } from "@/components/ui/Field";
 import { serverJson } from "@/lib/serverMode";
 import { subSupersAvailable, when } from "@/lib/subSupersClient";
 import { ListState, Notice, errText } from "@/components/subsupers/shared";
+import { GoogleSetupGuide, SearchPerformance, type SearchDashboard } from "@/components/seo/SearchPerformance";
 
-/** Super Admin > SEO: the Mavin SEO Manager. Phase 1 runs the scheduler,
- * kill switch, health check and logs; later phases fill the other tabs. */
+/** Super Admin > SEO: the Mavin SEO Manager. Scheduler, kill switch and logs
+ * (phase 1), technical audit (2), Google search data (3); later phases fill
+ * the remaining tabs. */
 const TABS = [
   ["overview", "SEO Overview"], ["keywords", "Keywords"], ["audit", "Technical Audit"], ["content", "Content Studio"],
   ["schedule", "Automation Schedule"], ["recommendations", "Recommendations"], ["reports", "Reports"], ["activity", "Activity Logs"], ["settings", "Settings"],
@@ -61,13 +63,17 @@ export default function SeoManagerPage() {
 
 function OverviewTab({ onOpen }: { onOpen: (t: Tab) => void }) {
   const [o, setO] = useState<Overview | null>(null);
+  const [d, setD] = useState<SearchDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const load = useCallback(() => { setError(null); seoCall<Overview>("overview").then(setO).catch((e) => setError(errText(e))); }, []);
+  const load = useCallback(() => {
+    setError(null);
+    Promise.all([seoCall<Overview>("overview"), seoCall<SearchDashboard>("dashboard")]).then(([ov, dash]) => { setO(ov); setD(dash); }).catch((e) => setError(errText(e)));
+  }, []);
   useEffect(load, [load]);
   if (error || !o) return <ListState loading={!error} error={error} empty={false} emptyText="" onRetry={load} />;
   const configured = o.integrations.filter((i) => i.configured).length;
   const tiles: [string, string, Tab][] = [
-    ["Search data", o.metricsDays ? `${o.metricsDays} days` : "None yet", "overview"],
+    ["Days of search data", o.metricsDays ? `${o.metricsDays} days` : "None yet", "schedule"],
     ["Open audit findings", String(o.openFindings), "audit"],
     ["Recommendations to review", String(o.openRecommendations), "recommendations"],
     ["Drafts to review", String(o.drafts), "content"],
@@ -83,6 +89,7 @@ function OverviewTab({ onOpen }: { onOpen: (t: Tab) => void }) {
           site content and open it (NEXT_PUBLIC_SITE_PUBLISHED=1).
         </Notice>
       )}
+      {d && <SearchPerformance d={d} onSetup={() => onOpen("settings")} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map(([label, value, to]) => (
           <button key={label} type="button" onClick={() => onOpen(to)} className={`${card} text-left transition hover:ring-[var(--accent)]`}>
@@ -298,6 +305,7 @@ function SettingsTab() {
           Public site: {s.sitePublished ? <b className="text-emerald-700">open to search engines</b> : <b className="text-amber-700">closed (draft)</b>}. App, Super Admin and Sub Super pages are always kept out of search.
         </p>
       </div>
+      <GoogleSetupGuide />
       <div className={card}>
         <p className="mb-2 text-sm font-semibold text-neutral-800">Integrations</p>
         <p className="mb-3 text-xs text-neutral-500">Secrets are set in Vercel → Settings → Environment Variables, never here. Only whether each one is set is shown.</p>

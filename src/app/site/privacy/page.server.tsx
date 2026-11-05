@@ -18,6 +18,9 @@ export default function PrivacyPage() {
           <div>
             <h2 className="text-base font-semibold text-[#0b2a6b]">What this website collects</h2>
             <p className="mt-2">When you request a demo or contact us, we receive the name, business name, business type, number of branches, phone, email and message you enter. We use them only to reply and to arrange a demo. <ReviewMark>retention period for enquiries</ReviewMark></p>
+            {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ? (
+              <p className="mt-2">This website uses Google Analytics to count visits and see which pages people find through search. It sets cookies in your browser and sends page addresses and device information to Google; it is not used inside the MAVIN.pk application. <ReviewMark>consent and cookie wording</ReviewMark></p>
+            ) : null}
           </div>
           <div>
             <h2 className="text-base font-semibold text-[#0b2a6b]">Where business data is kept</h2>

@@ -5,6 +5,8 @@ import type { JobContext, JobDef } from "./engine";
 import { integrationStatus, sitePublished } from "./integrations";
 import { runTechnicalAudit } from "./technical";
 import { runPageSpeed } from "./pagespeed";
+import { runGscSync } from "./gsc";
+import { runGa4Sync } from "./ga4";
 import { APP_URL, SITE_PAGES, SITE_URL } from "../../config/site";
 import { SITE_PRODUCTS } from "../../config/siteProducts";
 
@@ -36,8 +38,14 @@ export const SEO_JOBS: JobDef[] = [
     id: "pagespeed", label: "Core Web Vitals (PageSpeed)", description: "Mobile performance and Core Web Vitals of the key public pages.", defaultCadence: "weekly", phase: 2,
     run: (ctx) => runPageSpeed(ctx, { urls: SPEED_PATHS.map((p) => `${SITE_URL}${p === "/" ? "/" : p}`) }),
   },
-  { id: "gsc_sync", label: "Search Console import", description: "Daily clicks, impressions, CTR, position and indexing from Google Search Console.", defaultCadence: "daily", phase: 3 },
-  { id: "ga4_sync", label: "Analytics import", description: "Organic visits and conversions from Google Analytics 4, where configured.", defaultCadence: "daily", phase: 3 },
+  {
+    id: "gsc_sync", label: "Search Console import", description: "Daily clicks, impressions, CTR, position and indexing from Google Search Console.", defaultCadence: "daily", phase: 3,
+    run: (ctx) => runGscSync(ctx, { siteUrl: process.env.GSC_SITE_URL?.trim() ?? "", published: sitePublished(), inspectUrls: PUBLIC_PATHS.map((p) => `${SITE_URL}${p}`) }),
+  },
+  {
+    id: "ga4_sync", label: "Analytics import", description: "Organic visits and conversions from Google Analytics 4, where configured.", defaultCadence: "daily", phase: 3,
+    run: (ctx) => runGa4Sync(ctx, { propertyId: process.env.GA4_PROPERTY_ID ?? "" }),
+  },
   { id: "keyword_research", label: "Keyword research", description: "Pakistan-focused keyword candidates with intent and evidence; no invented volumes.", defaultCadence: "weekly", phase: 4 },
   { id: "content_proposals", label: "Content proposals", description: "Draft landing pages, articles and metadata improvements for review.", defaultCadence: "weekly", phase: 5 },
   { id: "monthly_report", label: "Monthly report", description: "Performance, technical health and progress on recommendations.", defaultCadence: "monthly", phase: 6 },

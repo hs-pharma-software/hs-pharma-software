@@ -5,6 +5,8 @@ import * as seo from "@/server/seo/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// "Run now" waits for the job (a first Search Console import can take a while).
+export const maxDuration = 60;
 
 export async function POST(req: Request): Promise<Response> {
   try {
@@ -17,6 +19,7 @@ export async function POST(req: Request): Promise<Response> {
     let result: unknown;
     switch (b.action) {
       case "overview": result = await seo.overview(sql); break;
+      case "dashboard": result = await seo.searchDashboard(sql); break;
       case "jobs": result = await seo.listJobs(sql); break;
       case "updateJob": result = await seo.updateJob(sql, actor, id, { enabled: b.enabled, cadence: b.cadence }); break;
       case "runNow": result = await seo.runNow(sql, actor, id); break;

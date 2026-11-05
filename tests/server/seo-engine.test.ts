@@ -106,10 +106,10 @@ test("the scheduler runs each due, enabled job once a day", async () => {
 
 test("jobs of later phases are listed but cannot be switched on or run", async () => {
   const list = await listJobs(sql);
-  assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), ["health_check", "technical_audit", "pagespeed"]);
-  await assert.rejects(updateJob(sql, "a", "gsc_sync", { enabled: true }), /phase 3/);
+  assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), ["health_check", "technical_audit", "pagespeed", "gsc_sync", "ga4_sync"]);
+  await assert.rejects(updateJob(sql, "a", "keyword_research", { enabled: true }), /phase 4/);
   await assert.rejects(updateJob(sql, "a", "health_check", { cadence: "hourly" }), /daily, weekly or monthly/);
-  assert.equal((await runJob(sql, SEO_JOBS, "gsc_sync", "manual", "a", { sleep: noSleep })).status, "skipped");
+  assert.equal((await runJob(sql, SEO_JOBS, "keyword_research", "manual", "a", { sleep: noSleep })).status, "skipped");
 });
 
 test("the health check and the scheduler never touch business data", async () => {
@@ -119,7 +119,7 @@ test("the health check and the scheduler never touch business data", async () =>
   const before = snapshot();
   const r = await runJob(sql, SEO_JOBS, "health_check", "manual", "a", { sleep: noSleep });
   assert.equal(r.status, "succeeded");
-  assert.equal((r.summary as { tables: number }).tables, 10);
+  assert.equal((r.summary as { tables: number }).tables, 11);
   await runDueJobs(sql, SEO_JOBS, { sleep: noSleep });
   assert.deepEqual(snapshot(), before);
 });

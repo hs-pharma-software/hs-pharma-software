@@ -216,6 +216,8 @@ export function proposalFor(f: Finding): { title: string; detail: string; impact
     cwv_lcp: ["Speed up the main content", "The largest element appears too late on mobile; compress images and defer heavy scripts.", "medium"],
     cwv_inp: ["Make the page respond faster", "Taps take too long to show a response on mobile; reduce long-running scripts.", "medium"],
     cwv_cls: ["Stop layout shifts", "Reserve space for images and late content so the page does not jump.", "medium"],
+    index_not_indexed: ["Get the page into Google", "Open the page in Search Console's URL Inspection, fix the reason shown, then request indexing there.", "high"],
+    index_canonical_mismatch: ["Check which page Google treats as the original", "Google picked another address as this page's original; make the canonical and internal links agree.", "medium"],
   };
   const p = P[f.checkId];
   return p ? { title: p[0], detail: p[1], impact: p[2] } : null;
@@ -283,7 +285,7 @@ const MAX_LINKS = 150;
 const CONCURRENCY = 6;
 
 /** Runs fn over items, a few at a time, keeping the order of results. */
-async function pool<T, R>(items: T[], fn: (x: T) => Promise<R>, size = CONCURRENCY): Promise<R[]> {
+export async function pool<T, R>(items: T[], fn: (x: T) => Promise<R>, size = CONCURRENCY): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {

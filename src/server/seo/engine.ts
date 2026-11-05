@@ -33,6 +33,10 @@ export interface JobDef {
   run?: (ctx: JobContext) => Promise<unknown>;
 }
 
+/** Thrown by a job that cannot run yet (e.g. an integration is not set up):
+ * recorded as "skipped" with the reason, not retried and not a failure. */
+export class JobSkip extends Error {}
+
 export const KILL_SWITCH_KEY = "kill_switch";
 const LOCK_MINUTES = 15;
 export const MAX_ATTEMPTS = 3;
@@ -127,12 +131,17 @@ export async function runJob(sql: Sql, jobs: JobDef[], jobId: string, trigger: T
   let lastError = "";
   let summary: unknown;
   let ok = false;
-  while (attempts < MAX_ATTEMPTS && !ok) {
+  let skipped: string | null = null;
+  while (attempts < MAX_ATTEMPTS && !ok && !skipped) {
     attempts++;
     try {
       summary = await def.run(ctx);
       ok = true;
     } catch (e) {
+      if (e instanceof JobSkip) {
+        skipped = e.message;
+        break;
+      }
       lastError = e instanceof Error ? e.message : String(e);
       await logActivity(sql, { runId, actor, level: attempts < MAX_ATTEMPTS ? "warn" : "error", action: "attempt_failed", detail: { job: jobId, attempt: attempts, error: lastError } });
       // The kill switch also stops retries.
@@ -140,20 +149,24 @@ export async function runJob(sql: Sql, jobs: JobDef[], jobId: string, trigger: T
       else break;
     }
   }
-  const status = ok ? "succeeded" : "failed";
+  const status = skipped ? "skipped" : ok ? "succeeded" : "failed";
+  if (skipped) summary = skipped;
   const finished = iso(new Date());
   await sql.batch([
     {
       sql: `UPDATE seo_job_runs SET status = ?, attempts = ?, finished_at = ?, summary = ?, error = ? WHERE id = ?`,
-      args: [status, attempts, finished, summary === undefined ? null : JSON.stringify(summary).slice(0, 8000), ok ? null : lastError.slice(0, 2000), runId],
+      args: [status, attempts, finished, summary === undefined ? null : (typeof summary === "string" ? summary : JSON.stringify(summary)).slice(0, 8000), ok || skipped ? null : lastError.slice(0, 2000), runId],
     },
     {
       sql: `UPDATE seo_jobs SET lock_until = NULL, last_run_at = ?, last_status = ?, last_success_at = CASE WHEN ? = 'succeeded' THEN ? ELSE last_success_at END, updated_at = ? WHERE id = ?`,
       args: [finished, status, status, finished, finished, jobId],
     },
   ]);
-  await logActivity(sql, { runId, actor, level: ok ? "info" : "error", action: ok ? "run_succeeded" : "run_failed", detail: { job: jobId, attempts, ...(ok ? {} : { error: lastError }) } });
-  return { runId, status, attempts, ...(ok ? { summary } : { error: lastError }) };
+  await logActivity(sql, {
+    runId, actor, level: ok ? "info" : skipped ? "warn" : "error", action: skipped ? "run_skipped" : ok ? "run_succeeded" : "run_failed",
+    detail: { job: jobId, attempts, ...(skipped ? { reason: skipped } : ok ? {} : { error: lastError }) },
+  });
+  return { runId, status, attempts, ...(ok || skipped ? { summary } : { error: lastError }) };
 }
 
 /** The scheduler's entry point: runs every enabled job that is due. */

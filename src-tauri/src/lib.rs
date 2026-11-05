@@ -1453,6 +1453,25 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// SEO Manager phase 3: daily website visits by channel from Google
+/// Analytics 4 (organic search among them). Platform table, no business data.
+fn schema_sql_v74() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS seo_analytics_daily (
+        id TEXT PRIMARY KEY,
+        day TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        sessions INTEGER NOT NULL DEFAULT 0,
+        engaged_sessions INTEGER NOT NULL DEFAULT 0,
+        key_events REAL NOT NULL DEFAULT 0,
+        source TEXT NOT NULL,
+        fetched_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_seo_analytics ON seo_analytics_daily(day, source, channel);
+    CREATE INDEX IF NOT EXISTS idx_seo_metrics_source_day ON seo_metrics_daily(source, day);
+    "#
+}
+
 /// Mavin SEO Manager (Super Admin > SEO). Platform tables only: they never
 /// reference or change business (tenant) data. Jobs are read-only audits and
 /// drafts; anything that changes the site waits for approval (a pull request).
@@ -3603,6 +3622,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 73,
             description: "seo_manager",
             sql: schema_sql_v73(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 74,
+            description: "seo_analytics",
+            sql: schema_sql_v74(),
             kind: MigrationKind::Up,
         },
     ]

@@ -5,6 +5,9 @@ import type { Sql } from "../subSupers";
 import { KILL_SWITCH_KEY, ensureJobs, getSetting, isDue, isKilled, logActivity, runJob, setSetting, type Cadence } from "./engine";
 import { integrationStatus, sitePublished } from "./integrations";
 import { SEO_JOBS } from "./jobs";
+import { GSC_SOURCES, INDEX_SUMMARY_KEY } from "./gsc";
+import { GA4_SOURCE } from "./ga4";
+import { isoDay } from "./google";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -25,6 +28,88 @@ export async function overview(sql: Sql) {
     drafts: await count(sql, `SELECT COUNT(*) AS n FROM seo_content_drafts WHERE status IN ('draft','in_review')`),
     keywords: await count(sql, `SELECT COUNT(*) AS n FROM seo_keywords`),
     metricsDays: await count(sql, `SELECT COUNT(DISTINCT day) AS n FROM seo_metrics_daily`),
+  };
+}
+
+const WINDOW = 28;
+const SERIES_DAYS = 90;
+const num = (v: unknown) => Number(v ?? 0) || 0;
+
+/** Search performance for the Overview: the last 28 days of Search Console data
+ * against the 28 before, daily series, top queries and pages, index status and
+ * GA4 organic visits. Only imported numbers; empty when nothing is imported. */
+export async function searchDashboard(sql: Sql) {
+  const latest = (await sql.execute(`SELECT MAX(day) AS d FROM seo_metrics_daily WHERE source = ?`, [GSC_SOURCES.total])).rows[0]?.d as string | null;
+  const ga4Latest = (await sql.execute(`SELECT MAX(day) AS d FROM seo_analytics_daily WHERE source = ?`, [GA4_SOURCE])).rows[0]?.d as string | null;
+  const range = (end: string, back: number) => {
+    const e = new Date(`${end}T00:00:00Z`);
+    return { to: isoDay(e, -back * WINDOW), from: isoDay(e, -back * WINDOW - WINDOW + 1) };
+  };
+  const totals = async (r: { from: string; to: string }) => {
+    const x = (await sql.execute(
+      `SELECT SUM(clicks) AS c, SUM(impressions) AS i, SUM(position * impressions) AS p, COUNT(*) AS days FROM seo_metrics_daily WHERE source = ? AND day >= ? AND day <= ?`,
+      [GSC_SOURCES.total, r.from, r.to],
+    )).rows[0] ?? {};
+    const clicks = num(x.c);
+    const impressions = num(x.i);
+    return { ...r, days: num(x.days), clicks, impressions, ctr: impressions ? clicks / impressions : null, position: impressions ? num(x.p) / impressions : null };
+  };
+  const top = async (source: string, col: "query" | "page", r: { from: string; to: string }) =>
+    (await sql.execute(
+      `SELECT ${col} AS key, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position
+       FROM seo_metrics_daily WHERE source = ? AND day >= ? AND day <= ? AND ${col} IS NOT NULL
+       GROUP BY ${col} ORDER BY clicks DESC, impressions DESC LIMIT 15`,
+      [source, r.from, r.to],
+    )).rows.map((x) => ({ key: String(x.key), clicks: num(x.clicks), impressions: num(x.impressions), ctr: num(x.impressions) ? num(x.clicks) / num(x.impressions) : null, position: x.position === null ? null : num(x.position) }));
+
+  let search = null;
+  if (latest) {
+    const cur = range(latest, 0);
+    search = {
+      latest,
+      current: await totals(cur),
+      previous: await totals(range(latest, 1)),
+      series: (await sql.execute(
+        `SELECT day, clicks, impressions FROM seo_metrics_daily WHERE source = ? AND day > ? ORDER BY day`,
+        [GSC_SOURCES.total, isoDay(new Date(`${latest}T00:00:00Z`), -SERIES_DAYS)],
+      )).rows.map((x) => ({ day: String(x.day), clicks: num(x.clicks), impressions: num(x.impressions) })),
+      topQueries: await top(GSC_SOURCES.query, "query", cur),
+      topPages: await top(GSC_SOURCES.page, "page", cur),
+    };
+  }
+
+  let analytics = null;
+  if (ga4Latest) {
+    const cur = range(ga4Latest, 0);
+    const prev = range(ga4Latest, 1);
+    const organic = async (r: { from: string; to: string }) => num((await sql.execute(
+      `SELECT SUM(sessions) AS n FROM seo_analytics_daily WHERE source = ? AND channel = 'Organic Search' AND day >= ? AND day <= ?`, [GA4_SOURCE, r.from, r.to],
+    )).rows[0]?.n);
+    analytics = {
+      latest: ga4Latest,
+      organicSessions: await organic(cur),
+      previousOrganicSessions: await organic(prev),
+      channels: (await sql.execute(
+        `SELECT channel, SUM(sessions) AS sessions, SUM(engaged_sessions) AS engaged, SUM(key_events) AS key_events FROM seo_analytics_daily
+         WHERE source = ? AND day >= ? AND day <= ? GROUP BY channel ORDER BY sessions DESC`,
+        [GA4_SOURCE, cur.from, cur.to],
+      )).rows.map((x) => ({ channel: String(x.channel), sessions: num(x.sessions), engaged: num(x.engaged), keyEvents: num(x.key_events) })),
+      series: (await sql.execute(
+        `SELECT day, SUM(sessions) AS sessions FROM seo_analytics_daily WHERE source = ? AND channel = 'Organic Search' AND day > ? GROUP BY day ORDER BY day`,
+        [GA4_SOURCE, isoDay(new Date(`${ga4Latest}T00:00:00Z`), -SERIES_DAYS)],
+      )).rows.map((x) => ({ day: String(x.day), sessions: num(x.sessions) })),
+    };
+  }
+
+  const idx = await getSetting(sql, INDEX_SUMMARY_KEY);
+  let indexing: unknown = null;
+  try { indexing = idx ? JSON.parse(idx) : null; } catch { indexing = null; }
+  const status = integrationStatus();
+  return {
+    sitePublished: sitePublished(),
+    gscConnected: Boolean(status.find((i) => i.id === "gsc")?.configured),
+    ga4Connected: Boolean(status.find((i) => i.id === "ga4")?.configured),
+    search, analytics, indexing,
   };
 }
 
