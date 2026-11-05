@@ -1,8 +1,9 @@
 /** Demo and contact requests from the public site. Checked here (fields,
  * a hidden honeypot field, a minimum fill time, a per-address rate limit),
- * then handed to a delivery. Only the mock delivery exists: real delivery
- * (email, webhook or a database table) is a decision still to make, so
- * nothing leaves the server. Contents are never logged. */
+ * then saved as a query for Super Admin > Queries (src/server/queries.ts).
+ * Contents are never logged. */
+import { createHash } from "node:crypto";
+
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
 export const LEAD_KINDS = ["demo", "contact"] as const;
@@ -17,9 +18,15 @@ export interface Lead {
   phone: string;
   email: string;
   workflow: string;
+  /** What the visitor came about (Contact page links: FBR setup, pricing). */
+  topic: string;
+  /** One per form: a double-click or a retry sends the same key and saves one query. */
+  submissionKey: string;
 }
 
 export interface LeadInput extends Partial<Record<keyof Lead, unknown>> {
+  /** The form's own id for this submission. */
+  submissionId?: unknown;
   /** Honeypot: hidden from people, filled by bots. */
   website?: unknown;
   /** When the form was shown (ms since epoch). */
@@ -65,8 +72,15 @@ export function checkLead(input: LeadInput, ip: string | null, now = Date.now())
     branches: text(input.branches, 20),
     phone: text(input.phone, 30),
     email: text(input.email, 120).toLowerCase(),
-    workflow: typeof input.workflow === "string" ? input.workflow.trim().slice(0, 2000) : "",
+    workflow: typeof input.workflow === "string" ? input.workflow.replace(/\r\n/g, "\n").trim().slice(0, 2000) : "",
+    topic: text(input.topic, 80),
+    submissionKey: "",
   };
+  // Without the form's key (an old page), the same content counts as the same submission.
+  const sid = text(input.submissionId, 64);
+  lead.submissionKey = /^[A-Za-z0-9-]{8,64}$/.test(sid)
+    ? `form:${sid}`
+    : `hash:${createHash("sha256").update(JSON.stringify([kind, lead.name, lead.business, lead.phone, lead.email, lead.workflow])).digest("hex")}`;
   const fields: Record<string, string> = {};
   if (lead.name.length < 2) fields.name = "Enter your name.";
   if (lead.business.length < 2) fields.business = "Enter your business name.";
@@ -77,22 +91,4 @@ export function checkLead(input: LeadInput, ip: string | null, now = Date.now())
   if (kind === "demo" && lead.branches && !/^[0-9]{1,4}$/.test(lead.branches)) fields.branches = "Enter the number of branches.";
   if (Object.keys(fields).length) throw new LeadError(400, "Please correct the highlighted fields.", fields);
   return lead;
-}
-
-export interface LeadDelivery {
-  deliver(lead: Lead): Promise<void>;
-}
-
-/** Keeps the latest requests in memory (tests and local checks). Sends nothing. */
-export const mockDelivery: LeadDelivery & { received: Lead[] } = {
-  received: [],
-  async deliver(lead) {
-    this.received.push(lead);
-    if (this.received.length > 50) this.received.shift();
-  },
-};
-
-/** The delivery in use. Only the mock exists until a real channel is approved. */
-export function leadDelivery(): LeadDelivery {
-  return mockDelivery;
 }

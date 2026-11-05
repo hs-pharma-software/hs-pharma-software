@@ -4,16 +4,19 @@ import { useState } from "react";
 
 const FIELD = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1565c0] focus:ring-2 focus:ring-[#1565c0]/20 aria-[invalid=true]:border-rose-400";
 
-/** Demo / contact request. Sent to /api/site/lead, which checks it and (for
- * now) delivers to a mock: nothing is emailed or stored yet. */
-export function LeadForm({ kind, businessTypes, defaultType = "" }: { kind: "demo" | "contact"; businessTypes: string[]; defaultType?: string }) {
+/** Demo / contact request. Sent to /api/site/lead, which checks it and saves
+ * it for Super Admin > Queries; success is shown only once it is saved. The
+ * form keeps one submission id, so a double-click or a retry saves one query. */
+export function LeadForm({ kind, businessTypes, defaultType = "", topic = "" }: { kind: "demo" | "contact"; businessTypes: string[]; defaultType?: string; topic?: string }) {
   const [shownAt] = useState(() => Date.now());
+  const [submissionId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`));
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (state === "sending") return;
     const data = Object.fromEntries(new FormData(e.currentTarget).entries());
     setState("sending");
     setError(null);
@@ -22,7 +25,7 @@ export function LeadForm({ kind, businessTypes, defaultType = "" }: { kind: "dem
       const res = await fetch("/api/site/lead/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, kind, shownAt }),
+        body: JSON.stringify({ ...data, kind, topic, shownAt, submissionId }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; fields?: Record<string, string> };
       if (!res.ok) {
@@ -42,7 +45,7 @@ export function LeadForm({ kind, businessTypes, defaultType = "" }: { kind: "dem
     return (
       <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-900">
         <p className="font-semibold">Thank you. Your request was received.</p>
-        <p className="mt-1">We will contact you to arrange a time.</p>
+        <p className="mt-1">{kind === "demo" ? "We will contact you to arrange a time." : "We will reply to you soon."}</p>
       </div>
     );
   }

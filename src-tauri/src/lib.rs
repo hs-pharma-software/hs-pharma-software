@@ -1453,6 +1453,137 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Queries: Contact Us and Book a Demo submissions from the public website,
+/// read by the platform owner in Super Admin > Queries. submission_key is
+/// unique, so a double-click or a retried request saves one query.
+fn schema_sql_v71() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS site_queries (
+        id TEXT PRIMARY KEY,
+        submission_key TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL CHECK (kind IN ('contact','demo')),
+        name TEXT NOT NULL,
+        business_name TEXT,
+        business_type TEXT,
+        branches TEXT,
+        phone TEXT,
+        email TEXT,
+        message TEXT,
+        topic TEXT,
+        status TEXT NOT NULL DEFAULT 'unread' CHECK (status IN ('unread','read')),
+        read_at TEXT,
+        read_by TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_site_queries_status ON site_queries(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_site_queries_created ON site_queries(created_at);
+    "#
+}
+
+/// Sub Supers: software distributors who sell selected applications. A
+/// distributor signs in with a users row marked platform_role = 'distributor'
+/// (no business attached); customer setups wait in onboarding_requests and
+/// only become a tenant, an owner login and a subscription when the platform
+/// owner verifies payment and activates them. Password-setup links keep only
+/// a hash of the token.
+fn schema_sql_v70() -> &'static str {
+    r#"
+    ALTER TABLE users ADD COLUMN platform_role TEXT;
+    CREATE TABLE IF NOT EXISTS sub_supers (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+        name TEXT NOT NULL,
+        business_name TEXT,
+        phone TEXT,
+        email TEXT,
+        city TEXT,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended')),
+        status_reason TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sub_super_apps (
+        id TEXT PRIMARY KEY,
+        sub_super_id TEXT NOT NULL REFERENCES sub_supers(id),
+        app_id TEXT NOT NULL,
+        granted_by TEXT,
+        granted_at TEXT NOT NULL,
+        revoked_by TEXT,
+        revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sub_super_apps_super ON sub_super_apps(sub_super_id, app_id);
+    CREATE TABLE IF NOT EXISTS onboarding_requests (
+        id TEXT PRIMARY KEY,
+        sub_super_id TEXT NOT NULL REFERENCES sub_supers(id),
+        status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','under_review','returned','rejected','activated')),
+        app_id TEXT,
+        plan_id TEXT,
+        business_name TEXT,
+        owner_name TEXT,
+        phone TEXT,
+        email TEXT,
+        city TEXT,
+        address TEXT,
+        ntn TEXT,
+        proposed_username TEXT,
+        notes TEXT,
+        expected_amount REAL,
+        claimed_amount REAL,
+        payment_reference TEXT,
+        payment_date TEXT,
+        payment_status TEXT NOT NULL DEFAULT 'unverified' CHECK (payment_status IN ('unverified','verified')),
+        verified_amount REAL,
+        payment_verified_by TEXT,
+        payment_verified_at TEXT,
+        needs_owner_review INTEGER NOT NULL DEFAULT 0,
+        owner_review_reason TEXT,
+        return_reason TEXT,
+        reject_reason TEXT,
+        submitted_at TEXT,
+        review_started_by TEXT,
+        review_started_at TEXT,
+        returned_by TEXT,
+        returned_at TEXT,
+        rejected_by TEXT,
+        rejected_at TEXT,
+        activation_key TEXT,
+        activated_by TEXT,
+        activated_at TEXT,
+        tenant_id TEXT,
+        owner_user_id TEXT,
+        sale_amount REAL,
+        invite_status TEXT,
+        invite_issued_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_onboarding_super ON onboarding_requests(sub_super_id, status);
+    CREATE INDEX IF NOT EXISTS idx_onboarding_activated ON onboarding_requests(activated_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_onboarding_tenant ON onboarding_requests(tenant_id) WHERE tenant_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS onboarding_events (
+        id TEXT PRIMARY KEY,
+        request_id TEXT,
+        sub_super_id TEXT,
+        actor_user_id TEXT NOT NULL,
+        actor_role TEXT NOT NULL,
+        action TEXT NOT NULL,
+        reason TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_onboarding_events_request ON onboarding_events(request_id, created_at);
+    CREATE TABLE IF NOT EXISTS password_setup_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id),
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+    );
+    "#
+}
+
 /// Linking a clinic / hospital to a hospital pharmacy by token: the clinic
 /// makes a one-time token (only its SHA-256 hash is kept), the pharmacy enters
 /// it in its settings, and the verified link is then fixed (only the Super
@@ -3314,6 +3445,18 @@ fn all_migrations() -> Vec<Migration> {
             version: 69,
             description: "contractor_medicine_invoices",
             sql: schema_sql_v69(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 70,
+            description: "sub_supers",
+            sql: schema_sql_v70(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 71,
+            description: "site_queries",
+            sql: schema_sql_v71(),
             kind: MigrationKind::Up,
         },
     ]

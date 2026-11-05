@@ -1,12 +1,12 @@
 /** Public website: the product registry matches the app's type registry,
- * demo / contact requests are validated and bot-filtered before the (mock)
- * delivery, and the proxy serves the site only on the corporate domain,
+ * demo / contact requests are validated and bot-filtered before
+ * saving (tests/server/queries.test.ts), and the proxy serves the site only on the corporate domain,
  * leaving the app's own routes (/products) untouched. */
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { BUSINESS_TYPES } from "@/config/businessTypes";
 import { SITE_PRODUCTS, PRODUCT_GROUPS, productFacts } from "@/config/siteProducts";
-import { checkLead, LeadError, mockDelivery } from "@/server/leads";
+import { checkLead, LeadError } from "@/server/leads";
 
 before(() => {
   process.env.NEXT_PUBLIC_SITE_HOSTS = "mavin.pk,www.mavin.pk";
@@ -65,12 +65,6 @@ test("one connection is limited to 5 requests in 10 minutes", () => {
   for (let i = 0; i < 5; i++) checkLead(good, "10.0.0.4");
   assert.throws(() => checkLead(good, "10.0.0.4"), (e: unknown) => e instanceof LeadError && e.status === 429);
   assert.ok(checkLead(good, "10.0.0.5"), "another connection is unaffected");
-});
-
-test("the delivery is a mock: it keeps the request in memory and sends nothing", async () => {
-  const lead = checkLead(good, "10.0.0.6")!;
-  await mockDelivery.deliver(lead);
-  assert.equal(mockDelivery.received.at(-1)?.business, "Synthetic Store");
 });
 
 test("proxy: clean paths on the corporate domain only; the app's /products is untouched elsewhere", async () => {

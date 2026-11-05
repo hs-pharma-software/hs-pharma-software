@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request): Promise<Response> {
   try {
-    const caller = await callerOf(req);
+    const caller = await callerOf(req, { allowDistributor: true });
     const { userId, newPassword } = (await req.json()) as { userId?: string; newPassword?: string };
     await setPassword(caller, userId ?? caller.userId, newPassword ?? "");
     return Response.json({ ok: true });

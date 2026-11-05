@@ -110,6 +110,9 @@ export async function login(username: string, password: string): Promise<{ user:
     } catch (e) {
       throw new AuthError(e instanceof ServerRequestError ? e.message : "Could not reach the server. Check the connection.");
     }
+    // A Sub Super has no business: their session comes from the server, not from business tables.
+    const me = await serverJson<{ userId: string; platformRole: string | null }>("/api/auth/me/");
+    if (me.platformRole === "distributor") return distributorSession(me.userId, username.trim());
     const record = await findUserByUsername(username.trim());
     if (!record) throw new AuthError("Incorrect username or password.");
     return buildSession(record);
@@ -127,9 +130,16 @@ export async function login(username: string, password: string): Promise<{ user:
     }
   }
   if (!record) throw new AuthError("Incorrect username or password.");
+  if (record.platform_role === "distributor") throw new AuthError(DISTRIBUTOR_WEB_ONLY);
   if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
   return buildSession(record);
 }
+
+function distributorSession(id: string, username: string): { user: SessionUser; tenant: null } {
+  return { user: { id, username, displayName: username, role: "staff", tenantId: null, permissions: [], deniedActions: [], platformRole: "distributor" }, tenant: null };
+}
+
+const DISTRIBUTOR_WEB_ONLY = "Sub Super accounts sign in on the web version of MAVIN.pk.";
 
 /** Desktop through the server. Online, the server checks the password and
  * returns a session; the app then downloads this business's accounts and
@@ -140,7 +150,13 @@ async function desktopLogin(username: string, password: string): Promise<{ user:
   try {
     const r = await serverJson<{ token: string; expiresInHours?: number }>("/api/auth/login/", { username, password, client: "desktop" });
     setDesktopSession(r.token, r.expiresInHours);
+    const me = await serverJson<{ platformRole: string | null }>("/api/auth/me/");
+    if (me.platformRole === "distributor") {
+      setDesktopSession(null);
+      throw new AuthError(DISTRIBUTOR_WEB_ONLY);
+    }
   } catch (e) {
+    if (e instanceof AuthError) throw e;
     // The server answered with a refusal (wrong password, deactivated, too many tries).
     if (e instanceof ServerRequestError && e.status < 500) throw new AuthError(e.message);
     online = false;
@@ -154,6 +170,7 @@ async function desktopLogin(username: string, password: string): Promise<{ user:
   }
   const record = await checkCredentials(username, password);
   if (!record) throw new AuthError("Could not reach the server. Sign in once while online on this computer, then you can sign in offline.");
+  if (record.platform_role === "distributor") throw new AuthError(DISTRIBUTOR_WEB_ONLY);
   if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
   return buildSession(record);
 }

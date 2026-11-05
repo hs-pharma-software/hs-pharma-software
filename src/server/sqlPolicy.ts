@@ -71,6 +71,8 @@ export interface Caller {
   actions?: string[];
   /** Actions the Super Admin turned off for the whole business. */
   tenantDeniedActions?: string[];
+  /** A Sub Super (software distributor): no business, only the Sub Super workspace. */
+  platformRole?: "distributor";
 }
 
 /** Writes to these tables are an action that needs its permission. */

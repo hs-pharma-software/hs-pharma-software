@@ -56,7 +56,7 @@ export function UserLoginsPage({
     ]);
     const rank = { super_admin: 0, owner: 1, staff: 2 } as const;
     setUsers(
-      (tenantFilter === null ? u.filter((x) => x.tenant_id === null) : u).sort(
+      (tenantFilter === null ? u.filter((x) => x.tenant_id === null && !x.platform_role) : u).sort(
         (a, b) => rank[a.role] - rank[b.role] || a.username.localeCompare(b.username)
       )
     );

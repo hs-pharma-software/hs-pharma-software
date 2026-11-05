@@ -349,6 +349,8 @@ const MIGRATIONS = [
   { version: 67, label: 'business types: lab, banquet hall, mobile shop (IMEI), cloth store (measurements)', statements: rustSchemaStatements(67) },
   { version: 68, label: 'products: FBR article name (contractor)', statements: rustSchemaStatements(68) },
   { version: 69, label: 'contractor: Medicine / General invoices (admin switch, written batch)', statements: rustSchemaStatements(69) },
+  { version: 70, label: 'Sub Supers: distributors, customer onboarding requests, password-setup links', statements: rustSchemaStatements(70) },
+  { version: 71, label: 'Queries: website Contact Us / Book a Demo submissions', statements: rustSchemaStatements(71) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

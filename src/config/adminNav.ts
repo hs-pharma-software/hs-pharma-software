@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Building2, Layers, Users, Pill, Shapes, Sparkles } from "lucide-react";
+import { LayoutDashboard, Building2, Layers, Users, Pill, Shapes, Sparkles, Handshake, Inbox } from "lucide-react";
 
 export interface AdminNavItem {
   label: string;
@@ -15,4 +15,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "Users", href: "/admin/users", icon: Users },
   { label: "Catalog Review", href: "/admin/products", icon: Pill },
   { label: "Billori", href: "/admin/billori", icon: Sparkles },
+  { label: "Sub Supers", href: "/admin/sub-supers", icon: Handshake },
+  { label: "Queries", href: "/admin/queries", icon: Inbox },
 ];

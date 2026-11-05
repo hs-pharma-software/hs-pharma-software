@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request): Promise<Response> {
   try {
-    const c = await callerOf(req);
-    return Response.json({ userId: c.userId, role: c.role, tenantId: c.tenantId });
+    const c = await callerOf(req, { allowDistributor: true });
+    return Response.json({ userId: c.userId, role: c.role, tenantId: c.tenantId, platformRole: c.platformRole ?? null });
   } catch (e) {
     return jsonError(e);
   }

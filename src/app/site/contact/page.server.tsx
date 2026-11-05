@@ -26,7 +26,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
         <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
           <div>
             {about && <p className="mb-3 text-sm text-slate-600">About: <b>{about}</b>. Add the details in your message.</p>}
-            <LeadForm kind="contact" businessTypes={SITE_PRODUCTS.map((p) => p.name)} />
+            <LeadForm kind="contact" businessTypes={SITE_PRODUCTS.map((p) => p.name)} topic={about ?? ""} />
           </div>
           <aside className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
             <h2 className="font-semibold text-[#0b2a6b]">Other ways to reach us</h2>

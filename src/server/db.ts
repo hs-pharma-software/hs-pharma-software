@@ -54,18 +54,27 @@ const jsonList = (raw: unknown): string[] => {
   }
 };
 
-/** The logged-in, active user behind a request. */
-export async function callerOf(req: Request): Promise<Caller> {
+/** Default deny: a Sub Super (distributor) login may call only routes that allow it. */
+export function refuseDistributor(platformRole: unknown, allow = false): void {
+  if (String(platformRole ?? "") === "distributor" && !allow) throw new HttpError(403, "Sub Super accounts can use only the Sub Super workspace.");
+}
+
+/** The logged-in, active user behind a request. A Sub Super (distributor)
+ * login is refused unless the route explicitly allows it: distributors reach
+ * only their own workspace (src/server/subSupers.ts), never business data. */
+export async function callerOf(req: Request, opts: { allowDistributor?: boolean } = {}): Promise<Caller> {
   const claims = verifySession(requestToken(req), serverConfig().sessionSecret);
   if (!claims) throw new HttpError(401, "Your session has ended. Log in again.");
   const rs = await serverDb().execute({
-    sql: `SELECT u.id, u.role, u.tenant_id, u.is_active, u.permissions, u.denied_actions, t.business_type, t.denied_actions AS tenant_denied,
+    sql: `SELECT u.id, u.role, u.tenant_id, u.is_active, u.permissions, u.denied_actions, u.platform_role, t.business_type, t.denied_actions AS tenant_denied,
                  (SELECT group_concat(l.pharmacy_tenant_id) FROM clinic_pharmacy_link l WHERE l.clinic_tenant_id = u.tenant_id AND l.is_active = 1) AS linked
           FROM users u LEFT JOIN tenants t ON t.id = u.tenant_id WHERE u.id = ? AND u.deleted_at IS NULL`,
     args: [claims.u],
   });
   const u = rs.rows[0];
   if (!u || !Number(u.is_active)) throw new HttpError(401, "This login is no longer active.");
+  refuseDistributor(u.platform_role, opts.allowDistributor);
+  const distributor = String(u.platform_role ?? "") === "distributor";
   let permissions: string[] | null = null;
   if (u.permissions != null && String(u.role) === "staff") {
     try {
@@ -81,6 +90,8 @@ export async function callerOf(req: Request): Promise<Caller> {
     linkedPharmacies: u.linked ? String(u.linked).split(",").filter(Boolean) : [],
     actions: String(u.role) === "staff" ? jsonList(u.denied_actions) : [],
     tenantDeniedActions: jsonList(u.tenant_denied),
+    // A distributor has no business: no sections, no actions.
+    ...(distributor ? { platformRole: "distributor" as const, permissions: [], actions: [] } : {}),
   };
 }
 

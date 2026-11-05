@@ -310,4 +310,6 @@ export interface UserAccount extends BaseRow {
   permissions: string | null;
   /** JSON array of denied action keys (lib/actionPermissions). NULL = none. */
   denied_actions: string | null;
+  /** 'distributor' for a Sub Super login (v70); NULL for business and admin logins. */
+  platform_role?: string | null;
 }
