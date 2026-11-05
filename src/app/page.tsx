@@ -109,10 +109,7 @@ export default function LandingPage() {
           }}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/mavin-mark.png" alt="MAVIN.pk" style={{width:36,height:36,objectFit:"contain",flexShrink:0}} />
-              <span style={{fontWeight:800,fontSize:18,letterSpacing:"-.02em",color:"#0b2a6b"}}>
-                MAVIN.pk
-              </span>
+              <img src="/mavin-header.png" alt="MAVIN.pk" style={{height:40,width:"auto",objectFit:"contain",flexShrink:0}} />
             </div>
             <Link href="/dashboard" style={{
               padding:"8px 22px",
@@ -378,8 +375,7 @@ export default function LandingPage() {
           }}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/mavin-mark.png" alt="MAVIN.pk" style={{width:24,height:24,objectFit:"contain"}} />
-              <span style={{fontWeight:700,color:"#0b2a6b"}}>MAVIN.pk</span>
+              <img src="/mavin-header.png" alt="MAVIN.pk" style={{height:28,width:"auto",objectFit:"contain"}} />
             </div>
             <p>© 2026 MAVIN.pk · Built for Pakistani Pharmacies</p>
             <p style={{fontSize:12,color:"#cbd5e1",letterSpacing:".01em"}}>

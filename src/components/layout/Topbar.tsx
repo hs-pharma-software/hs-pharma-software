@@ -42,7 +42,7 @@ export function Topbar() {
           transition={{ type: "spring", stiffness: 300, damping: 15 }}
           className="flex items-center"
         >
-          <Image src="/mavin-logo.png" alt="MAVIN.pk" width={1340} height={330} priority className="h-8 w-auto object-contain sm:h-10" />
+          <Image src="/mavin-header.png" alt="MAVIN.pk" width={1405} height={361} priority className="h-8 w-auto object-contain sm:h-10" />
         </motion.div>
       </div>
 
