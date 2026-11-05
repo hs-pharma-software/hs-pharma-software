@@ -13,6 +13,7 @@ import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/th
 import { BILLORI_ENABLED_SETTING } from "@/lib/gemini";
 import { useAuthStore } from "@/store/authStore";
 import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
+import { LabReportTemplatesCard } from "@/components/clinic/LabReportTemplatesCard";
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { LinkedClinicsCard } from "@/components/settings/LinkedClinicsCard";
 import { ServiceFbrCard } from "@/components/settings/ServiceFbrCard";
@@ -548,6 +549,9 @@ export default function GeneralSettingsPage() {
   // Lab and banquet bills are services: their FBR item details are set once.
   const serviceBills = useAuthStore((s) => s.currentTenant?.businessType === "lab" || s.currentTenant?.businessType === "banquet_hall");
   const isLab = useAuthStore((s) => s.currentTenant?.businessType === "lab");
+  // Labs and clinics print lab reports (Lab Report Templates).
+  const printsLabReports = useAuthStore((s) => s.currentTenant?.businessType === "lab" || s.currentTenant?.businessType === "clinic");
+  const templatesEditable = useAuthStore((s) => s.currentTenant?.printTemplatesEditable !== false);
 
   const tauriReady = useIsTauri();
 
@@ -571,6 +575,8 @@ export default function GeneralSettingsPage() {
 
       {/* Remount after the editor closes: the logo may have changed there. */}
       <PrintSettingsCard key={String(templatesOpen)} tauriReady={tauriReady} onOpenTemplates={() => setTemplatesOpen(true)} />
+
+      {printsLabReports && <LabReportTemplatesCard editable={templatesEditable} />}
 
       {/* FBR Digital Invoicing */}
       {fbrAllowed ? (

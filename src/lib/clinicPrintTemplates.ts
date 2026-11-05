@@ -17,6 +17,8 @@ export interface ClinicPrintTemplate {
   signature: boolean;
   /** Printed at the bottom, e.g. "Not valid for court" or opening hours. */
   footer: string;
+  /** Lab report only: the design (lib/labReportDesigns.ts). */
+  design?: string;
 }
 
 export const CLINIC_DOCS: { id: ClinicDoc; label: string; hint: string }[] = [
@@ -27,7 +29,7 @@ export const CLINIC_DOCS: { id: ClinicDoc; label: string; hint: string }[] = [
 
 export const DEFAULT_CLINIC_TEMPLATES: Record<ClinicDoc, ClinicPrintTemplate> = {
   invoice: { paper: "thermal", headerAlign: "center", showIds: true, signature: false, footer: "" },
-  lab: { paper: "a4", headerAlign: "center", showIds: true, signature: true, footer: "" },
+  lab: { paper: "a4", headerAlign: "center", showIds: true, signature: true, footer: "", design: "classic" },
   prescription: { paper: "a5", headerAlign: "center", showIds: true, signature: true, footer: "" },
 };
 

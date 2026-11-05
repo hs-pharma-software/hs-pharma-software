@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { ClinicSlipHeader } from "@/components/clinic/ClinicSlipHeader";
 import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
+import { LabReportTemplatesCard } from "@/components/clinic/LabReportTemplatesCard";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { EMPTY_CLINIC_PROFILE, loadClinicProfile, saveClinicProfile, type ClinicProfile } from "@/lib/clinicProfile";
@@ -71,6 +72,9 @@ export default function LabProfilePage() {
       </div>
       <div className="mt-4">
         <ClinicPrintTemplatesCard editable={templatesEditable} docs={["lab"]} />
+      </div>
+      <div className="mt-4">
+        <LabReportTemplatesCard editable={templatesEditable} />
       </div>
     </div>
   );

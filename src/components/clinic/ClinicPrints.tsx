@@ -16,9 +16,10 @@ import { ClinicSlipHeader } from "./ClinicSlipHeader";
 import { parseComponents } from "@/config/labPanels";
 import { PAPERS } from "@/lib/printTemplates";
 import { PAPER_WIDTH, loadClinicTemplate, type ClinicDoc, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
+import { labDesign } from "@/lib/labReportDesigns";
+import { LabReportDocument, type LabReportView } from "./LabReportDocument";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const FLAG: Record<string, string> = { H: "High", L: "Low", N: "Normal" };
 
 /** The document's print template (Clinic Profile > Print Templates). */
 function useTemplate(doc: ClinicDoc): ClinicPrintTemplate | null {
@@ -91,83 +92,35 @@ export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { or
   const orders = r?.orders ?? [];
   const lab = orders.filter((o) => o.kind === "lab");
   const radiology = orders.filter((o) => o.kind === "radiology");
-  const narrow = t?.paper === "thermal";
   const reportedBy = [...new Set(orders.map((o) => o.reported_by).filter(Boolean))].join(", ");
   // A diagnostic lab: the pathologist verified the results, with any comments.
   const verified = orders.some((o) => o.verified_by);
   const comments = [...new Set(orders.map((o) => o.pathologist_note).filter((n): n is string => Boolean(n) && !n!.startsWith("Recheck:")))];
   const byLabel = verified ? "Verified by" : "Reported by";
   const lastReported = orders.map((o) => o.reported_at ?? "").sort().at(-1) || "—";
+  const view: LabReportView | null = r ? {
+    title: lab.length ? "Laboratory Report" : "Radiology Report",
+    info: [
+      { label: "Patient", value: r.patient?.name ?? "—", strong: true },
+      { label: "MRN", value: r.patient?.mrn ?? "—" },
+      { label: "Gender / DOB", value: [r.patient?.gender, r.patient?.dob].filter(Boolean).join(" / ") || "—" },
+      { label: "Referred by", value: r.doctor ? `Dr. ${r.doctor.name}` : "—" },
+      { label: orders.length > 1 ? "Orders" : "Order", value: orders.map((o) => o.order_no).join(", ") },
+      { label: "Reported", value: lastReported },
+    ],
+    lab: lab.map((o) => ({
+      id: o.id, name: o.name, value: o.result_value, unit: o.unit, range: o.ref_range, flag: o.flag,
+      parts: parseComponents(o.components).map((c) => ({ key: c.key, name: c.name, group: c.group, value: c.value, unit: c.unit, range: c.ref_range, flag: c.flag })),
+    })),
+    radiology: radiology.map((o) => ({ id: o.id, name: o.name, findings: o.findings, impression: o.impression })),
+    comments,
+    signedBy: reportedBy ? `${byLabel}: ${reportedBy}` : t?.signature ? byLabel : `${byLabel}: —`,
+  } : null;
   return (
     <Modal title={orders.length ? `${radiology.length && !lab.length ? "Radiology report" : "Lab report"}: ${r?.patient?.name ?? ""}` : "Report"} onClose={onClose} width="max-w-3xl">
-      {!r || !profile || !t ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
+      {!r || !profile || !t || !view ? <p className="p-6 text-sm text-neutral-400">Loading…</p> : (
         <>
-          <PrintArea t={t} profile={profile} areaRef={areaRef} signature={reportedBy ? `${byLabel}: ${reportedBy}` : byLabel}>
-            <p className="mt-3 text-center text-sm font-bold uppercase tracking-widest">{lab.length ? "Laboratory Report" : "Radiology Report"}</p>
-            <div className={`mt-3 grid ${narrow ? "grid-cols-1" : "grid-cols-2"} gap-x-6 gap-y-1 border-y border-neutral-300 py-2`}>
-              <div><span className="text-neutral-500">Patient: </span><b>{r.patient?.name ?? "—"}</b></div>
-              <div><span className="text-neutral-500">MRN: </span>{r.patient?.mrn ?? "—"}</div>
-              <div><span className="text-neutral-500">Gender / DOB: </span>{[r.patient?.gender, r.patient?.dob].filter(Boolean).join(" / ") || "—"}</div>
-              <div><span className="text-neutral-500">Referred by: </span>{r.doctor ? `Dr. ${r.doctor.name}` : "—"}</div>
-              <div><span className="text-neutral-500">Order{orders.length > 1 ? "s" : ""}: </span>{orders.map((o) => o.order_no).join(", ")}</div>
-              <div><span className="text-neutral-500">Reported: </span>{lastReported}</div>
-            </div>
-            {lab.length > 0 && (
-              <table className="mt-4 w-full border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-neutral-800 text-left">
-                    <th className="py-1">Test</th><th className="py-1">Result</th><th className="py-1">Unit</th><th className="py-1">Normal range</th><th className="py-1">Flag</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lab.map((o) => {
-                    const parts = parseComponents(o.components);
-                    return parts.length > 0 ? (
-                      <Fragment key={o.id}>
-                        <tr><td colSpan={5} className="pt-3 font-semibold">{o.name}</td></tr>
-                        {parts.map((c, i, all) => (
-                          <Fragment key={c.key}>
-                            {c.group && c.group !== all[i - 1]?.group && (
-                              <tr><td colSpan={5} className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{c.group}</td></tr>
-                            )}
-                            <tr className="border-b border-neutral-100">
-                              <td className="py-1 pl-2">{c.name}</td>
-                              <td className={`py-1 font-semibold tabular-nums ${c.flag === "H" || c.flag === "L" ? "text-rose-700" : ""}`}>{c.value}</td>
-                              <td className="py-1">{c.unit ?? ""}</td>
-                              <td className="py-1">{c.ref_range ?? ""}</td>
-                              <td className="py-1">{c.flag && c.flag !== "N" ? FLAG[c.flag] : ""}</td>
-                            </tr>
-                          </Fragment>
-                        ))}
-                      </Fragment>
-                    ) : (
-                      <tr key={o.id} className="border-b border-neutral-200">
-                        <td className="py-1.5 font-medium">{o.name}</td>
-                        <td className={`py-1.5 font-bold ${o.flag === "H" || o.flag === "L" ? "text-rose-700" : ""}`}>{o.result_value}</td>
-                        <td className="py-1.5">{o.unit ?? "—"}</td>
-                        <td className="py-1.5">{o.ref_range ?? "—"}</td>
-                        <td className="py-1.5">{o.flag ? FLAG[o.flag] : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {radiology.map((o) => (
-              <div key={o.id} className="mt-4 flex flex-col gap-2">
-                <p className="font-semibold">{o.name}</p>
-                {o.findings && <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Findings</p><p className="whitespace-pre-line">{o.findings}</p></div>}
-                <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Impression</p><p className="whitespace-pre-line font-semibold">{o.impression}</p></div>
-              </div>
-            ))}
-            {comments.length > 0 && (
-              <div className="mt-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pathologist&apos;s comments</p>
-                {comments.map((c) => <p key={c} className="whitespace-pre-line">{c}</p>)}
-              </div>
-            )}
-            {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">{byLabel}: {reportedBy || "—"}</p>}
-          </PrintArea>
+          <LabReportDocument view={view} design={labDesign(t.design)} t={t} profile={profile} areaRef={areaRef} />
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
             <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>
