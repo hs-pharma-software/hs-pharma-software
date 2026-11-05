@@ -55,7 +55,7 @@ function Toggle({ on, onChange, onLabel, offLabel }: { on: boolean; onChange: (v
   );
 }
 
-/** Super Admin view of one pharmacy: identity, plan and type, accessible
+/** Super Admin view of one business: identity, plan and type, accessible
  * sections, tenant-wide permissions, FBR integration and print templates.
  * Used on Users (after picking a tenant) and Tenants (clicking a name). */
 export function TenantDetailPanel({
@@ -129,7 +129,7 @@ export function TenantDetailPanel({
         medicine_invoice_allowed: medicineAllowed ? 1 : 0,
       });
       await saveDefaultPaper(paper, tenant.id);
-      setMessage({ ok: true, text: "Saved. Applies to this pharmacy's logins on their next screen change." });
+      setMessage({ ok: true, text: "Saved. Applies to this business's logins on their next screen change." });
       onSaved();
     } catch (e) {
       setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -265,7 +265,7 @@ export function TenantDetailPanel({
 
         <Section
           title="Accessible Sections"
-          hint={customModules ? "Custom list for this pharmacy." : "Following the plan. Tick or untick to customise."}
+          hint={customModules ? "Custom list for this business." : "Following the plan. Tick or untick to customise."}
         >
           <div className="mb-2 flex gap-2 text-xs">
             <button
@@ -309,7 +309,7 @@ export function TenantDetailPanel({
           </div>
         </Section>
 
-        <Section title="Permissions" hint="Applies to every login of this pharmacy, owner included.">
+        <Section title="Permissions" hint="Applies to every login of this business, owner included.">
           {(["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts", "Restaurant"] as const)
             .filter((group) => {
               if (group === "Restaurant") return typeId === "restaurant";
@@ -337,7 +337,7 @@ export function TenantDetailPanel({
           ))}
         </Section>
 
-        <Section title="Print Templates" hint="Fixed: the pharmacy uses the templates you set here and can't change them.">
+        <Section title="Print Templates" hint="Fixed: the business uses the templates you set here and can't change them.">
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <p className="mb-1 text-xs font-medium text-neutral-600">Access</p>

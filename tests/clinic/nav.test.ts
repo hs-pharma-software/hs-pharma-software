@@ -72,11 +72,14 @@ test("every clinic and hospital menu link opens an existing page", () => {
 
 test("no dynamic [param] routes exist (static export cannot serve them)", () => {
   const found: string[] = [];
+  // Web-only routes (every file *.server.ts / *.server.tsx, e.g. the public
+  // site's product pages) are left out of the desktop export, so they may.
+  const webOnly = (dir: string) => readdirSync(dir).every((f) => statSync(join(dir, f)).isDirectory() || /\.server\.tsx?$/.test(f));
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
       const full = join(dir, name);
       if (!statSync(full).isDirectory()) continue;
-      if (name.startsWith("[")) found.push(full);
+      if (name.startsWith("[") && !webOnly(full)) found.push(full);
       walk(full);
     }
   };

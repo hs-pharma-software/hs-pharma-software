@@ -1,13 +1,36 @@
-/** Super Admin review of catalog rows that belong to no tenant: rows the
- * v29 ownership migration could not attribute (quarantine). They are never
- * shown to tenants; the Super Admin either hands one to a tenant (move),
- * gives a tenant its own copy (copy), or deletes it. */
+/** Super Admin review of catalog rows that belong to no tenant. Since v31
+ * these are mostly the SHARED catalog: pharma and general-store rows every
+ * pharmacy / general store already sees (catalogAccess.ts). The Super Admin
+ * either hands one to a tenant (move), gives a tenant its own copy (copy), or
+ * deletes it. A move or copy that would take a product away from other
+ * businesses, or duplicate one a business already sees, is refused per item. */
 import { dbExecute, dbSelect } from "../db";
 import { nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
 import { useAuthStore } from "../../store/authStore";
 import { cloneId } from "../catalogOwnership";
 import type { Product } from "../types";
+import { sharedCatalogGroupsFor } from "../catalogAccess";
+
+/** Tables that tie a product to a business's stock, prices or documents. */
+const PRODUCT_USE_TABLES = [
+  "product_batches", "price_list", "invoice_items", "purchase_items", "order_items", "product_suppliers", "audit_items",
+  "product_batch_expiry_changes", "clinic_rx_items", "hospital_rx_items", "dist_booking_items", "dist_doc_items",
+  "dist_stock_moves", "es_doc_items", "es_serials", "es_stock_moves", "es_warranty_claims", "mobile_imei_units",
+];
+
+/** Outcome of a move / copy, item by item. */
+export interface GiveOutcome {
+  done: string[];
+  skipped: { id: string; name: string; reason: string }[];
+}
+
+/** Businesses other than `tenantId` whose stock, prices or documents use this product. */
+export async function otherBusinessesUsing(productId: string, tenantId: string): Promise<number> {
+  const union = PRODUCT_USE_TABLES.map((t) => `SELECT tenant_id FROM ${t} WHERE product_id = ? AND tenant_id IS NOT NULL AND tenant_id <> ?`).join(" UNION ");
+  const args = PRODUCT_USE_TABLES.flatMap(() => [productId, tenantId]);
+  return (await dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM (${union})`, args))[0]?.n ?? 0;
+}
 
 function requireSuperAdmin() {
   if (useAuthStore.getState().currentUser?.role !== "super_admin") throw new Error("Only the Super Admin can review the unowned catalog.");
@@ -57,15 +80,31 @@ async function tenantRef(table: "categories" | "sub_categories" | "uoms", id: st
 }
 
 /** Move: the row itself now belongs to the tenant. Copy: the tenant gets its
- * own copy (once; repeating it changes nothing) and the row stays unowned. */
-export async function giveProductsToTenant(productIds: string[], tenantId: string, mode: "move" | "copy"): Promise<number> {
+ * own copy (once; repeating it changes nothing) and the row stays unowned.
+ * Refused per item: moving a product other businesses use (it would vanish
+ * from their lists while their stock and invoices still point at it), and
+ * copying a product the business already sees through the shared catalog. */
+export async function giveProductsToTenant(productIds: string[], tenantId: string, mode: "move" | "copy"): Promise<GiveOutcome> {
   requireSuperAdmin();
   if (!tenantId) throw new Error("Choose a tenant.");
+  const tenant = (await dbSelect<{ business_type: string | null }>(`SELECT business_type FROM tenants WHERE id = ? AND deleted_at IS NULL`, [tenantId]))[0];
+  if (!tenant) throw new Error("That tenant no longer exists.");
+  const sees = sharedCatalogGroupsFor(tenant.business_type);
   const ts = nowIso();
-  let n = 0;
+  const out: GiveOutcome = { done: [], skipped: [] };
   for (const id of productIds) {
     const p = (await dbSelect<Record<string, unknown>>(`SELECT * FROM products WHERE id = ? AND tenant_id IS NULL`, [id]))[0];
-    if (!p) continue;
+    const name = String(p?.name ?? id);
+    if (!p) { out.skipped.push({ id, name, reason: "No longer in the unowned catalog." }); continue; }
+    const group = (p.catalog_group as string | null) ?? (sees.includes("pharma") ? "pharma" : null);
+    if (mode === "copy" && group && sees.includes(group as never)) {
+      out.skipped.push({ id, name, reason: "This business already sees it in the shared catalog; a copy would show it twice." });
+      continue;
+    }
+    if (mode === "move") {
+      const others = await otherBusinessesUsing(id, tenantId);
+      if (others > 0) { out.skipped.push({ id, name, reason: `Used by ${others} other business${others === 1 ? "" : "es"}; moving would remove it from their lists. Use Copy.` }); continue; }
+    }
     const refs = {
       category_id: await tenantRef("categories", p.category_id as string | null, tenantId, ts),
       sub_category_id: await tenantRef("sub_categories", p.sub_category_id as string | null, tenantId, ts),
@@ -85,9 +124,9 @@ export async function giveProductsToTenant(productIds: string[], tenantId: strin
       await dbExecute(`INSERT OR IGNORE INTO products (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`, keys.map((k) => row[k]));
       await recordOutbox("products", row.id as string, "insert_if_absent", row);
     }
-    n++;
+    out.done.push(id);
   }
-  return n;
+  return out;
 }
 
 // ── Tenant catalog views (super admin only) ──────────────────────────────────
@@ -192,7 +231,9 @@ export async function bulkAssignByClassification(): Promise<{ assigned: number; 
     const tenantIds = types.flatMap((type) => byType[type] ?? []);
     if (!tenantIds.length) { skipped++; continue; }
     for (const tenantId of tenantIds) {
-      assigned += await giveProductsToTenant([p.id], tenantId, "copy");
+      const r = await giveProductsToTenant([p.id], tenantId, "copy");
+      assigned += r.done.length;
+      skipped += r.skipped.length;
     }
   }
 

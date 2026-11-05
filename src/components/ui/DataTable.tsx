@@ -13,11 +13,14 @@ export function DataTable<T extends { id: string }>({
   rows,
   onRowClick,
   emptyMessage = "No content in table",
+  loading = false,
 }: {
   columns: Column<T>[];
   rows: T[];
   onRowClick?: (row: T) => void;
   emptyMessage?: string;
+  /** Rows not loaded yet: says so instead of the empty message. */
+  loading?: boolean;
 }) {
   return (
     <div className="overflow-x-auto rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
@@ -35,7 +38,7 @@ export function DataTable<T extends { id: string }>({
           {rows.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="px-3 py-10 text-center text-neutral-400">
-                {emptyMessage}
+                {loading ? "Loading…" : emptyMessage}
               </td>
             </tr>
           ) : (

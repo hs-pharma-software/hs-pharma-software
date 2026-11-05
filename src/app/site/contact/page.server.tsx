@@ -1,0 +1,41 @@
+import type { Metadata } from "next";
+import { SITE_PRODUCTS } from "@/config/siteProducts";
+import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
+import { LeadForm } from "@/components/site/LeadForm";
+
+export const metadata: Metadata = {
+  title: "Contact",
+  description: "Contact MAVIN.pk about products, pricing, FBR setup or support.",
+  alternates: { canonical: "/contact" },
+};
+
+const TOPICS: Record<string, string> = {
+  fbr: "Checking FBR Digital Invoicing eligibility",
+  pricing: "Requesting pricing",
+};
+
+export default async function ContactPage({ searchParams }: { searchParams: Promise<{ topic?: string; plan?: string }> }) {
+  const { topic, plan } = await searchParams;
+  const about = topic && TOPICS[topic] ? `${TOPICS[topic]}${plan ? ` (${plan.slice(0, 20)})` : ""}` : null;
+  return (
+    <>
+      <PageIntro eyebrow="Contact" title="Talk to us.">
+        Questions about a product, pricing, FBR setup or an existing account.
+      </PageIntro>
+      <Section>
+        <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
+          <div>
+            {about && <p className="mb-3 text-sm text-slate-600">About: <b>{about}</b>. Add the details in your message.</p>}
+            <LeadForm kind="contact" businessTypes={SITE_PRODUCTS.map((p) => p.name)} />
+          </div>
+          <aside className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+            <h2 className="font-semibold text-[#0b2a6b]">Other ways to reach us</h2>
+            <p className="mt-2">Phone and WhatsApp: <ReviewMark>support number</ReviewMark></p>
+            <p className="mt-1">Email: <ReviewMark>support email</ReviewMark></p>
+            <p className="mt-1">Hours: <ReviewMark>support hours</ReviewMark></p>
+          </aside>
+        </div>
+      </Section>
+    </>
+  );
+}

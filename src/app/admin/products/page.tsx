@@ -139,11 +139,11 @@ export default function AdminCatalogReviewPage() {
                 variant="primary"
                 disabled={assigning}
                 onClick={async () => {
-                  if (!confirm("Copy all unowned products to matching tenant types?\n\n• pharma products → Retail Pharmacy, Medical Store, Hospital Pharmacy\n• general_store products → General Store\n\nThis is safe to run more than once.")) return;
+                  if (!confirm("Give businesses their own copy of unowned products?\n\nBusinesses that already see a product in the shared catalog (pharmacies for pharma products, general stores for general-store products) are skipped, so nothing is shown twice.\n\nSafe to run more than once.")) return;
                   setAssigning(true);
                   try {
                     const { assigned, skipped } = await bulkAssignByClassification();
-                    setMsg({ ok: true, text: `Bulk assign complete — ${assigned} product copies created, ${skipped} products skipped (no matching tenants).` });
+                    setMsg({ ok: true, text: `Bulk assign complete: ${assigned} copies created, ${skipped} skipped (already visible in the shared catalog, or no matching business).` });
                     void loadTab("unowned");
                     void loadCounts();
                   } catch (e) {
@@ -397,8 +397,13 @@ export default function AdminCatalogReviewPage() {
                 disabled={!tenantId}
                 onClick={async () => {
                   try {
-                    const n = await giveProductsToTenant([...picked], tenantId, giving);
-                    setMsg({ ok: true, text: `${n} product(s) ${giving === "move" ? "moved" : "copied"}.` });
+                    const r = await giveProductsToTenant([...picked], tenantId, giving);
+                    const verb = giving === "move" ? "moved" : "copied";
+                    const why = r.skipped.slice(0, 5).map((x) => `${x.name}: ${x.reason}`).join(" · ");
+                    setMsg({
+                      ok: r.skipped.length === 0,
+                      text: `${r.done.length} product(s) ${verb}.` + (r.skipped.length ? ` ${r.skipped.length} not ${verb}: ${why}${r.skipped.length > 5 ? " …" : ""}` : ""),
+                    });
                     setGiving(null);
                     void loadTab("unowned");
                     void loadCounts();

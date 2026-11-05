@@ -20,7 +20,9 @@ const nextConfig: NextConfig = {
         trailingSlash: true,
         // API routes (src/app/api/**/route.server.ts) exist only in the web
         // build; the desktop static export above leaves them out.
-        pageExtensions: ["tsx", "ts", "jsx", "js", "server.ts"],
+        // and so do the public site pages (src/app/site/**/page.server.tsx) and
+        // src/proxy.server.ts.
+        pageExtensions: ["tsx", "ts", "jsx", "js", "server.ts", "server.tsx"],
       }),
 };
 

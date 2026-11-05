@@ -39,9 +39,8 @@ const CAPS = Object.keys(CAPABILITY_LABELS) as CapabilityKey[];
 const FAMILIES: Family[] = ["pharmacy", "retail", "clinic", "lab", "hospital", "events"];
 type Tab = "overview" | "product" | "service" | "rules" | "tenants";
 
-function LevelChip({ cap, level }: { cap: CapabilityKey; level: Level }) {
-  // Every type can issue FBR digital invoices when the tenant needs it.
-  if (cap === "digitalInvoicing") return <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-[#006633] text-white">Ready</span>;
+/** How much a capability matters to the type (registry), not whether it is built or verified. */
+function LevelChip({ level }: { cap: CapabilityKey; level: Level }) {
   return <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${LEVEL_CLS[level]}`}>{level}</span>;
 }
 
@@ -220,15 +219,18 @@ function TypeDetail({ type, tenants, onBack }: { type: BusinessTypeDef; tenants:
   );
 }
 
-/** Super Admin > Types: the ten POS system types, how they differ, and which
- * tenants use each. Definitions live in config/businessTypes.ts. */
+/** Super Admin > Types: the POS system types, how they differ, and which
+ * tenants use each. Definitions (and the count) live in config/businessTypes.ts. */
 export default function TypesPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  // null while loading, so a count is never shown as 0 before the tenants arrive.
+  const [load, setLoad] = useState<"loading" | "ready" | "error">("loading");
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setView] = useState<"cards" | "matrix">("cards");
 
   useEffect(() => {
-    if (isTauri()) void tenantsRepo.list().then(setTenants);
+    if (!isTauri()) return;
+    tenantsRepo.list().then((t) => { setTenants(t); setLoad("ready"); }).catch(() => setLoad("error"));
   }, []);
 
   const tenantsOf = (id: string) => tenants.filter((t) => businessType(t.business_type).id === id);
@@ -258,9 +260,11 @@ export default function TypesPage() {
       <div className="flex items-start gap-3 rounded-2xl bg-[#006633]/[0.06] px-4 py-3 ring-1 ring-[#006633]/20">
         <BadgeCheck size={18} className="mt-0.5 shrink-0 text-[#006633]" />
         <p className="text-sm text-neutral-700">
-          <span className="font-semibold text-[#006633]">All 10 types are ready for FBR Digital Invoicing.</span> Any tenant can
-          submit invoices to FBR when it is registered and FBR is allowed in its tenant detail. Services taxed by a province
-          (PRA, SRB, KPRA, BRA) follow that authority&apos;s rules; confirm the applicable regime with the business&apos;s tax adviser.
+          <span className="font-semibold text-[#006633]">FBR Digital Invoicing submission is built for all {BUSINESS_TYPES.length} types.</span>{" "}
+          It has not yet been verified end to end against the FBR sandbox, so do not advertise it as certified. A tenant can
+          submit only when it is registered with FBR and FBR is allowed in its tenant detail. The FBR column below shows whether
+          the type needs it (Core) or may use it (Optional). Services taxed by a province (PRA, SRB, KPRA, BRA) follow that
+          authority&apos;s rules; confirm the applicable regime with the business&apos;s tax adviser.
         </p>
       </div>
 
@@ -324,10 +328,12 @@ export default function TypesPage() {
                           {CAPABILITY_LABELS[cap]}
                         </span>
                       ))}
-                      <span className="rounded bg-[#006633] px-1.5 py-0.5 text-[10px] text-white">FBR DI</span>
+                      {t.capabilities.digitalInvoicing !== "Not Required" && (
+                        <span className="rounded bg-[#006633]/10 px-1.5 py-0.5 text-[10px] text-[#006633]">FBR DI ({t.capabilities.digitalInvoicing})</span>
+                      )}
                     </div>
                     <p className="mt-3 text-[11px] text-neutral-400">
-                      {count} tenant{count === 1 ? "" : "s"}
+                      {load === "loading" ? "Counting tenants…" : load === "error" ? "Tenant count unavailable" : `${count} tenant${count === 1 ? "" : "s"}`}
                     </p>
                   </button>
                 );

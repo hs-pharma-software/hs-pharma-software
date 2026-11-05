@@ -174,7 +174,7 @@ export default function LandingPage() {
             <div className="fi4" style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:64}}>
 
               <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora_0.1.1_x64-setup.exe"
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
                 className="dl-btn"
                 style={{
                   display:"inline-flex",alignItems:"center",gap:10,
@@ -195,7 +195,7 @@ export default function LandingPage() {
               </a>
 
               <a
-                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora.apk"
+                href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
                 className="dl-btn"
                 style={{
                   display:"inline-flex",alignItems:"center",gap:10,
@@ -328,7 +328,7 @@ export default function LandingPage() {
               {/* Dual download buttons */}
               <div style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:16}}>
                 <a
-                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora_0.1.1_x64-setup.exe"
+                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
                   className="dl-btn"
                   style={{
                     display:"inline-flex",alignItems:"center",gap:12,
@@ -344,7 +344,7 @@ export default function LandingPage() {
                 </a>
 
                 <a
-                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest/download/Billora.apk"
+                  href="https://github.com/hs-pharma-software/hs-pharma-software/releases/latest"
                   className="dl-btn"
                   style={{
                     display:"inline-flex",alignItems:"center",gap:12,

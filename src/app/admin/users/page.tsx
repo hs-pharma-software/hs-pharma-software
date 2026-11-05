@@ -74,7 +74,7 @@ export default function AdminUsersPage() {
             <ArrowLeft size={14} /> All Pharmacies
           </Button>
           <h1 className="truncate text-2xl font-bold tracking-tight text-neutral-900">
-            {view.kind === "admins" ? "Super Admin" : selected?.name ?? "Pharmacy"}
+            {view.kind === "admins" ? "Super Admin" : selected?.name ?? "Business"}
           </h1>
         </div>
         {selected && (
@@ -112,7 +112,7 @@ export default function AdminUsersPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search pharmacy, owner or mobile..."
+          placeholder="Search business, owner or mobile..."
           className="flex-1 bg-transparent text-sm outline-none"
         />
       </div>
@@ -121,7 +121,7 @@ export default function AdminUsersPage() {
         <table className="w-full min-w-max border-collapse text-sm">
           <thead>
             <tr className="border-b border-neutral-100 bg-neutral-50/80 text-left">
-              {["Pharmacy", "Owner Name", "Mobile No", "Plan", "Logins", "Status", ""].map((h) => (
+              {["Business", "Owner Name", "Mobile No", "Plan", "Logins", "Status", ""].map((h) => (
                 <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
                   {h}
                 </th>
