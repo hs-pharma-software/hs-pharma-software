@@ -10,9 +10,10 @@ import { SITE_BASE_HEADER } from "@/config/site";
 import { siteRoute } from "@/lib/siteRoute";
 import { WEB_HOST_HEADER, isAppHost, webRoute } from "@/lib/webRoute";
 
-/** Portal domains, looked up once a minute per host (only for custom domains). */
+/** Portal domains, looked up once a minute per host (custom domains only).
+ * The proxy cannot reach the database, so it asks /api/web/host. */
 const portalCache = new Map<string, { portal: boolean; until: number }>();
-async function isPortalDomain(host: string): Promise<boolean> {
+async function isPortalDomain(req: NextRequest, host: string): Promise<boolean> {
   const h = host.toLowerCase().replace(/:\d+$/, "");
   const platform = (process.env.NEXT_PUBLIC_WEB_PLATFORM_DOMAIN || "mavin.pk").toLowerCase();
   if (h.endsWith(`.${platform}`)) return false;
@@ -20,8 +21,8 @@ async function isPortalDomain(host: string): Promise<boolean> {
   if (hit && hit.until > Date.now()) return hit.portal;
   let portal = false;
   try {
-    const [{ sqlForServer }, { portalTenantFor }] = await Promise.all([import("@/server/subSupersApi"), import("@/server/web/domains")]);
-    portal = (await portalTenantFor(sqlForServer(), h)) !== null;
+    const res = await fetch(new URL(`/api/web/host/?h=${encodeURIComponent(h)}`, req.url), { cache: "no-store" });
+    portal = res.ok && Boolean(((await res.json()) as { portal?: boolean }).portal);
   } catch {
     portal = false;
   }
@@ -51,7 +52,8 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.rewrite(url, { request: { headers } });
   }
 
-  const portal = !isAppHost(host) ? await isPortalDomain(host ?? "") : false;
+  // The lookup route itself is never looked up (no loop).
+  const portal = !isAppHost(host) && !req.nextUrl.pathname.startsWith("/api/web/host") ? await isPortalDomain(req, host ?? "") : false;
   const web = webRoute(host, req.nextUrl.pathname, portal);
   if (web.kind === "block") return new NextResponse("Not found", { status: 404 });
   if (web.kind === "redirect") return NextResponse.redirect(new URL(web.url, req.url), 307);
