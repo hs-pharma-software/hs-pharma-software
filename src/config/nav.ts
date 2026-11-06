@@ -509,7 +509,7 @@ const BASE_NAV: NavItem[] = [
     moduleKey: "settings",
     children: [
       { label: "General Settings", href: "/settings" },
-      { label: "My Online Store", href: "/settings/online-store" },
+      { label: "Website", href: "/settings/website" },
       { label: "Backup", href: "/settings/backup" },
       { label: "Restore", href: "/settings/restore" },
       { label: "User Logins", href: "/settings/logins" },

@@ -48,6 +48,7 @@ import { getCustomerUnpaidTotal } from "@/lib/repo/ledger";
 import { businessType } from "@/config/businessTypes";
 import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
 import { localDate } from "@/lib/localDate";
+import { serverJson } from "@/lib/serverMode";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -89,6 +90,7 @@ const LAST_COL = COL_DISC;
 export function InvoiceFormModal({
   invoice,
   rxId,
+  webOrderId,
   cloneFrom,
   onClose,
   onSaved,
@@ -98,6 +100,8 @@ export function InvoiceFormModal({
   invoice?: Invoice | null;
   /** Prescription ID: pre-populate invoice lines from this prescription's rx items. */
   rxId?: string;
+  /** Website order: pre-populate lines (the order's prices) and link the saved invoice to it. */
+  webOrderId?: string;
   /** Start a new invoice as a copy of this one (customer, buyer details, lines). */
   cloneFrom?: Invoice | null;
   onClose: () => void;
@@ -442,6 +446,32 @@ export function InvoiceFormModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rxId]);
 
+  // Pre-populate from a website order: its products, quantities and agreed prices.
+  useEffect(() => {
+    if (!webOrderId || invoice) return;
+    (async () => {
+      const o = await serverJson<{ result: { orderNo: number; customerName: string; phone: string; notes: string | null; items: { productId: string; name: string; qty: number; price: number }[] } }>(
+        "/api/web/manage/", { action: "orderForInvoice", id: webOrderId },
+      ).then((r) => r.result).catch((e) => { setError(e instanceof Error ? e.message : String(e)); return null; });
+      if (!o) return;
+      const newLines: Line[] = [];
+      const missing: string[] = [];
+      for (const item of o.items) {
+        const product = await productsRepo.get(item.productId).catch(() => null);
+        const batches = product ? await listAvailableBatches(product.id).catch(() => []) : [];
+        if (!product || !batches[0]) { missing.push(item.name); continue; }
+        const discPct = await getEffectiveDiscountPct(product).catch(() => 0);
+        newLines.push({ product, batch: batches[0], batches, extraAvail: 0, qty: item.qty, bonusQty: 0, salePrice: item.price, taxPct: product.tax_rate_pct, discountPct: discPct, unit: "base" });
+      }
+      if (newLines.length) setLines(newLines);
+      setCustomerName(o.customerName);
+      setCustomerPhone(o.phone);
+      setDescription(`Website order #${o.orderNo}${o.notes ? `: ${o.notes}` : ""}`);
+      if (missing.length) setError(`No stock found for: ${missing.join(", ")}. Add them by hand or update the order.`);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webOrderId]);
+
   /** No manual batch picker: picking a product adds it straight away, using
    * the batch with the earliest expiry (FEFO) that `listAvailableBatches`
    * already sorts to the front. If the same product is scanned twice, bump
@@ -697,6 +727,8 @@ export function InvoiceFormModal({
       }
       // Billed from a received prescription: mark it invoiced so it is not billed twice.
       if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
+      // Billed from a website order: link it once, so it is not billed twice and its stock hold ends.
+      if (webOrderId && !invoice && !isDraft) await serverJson("/api/web/manage/", { action: "linkInvoice", id: webOrderId, invoiceId }).catch(() => undefined);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

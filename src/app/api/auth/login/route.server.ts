@@ -3,6 +3,8 @@
 import { serverConfig } from "@/server/config";
 import { clientIp, jsonError, passwordHash, serverDb, HttpError } from "@/server/db";
 import { issueSession, sessionCookie, SESSION_HOURS } from "@/server/session";
+import { sqlForServer } from "@/server/subSupersApi";
+import { portalTenantFor } from "@/server/web/domains";
 import { timingSafeEqual } from "node:crypto";
 
 export const runtime = "nodejs";
@@ -21,7 +23,7 @@ export async function POST(req: Request): Promise<Response> {
     if (f && f.n >= LIMIT && f.until > Date.now()) throw new HttpError(429, "Too many failed attempts. Wait 15 minutes and try again.");
 
     const rs = await serverDb().execute({
-      sql: `SELECT id, password_hash, password_salt, is_active FROM users WHERE username = ? AND deleted_at IS NULL`,
+      sql: `SELECT id, tenant_id, password_hash, password_salt, is_active FROM users WHERE username = ? AND deleted_at IS NULL`,
       args: [username.trim()],
     });
     const u = rs.rows[0];
@@ -32,6 +34,9 @@ export async function POST(req: Request): Promise<Response> {
       throw new HttpError(401, "Incorrect username or password.");
     }
     if (!Number(u.is_active)) throw new HttpError(403, "This account has been deactivated. Contact the administrator.");
+    // A business's own portal domain signs in that business's logins only.
+    const portalTenant = await portalTenantFor(sqlForServer(), req.headers.get("host"));
+    if (portalTenant && String(u.tenant_id ?? "") !== portalTenant) throw new HttpError(401, "Incorrect username or password.");
     failures.delete(key);
     const { token } = issueSession(String(u.id), serverConfig().sessionSecret);
     const secure = new URL(req.url).protocol === "https:";

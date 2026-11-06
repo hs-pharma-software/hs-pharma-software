@@ -19,6 +19,8 @@ export interface FormTab {
   rxId?: string;
   /** A new invoice copied from this one (customer, buyer details, lines). */
   cloneFrom?: Invoice;
+  /** Website order being billed: lines prefilled from it, linked to it on save. */
+  webOrderId?: string;
 }
 
 const MODULE: Record<TabKind, string> = { invoice: "invoices", purchase: "purchase" };
@@ -47,6 +49,7 @@ interface FormTabsState {
   savedTick: Record<TabKind, number>;
   openNew: (kind: TabKind) => void;
   openNewFromRx: (rxId: string) => void;
+  openNewFromWebOrder: (orderId: string) => void;
   openEditInvoice: (invoice: Invoice) => void;
   openCloneInvoice: (invoice: Invoice) => void;
   openEditPurchase: (purchase: Purchase) => void;
@@ -85,6 +88,17 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
     let seq = 1;
     while (used.has(seq)) seq++;
     const tab: FormTab = { id: newId(), kind: "invoice", seq, rxId };
+    set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
+  },
+
+  openNewFromWebOrder: (webOrderId) => {
+    if (!canOpenKind("invoice")) return;
+    const existing = get().tabs.find((t) => t.webOrderId === webOrderId);
+    if (existing) return set({ activeId: existing.id, minimized: false });
+    const used = new Set(get().tabs.filter((t) => t.kind === "invoice" && !t.invoice).map((t) => t.seq));
+    let seq = 1;
+    while (used.has(seq)) seq++;
+    const tab: FormTab = { id: newId(), kind: "invoice", seq, webOrderId };
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
   },
 

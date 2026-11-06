@@ -1453,6 +1453,206 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Website Builder and Online Store: per business website settings, pages
+/// (draft and published), revisions, online listings of existing products,
+/// domains, web orders (stock reserved, then billed through the POS invoice),
+/// private prescription files, media, form requests and an audit log.
+/// Additions only; existing tables are not changed except two plan limits.
+fn schema_sql_v76() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS web_sites (
+        tenant_id TEXT PRIMARY KEY,
+        website_enabled INTEGER NOT NULL DEFAULT 0,
+        store_enabled INTEGER NOT NULL DEFAULT 0,
+        public_suspended INTEGER NOT NULL DEFAULT 0,
+        builder_allowed INTEGER NOT NULL DEFAULT 1,
+        custom_domain_allowed INTEGER NOT NULL DEFAULT 0,
+        template TEXT,
+        subdomain TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        published_at TEXT,
+        settings TEXT,
+        draft_settings TEXT,
+        store_settings TEXT,
+        max_pages INTEGER,
+        max_storage_mb INTEGER,
+        max_custom_domains INTEGER,
+        storage_bytes INTEGER NOT NULL DEFAULT 0,
+        provisioned_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_sites_subdomain ON web_sites(subdomain) WHERE subdomain IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS web_pages (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        title TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'page',
+        draft TEXT NOT NULL,
+        published TEXT,
+        seo_title TEXT,
+        seo_description TEXT,
+        in_nav INTEGER NOT NULL DEFAULT 1,
+        sort INTEGER NOT NULL DEFAULT 0,
+        draft_updated_at TEXT,
+        published_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_pages_slug ON web_pages(tenant_id, slug) WHERE deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS web_revisions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        note TEXT,
+        published_by TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_revisions_tenant ON web_revisions(tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS web_products (
+        tenant_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        show_online INTEGER NOT NULL DEFAULT 0,
+        allow_order INTEGER NOT NULL DEFAULT 0,
+        title TEXT,
+        description TEXT,
+        images TEXT,
+        online_price REAL,
+        featured INTEGER NOT NULL DEFAULT 0,
+        online_category TEXT,
+        rx_required INTEGER NOT NULL DEFAULT 0,
+        stock_visibility TEXT NOT NULL DEFAULT 'status',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, product_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_products_slug ON web_products(tenant_id, slug);
+    CREATE TABLE IF NOT EXISTS web_domains (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        host TEXT NOT NULL,
+        target TEXT NOT NULL CHECK (target IN ('website','store','portal')),
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'pending_verification',
+        verification TEXT,
+        error TEXT,
+        last_checked_at TEXT,
+        activated_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_domains_host ON web_domains(host);
+    CREATE TABLE IF NOT EXISTS web_orders (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        order_no INTEGER NOT NULL,
+        public_token TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        payment_method TEXT NOT NULL,
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        fulfillment TEXT NOT NULL,
+        zone TEXT,
+        customer_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        email TEXT,
+        address TEXT,
+        notes TEXT,
+        subtotal REAL NOT NULL,
+        delivery_charge REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL,
+        rx_required INTEGER NOT NULL DEFAULT 0,
+        rx_status TEXT,
+        reserved_until TEXT,
+        invoice_id TEXT,
+        ip TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_orders_token ON web_orders(public_token);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_orders_idem ON web_orders(tenant_id, idempotency_key);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_web_orders_no ON web_orders(tenant_id, order_no);
+    CREATE INDEX IF NOT EXISTS idx_web_orders_status ON web_orders(tenant_id, status, created_at);
+    CREATE TABLE IF NOT EXISTS web_order_items (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        qty REAL NOT NULL,
+        unit_price REAL NOT NULL,
+        line_total REAL NOT NULL,
+        rx_required INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_order_items_order ON web_order_items(order_id);
+    CREATE INDEX IF NOT EXISTS idx_web_order_items_product ON web_order_items(tenant_id, product_id);
+    CREATE TABLE IF NOT EXISTS web_order_events (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        note TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_order_events_order ON web_order_events(order_id, created_at);
+    CREATE TABLE IF NOT EXISTS web_files (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        order_id TEXT,
+        kind TEXT NOT NULL,
+        name TEXT,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_files_order ON web_files(order_id);
+    CREATE TABLE IF NOT EXISTS web_media (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        url TEXT NOT NULL,
+        alt TEXT,
+        bytes INTEGER NOT NULL DEFAULT 0,
+        width INTEGER,
+        height INTEGER,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_media_tenant ON web_media(tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS web_requests (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        message TEXT,
+        data TEXT,
+        status TEXT NOT NULL DEFAULT 'new',
+        ip TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_requests_tenant ON web_requests(tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS web_audit (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_audit_tenant ON web_audit(tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS web_guard (x INTEGER CHECK (x = 0));
+    ALTER TABLE subscription_plans ADD COLUMN web_max_pages INTEGER;
+    ALTER TABLE subscription_plans ADD COLUMN web_max_storage_mb INTEGER;
+    ALTER TABLE subscription_plans ADD COLUMN web_max_custom_domains INTEGER;
+    "#
+}
+
 /// Password recovery: each login can have an email and a mobile number; a
 /// forgotten password is reset with a one-time code sent to the email.
 /// password_changed_at ends sessions started before a reset. Only additions.
@@ -3660,6 +3860,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 75,
             description: "password_recovery",
             sql: schema_sql_v75(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 76,
+            description: "website_store",
+            sql: schema_sql_v76(),
             kind: MigrationKind::Up,
         },
     ]

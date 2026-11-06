@@ -13,5 +13,6 @@ import { isPublicPath } from "@/lib/publicPaths";
 export function usePublicPage(): boolean {
   const pathname = usePathname();
   const segments = useSelectedLayoutSegments();
-  return segments[0] === "site" || isPublicPath(pathname);
+  // "web": a business's own website (any visitor; never the app's sign-in).
+  return segments[0] === "site" || segments[0] === "web" || isPublicPath(pathname);
 }

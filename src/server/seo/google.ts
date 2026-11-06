@@ -13,7 +13,7 @@ export const SCOPES = {
 export interface ServiceAccount { client_email: string; private_key: string; token_uri: string }
 
 /** An HTTP call the Google code makes (injectable for tests). */
-export type Http = (url: string, init: { method: "GET" | "POST" | "PUT"; headers?: Record<string, string>; body?: string }) => Promise<{ status: number; json: unknown }>;
+export type Http = (url: string, init: { method: "GET" | "POST" | "PUT" | "DELETE"; headers?: Record<string, string>; body?: string }) => Promise<{ status: number; json: unknown }>;
 
 export const defaultHttp: Http = async (url, init) => {
   const ctrl = new AbortController();
