@@ -104,12 +104,15 @@ test("the scheduler runs each due, enabled job once a day", async () => {
   assert.equal(calls, 1);
 });
 
-test("jobs of later phases are listed but cannot be switched on or run", async () => {
+test("every job is available; a job without a handler cannot be switched on or run", async () => {
   const list = await listJobs(sql);
-  assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), ["health_check", "technical_audit", "pagespeed", "gsc_sync", "ga4_sync", "keyword_research", "content_proposals"]);
-  await assert.rejects(updateJob(sql, "a", "monthly_report", { enabled: true }), /phase 6/);
+  assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), SEO_JOBS.map((j) => j.id));
+  assert.equal(list.length, 8);
   await assert.rejects(updateJob(sql, "a", "health_check", { cadence: "hourly" }), /daily, weekly or monthly/);
-  assert.equal((await runJob(sql, SEO_JOBS, "monthly_report", "manual", "a", { sleep: noSleep })).status, "skipped");
+  const later: JobDef[] = [{ id: "later", label: "Later", description: "", defaultCadence: "weekly", phase: 7 }];
+  await ensureJobs(sql, later);
+  assert.equal(one(`SELECT enabled FROM seo_jobs WHERE id = 'later'`).enabled, 0);
+  assert.equal((await runJob(sql, later, "later", "manual", "a", { sleep: noSleep })).status, "skipped");
 });
 
 test("the health check and the scheduler never touch business data", async () => {

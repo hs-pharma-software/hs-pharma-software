@@ -39,6 +39,8 @@ export async function POST(req: Request): Promise<Response> {
       case "decideDraft": result = await studio.decideDraft(sql, actor, id, b.decision, b.note); break;
       case "openPullRequest": result = await studio.openDraftPullRequest(sql, actor, id); break;
       case "refreshPullRequests": result = await studio.refreshPullRequests(sql, actor); break;
+      case "report": result = await seo.getReport(sql, b.period); break;
+      case "generateReport": result = await seo.generateReport(sql, actor, b.period); break;
       case "decide": result = await seo.decideRecommendation(sql, actor, id, b.status, b.note); break;
       case "list": {
         const table = b.table;

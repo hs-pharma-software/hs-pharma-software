@@ -9,11 +9,12 @@ import { subSupersAvailable, when } from "@/lib/subSupersClient";
 import { ListState, Notice, errText } from "@/components/subsupers/shared";
 import { KeywordsTab } from "@/components/seo/KeywordsTab";
 import { ContentStudio, GitHubSetupGuide } from "@/components/seo/ContentStudio";
+import { ReportsTab } from "@/components/seo/ReportsTab";
 import { GoogleSetupGuide, SearchPerformance, type SearchDashboard } from "@/components/seo/SearchPerformance";
 
 /** Super Admin > SEO: the Mavin SEO Manager. Scheduler, kill switch and logs
- * (phase 1), technical audit (2), Google search data (3), keywords (4), content studio (5); later phases fill
- * the remaining tabs. */
+ * (phase 1), technical audit (2), Google search data (3), keywords (4), content studio (5)
+ * and monthly reports with deployment status (6). */
 const TABS = [
   ["overview", "SEO Overview"], ["keywords", "Keywords"], ["audit", "Technical Audit"], ["content", "Content Studio"],
   ["schedule", "Automation Schedule"], ["recommendations", "Recommendations"], ["reports", "Reports"], ["activity", "Activity Logs"], ["settings", "Settings"],
@@ -26,7 +27,10 @@ interface Integration { id: string; name: string; purpose: string; needs: string
 interface Overview {
   killSwitch: boolean; sitePublished: boolean; integrations: Integration[]; lastRun: Record<string, unknown> | null; failedRuns7d: number;
   openFindings: number; openRecommendations: number; drafts: number; keywords: number; metricsDays: number;
+  deployment: { latest: Deployment | null; lastReady: Deployment | null; error: string | null } | null;
 }
+interface Deployment { id: string; state: string; createdAt: string; commit: string | null; message: string | null; branch: string | null }
+const DEPLOY_CLS: Record<string, string> = { READY: "bg-emerald-100 text-emerald-800", ERROR: "bg-rose-100 text-rose-700", BUILDING: "bg-sky-100 text-sky-800", QUEUED: "bg-sky-100 text-sky-800", CANCELED: "bg-neutral-100 text-neutral-600" };
 interface Job { id: string; label: string; description: string; phase: number; available: boolean; enabled: boolean; cadence: string; lastRunAt: string | null; lastSuccessAt: string | null; lastStatus: string | null; running: boolean; due: boolean }
 
 const card = "rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
@@ -58,7 +62,7 @@ export default function SeoManagerPage() {
       {tab === "audit" && <AuditTab onOpen={setTab} />}
       {tab === "content" && <ContentStudio />}
       {tab === "recommendations" && <RecommendationsTab />}
-      {tab === "reports" && <LaterTab table="reports" phase={6} text="Monthly report: search performance, technical health and progress on recommendations." />}
+      {tab === "reports" && <ReportsTab />}
     </div>
   );
 }
@@ -100,13 +104,28 @@ function OverviewTab({ onOpen }: { onOpen: (t: Tab) => void }) {
           </button>
         ))}
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-3">
         <div className={card}>
           <p className="text-sm font-semibold text-neutral-800">Last automated run</p>
           {o.lastRun ? (
             <p className="mt-2 text-sm text-neutral-700">{String(o.lastRun.job_id).replace(/_/g, " ")} · <Pill s={String(o.lastRun.status)} /> · {when(o.lastRun.started_at)}
               {o.lastRun.error ? <span className="mt-1 block text-xs text-rose-700">{String(o.lastRun.error)}</span> : null}</p>
           ) : <p className="mt-2 text-sm text-neutral-500">No run yet. Start the health check from Automation Schedule.</p>}
+        </div>
+        <div className={card}>
+          <p className="text-sm font-semibold text-neutral-800">Live website deployment</p>
+          {!o.deployment ? (
+            <p className="mt-2 text-sm text-neutral-500">Vercel is not connected (optional; see Settings).</p>
+          ) : o.deployment.error ? (
+            <p className="mt-2 text-xs text-rose-700">{o.deployment.error}</p>
+          ) : o.deployment.latest ? (
+            <div className="mt-2 text-sm text-neutral-700">
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${DEPLOY_CLS[o.deployment.latest.state] ?? "bg-neutral-100 text-neutral-600"}`}>{o.deployment.latest.state.toLowerCase()}</span>
+              {" "}{when(o.deployment.latest.createdAt)}{o.deployment.latest.commit ? <> · <code className="text-xs">{o.deployment.latest.commit}</code></> : null}
+              {o.deployment.latest.message && <span className="mt-1 block truncate text-xs text-neutral-500" title={o.deployment.latest.message}>{o.deployment.latest.message}</span>}
+              {o.deployment.latest.state !== "READY" && o.deployment.lastReady && <span className="mt-1 block text-xs text-neutral-500">Last working deployment: {when(o.deployment.lastReady.createdAt)}</span>}
+            </div>
+          ) : <p className="mt-2 text-sm text-neutral-500">No production deployments found.</p>}
         </div>
         <button type="button" onClick={() => onOpen("settings")} className={`${card} text-left transition hover:ring-[var(--accent)]`}>
           <p className="text-sm font-semibold text-neutral-800">Integrations</p>
@@ -339,20 +358,6 @@ function SettingsTab() {
           ))}
         </ul>
       </div>
-    </div>
-  );
-}
-
-function LaterTab({ table, phase, text }: { table: string; phase: number; text: string }) {
-  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => { seoCall<Record<string, unknown>[]>("list", { table }).then(setRows).catch((e) => setError(errText(e))); }, [table]);
-  return (
-    <div className={card}>
-      <p className="text-sm text-neutral-700">{text}</p>
-      <p className="mt-2 text-xs text-neutral-500">Built in phase {phase}.</p>
-      {error && <div className="mt-3"><Notice kind="error">{error}</Notice></div>}
-      {rows && rows.length > 0 && <p className="mt-3 text-sm text-neutral-600">{rows.length} item{rows.length === 1 ? "" : "s"} recorded.</p>}
     </div>
   );
 }

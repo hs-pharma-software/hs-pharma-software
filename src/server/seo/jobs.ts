@@ -6,6 +6,7 @@ import { integrationStatus, sitePublished } from "./integrations";
 import { httpFetcher, parsePage, runTechnicalAudit } from "./technical";
 import { runContentProposals } from "./content";
 import { refreshPullRequests } from "./studio";
+import { runMonthlyReport } from "./report";
 import { runPageSpeed } from "./pagespeed";
 import { runGscSync } from "./gsc";
 import { runGa4Sync } from "./ga4";
@@ -68,5 +69,8 @@ export const SEO_JOBS: JobDef[] = [
     })),
     }),
   },
-  { id: "monthly_report", label: "Monthly report", description: "Performance, technical health and progress on recommendations.", defaultCadence: "monthly", phase: 6 },
+  {
+    id: "monthly_report", label: "Monthly report", description: "Last month's search performance, technical health, keywords, content and automation; trims SEO logs older than 180 days.", defaultCadence: "monthly", phase: 6,
+    run: (ctx) => runMonthlyReport(ctx),
+  },
 ];

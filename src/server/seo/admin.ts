@@ -10,6 +10,8 @@ import { GA4_SOURCE } from "./ga4";
 import { isoDay } from "./google";
 import { AUTOCOMPLETE_SETTING, TARGETS, classifyIntent, normalize, score, targetFor, type Evidence, type Intent } from "./keywords";
 import { randomUUID } from "node:crypto";
+import { buildReport, saveReport, validPeriod } from "./report";
+import { productionDeployments, summarize, vercelConfig } from "./vercel";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -30,7 +32,39 @@ export async function overview(sql: Sql) {
     drafts: await count(sql, `SELECT COUNT(*) AS n FROM seo_content_drafts WHERE status IN ('draft','in_review')`),
     keywords: await count(sql, `SELECT COUNT(*) AS n FROM seo_keywords`),
     metricsDays: await count(sql, `SELECT COUNT(DISTINCT day) AS n FROM seo_metrics_daily`),
+    deployment: await deploymentStatus(),
   };
+}
+
+/** The live site's latest production deployments (Vercel, read-only); null when not connected. */
+async function deploymentStatus() {
+  const cfg = vercelConfig();
+  if (!cfg) return null;
+  try {
+    return { ...summarize(await productionDeployments(cfg, { limit: 5 })), error: null };
+  } catch (e) {
+    return { latest: null, lastReady: null, recent: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────
+
+export async function getReport(sql: Sql, period: unknown) {
+  if (!validPeriod(period)) throw new HttpError(400, "Choose a month.");
+  const r = (await sql.execute(`SELECT body FROM seo_reports WHERE period = ?`, [period])).rows[0];
+  if (!r) throw new HttpError(404, "No report for that month yet.");
+  return JSON.parse(String(r.body));
+}
+
+/** Builds (or rebuilds) a month's report now; the current month is marked as partial. */
+export async function generateReport(sql: Sql, actor: string, period: unknown) {
+  if (!validPeriod(period)) throw new HttpError(400, "Choose a month.");
+  const now = new Date();
+  if (`${period}-01` > now.toISOString().slice(0, 10)) throw new HttpError(400, "That month has not started yet.");
+  const r = await buildReport(sql, period, { now });
+  await saveReport(sql, r);
+  await logActivity(sql, { actor, action: "report_generated", detail: { period, partial: r.partial } });
+  return r;
 }
 
 const WINDOW = 28;

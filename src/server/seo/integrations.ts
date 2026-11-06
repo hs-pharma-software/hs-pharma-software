@@ -26,7 +26,7 @@ export function integrationStatus(env: Record<string, string | undefined> = proc
     { id: "gsc", name: "Google Search Console", purpose: "Clicks, impressions, CTR, position, indexing.", needs: ["GOOGLE_SERVICE_ACCOUNT_JSON", "GSC_SITE_URL"], phase: 3, access: "Service account added to the property as a restricted (read-only) user." },
     { id: "ga4", name: "Google Analytics 4", purpose: "Visits and conversions from organic search.", needs: ["GOOGLE_SERVICE_ACCOUNT_JSON", "GA4_PROPERTY_ID"], phase: 3, access: "Service account with the Viewer role on the property. The site sends visits only when NEXT_PUBLIC_GA_MEASUREMENT_ID (G-…) is set." },
     { id: "github", name: "GitHub", purpose: "Approved changes as a branch and pull request.", needs: ["GITHUB_TOKEN", "GITHUB_REPO"], phase: 5, access: "Fine-grained token for this repository only: contents and pull requests (read and write). GITHUB_REPO is owner/name; GITHUB_BASE_BRANCH defaults to main." },
-    { id: "vercel", name: "Vercel", purpose: "Deployment status in reports.", needs: ["VERCEL_API_TOKEN", "VERCEL_PROJECT_ID"], phase: 6, access: "A read-only token scoped to this project." },
+    { id: "vercel", name: "Vercel", purpose: "Deployment status in reports.", needs: ["VERCEL_API_TOKEN", "VERCEL_PROJECT_ID"], phase: 6, access: "A token scoped to this project's team (read access is all that is used). Add VERCEL_TEAM_ID when the project belongs to a team." },
   ];
   return list.map((i) => ({
     ...i,

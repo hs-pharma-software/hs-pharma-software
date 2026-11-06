@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
  * measure has its own chart (no shared axis); empty states say why. */
 
 interface Totals { from: string; to: string; days: number; clicks: number; impressions: number; ctr: number | null; position: number | null }
-interface TopRow { key: string; clicks: number; impressions: number; ctr: number | null; position: number | null }
+export interface TopRow { key: string; clicks: number; impressions: number; ctr: number | null; position: number | null }
 export interface SearchDashboard {
   sitePublished: boolean;
   gscConnected: boolean;
@@ -59,7 +59,7 @@ function niceMax(v: number) {
 }
 
 /** One measure over time: 2px line, faint grid, crosshair and tooltip on hover. */
-function LineChart({ title, points, unit }: { title: string; points: { day: string; value: number }[]; unit: string }) {
+export function LineChart({ title, points, unit }: { title: string; points: { day: string; value: number }[]; unit: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(600);
   const [hover, setHover] = useState<number | null>(null);
@@ -126,10 +126,10 @@ function LineChart({ title, points, unit }: { title: string; points: { day: stri
   );
 }
 
-function TopTable({ title, rows, label }: { title: string; rows: TopRow[]; label: string }) {
+export function TopTable({ title, rows, label, period = "last 28 days" }: { title: string; rows: TopRow[]; label: string; period?: string }) {
   return (
     <div className={card}>
-      <p className="mb-2 text-sm font-semibold text-neutral-800">{title} <span className="text-xs font-normal text-neutral-500">· last 28 days</span></p>
+      <p className="mb-2 text-sm font-semibold text-neutral-800">{title} <span className="text-xs font-normal text-neutral-500">· {period}</span></p>
       {rows.length === 0 ? <p className="text-sm text-neutral-500">No rows in this period.</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
