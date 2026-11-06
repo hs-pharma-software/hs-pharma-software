@@ -213,3 +213,35 @@ export function Checkout({ orderBase, preview }: { orderBase: string; preview?: 
     </form>
   );
 }
+
+/** Diagnostic labs: receipt (or order) number + registered mobile -> the verified report. */
+export function ReportLookup({ preview }: { preview?: boolean }) {
+  const [number, setNumber] = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form className="space-y-3 rounded-xl bg-white p-6 ring-1 ring-black/5" onSubmit={async (e) => {
+      e.preventDefault();
+      setError(null);
+      setBusy(true);
+      try {
+        const r = await api<{ url: string }>({ action: "labReport", number, phone });
+        window.location.assign(new URL(r.url, window.location.href).href);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        setBusy(false);
+      }
+    }}>
+      <label className="block text-sm text-neutral-700">Receipt or order number
+        <input required value={number} onChange={(e) => setNumber(e.target.value)} className={`${input} mt-1`} inputMode="text" autoComplete="off" placeholder="e.g. 1234" />
+      </label>
+      <label className="block text-sm text-neutral-700">Mobile number given at the lab
+        <input required value={phone} onChange={(e) => setPhone(e.target.value)} className={`${input} mt-1`} inputMode="tel" autoComplete="tel" placeholder="03001234567" />
+      </label>
+      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
+      <button type="submit" disabled={busy || preview} className={btn} style={{ background: "var(--wa)" }}>{preview ? "Preview: lookup is off" : busy ? "Finding your report…" : "Get report"}</button>
+      <p className="text-xs text-neutral-500">Your report opens on the next page; use “Download PDF” there to save it.</p>
+    </form>
+  );
+}

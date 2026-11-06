@@ -6,6 +6,7 @@ import { sqlForServer } from "@/server/subSupersApi";
 import { loadSite } from "@/server/web/core";
 import { resolveHost } from "@/server/web/domains";
 import { orderByToken, placeOrder, publicCatalog, submitRequest } from "@/server/web/store";
+import { findLabReport } from "@/server/web/labLookup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,10 @@ export async function POST(req: Request): Promise<Response> {
       }
       case "checkout": result = await placeOrder(sql, site, b, ip); break;
       case "request": result = await submitRequest(sql, site, b, ip); break;
+      case "labReport":
+        if (!site.websiteEnabled) throw new HttpError(404, "Not available.");
+        result = await findLabReport(sql, site.tenantId, b.number, b.phone, ip);
+        break;
       case "order": {
         const o = await orderByToken(sql, site.tenantId, String(b.token ?? ""));
         if (!o) throw new HttpError(404, "Order not found.");

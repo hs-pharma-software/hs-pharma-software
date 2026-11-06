@@ -43,6 +43,8 @@ export function webRoute(host: string | null, pathname: string, portal = false):
   if (pathname === "/robots.txt") return { kind: "rewrite", host: h, path: "/web-meta/robots" };
   if (pathname === "/sitemap.xml") return { kind: "rewrite", host: h, path: "/web-meta/sitemap" };
   if (pathname.startsWith("/api/") || /\.[a-z0-9]{2,5}$/i.test(pathname)) return { kind: "pass", host: h };
+  // Lab reports (QR code and the website's report lookup) open the app's report page.
+  if (pathname === "/lab-report" || pathname === "/lab-report/") return { kind: "pass", host: h };
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return { kind: "redirect", url: `${APP_URL}/` };
   if (pathname.startsWith("/web")) return { kind: "block" };
   return { kind: "rewrite", host: h, path: `/web${pathname === "/" ? "" : pathname}` };

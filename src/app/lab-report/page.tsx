@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Printer } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { LabReportDocument } from "@/components/clinic/LabReportDocument";
 import { labDesign } from "@/lib/labReportDesigns";
 import type { PublicLabReport } from "@/server/labVisitReport";
@@ -55,10 +55,17 @@ function OnlineLabReport() {
         <span>
           Online copy of the verified results for visit {report.visitNo}.
           {report.pending > 0 && ` ${report.pending} test${report.pending === 1 ? " is" : "s are"} still in progress and will appear here when verified.`}
+          {" "}For a PDF, press Download PDF and choose “Save as PDF”.
         </span>
-        <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-3 py-1.5 font-medium text-white hover:bg-neutral-700">
-          <Printer size={13} /> Print
-        </button>
+        <span className="flex flex-wrap items-center gap-2">
+          {/* The browser saves the report as a PDF: choose "Save as PDF" as the printer. */}
+          <button type="button" onClick={() => window.print()} title="Choose Save as PDF in the print window" className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-3 py-1.5 font-medium text-white hover:bg-neutral-700">
+            <Download size={13} /> Download PDF
+          </button>
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-1.5 font-medium text-neutral-700 hover:bg-neutral-50">
+            <Printer size={13} /> Print
+          </button>
+        </span>
       </div>
     </main>
   );

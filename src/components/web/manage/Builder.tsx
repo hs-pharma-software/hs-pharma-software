@@ -25,6 +25,7 @@ const blank = (type: SectionType): Section => {
   if (type === "featured") return { ...base, limit: 8 };
   if (type === "contact") return { ...base, form: "contact" };
   if (type === "cta") return { ...base, text: "", buttons: [{ label: "Contact us", href: "/contact" }] };
+  if (type === "reportLookup") return { ...base, heading: "Get your report", text: "Enter the receipt or order number printed on your receipt and the mobile number you gave at the lab." };
   return base;
 };
 const ITEM_LABELS: Partial<Record<SectionType, [string, string]>> = { services: ["Title", "Description"], faq: ["Question", "Answer"], testimonials: ["Customer name", "What they said"] };
@@ -65,7 +66,7 @@ function SectionEditor({ s, onChange, tenantId }: { s: Section; onChange: (s: Se
     <div className="space-y-3">
       <p className="text-xs text-neutral-500">{SECTION_LABELS[s.type].hint}</p>
       <label htmlFor={`${id}-h`} className={labelCls}>Heading<input id={`${id}-h`} value={s.heading} maxLength={140} onChange={(e) => set("heading", e.target.value)} className={inputCls} /></label>
-      {["hero", "about", "services", "cta", "contact"].includes(s.type) && (
+      {["hero", "about", "services", "cta", "contact", "reportLookup"].includes(s.type) && (
         <label htmlFor={`${id}-t`} className={labelCls}>Text<textarea id={`${id}-t`} value={s.text ?? ""} maxLength={3000} rows={s.type === "about" ? 6 : 3} onChange={(e) => set("text", e.target.value)} className={inputCls} /></label>
       )}
       {s.type === "hero" && (

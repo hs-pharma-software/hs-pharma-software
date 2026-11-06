@@ -12,7 +12,7 @@ export const TEMPLATES: Record<TemplateId, { label: string; summary: string; sto
   retail: { label: "Retail shop", summary: "Categories, featured products, cart and checkout.", store: true },
   clinic: { label: "Clinic", summary: "Doctors, services, timings and appointment requests.", store: false },
   hospital: { label: "Hospital", summary: "Departments, doctors, facilities and appointment requests.", store: false },
-  lab: { label: "Diagnostic lab", summary: "Tests and services, timings and contact.", store: false },
+  lab: { label: "Diagnostic lab", summary: "Tests and services, timings, online reports and contact.", store: false },
   distributor: { label: "Distributor / supplier", summary: "Company profile, catalogue and quotation requests.", store: true },
   restaurant: { label: "Restaurant", summary: "Introduction, menu highlights, gallery and contact.", store: false },
   events: { label: "Events / banquet", summary: "Venue, packages, gallery and booking enquiries.", store: false },
@@ -84,6 +84,7 @@ export function draftFor(template: TemplateId, b: { name: string; phone: string 
       break;
     case "lab":
       home.push(hero(name, "Write one line about your lab.", false), about(name), services("Tests and services", "Name a test or service and how to get it."), { id: sid("hours"), type: "hours", heading: "Timings" });
+      home[0].buttons = [{ label: "Get your report", href: "/reports" }, { label: "Contact us", href: "/contact" }];
       break;
     case "distributor":
       home.push(hero(name, "Write one line about the companies and areas you supply.", shop), about(name));
@@ -103,6 +104,7 @@ export function draftFor(template: TemplateId, b: { name: string; phone: string 
     settings,
     pages: [
       { slug: "home", title: "Home", kind: "home", sections: home },
+      ...(template === "lab" ? [{ slug: "reports", title: "Reports", kind: "page", sections: [{ id: sid("rep"), type: "reportLookup" as const, heading: "Get your report", text: "Enter the receipt or order number printed on your receipt and the mobile number you gave at the lab. Results appear once the pathologist has verified them." }] }] : []),
       { slug: "about", title: "About", kind: "page", sections: [about(name)] },
       { slug: "contact", title: "Contact", kind: "contact", sections: [contact(contactForm), { id: sid("hours"), type: "hours", heading: "Opening hours" }] },
     ],

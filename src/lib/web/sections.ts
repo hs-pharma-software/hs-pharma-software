@@ -8,7 +8,7 @@ export interface Btn { label: string; href: string }
 
 export type SectionType =
   | "hero" | "about" | "services" | "categories" | "featured" | "gallery" | "testimonials"
-  | "faq" | "contact" | "cta" | "doctors" | "departments" | "hours";
+  | "faq" | "contact" | "cta" | "doctors" | "departments" | "hours" | "reportLookup";
 
 export type FormKind = "none" | "contact" | "appointment" | "quotation";
 
@@ -42,6 +42,7 @@ export const SECTION_LABELS: Record<SectionType, { label: string; hint: string }
   doctors: { label: "Doctors", hint: "Doctors from your Clinic records (name, specialty, days)." },
   departments: { label: "Departments", hint: "Active departments from your Hospital records." },
   hours: { label: "Business hours", hint: "Your opening hours from Website Settings." },
+  reportLookup: { label: "Get your report (labs)", hint: "Patients enter their receipt or order number and mobile number to open their verified report." },
 };
 
 /** Sections that list items (with item fields title/text). */
@@ -152,6 +153,7 @@ export function cleanSections(input: unknown): Section[] {
     if (type === "hero") s.variant = r.variant === "split" ? "split" : "centered";
     const text = str(r.text, 3000, `${label} text`);
     if (text) s.text = text;
+    if (type === "reportLookup" && !s.heading) s.heading = "Get your report";
     if (["hero", "about"].includes(type)) {
       s.image = cleanImg(r.image, `${label} image`);
       if (type === "hero") s.mobileImage = cleanImg(r.mobileImage, `${label} mobile image`);

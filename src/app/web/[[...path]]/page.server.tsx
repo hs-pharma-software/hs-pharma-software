@@ -7,7 +7,7 @@ import { webContext, sectionData, type WebContext } from "@/server/web/publicSit
 import { orderByToken, publicCatalog, publicCategories } from "@/server/web/store";
 import { FONTS } from "@/lib/web/sections";
 import { ProductCard, SectionView, SiteFooter, SiteHeader, rs, sized, themeStyle, type Links } from "@/components/web/Render";
-import { AddToCart, CartButton, Checkout, RequestForm } from "@/components/web/Client";
+import { AddToCart, CartButton, Checkout, ReportLookup, RequestForm } from "@/components/web/Client";
 
 /** A business's public website and store (served for its own addresses only:
  * see src/proxy.server.ts and resolveHost). Address map:
@@ -98,7 +98,8 @@ export default async function WebPage(p: Params) {
     body = pg.sections.map((sec) => (
       <SectionView key={sec.id} sec={sec} s={s} data={data} links={links}
         formSlot={(kind) => (kind === "none" ? null : <RequestForm kind={kind} preview={preview} />)}
-        productAction={(prod) => <AddToCart p={prod} preview={preview} />} />
+        productAction={(prod) => <AddToCart p={prod} preview={preview} />}
+        reportSlot={<ReportLookup preview={preview} />} />
     ));
     if (pg.kind === "home") {
       jsonLd = { "@context": "https://schema.org", "@type": "LocalBusiness", name: s.name, ...(s.contact.phone ? { telephone: s.contact.phone } : {}), ...(s.contact.address ? { address: s.contact.address } : {}), ...(ctx.canonicalWebsite ? { url: ctx.canonicalWebsite } : {}) };

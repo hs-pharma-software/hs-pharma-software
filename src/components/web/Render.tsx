@@ -126,11 +126,13 @@ function H({ children }: { children: ReactNode }) {
   return children ? <h2 className="mb-6 text-2xl font-bold tracking-tight text-neutral-900" style={{ textWrap: "balance" } as React.CSSProperties}>{children}</h2> : null;
 }
 
-export function SectionView({ sec, s, data, links, formSlot, productAction }: {
+export function SectionView({ sec, s, data, links, formSlot, productAction, reportSlot }: {
   sec: Section; s: SiteSettings; data: RenderData; links: Links;
   /** The contact form (a client component on the live site; a placeholder in the editor). */
   formSlot?: (kind: NonNullable<Section["form"]>) => ReactNode;
   productAction?: (p: ProductCardData) => ReactNode;
+  /** The report lookup form (diagnostic labs). */
+  reportSlot?: ReactNode;
 }) {
   const wrap = (children: ReactNode, tone: "plain" | "soft" = "plain") => (
     <section id={sec.id} className={tone === "soft" ? "bg-neutral-50" : ""}><div className="mx-auto max-w-6xl px-4 py-12">{children}</div></section>
@@ -199,6 +201,15 @@ export function SectionView({ sec, s, data, links, formSlot, productAction }: {
       return wrap(<><H>{sec.heading}</H>{data.departments.length ? <div className="flex flex-wrap gap-2">{data.departments.map((d, i) => <span key={i} className="rounded-lg bg-white px-4 py-2 text-sm ring-1 ring-black/5">{d.name}</span>)}</div> : <p className="text-sm text-neutral-500">Departments appear here from your hospital records.</p>}</>);
     case "hours":
       return wrap(<><H>{sec.heading}</H><Hours s={s} /></>);
+    case "reportLookup":
+      return wrap(
+        <div className="mx-auto max-w-xl">
+          <H>{sec.heading}</H>
+          <Paras text={sec.text} className="mb-4 text-neutral-700" />
+          {reportSlot ?? <div className="rounded-xl bg-white p-6 text-sm text-neutral-500 ring-1 ring-black/5">Receipt number and mobile number form</div>}
+        </div>,
+        "soft",
+      );
     case "contact":
       return wrap(
         <div className="grid gap-8 md:grid-cols-2">

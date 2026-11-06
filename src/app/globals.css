@@ -101,6 +101,36 @@ body {
     width: 100% !important;
     border: none !important;
   }
+  /* Long printouts continue on the next page instead of being cut. The
+     printout usually sits in a modal (fixed, height-limited, scrolling):
+     everything around it that is not the printout or one of its containers
+     takes no space, and its containers stop clipping and growing. */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body *:not(.print-area):not(.print-area *):not(:has(.print-area)) {
+    display: none !important;
+  }
+  *:has(.print-area) {
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  /* Keep a table's header on every page and its rows whole. */
+  .print-area thead {
+    display: table-header-group;
+  }
+  .print-area tr,
+  .print-area img,
+  .print-area .print-keep {
+    break-inside: avoid;
+  }
 }
 
 /* ── Urdu (Electric / Electronics / Solar store) ────────────────────────
