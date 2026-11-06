@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { SITE_PRODUCTS } from "@/config/siteProducts";
 import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
 import { LeadForm } from "@/components/site/LeadForm";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/contact", {
   title: "Contact",
   description: "Contact MAVIN.pk about products, pricing, FBR setup or support.",
   alternates: { canonical: "/contact" },
-};
+});
 
 const TOPICS: Record<string, string> = {
   fbr: "Checking FBR Digital Invoicing eligibility",

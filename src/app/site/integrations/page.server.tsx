@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import Link from "next/link";
 import { PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/integrations", {
   title: "Integrations",
   description: "FBR Digital Invoicing, provincial restaurant tax and DRAP product data.",
   alternates: { canonical: "/integrations" },
-};
+});
 
 const ITEMS: { name: string; who: string; status: string; href?: string; text: string }[] = [
   {

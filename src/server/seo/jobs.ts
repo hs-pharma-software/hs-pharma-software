@@ -3,7 +3,9 @@
  * a `run` belong to a later build phase: they are listed but cannot run. */
 import type { JobContext, JobDef } from "./engine";
 import { integrationStatus, sitePublished } from "./integrations";
-import { runTechnicalAudit } from "./technical";
+import { httpFetcher, parsePage, runTechnicalAudit } from "./technical";
+import { runContentProposals } from "./content";
+import { refreshPullRequests } from "./studio";
 import { runPageSpeed } from "./pagespeed";
 import { runGscSync } from "./gsc";
 import { runGa4Sync } from "./ga4";
@@ -51,6 +53,20 @@ export const SEO_JOBS: JobDef[] = [
     id: "keyword_research", label: "Keyword research", description: "Pakistan-focused keyword candidates with intent and evidence; no invented volumes.", defaultCadence: "weekly", phase: 4,
     run: (ctx) => runKeywordResearch(ctx, { siteUrl: SITE_URL }),
   },
-  { id: "content_proposals", label: "Content proposals", description: "Draft landing pages, articles and metadata improvements for review.", defaultCadence: "weekly", phase: 5 },
+  {
+    id: "content_proposals", label: "Content proposals", description: "Draft articles and better page titles and descriptions for review; approved drafts become pull requests.", defaultCadence: "weekly", phase: 5,
+    run: async (ctx) => ({
+      // Drafts whose pull request was merged since last week are now published.
+      pullRequests: await refreshPullRequests(ctx.sql, "job:content_proposals"),
+      ...(await runContentProposals(ctx, {
+      siteUrl: SITE_URL,
+      currentMeta: async (path) => {
+        const r = await httpFetcher(`${SITE_URL}${path}`);
+        const p = r.status === 200 ? parsePage(r.body) : null;
+        return { title: p?.title ?? undefined, description: p?.description ?? undefined };
+      },
+    })),
+    }),
+  },
   { id: "monthly_report", label: "Monthly report", description: "Performance, technical health and progress on recommendations.", defaultCadence: "monthly", phase: 6 },
 ];

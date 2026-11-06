@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { PRODUCT_GROUPS } from "@/config/siteProducts";
 import { CtaLink, PageIntro, ReviewMark, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/about", {
   title: "About",
   description: "About MAVIN.pk: the sectors we serve and how we onboard a business.",
   alternates: { canonical: "/about" },
-};
+});
 
 export default async function AboutPage() {
   const base = await siteBase();

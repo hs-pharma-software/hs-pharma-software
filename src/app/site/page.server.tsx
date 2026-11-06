@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import Link from "next/link";
 import { PRODUCT_GROUPS, SITE_PRODUCTS } from "@/config/siteProducts";
 import { CtaLink, Section, at, siteBase, siteContainer } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/", {
   title: { absolute: "MAVIN.pk — Business software for billing, stock and daily operations" },
   alternates: { canonical: "/" },
-};
+});
 
 const PLATFORM = [
   { title: "Billing", text: "Invoices, returns, part payments and printing on thermal, A5 or A4 paper." },

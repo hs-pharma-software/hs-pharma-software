@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import Link from "next/link";
 import { SITE_PRODUCTS } from "@/config/siteProducts";
+import { listArticles } from "@/lib/siteArticles";
 import { PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/resources", {
   title: "Resources",
   description: "Getting started, product guides, release notes and integration setup for MAVIN.pk.",
   alternates: { canonical: "/resources" },
-};
+});
 
 export default async function ResourcesPage() {
   const base = await siteBase();
+  const articles = listArticles();
   return (
     <>
       <PageIntro eyebrow="Resources" title="Guides and updates.">
@@ -25,6 +28,18 @@ export default async function ResourcesPage() {
           <li>Choose the print layout (thermal, A5 or A4) and print a test invoice.</li>
         </ol>
       </Section>
+      {articles.length > 0 && (
+        <Section title="Articles">
+          <ul className="grid gap-4 sm:grid-cols-2">
+            {articles.map((a) => (
+              <li key={a.slug}>
+                <Link href={at(base, `/resources/${a.slug}`)} className="font-medium text-[#1565c0] hover:underline">{a.title}</Link>
+                <p className="mt-1 text-sm text-slate-600">{a.description}</p>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       <Section title="Product guides">
         <ul className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           {SITE_PRODUCTS.map((p) => (

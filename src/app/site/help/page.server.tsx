@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import Link from "next/link";
 import { appLoginUrl } from "@/config/site";
 import { PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/help", {
   title: "Help",
   description: "Help for existing MAVIN.pk customers.",
   alternates: { canonical: "/help" },
-};
+});
 
 const FAQ = [
   ["I can't sign in on a new computer.", "The first sign-in on each computer needs internet. After that, the desktop app also signs in offline."],

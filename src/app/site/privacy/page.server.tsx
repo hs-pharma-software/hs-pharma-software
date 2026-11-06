@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
 import { LegalDraftNote } from "@/components/site/legal";
 
-export const metadata: Metadata = { title: "Privacy", alternates: { canonical: "/privacy" } };
+export const metadata: Metadata = withSeoMeta("/privacy", { title: "Privacy", alternates: { canonical: "/privacy" } });
 
 export default function PrivacyPage() {
   return (

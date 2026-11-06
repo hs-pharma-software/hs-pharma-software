@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { CtaLink, PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/integrations/fbr-digital-invoicing", {
   title: "FBR Digital Invoicing",
   description: "How FBR Digital Invoicing works in MAVIN.pk: who it is for, what you need and how onboarding works.",
   alternates: { canonical: "/integrations/fbr-digital-invoicing" },
-};
+});
 
 const STEPS = [
   ["Check eligibility", "Tell us your sector, registration and how you invoice. We confirm whether FBR Digital Invoicing applies or a provincial authority does."],

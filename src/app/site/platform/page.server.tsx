@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { SITE_PRODUCTS } from "@/config/siteProducts";
 import { CtaLink, PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/platform", {
   title: "Platform",
   description: "Billing, inventory, purchasing, reports, users and permissions, on Windows and the web.",
   alternates: { canonical: "/platform" },
-};
+});
 
 const AREAS = [
   { title: "Billing", points: ["Sale and return invoices, quotations and draft (memorized) invoices", "Part payments and customer balances", "Thermal (80 mm), A5 and A4 print layouts"] },

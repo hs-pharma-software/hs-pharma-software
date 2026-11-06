@@ -2,6 +2,7 @@
 import { callerOf, jsonError, HttpError } from "@/server/db";
 import { sqlForServer } from "@/server/subSupersApi";
 import * as seo from "@/server/seo/admin";
+import * as studio from "@/server/seo/studio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,13 @@ export async function POST(req: Request): Promise<Response> {
       case "addKeyword": result = await seo.addKeyword(sql, actor, b.keyword, b.target); break;
       case "ignoreKeyword": result = await seo.setKeywordIgnored(sql, actor, id, Boolean(b.ignored)); break;
       case "autocomplete": result = await seo.setAutocomplete(sql, actor, Boolean(b.on)); break;
+      case "drafts": result = await studio.listDrafts(sql); break;
+      case "draft": result = await studio.getDraft(sql, id); break;
+      case "createDraft": result = await studio.createDraft(sql, actor, b.keyword, b.path); break;
+      case "updateDraft": result = await studio.updateDraft(sql, actor, id, { title: b.title, description: b.description, markdown: b.markdown }); break;
+      case "decideDraft": result = await studio.decideDraft(sql, actor, id, b.decision, b.note); break;
+      case "openPullRequest": result = await studio.openDraftPullRequest(sql, actor, id); break;
+      case "refreshPullRequests": result = await studio.refreshPullRequests(sql, actor); break;
       case "decide": result = await seo.decideRecommendation(sql, actor, id, b.status, b.note); break;
       case "list": {
         const table = b.table;

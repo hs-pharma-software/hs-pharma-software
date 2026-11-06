@@ -8,10 +8,11 @@ import { serverJson } from "@/lib/serverMode";
 import { subSupersAvailable, when } from "@/lib/subSupersClient";
 import { ListState, Notice, errText } from "@/components/subsupers/shared";
 import { KeywordsTab } from "@/components/seo/KeywordsTab";
+import { ContentStudio, GitHubSetupGuide } from "@/components/seo/ContentStudio";
 import { GoogleSetupGuide, SearchPerformance, type SearchDashboard } from "@/components/seo/SearchPerformance";
 
 /** Super Admin > SEO: the Mavin SEO Manager. Scheduler, kill switch and logs
- * (phase 1), technical audit (2), Google search data (3), keywords (4); later phases fill
+ * (phase 1), technical audit (2), Google search data (3), keywords (4), content studio (5); later phases fill
  * the remaining tabs. */
 const TABS = [
   ["overview", "SEO Overview"], ["keywords", "Keywords"], ["audit", "Technical Audit"], ["content", "Content Studio"],
@@ -55,7 +56,7 @@ export default function SeoManagerPage() {
       {tab === "settings" && <SettingsTab />}
       {tab === "keywords" && <KeywordsTab />}
       {tab === "audit" && <AuditTab onOpen={setTab} />}
-      {tab === "content" && <LaterTab table="drafts" phase={5} text="Draft landing pages, articles and metadata improvements, checked against the product registry for unsupported claims and duplicates. Approving one opens a GitHub pull request; nothing is published automatically." />}
+      {tab === "content" && <ContentStudio />}
       {tab === "recommendations" && <RecommendationsTab />}
       {tab === "reports" && <LaterTab table="reports" phase={6} text="Monthly report: search performance, technical health and progress on recommendations." />}
     </div>
@@ -319,6 +320,7 @@ function SettingsTab() {
         })()}>{s.autocomplete ? "Switch off" : "Switch on"}</Button>
       </div>
       <GoogleSetupGuide />
+      <GitHubSetupGuide />
       <div className={card}>
         <p className="mb-2 text-sm font-semibold text-neutral-800">Integrations</p>
         <p className="mb-3 text-xs text-neutral-500">Secrets are set in Vercel → Settings → Environment Variables, never here. Only whether each one is set is shown.</p>

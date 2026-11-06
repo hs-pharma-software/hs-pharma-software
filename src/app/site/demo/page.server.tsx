@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { SITE_PRODUCTS } from "@/config/siteProducts";
 import { PageIntro, Section } from "@/components/site/chrome";
 import { LeadForm } from "@/components/site/LeadForm";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/demo", {
   title: "Book a Demo",
   description: "Tell us your business type and workflow, and we arrange a demo of the matching MAVIN.pk product.",
   alternates: { canonical: "/demo" },
-};
+});
 
 export default async function DemoPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type } = await searchParams;

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { CtaLink, PageIntro, ReviewMark, Section, at, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/pricing", {
   title: "Pricing",
   description: "Starter, Professional and Enterprise plans for MAVIN.pk.",
   alternates: { canonical: "/pricing" },
-};
+});
 
 /** Commercial terms are not approved: no prices, limits are marked for review. */
 const PLANS = [

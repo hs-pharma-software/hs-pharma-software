@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { PRODUCT_GROUPS, SITE_PRODUCTS } from "@/config/siteProducts";
 import { PageIntro, Section, siteBase } from "@/components/site/chrome";
 import { ProductDirectory } from "@/components/site/ProductDirectory";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/products", {
   title: "Products",
   description: "MAVIN.pk products by sector: pharmacy, retail, distribution, healthcare, food and events, and contractor billing.",
   alternates: { canonical: "/products" },
-};
+});
 
 export default async function ProductsPage() {
   const base = await siteBase();

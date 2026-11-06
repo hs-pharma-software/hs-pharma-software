@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SITE_PRODUCTS, productFacts, siteProduct } from "@/config/siteProducts";
@@ -12,7 +13,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const p = siteProduct((await params).slug);
   if (!p) return {};
-  return { title: p.name, description: p.intro, alternates: { canonical: `/products/${p.slug}` } };
+  return withSeoMeta(`/products/${p.slug}`, { title: p.name, description: p.intro, alternates: { canonical: `/products/${p.slug}` } });
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
 import { LegalDraftNote } from "@/components/site/legal";
 
-export const metadata: Metadata = { title: "Terms", alternates: { canonical: "/terms" } };
+export const metadata: Metadata = withSeoMeta("/terms", { title: "Terms", alternates: { canonical: "/terms" } });
 
 const ITEMS: [string, React.ReactNode][] = [
   ["The service", <>Access to the MAVIN.pk product for the business&apos;s sector, on the plan agreed in writing. <ReviewMark>agreement reference</ReviewMark></>],

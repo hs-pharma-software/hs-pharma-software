@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { appLoginUrl } from "@/config/site";
 import { PageIntro, Section, siteBase } from "@/components/site/chrome";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = withSeoMeta("/login", {
   title: "Client Login",
   alternates: { canonical: "/login" },
-};
+});
 
 /** The customer app's sign-in lives in the app (app.mavin.pk). */
 export default async function LoginPage() {

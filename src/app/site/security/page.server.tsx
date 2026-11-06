@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { withSeoMeta } from "@/config/seoMeta";
 import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
 import { LegalDraftNote } from "@/components/site/legal";
 
-export const metadata: Metadata = { title: "Security", alternates: { canonical: "/security" } };
+export const metadata: Metadata = withSeoMeta("/security", { title: "Security", alternates: { canonical: "/security" } });
 
 /** Only practices the code implements today. No certifications, uptime or guarantees. */
 const PRACTICES = [
