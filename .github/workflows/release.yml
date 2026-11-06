@@ -3,6 +3,9 @@ name: Release Desktop Build
 on:
   push:
     branches: [main]
+    # Website content merged from SEO Content Studio pull requests needs no desktop build.
+    paths-ignore:
+      - "src/content/**"
 
 permissions:
   contents: write
