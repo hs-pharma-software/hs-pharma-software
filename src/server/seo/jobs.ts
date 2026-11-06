@@ -7,6 +7,7 @@ import { runTechnicalAudit } from "./technical";
 import { runPageSpeed } from "./pagespeed";
 import { runGscSync } from "./gsc";
 import { runGa4Sync } from "./ga4";
+import { runKeywordResearch } from "./keywords";
 import { APP_URL, SITE_PAGES, SITE_URL } from "../../config/site";
 import { SITE_PRODUCTS } from "../../config/siteProducts";
 
@@ -46,7 +47,10 @@ export const SEO_JOBS: JobDef[] = [
     id: "ga4_sync", label: "Analytics import", description: "Organic visits and conversions from Google Analytics 4, where configured.", defaultCadence: "daily", phase: 3,
     run: (ctx) => runGa4Sync(ctx, { propertyId: process.env.GA4_PROPERTY_ID ?? "" }),
   },
-  { id: "keyword_research", label: "Keyword research", description: "Pakistan-focused keyword candidates with intent and evidence; no invented volumes.", defaultCadence: "weekly", phase: 4 },
+  {
+    id: "keyword_research", label: "Keyword research", description: "Pakistan-focused keyword candidates with intent and evidence; no invented volumes.", defaultCadence: "weekly", phase: 4,
+    run: (ctx) => runKeywordResearch(ctx, { siteUrl: SITE_URL }),
+  },
   { id: "content_proposals", label: "Content proposals", description: "Draft landing pages, articles and metadata improvements for review.", defaultCadence: "weekly", phase: 5 },
   { id: "monthly_report", label: "Monthly report", description: "Performance, technical health and progress on recommendations.", defaultCadence: "monthly", phase: 6 },
 ];

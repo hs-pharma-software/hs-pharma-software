@@ -7,10 +7,11 @@ import { Input, Select } from "@/components/ui/Field";
 import { serverJson } from "@/lib/serverMode";
 import { subSupersAvailable, when } from "@/lib/subSupersClient";
 import { ListState, Notice, errText } from "@/components/subsupers/shared";
+import { KeywordsTab } from "@/components/seo/KeywordsTab";
 import { GoogleSetupGuide, SearchPerformance, type SearchDashboard } from "@/components/seo/SearchPerformance";
 
 /** Super Admin > SEO: the Mavin SEO Manager. Scheduler, kill switch and logs
- * (phase 1), technical audit (2), Google search data (3); later phases fill
+ * (phase 1), technical audit (2), Google search data (3), keywords (4); later phases fill
  * the remaining tabs. */
 const TABS = [
   ["overview", "SEO Overview"], ["keywords", "Keywords"], ["audit", "Technical Audit"], ["content", "Content Studio"],
@@ -52,7 +53,7 @@ export default function SeoManagerPage() {
       {tab === "schedule" && <ScheduleTab />}
       {tab === "activity" && <ActivityTab />}
       {tab === "settings" && <SettingsTab />}
-      {tab === "keywords" && <LaterTab table="keywords" phase={4} text="Pakistan-focused keyword candidates for Pharmacy POS, Retail POS and FBR Digital Invoicing, with search intent and the source of every number. Volume shows as unknown unless a real source provides it." />}
+      {tab === "keywords" && <KeywordsTab />}
       {tab === "audit" && <AuditTab onOpen={setTab} />}
       {tab === "content" && <LaterTab table="drafts" phase={5} text="Draft landing pages, articles and metadata improvements, checked against the product registry for unsupported claims and duplicates. Approving one opens a GitHub pull request; nothing is published automatically." />}
       {tab === "recommendations" && <RecommendationsTab />}
@@ -260,7 +261,7 @@ function ActivityTab() {
 }
 
 function SettingsTab() {
-  const [s, setS] = useState<{ killSwitch: boolean; killReason: string | null; integrations: Integration[]; sitePublished: boolean } | null>(null);
+  const [s, setS] = useState<{ killSwitch: boolean; killReason: string | null; integrations: Integration[]; sitePublished: boolean; autocomplete: boolean } | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -304,6 +305,18 @@ function SettingsTab() {
         <p className="mt-1 text-sm text-neutral-600">
           Public site: {s.sitePublished ? <b className="text-emerald-700">open to search engines</b> : <b className="text-amber-700">closed (draft)</b>}. App, Super Admin and Sub Super pages are always kept out of search.
         </p>
+      </div>
+      <div className={card}>
+        <p className="text-sm font-semibold text-neutral-800">Keyword suggestions from Google</p>
+        <p className="mt-1 text-sm text-neutral-600">
+          Weekly keyword research asks Google&apos;s search suggestions (Pakistan, English) for about 19 starter phrases, slowly, to find what people actually type.
+          It is {s.autocomplete ? <b className="text-emerald-700">on</b> : <b className="text-neutral-700">off</b>}. Without it, research uses the starter list and Search Console only.
+        </p>
+        <Button className="mt-3" variant="secondary" onClick={() => void (async () => {
+          setMsg(null);
+          setError(null);
+          try { await seoCall("autocomplete", { on: !s.autocomplete }); setMsg(s.autocomplete ? "Google suggestions switched off." : "Google suggestions switched on."); load(); } catch (e) { setError(errText(e)); }
+        })()}>{s.autocomplete ? "Switch off" : "Switch on"}</Button>
       </div>
       <GoogleSetupGuide />
       <div className={card}>

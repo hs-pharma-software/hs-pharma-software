@@ -8,6 +8,8 @@ import { SEO_JOBS } from "./jobs";
 import { GSC_SOURCES, INDEX_SUMMARY_KEY } from "./gsc";
 import { GA4_SOURCE } from "./ga4";
 import { isoDay } from "./google";
+import { AUTOCOMPLETE_SETTING, TARGETS, classifyIntent, normalize, score, targetFor, type Evidence, type Intent } from "./keywords";
+import { randomUUID } from "node:crypto";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -194,7 +196,64 @@ export async function listTable(sql: Sql, table: "keywords" | "findings" | "reco
 }
 
 export async function getSettings(sql: Sql) {
-  return { killSwitch: await isKilled(sql), killReason: await getSetting(sql, "kill_reason"), integrations: integrationStatus(), sitePublished: sitePublished() };
+  return {
+    killSwitch: await isKilled(sql), killReason: await getSetting(sql, "kill_reason"), integrations: integrationStatus(), sitePublished: sitePublished(),
+    autocomplete: (await getSetting(sql, AUTOCOMPLETE_SETTING)) !== "off",
+  };
+}
+
+export async function setAutocomplete(sql: Sql, actor: string, on: boolean) {
+  await setSetting(sql, AUTOCOMPLETE_SETTING, on ? "on" : "off", actor);
+  await logActivity(sql, { actor, action: on ? "autocomplete_on" : "autocomplete_off" });
+}
+
+// ── Keywords ──────────────────────────────────────────────────────────────
+
+const parseEvidence = (s: unknown): Evidence => { try { return s ? (JSON.parse(String(s)) as Evidence) : { sources: [] }; } catch { return { sources: [] }; } };
+
+/** The keyword list with its evidence; the pages a keyword can be assigned to. */
+export async function listKeywords(sql: Sql) {
+  const rows = (await sql.execute(`SELECT * FROM seo_keywords ORDER BY priority DESC, keyword LIMIT 1000`)).rows;
+  return {
+    targets: TARGETS.map((t) => ({ path: t.path, label: t.label, tier: t.tier })),
+    keywords: rows.map((r) => {
+      const e = parseEvidence(r.notes);
+      return {
+        id: String(r.id), keyword: String(r.keyword), target: (r.product as string | null) ?? null, intent: (r.intent as string | null) ?? null, priority: Number(r.priority) || 0,
+        // Never estimated: shown only when a real source supplied it.
+        volume: r.search_volume === null || r.search_volume === undefined ? null : Number(r.search_volume), volumeSource: (r.volume_source as string | null) ?? null,
+        sources: e.sources ?? [], gsc: e.gsc ?? null, why: e.why ?? [], manual: Boolean(e.manual), ignored: Boolean(e.ignored), updatedAt: String(r.updated_at),
+      };
+    }),
+  };
+}
+
+/** The owner adds a keyword by hand; it is kept on every run. */
+export async function addKeyword(sql: Sql, actor: string, raw: unknown, target: unknown) {
+  const k = typeof raw === "string" ? normalize(raw) : "";
+  if (k.length < 3 || k.length > 80) throw new HttpError(400, "Enter a keyword of 3 to 80 characters.");
+  const t = typeof target === "string" && target ? TARGETS.find((x) => x.path === target) ?? null : targetFor(k);
+  if (typeof target === "string" && target && !t) throw new HttpError(400, "Unknown page.");
+  const exists = (await sql.execute(`SELECT 1 FROM seo_keywords WHERE keyword = ?`, [k])).rows[0];
+  if (exists) throw new HttpError(409, "That keyword is already in the list.");
+  const intent: Intent = classifyIntent(k);
+  const { priority, why } = score(k, intent, t, { sources: ["manual"] });
+  const now = new Date().toISOString();
+  await sql.execute(
+    `INSERT INTO seo_keywords (id, keyword, product, intent, priority, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [randomUUID(), k, t?.path ?? null, intent, priority, JSON.stringify({ sources: ["manual"], manual: true, why } satisfies Evidence), now, now],
+  );
+  await logActivity(sql, { actor, action: "keyword_added", detail: { keyword: k, target: t?.path ?? null } });
+}
+
+/** Ignore (or restore) a keyword: research leaves ignored ones alone and does not re-add them. */
+export async function setKeywordIgnored(sql: Sql, actor: string, id: string, ignored: boolean) {
+  const r = (await sql.execute(`SELECT keyword, notes FROM seo_keywords WHERE id = ?`, [id])).rows[0];
+  if (!r) throw new HttpError(404, "Keyword not found.");
+  const e = parseEvidence(r.notes);
+  const next: Evidence = { ...e, ignored: ignored || undefined };
+  await sql.execute(`UPDATE seo_keywords SET notes = ?, priority = ?, updated_at = ? WHERE id = ?`, [JSON.stringify(next), ignored ? -1 : 0, new Date().toISOString(), id]);
+  await logActivity(sql, { actor, action: ignored ? "keyword_ignored" : "keyword_restored", detail: { keyword: r.keyword } });
 }
 
 /** The owner's decision on a proposed fix. Approving does not change the site:

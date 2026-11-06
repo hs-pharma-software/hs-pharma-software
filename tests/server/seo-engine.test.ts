@@ -106,10 +106,10 @@ test("the scheduler runs each due, enabled job once a day", async () => {
 
 test("jobs of later phases are listed but cannot be switched on or run", async () => {
   const list = await listJobs(sql);
-  assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), ["health_check", "technical_audit", "pagespeed", "gsc_sync", "ga4_sync"]);
-  await assert.rejects(updateJob(sql, "a", "keyword_research", { enabled: true }), /phase 4/);
+  assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), ["health_check", "technical_audit", "pagespeed", "gsc_sync", "ga4_sync", "keyword_research"]);
+  await assert.rejects(updateJob(sql, "a", "content_proposals", { enabled: true }), /phase 5/);
   await assert.rejects(updateJob(sql, "a", "health_check", { cadence: "hourly" }), /daily, weekly or monthly/);
-  assert.equal((await runJob(sql, SEO_JOBS, "keyword_research", "manual", "a", { sleep: noSleep })).status, "skipped");
+  assert.equal((await runJob(sql, SEO_JOBS, "content_proposals", "manual", "a", { sleep: noSleep })).status, "skipped");
 });
 
 test("the health check and the scheduler never touch business data", async () => {

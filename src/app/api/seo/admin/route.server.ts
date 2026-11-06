@@ -27,6 +27,10 @@ export async function POST(req: Request): Promise<Response> {
       case "activity": result = await seo.listActivity(sql, b); break;
       case "settings": result = await seo.getSettings(sql); break;
       case "killSwitch": result = await seo.setKillSwitch(sql, actor, Boolean(b.on), b.reason); break;
+      case "keywords": result = await seo.listKeywords(sql); break;
+      case "addKeyword": result = await seo.addKeyword(sql, actor, b.keyword, b.target); break;
+      case "ignoreKeyword": result = await seo.setKeywordIgnored(sql, actor, id, Boolean(b.ignored)); break;
+      case "autocomplete": result = await seo.setAutocomplete(sql, actor, Boolean(b.on)); break;
       case "decide": result = await seo.decideRecommendation(sql, actor, id, b.status, b.note); break;
       case "list": {
         const table = b.table;
