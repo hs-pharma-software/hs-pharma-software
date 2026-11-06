@@ -11,6 +11,8 @@ import { listUsersForTenant, usersRepo } from "@/lib/repo/users";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { changePassword, updateUserPermissions } from "@/lib/auth";
 import { isTauri, useIsTauri } from "@/lib/platform";
+import { SERVER_DB } from "@/lib/serverMode";
+import { RecoveryContact } from "@/components/auth/RecoveryContact";
 import { useAuthStore } from "@/store/authStore";
 import { NAV } from "@/config/nav";
 import { visibleNavFor } from "@/config/navFilter";
@@ -41,6 +43,7 @@ export function UserLoginsPage({
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [resetting, setResetting] = useState<UserAccount | null>(null);
+  const [contactFor, setContactFor] = useState<UserAccount | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [editingPerms, setEditingPerms] = useState<UserAccount | null>(null);
   const [permsState, setPermsState] = useState<string[] | null>(null);
@@ -184,6 +187,11 @@ export function UserLoginsPage({
           <button type="button" onClick={() => setResetting(u)} className="text-amber-600 hover:underline">
             Reset Password
           </button>
+          {SERVER_DB && (
+            <button type="button" onClick={() => setContactFor(u)} className="text-teal-700 hover:underline">
+              Recovery
+            </button>
+          )}
           {u.role === "staff" && (
             <button type="button" onClick={() => openPermissions(u)} className="text-blue-600 hover:underline">
               Permissions
@@ -259,6 +267,13 @@ export function UserLoginsPage({
             void reload();
           }}
         />
+      )}
+
+      {contactFor && (
+        <Modal title={`Password recovery — ${contactFor.username}`} onClose={() => setContactFor(null)} width="max-w-sm">
+          <p className="mb-3 text-xs text-neutral-600">With an email here, this person can reset a forgotten password from the sign-in screen (Forgot password?).</p>
+          <RecoveryContact userId={contactFor.id} self={contactFor.id === currentUser?.id} />
+        </Modal>
       )}
 
       {resetting && (

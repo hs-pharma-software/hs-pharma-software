@@ -8,13 +8,15 @@ import { tenantsRepo } from "@/lib/repo/tenants";
 import { businessType } from "@/config/businessTypes";
 import { updateOwnDisplayName } from "@/lib/auth";
 import { isTauri } from "@/lib/platform";
+import { SERVER_DB } from "@/lib/serverMode";
+import { RecoveryContact } from "@/components/auth/RecoveryContact";
 import type { Tenant } from "@/lib/types2";
 
 const ROLE: Record<string, string> = { super_admin: "Super Admin", owner: "Owner", staff: "Staff" };
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" }) : "—");
 
-/** Account window (top bar): the business's profile, read-only, and the
- * signed-in person's own name, which they can change. */
+/** Account window (top bar): the business's profile, read-only, the
+ * signed-in person's own name, and their password-recovery email and mobile. */
 export function ProfilePanel({ onClose, onLogout }: { onClose: () => void; onLogout: () => void }) {
   const user = useAuthStore((s) => s.currentUser);
   const tenant = useAuthStore((s) => s.currentTenant);
@@ -92,6 +94,13 @@ export function ProfilePanel({ onClose, onLogout }: { onClose: () => void; onLog
         </div>
       </div>
       {message && <p className={`mt-2 rounded-md px-2 py-1 ${message.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} role="status">{message.text}</p>}
+
+      {SERVER_DB && (
+        <section className="mt-3 rounded-lg bg-white px-3 py-2 ring-1 ring-neutral-200">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Password recovery</p>
+          <RecoveryContact self compact />
+        </section>
+      )}
 
       {tenant ? (
         <section className="mt-3 rounded-lg bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200">

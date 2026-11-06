@@ -200,6 +200,9 @@ export async function createUser(params: {
   displayName?: string | null;
   permissions?: string[] | null;
   deniedActions?: string[];
+  /** Recovery contacts (server mode). */
+  email?: string | null;
+  mobile?: string | null;
 }): Promise<UserAccount> {
   if (SERVER_DB || desktopViaServer()) {
     try {

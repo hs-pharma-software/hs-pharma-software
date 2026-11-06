@@ -3,6 +3,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { serverDb, passwordHash, HttpError } from "./db";
 import type { Caller } from "./sqlPolicy";
+import { normalizeEmail, normalizeMobile } from "./recovery";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -16,6 +17,9 @@ export interface NewLogin {
   permissions?: string[] | null;
   /** Staff action list (lib/actionPermissions.ts: denied keys, "+key" for opt-in ones). */
   deniedActions?: string[];
+  /** Recovery contacts (forgot password). */
+  email?: string | null;
+  mobile?: string | null;
 }
 
 const MIN_PASSWORD = 4;
@@ -52,6 +56,8 @@ export async function createLogin(caller: Caller | null, l: NewLogin): Promise<{
   if (!["super_admin", "owner", "staff"].includes(l.role)) throw new HttpError(400, "Unknown role.");
   if (l.role !== "super_admin" && !l.tenantId) throw new HttpError(400, "Choose the business this login belongs to.");
   await assertMayCreate(caller, l);
+  const email = normalizeEmail(l.email);
+  const mobile = normalizeMobile(l.mobile);
   const db = serverDb();
   const taken = await db.execute({ sql: `SELECT 1 FROM users WHERE username = ? AND deleted_at IS NULL`, args: [username] });
   if (taken.rows.length) throw new HttpError(409, `Username "${username}" is already taken.`);
@@ -76,6 +82,7 @@ export async function createLogin(caller: Caller | null, l: NewLogin): Promise<{
           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)`,
     args: [id, l.tenantId, username, passwordHash(l.password, salt), salt, l.role, l.displayName ?? null, permissions != null ? JSON.stringify(permissions) : null, actions.length ? JSON.stringify(actions) : null, now, now],
   });
+  if (email || mobile) await db.execute({ sql: `UPDATE users SET email = ?, mobile = ? WHERE id = ?`, args: [email, mobile, id] });
   return { id };
 }
 

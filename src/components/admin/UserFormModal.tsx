@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { createUser, AuthError } from "@/lib/auth";
+import { SERVER_DB } from "@/lib/serverMode";
 import { visibleNavFor } from "@/config/navFilter";
 import { useAuthStore } from "@/store/authStore";
 import type { Tenant, UserRole } from "@/lib/types2";
@@ -31,6 +32,8 @@ export function UserFormModal({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [mobile, setMobile] = useState("");
   const [role, setRole] = useState<UserRole>("staff");
   const [tenantId, setTenantId] = useState(fixedTenantId ?? tenants[0]?.id ?? "");
   const [permissions, setPermissions] = useState<string[] | null>([]);
@@ -88,6 +91,8 @@ export function UserFormModal({
         role: effectiveRole,
         tenantId: scope === "own" ? (fixedTenantId ?? null) : tenantId || null,
         displayName: displayName || null,
+        email: email.trim() || null,
+        mobile: mobile.trim() || null,
         permissions: showPermissions ? effectivePermissions : null,
         deniedActions: showPermissions && preset ? presetActions(preset) : undefined,
       });
@@ -111,6 +116,16 @@ export function UserFormModal({
         <Field label="Display Name">
           <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         </Field>
+        {SERVER_DB && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Email (for password reset)">
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+            </Field>
+            <Field label="Mobile">
+              <Input type="tel" value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="03001234567" />
+            </Field>
+          </div>
+        )}
         {scope === "all" && (
           <>
             <Field label="Tenant" required>

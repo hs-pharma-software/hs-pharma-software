@@ -1453,6 +1453,32 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Password recovery: each login can have an email and a mobile number; a
+/// forgotten password is reset with a one-time code sent to the email.
+/// password_changed_at ends sessions started before a reset. Only additions.
+fn schema_sql_v75() -> &'static str {
+    r#"
+    ALTER TABLE users ADD COLUMN email TEXT;
+    ALTER TABLE users ADD COLUMN mobile TEXT;
+    ALTER TABLE users ADD COLUMN password_changed_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile);
+    CREATE TABLE IF NOT EXISTS password_resets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        ip TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_resets_user ON password_resets(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_password_resets_ip ON password_resets(ip, created_at);
+    "#
+}
+
 /// SEO Manager phase 3: daily website visits by channel from Google
 /// Analytics 4 (organic search among them). Platform table, no business data.
 fn schema_sql_v74() -> &'static str {
@@ -3628,6 +3654,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 74,
             description: "seo_analytics",
             sql: schema_sql_v74(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 75,
+            description: "password_recovery",
+            sql: schema_sql_v75(),
             kind: MigrationKind::Up,
         },
     ]

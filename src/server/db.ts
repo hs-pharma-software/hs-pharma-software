@@ -3,7 +3,7 @@
 import { createClient, type Client, type InStatement, type ResultSet } from "@libsql/client/web";
 import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
-import { verifySession, requestToken } from "./session";
+import { verifySession, requestToken, SESSION_HOURS } from "./session";
 import { analyzeSql, authorize, personalScope, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
 import { scopeStatement, ScopeError, type Schema } from "./tenantScope";
 import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
@@ -66,13 +66,17 @@ export async function callerOf(req: Request, opts: { allowDistributor?: boolean 
   const claims = verifySession(requestToken(req), serverConfig().sessionSecret);
   if (!claims) throw new HttpError(401, "Your session has ended. Log in again.");
   const rs = await serverDb().execute({
-    sql: `SELECT u.id, u.role, u.tenant_id, u.is_active, u.permissions, u.denied_actions, u.platform_role, t.business_type, t.denied_actions AS tenant_denied,
+    // u.* also carries password_changed_at once migration v75 has run (absent before, so no error).
+    sql: `SELECT u.*, t.business_type, t.denied_actions AS tenant_denied,
                  (SELECT group_concat(l.pharmacy_tenant_id) FROM clinic_pharmacy_link l WHERE l.clinic_tenant_id = u.tenant_id AND l.is_active = 1) AS linked
           FROM users u LEFT JOIN tenants t ON t.id = u.tenant_id WHERE u.id = ? AND u.deleted_at IS NULL`,
     args: [claims.u],
   });
   const u = rs.rows[0];
   if (!u || !Number(u.is_active)) throw new HttpError(401, "This login is no longer active.");
+  // A password reset (forgot password) ends the sessions started before it.
+  const changed = u.password_changed_at ? Date.parse(String(u.password_changed_at)) : NaN;
+  if (Number.isFinite(changed) && claims.exp - SESSION_HOURS * 3600_000 < changed) throw new HttpError(401, "Your password was reset. Log in again.");
   refuseDistributor(u.platform_role, opts.allowDistributor);
   const distributor = String(u.platform_role ?? "") === "distributor";
   let permissions: string[] | null = null;

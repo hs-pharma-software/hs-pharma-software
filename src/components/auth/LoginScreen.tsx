@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Eye, EyeOff } from "lucide-react";
 import { login, AuthError } from "@/lib/auth";
+import { ForgotPassword } from "./ForgotPassword";
 import { useAuthStore } from "@/store/authStore";
 
 /** `notice`: why the accounts could not be checked (e.g. no connection). */
@@ -14,10 +15,13 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(notice ? `Could not reach the server: ${notice}` : null);
   const [loading, setLoading] = useState(false);
+  const [forgot, setForgot] = useState(false);
+  const [info, setInfo] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setLoading(true);
     try {
       const { user, tenant } = await login(username, password);
@@ -63,7 +67,12 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
           <Image src="/mavin-logo.png" alt="MAVIN.pk - Smarter Solutions. Brighter Future." width={1340} height={330} priority className="h-auto w-full max-w-[320px] object-contain" />
         </div>
 
-        {/* Form */}
+        {forgot ? (
+          <ForgotPassword
+            onDone={(username) => { setForgot(false); setUsername(username); setPassword(""); setError(null); setInfo("Password changed. Sign in with your new password."); }}
+            onCancel={() => setForgot(false)}
+          />
+        ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -82,9 +91,14 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              Password
-            </label>
+            <div className="flex items-baseline justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                Password
+              </label>
+              <button type="button" onClick={() => { setForgot(true); setError(null); setInfo(null); }} className="text-xs font-medium text-[#1565c0] hover:underline">
+                Forgot password?
+              </button>
+            </div>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -107,6 +121,12 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
             </div>
           </div>
 
+          {info && (
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-200">
+              {info}
+            </div>
+          )}
+
           {error && (
             <div className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-600 ring-1 ring-rose-200">
               {error}
@@ -127,11 +147,13 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
             {loading ? "Signing in…" : "Sign In"}
           </button>
         </form>
+        )}
 
         {/* Footer */}
-        <p className="mt-8 text-center text-xs text-neutral-400">
-          Powered by <span className="font-semibold" style={{ color: "#0b2a6b" }}>MAVIN.pk</span>
-          {" "}— Smarter Solutions. Brighter Future.
+        <p className="mt-8 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-xs text-neutral-400">
+          Powered by
+          <Image src="/mavin-header.png" alt="MAVIN.pk" width={1405} height={361} className="inline-block h-5 w-auto object-contain" />
+          <span>— Smarter Solutions. Brighter Future.</span>
         </p>
       </div>
     </div>

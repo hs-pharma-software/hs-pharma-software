@@ -97,7 +97,7 @@ const LINK_ONLY_WRITES = new Set(["clinic_pharmacy_link"]);
 /** Logins are created and passwords changed through /api/auth only. */
 const AUTH_ONLY_WRITES = new Set(["users"]);
 /** Device-only tables and internal tables are never reached from the browser. */
-const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log"]);
+const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log", "password_resets"]);
 
 /** Staff HR records (MSDS HRM): HR has them in full, the quality team reads
  * them for the self-assessment, and everyone else sees only their own. */

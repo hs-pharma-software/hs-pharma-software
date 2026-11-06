@@ -354,6 +354,7 @@ const MIGRATIONS = [
   { version: 72, label: 'Lab: online report token per lab visit (QR on receipt and report)', statements: rustSchemaStatements(72) },
   { version: 73, label: 'SEO Manager: jobs, runs, activity log, findings, keywords, recommendations, drafts, reports', statements: rustSchemaStatements(73) },
   { version: 74, label: 'SEO Manager: GA4 daily visits by channel', statements: rustSchemaStatements(74) },
+  { version: 75, label: 'Password recovery: login email/mobile, reset codes', statements: rustSchemaStatements(75) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
