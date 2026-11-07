@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { MuawinTagline } from "@/components/brand/MuawinTagline";
 
 /** One-time link from the platform owner: a new Sub Super or a newly
  * activated customer chooses their password. The link works once. */
@@ -19,7 +20,8 @@ function Frame({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen items-center justify-center bg-neutral-100 px-4 py-10">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl ring-1 ring-black/5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/mavin-logo.png" alt="MAVIN.pk" className="mx-auto mb-5 h-auto w-48" />
+        <img src="/mavin-header.png" alt="MAVIN.pk" className="mx-auto h-auto w-48" />
+        <p className="mb-5 mt-2 flex justify-center"><MuawinTagline className="text-sm font-medium text-[#0b2a6b]" logoClassName="h-7 w-auto" /></p>
         {children}
       </div>
     </div>

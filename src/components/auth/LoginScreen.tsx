@@ -6,6 +6,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { login, AuthError } from "@/lib/auth";
 import { ForgotPassword } from "./ForgotPassword";
 import { useAuthStore } from "@/store/authStore";
+import { MuawinTagline } from "@/components/brand/MuawinTagline";
 
 /** `notice`: why the accounts could not be checked (e.g. no connection). */
 export function LoginScreen({ notice = null }: { notice?: string | null } = {}) {
@@ -64,7 +65,8 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         {/* Branding */}
         <div className="mb-8 flex flex-col items-center gap-3">
           <h1 className="sr-only">MAVIN.pk</h1>
-          <Image src="/mavin-logo.png" alt="MAVIN.pk - Smarter Solutions. Brighter Future." width={1340} height={330} priority className="h-auto w-full max-w-[320px] object-contain" />
+          <Image src="/mavin-header.png" alt="MAVIN.pk" width={1405} height={361} priority className="h-auto w-full max-w-[300px] object-contain" />
+          <MuawinTagline className="text-base font-medium text-[#0b2a6b]" logoClassName="h-9 w-auto" />
         </div>
 
         {forgot ? (
@@ -153,7 +155,8 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         <p className="mt-8 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-xs text-neutral-400">
           Powered by
           <Image src="/mavin-header.png" alt="MAVIN.pk" width={1405} height={361} className="inline-block h-5 w-auto object-contain" />
-          <span>— Smarter Solutions. Brighter Future.</span>
+          <span>—</span>
+          <MuawinTagline logoClassName="h-6 w-auto" />
         </p>
       </div>
     </div>
