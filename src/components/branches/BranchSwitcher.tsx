@@ -48,7 +48,7 @@ export function BranchSwitcher() {
         aria-expanded={open}
         aria-haspopup="listbox"
         title="Branch for this tab"
-        className={`flex max-w-[11rem] items-center gap-1.5 rounded-full border px-2 py-1.5 text-xs font-medium shadow-sm sm:max-w-[16rem] sm:px-3 ${cur ? "border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50" : "border-amber-300 bg-amber-50 text-amber-900"}`}
+        className={`flex min-h-9 max-w-[8.5rem] items-center gap-1.5 rounded-full border px-2 py-1.5 text-xs font-medium shadow-sm sm:max-w-[16rem] sm:px-3 ${cur ? "border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50" : "border-amber-300 bg-amber-50 text-amber-900"}`}
       >
         <Building2 size={14} className="shrink-0" />
         <span className="truncate">{cur ? cur.name : "All Branches"}</span>
@@ -56,7 +56,7 @@ export function BranchSwitcher() {
         <ChevronDown size={13} className="shrink-0 opacity-60" />
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-neutral-200 bg-white p-2 text-sm shadow-xl">
+        <div className="fixed inset-x-2 top-14 z-50 rounded-xl border border-neutral-200 bg-white p-2 text-sm shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-72">
           <label className="mb-2 flex items-center gap-2 rounded-lg border border-neutral-200 px-2 py-1.5">
             <Search size={14} className="text-neutral-400" />
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search branches" aria-label="Search branches" className="w-full bg-transparent text-sm outline-none" />

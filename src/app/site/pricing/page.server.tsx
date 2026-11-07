@@ -72,7 +72,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       </PageIntro>
       {plans.length > 0 && (
         <Section>
-          <nav aria-label="Business type" className="flex flex-wrap gap-2">
+          <nav aria-label="Business type" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&>a]:shrink-0 [&>a]:whitespace-nowrap">
             <Link href={at(base, `/pricing${qs({ type: "" })}`)} className={`rounded-full border px-3 py-1.5 text-sm ${!want ? "border-[#0b2a6b] bg-[#0b2a6b] text-white" : "border-slate-300 text-slate-700 hover:border-[#1565c0]"}`}>All</Link>
             {typeChips.map((t) => (
               <Link key={t.id} href={at(base, `/pricing${qs({ type: t.id })}`)} className={`rounded-full border px-3 py-1.5 text-sm ${want === t.id ? "border-[#0b2a6b] bg-[#0b2a6b] text-white" : "border-slate-300 text-slate-700 hover:border-[#1565c0]"}`}>{t.label}</Link>

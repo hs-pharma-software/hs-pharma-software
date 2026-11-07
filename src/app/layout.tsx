@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "@fontsource/noto-nastaliq-urdu/400.css";
 import "@fontsource/noto-nastaliq-urdu/700.css";
@@ -21,6 +21,15 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "MAVIN.pk",
   description: "Offline-first pharmacy management",
+};
+
+/** Phones: full width, zoom stays allowed, content may run under the notch and
+ * home bar (fixed bars add the safe-area insets), browser bar in the brand colour. */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b2a6b",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

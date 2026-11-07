@@ -155,19 +155,20 @@ export function LandingPage() {
           }}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/mavin-header.png" alt="MAVIN.pk" style={{height:40,width:"auto",objectFit:"contain",flexShrink:0}} />
+              <img src="/mavin-header.png" alt="MAVIN.pk" style={{height:"clamp(30px, 9vw, 40px)",width:"auto",maxWidth:"55vw",objectFit:"contain",flexShrink:1,minWidth:0}} />
             </div>
             <div style={{display:"flex",alignItems:"center",gap:22}}>
               <a href="#solutions" className="nav-link nav-extra">Solutions</a>
               <a href="#features" className="nav-link nav-extra">Features</a>
               <Link href={link.site("/demo")} className="nav-link nav-extra">Book a Demo</Link>
               <a href={link.app("/dashboard")} style={{
-                padding:"8px 22px",
+                padding:"8px clamp(12px, 4vw, 22px)",
                 background:"#0b2a6b",
                 borderRadius:9,color:"#fff",
                 textDecoration:"none",fontSize:14,fontWeight:700,
                 letterSpacing:"-.01em",
                 boxShadow:"0 2px 10px rgba(26,26,110,.25)",
+                whiteSpace:"nowrap",flexShrink:0,
               }}>Sign In →</a>
             </div>
           </nav>

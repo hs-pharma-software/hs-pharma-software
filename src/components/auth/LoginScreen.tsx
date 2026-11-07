@@ -7,6 +7,7 @@ import { login, AuthError } from "@/lib/auth";
 import { ForgotPassword } from "./ForgotPassword";
 import { useAuthStore } from "@/store/authStore";
 import { MuawinTagline } from "@/components/brand/MuawinTagline";
+import { AppManifestLinks } from "@/components/layout/AppManifestLinks";
 
 /** `notice`: why the accounts could not be checked (e.g. no connection). */
 export function LoginScreen({ notice = null }: { notice?: string | null } = {}) {
@@ -60,6 +61,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         />
       </div>
 
+      <AppManifestLinks />
       {/* Card */}
       <div className="relative w-full max-w-md rounded-3xl bg-white/95 px-8 py-10 shadow-2xl backdrop-blur-xl ring-1 ring-white/20">
         {/* Branding */}

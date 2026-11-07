@@ -68,14 +68,24 @@ export function SiteHeader({ s, nav, links, storeOn, cartSlot }: { s: SiteSettin
             <img src={sized(s.logo.url, 240)} alt={s.logo.alt || s.name} className="h-10 w-auto max-w-[180px] object-contain" />
           ) : <span className="truncate text-lg font-bold" style={{ color: "var(--wp)" }}>{s.name}</span>}
         </a>
-        <nav aria-label="Main" className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <nav aria-label="Main" className="hidden flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-sm md:flex">
           {nav.map((n) => <a key={n.href} href={n.href} className="text-neutral-700 hover:text-[var(--wp)]">{n.title}</a>)}
           {storeOn && <a href={links.store("")} className="text-neutral-700 hover:text-[var(--wp)]">Shop</a>}
         </nav>
-        <div className="flex items-center gap-2">
-          {s.contact.whatsapp && <a href={wa(s.contact.whatsapp)} className="rounded-full bg-[#25d366] px-3 py-1.5 text-xs font-semibold text-white" rel="noopener">WhatsApp</a>}
+        <div className="ml-auto flex items-center gap-2 md:ml-0">
+          {s.contact.whatsapp && <a href={wa(s.contact.whatsapp)} className="inline-flex min-h-10 items-center rounded-full bg-[#25d366] px-3 py-1.5 text-xs font-semibold text-white sm:min-h-0" rel="noopener">WhatsApp</a>}
           {s.contact.phone && <a href={`tel:${s.contact.phone.replace(/[^\d+]/g, "")}`} className="hidden rounded-full border px-3 py-1.5 text-xs font-semibold sm:inline-block" style={{ borderColor: "var(--wp)", color: "var(--wp)" }}>{s.contact.phone}</a>}
           {cartSlot}
+          {/* Phones: the pages in a menu (works without JavaScript). */}
+          {(nav.length > 0 || storeOn) && (
+            <details className="group relative md:hidden">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center rounded-full border border-neutral-300 px-3 text-sm font-medium text-neutral-700 [&::-webkit-details-marker]:hidden">Menu</summary>
+              <nav aria-label="Main" className="absolute right-0 z-40 mt-2 flex w-[min(16rem,calc(100vw-2rem))] flex-col gap-1 rounded-xl border border-neutral-200 bg-white p-2 text-sm shadow-lg">
+                {nav.map((n) => <a key={n.href} href={n.href} className="rounded-lg px-3 py-2.5 text-neutral-700 hover:bg-neutral-50">{n.title}</a>)}
+                {storeOn && <a href={links.store("")} className="rounded-lg px-3 py-2.5 text-neutral-700 hover:bg-neutral-50">Shop</a>}
+              </nav>
+            </details>
+          )}
         </div>
       </div>
     </header>

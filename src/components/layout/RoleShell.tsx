@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/authStore";
 import { AppShell } from "./AppShell";
 import { SuperAdminShell } from "./SuperAdminShell";
 import { SubSuperShell } from "./SubSuperShell";
+import { AppManifestLinks } from "./AppManifestLinks";
 
 /** Picks which chrome wraps the current page based on who's logged in — the
  * Super Admin never sees pharmacy business screens (or any tenant's private
@@ -37,9 +38,9 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
   // Landing page — no shell, no sidebar
   if (publicPage) return <>{children}</>;
 
-  if (distributor) return <SubSuperShell>{isSubSuperRoute ? children : null}</SubSuperShell>;
+  if (distributor) return <><AppManifestLinks /><SubSuperShell>{isSubSuperRoute ? children : null}</SubSuperShell></>;
   if (isSuperAdmin) {
-    return <SuperAdminShell>{children}</SuperAdminShell>;
+    return <><AppManifestLinks /><SuperAdminShell>{children}</SuperAdminShell></>;
   }
-  return <AppShell>{isSubSuperRoute ? null : children}</AppShell>;
+  return <><AppManifestLinks /><AppShell>{isSubSuperRoute ? null : children}</AppShell></>;
 }

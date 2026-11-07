@@ -776,7 +776,7 @@ export function InvoiceFormModal({
   });
 
   return (
-    <Modal title={isDraft ? "Edit Memorized Invoice" : isEdit ? "Edit Invoice" : "Create Invoice"} onClose={onClose} width="max-w-6xl">
+    <Modal title={isDraft ? "Edit Memorized Invoice" : isEdit ? "Edit Invoice" : "Create Invoice"} onClose={onClose} width="max-w-6xl" closeOnEscape={false}>
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
@@ -976,7 +976,7 @@ export function InvoiceFormModal({
         </Field>
 
         <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
-          <table className="w-full min-w-max text-sm">
+          <table className="rt w-full min-w-max text-sm">
             <thead>
               <tr className="bg-neutral-900 text-left text-white">
                 <th className="px-2 py-2">Product</th>
@@ -1007,7 +1007,7 @@ export function InvoiceFormModal({
                   const usesBatches = batchLabel(l.batches, toBaseUnitQty(l.qty, isSecondary, pk), toBaseUnitQty(l.bonusQty, isSecondary, pk));
                   return (
                   <tr key={idx} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-2 py-1.5">
+                    <td data-label="Product" className="rt-title px-2 py-1.5">
                       {l.product.name}
                       {Boolean(l.product.is_narcotic) && (
                         <span className="ml-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
@@ -1030,7 +1030,7 @@ export function InvoiceFormModal({
                         );
                       })()}
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Unit" className="px-2 py-1.5">
                       {hasSecondaryUnit(l.product) ? (
                         <UnitToggle
                           baseLabel={unitName(l.product.base_unit_id)}
@@ -1043,7 +1043,7 @@ export function InvoiceFormModal({
                       )}
                     </td>
                     {contractorKind === "medicine" ? (
-                      <td className="px-2 py-1.5">
+                      <td data-label="Batch" className="px-2 py-1.5">
                         <input
                           value={l.printBatch ?? ""}
                           onChange={(e) => updateLine(idx, { printBatch: e.target.value })}
@@ -1052,9 +1052,9 @@ export function InvoiceFormModal({
                           className="w-24 rounded border border-neutral-300 px-1.5 py-1"
                         />
                       </td>
-                    ) : !isClothStore && contractorKind !== "general" && <td className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>}
-                    <td className="px-2 py-1.5">{availInLineUnit}</td>
-                    <td className="px-2 py-1.5">
+                    ) : !isClothStore && contractorKind !== "general" && <td data-label="Batch" className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>}
+                    <td data-label="Avail" className="px-2 py-1.5">{availInLineUnit}</td>
+                    <td data-label="Qty" className="px-2 py-1.5">
                       <input
                         ref={(el) => setLineRef(idx, COL_QTY, el)}
                         type="number"
@@ -1069,7 +1069,7 @@ export function InvoiceFormModal({
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Bonus" className="px-2 py-1.5">
                       <input
                         ref={(el) => setLineRef(idx, COL_BONUS, el)}
                         type="number"
@@ -1081,7 +1081,7 @@ export function InvoiceFormModal({
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Sale Price" className="px-2 py-1.5">
                       <input
                         ref={(el) => setLineRef(idx, COL_PRICE, el)}
                         type="number"
@@ -1093,7 +1093,7 @@ export function InvoiceFormModal({
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Tax %" className="px-2 py-1.5">
                       <input
                         ref={(el) => setLineRef(idx, COL_TAX, el)}
                         type="number"
@@ -1105,7 +1105,7 @@ export function InvoiceFormModal({
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Disc %" className="px-2 py-1.5">
                       <input
                         ref={(el) => setLineRef(idx, COL_DISC, el)}
                         type="number"
@@ -1117,9 +1117,9 @@ export function InvoiceFormModal({
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">{lineTotal(l).toFixed(2)}</td>
-                    <td className="px-2 py-1.5">
-                      <button type="button" onClick={() => removeLine(idx)} className="text-rose-600 hover:underline">
+                    <td data-label="Total" className="px-2 py-1.5 font-semibold">{lineTotal(l).toFixed(2)}</td>
+                    <td data-label="" className="px-2 py-1.5">
+                      <button type="button" onClick={() => removeLine(idx)} className="min-h-9 px-1 text-rose-600 hover:underline">
                         Remove
                       </button>
                     </td>
@@ -1190,7 +1190,8 @@ export function InvoiceFormModal({
 
         {error && <p className="text-sm text-rose-600">{error}</p>}
 
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        <div className="sticky -bottom-4 z-10 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-4 py-3 shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.15)] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:shadow-none">
+          <span className="mr-auto text-sm font-semibold tabular-nums text-neutral-900 sm:hidden">Payable {payable.toFixed(2)}</span>
           <Button type="button" onClick={onClose}>
             Reset
           </Button>

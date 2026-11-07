@@ -12,6 +12,10 @@ import { GlobalShortcuts } from "./GlobalShortcuts";
 import { Calculator } from "./Calculator";
 import { AssistantChat } from "@/components/assistant/AssistantChat";
 import { FormTabsHost } from "./FormTabsHost";
+import { MobileBottomNav } from "./MobileBottomNav";
+import { bottomNavFor } from "@/config/bottomNav";
+import { visibleNavFor } from "@/config/navFilter";
+import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
 import { useAppStore } from "@/store/appStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
@@ -24,6 +28,10 @@ import { BranchModeNotice } from "@/components/branches/BranchSwitcher";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const currentTenant = useAuthStore((s) => s.currentTenant);
+  const userPermissions = useAuthStore((s) => s.currentUser?.permissions ?? null);
+  const typeId = businessType(currentTenant?.businessType).id;
+  // Phone bottom bar: this business type's main sections this login can open.
+  const bottomItems = bottomNavFor(typeId, visibleNavFor(typeId, currentTenant?.allowedModules ?? null, userPermissions));
   const sidebarMobileOpen = useAppStore((s) => s.sidebarMobileOpen);
   const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const moduleKey = moduleKeyForPath(pathname);
@@ -40,6 +48,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSidebarMobileOpen(false);
   }, [pathname, setSidebarMobileOpen]);
+  // Escape closes the menu drawer.
+  useEffect(() => {
+    if (!sidebarMobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSidebarMobileOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarMobileOpen, setSidebarMobileOpen]);
 
   // Pick up permission changes an owner made while this staff user is logged in.
   useEffect(() => {
@@ -47,7 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex h-screen flex-col bg-[#f5f5f7]">
+    <div className="app-h flex flex-col bg-[#f5f5f7]">
       <GlobalShortcuts />
       <Calculator />
       {currentTenant && !subscriptionLocked && <AssistantChat />}
@@ -65,7 +80,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
         )}
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-5">
+        {/* Phones: room under the content for the bottom bar (and the home indicator). */}
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-5">
           {!subscriptionLocked && trial.trial && <TrialNotice state={trial} />}
           {!subscriptionLocked && <BranchModeNotice />}
           {!subscriptionLocked && !trial.trial && (phase.phase === "grace" || phase.phase === "ended") && (
@@ -99,6 +115,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
         </main>
       </div>
+      {currentTenant && bottomItems.length > 0 && (
+        <MobileBottomNav items={bottomItems} moreOpen={sidebarMobileOpen} onMore={() => setSidebarMobileOpen(!sidebarMobileOpen)} />
+      )}
     </div>
   );
 }

@@ -274,7 +274,7 @@ export function Builder({ pages, settings, tenantId, onPagesChanged, storeOn }: 
           </div>
           {settings ? (
             <div className="overflow-auto rounded-lg border border-neutral-200 bg-neutral-100 p-2" style={{ maxHeight: "75vh" }}>
-              <div className={`mx-auto origin-top overflow-hidden bg-white ${device === "mobile" ? "w-[390px]" : "w-full"}`} style={themeStyle(settings)}>
+              <div className={`mx-auto origin-top overflow-hidden bg-white ${device === "mobile" ? "w-[390px] max-w-full" : "w-full"}`} style={themeStyle(settings)}>
                 <div className="pointer-events-none select-none" aria-hidden>
                   <SiteHeader s={settings} nav={pages.filter((p) => p.inNav).map((p) => ({ title: p.id === page.id ? meta.title : p.title, href: "#" }))} links={PREVIEW_LINKS} storeOn={storeOn} />
                   {sections.filter((x) => !x.hidden).map((x) => (

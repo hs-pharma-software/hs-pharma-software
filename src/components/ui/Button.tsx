@@ -25,7 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       whileTap={disabled ? undefined : { scale: 0.97 }}
       transition={{ type: "spring", stiffness: 500, damping: 30 }}
       disabled={disabled}
-      className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium sm:min-h-0 transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT_CLASSES[variant]} ${className}`}
       {...(props as HTMLMotionProps<"button">)}
     />
   );

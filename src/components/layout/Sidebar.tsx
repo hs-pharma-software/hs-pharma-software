@@ -70,9 +70,10 @@ export function Sidebar() {
 
   return (
     <aside
+      aria-label="Menu"
       className={[
         // Mobile: fixed drawer sliding in from left, sits above overlay (z-40)
-        "fixed top-12 bottom-0 left-0 z-40 flex w-72 flex-col overflow-y-auto text-sm text-neutral-200",
+        "fixed top-12 bottom-0 left-0 z-40 flex w-[min(18rem,85vw)] flex-col overflow-y-auto pb-safe text-sm text-neutral-200",
         "transition-transform duration-300 ease-in-out",
         sidebarMobileOpen ? "translate-x-0" : "-translate-x-full",
         // Desktop: inline in the flex layout, always visible
@@ -87,7 +88,8 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => setSidebarMobileOpen(false)}
-          className="flex h-7 w-7 items-center justify-center rounded-full text-white/60 hover:bg-white/10"
+          aria-label="Close menu"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:bg-white/10"
         >
           <X size={15} />
         </button>

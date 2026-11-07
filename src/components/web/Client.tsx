@@ -323,8 +323,8 @@ export function ShopSearch({ action, initialQ, initialC, categories, preview, it
         )}
       </div>
       <label htmlFor="shop-c" className="sr-only">Category</label>
-      <select id="shop-c" name="c" defaultValue={initialC} className="rounded-lg border border-neutral-300 px-3 py-2 text-sm"><option value="">All categories</option>{categories.map((x) => <option key={x} value={x}>{x}</option>)}</select>
-      <button type="submit" className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--wa)" }}>Search</button>
+      <select id="shop-c" name="c" defaultValue={initialC} className="w-full min-w-0 max-w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm sm:w-auto sm:max-w-[16rem]"><option value="">All categories</option>{categories.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+      <button type="submit" className="min-h-10 rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--wa)" }}>Search</button>
     </form>
   );
 }

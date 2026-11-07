@@ -169,3 +169,144 @@ html[lang="ur"] select,
 html[lang="ur"] textarea {
   font-family: var(--font-urdu);
 }
+
+/* ── Mobile foundations ─────────────────────────────────────────────── */
+
+/* The app's full height: the visible part of the phone screen (dvh follows the
+   browser's address bar), with the old vh for browsers without dvh. */
+.app-h {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* No sideways page scroll from a stray wide element; wide tables scroll in their own box. */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Taps without the grey flash; links and buttons react at once. */
+a,
+button,
+[role="button"],
+summary {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Bottom bars and sheets clear the phone's home indicator. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 639.98px) {
+  /* 16px text in fields stops iPhones zooming in on every tap; fields and
+     buttons at least 40px high are easy to hit with a thumb. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select {
+    min-height: 40px;
+  }
+
+  /* Responsive table: on a phone each row is a card and each cell a
+     "label: value" line (label from data-label). Same elements, so inputs,
+     focus order and actions work as on a computer. */
+  table.rt thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  table.rt,
+  table.rt tbody {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+  table.rt tr {
+    display: block;
+    margin: 0 0 10px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 14px;
+    background: #fff;
+    padding: 6px 12px;
+  }
+  table.rt td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0 !important;
+    border: 0;
+    white-space: normal !important;
+    text-align: right;
+    min-height: 32px;
+  }
+  table.rt td + td {
+    border-top: 1px dashed rgba(0, 0, 0, 0.07);
+  }
+  table.rt td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    max-width: 45%;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #737373;
+    text-align: left;
+  }
+  table.rt td[data-label=""]::before {
+    display: none;
+  }
+  table.rt td[data-label=""] {
+    justify-content: flex-end;
+  }
+  /* A full-width cell (empty list message, group headings). */
+  table.rt td[colspan] {
+    justify-content: center;
+    text-align: center;
+  }
+  table.rt td[colspan]::before {
+    display: none;
+  }
+  /* The row's first cell is its title. */
+  table.rt td.rt-title {
+    font-weight: 600;
+    text-align: left;
+    justify-content: flex-start;
+  }
+  table.rt td.rt-title::before {
+    display: none;
+  }
+}
+
+/* People who ask for less motion get (almost) none. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Phones and small tablets: a wide table that has no scrolling box of its own
+   scrolls sideways inside itself instead of pushing the page wider (card
+   tables and printouts excluded). */
+@media screen and (max-width: 767.98px) {
+  main table:not(.rt):not(.print-area table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
