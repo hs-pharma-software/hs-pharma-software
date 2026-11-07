@@ -66,25 +66,34 @@ export function WhatsAppShareDialog({ invoiceId, onClose }: { invoiceId: string;
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "share" | "open" | "save">(null);
   const [fileShare, setFileShare] = useState(false);
+  // The PDF is made when the dialog opens: the phone opens its share sheet only
+  // straight from a tap, so nothing may be downloaded between the tap and the share.
+  const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
-    setFileShare(canShareFiles());
+    const files = canShareFiles();
+    setFileShare(files);
     whatsappInfo(invoiceId)
       .then((i) => { setInfo(i); setPhone(i.phone ?? ""); setMessage(i.message); })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    if (files) {
+      fetchInvoicePdf(invoiceId, "share")
+        .then(({ blob, fileName }) => setFile(new File([blob], fileName, { type: "application/pdf" })))
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    }
   }, [invoiceId]);
 
   async function sharePdf() {
-    if (busy) return;
-    setBusy("share");
+    if (busy || !file) return;
     setError(null);
     setStatus(null);
     try {
-      const { blob, fileName } = await fetchInvoicePdf(invoiceId, "share");
-      const file = new File([blob], fileName, { type: "application/pdf" });
       if (!navigator.canShare?.({ files: [file] })) throw new Error("This browser cannot share files. Use Save PDF and Open WhatsApp instead.");
-      await whatsappInfo(invoiceId, { channel: "share-sheet" }).catch(() => undefined);
-      await navigator.share({ files: [file], text: message });
+      // Share first (still inside the tap), then log; nothing is awaited before it.
+      const sharing = navigator.share({ files: [file], text: message });
+      setBusy("share");
+      void whatsappInfo(invoiceId, { channel: "share-sheet" }).catch(() => undefined);
+      await sharing;
       setStatus("The share sheet closed. If you picked WhatsApp, check there that the message went to the right person.");
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") setStatus("Sharing cancelled. Nothing was sent.");
@@ -147,8 +156,8 @@ export function WhatsAppShareDialog({ invoiceId, onClose }: { invoiceId: string;
           {status && <p role="status" className="flex gap-2 rounded-lg bg-sky-50 px-3 py-2 text-sky-900"><CheckCircle2 size={16} className="mt-0.5 shrink-0" />{status}</p>}
           <div className="flex flex-col gap-2">
             {fileShare && (
-              <Button type="button" variant="primary" disabled={!!busy || !info} onClick={() => void sharePdf()}>
-                <Share2 size={15} /> {busy === "share" ? "Preparing PDF…" : "Share invoice PDF…"}
+              <Button type="button" variant="primary" disabled={!!busy || !info || !file} onClick={() => void sharePdf()}>
+                <Share2 size={15} /> {!file ? "Preparing PDF…" : busy === "share" ? "Sharing…" : "Share invoice PDF…"}
               </Button>
             )}
             <Button type="button" variant={fileShare ? "secondary" : "primary"} disabled={!!busy || !info} onClick={() => void openWhatsApp()}>
