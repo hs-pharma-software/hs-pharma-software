@@ -99,7 +99,7 @@ export default function BranchesPage() {
         </div>
       </section>
       {a.disabled && <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">Multi-branch is turned off for this business by MAVIN.pk. Every branch and its records are kept; only the main branch is in use.</p>}
-      {!a.entitled && !a.disabled && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">Your plan includes {a.planLimit} branch. Enterprise plans include 5 branches; request more branches or contact MAVIN.pk to upgrade.</p>}
+      {!a.entitled && !a.disabled && <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">Your plan includes {a.planLimit} branch. Mavin Elite plans include 5 branches; request more branches or contact MAVIN.pk to upgrade.</p>}
 
       <section aria-label="Branch list" className="overflow-x-auto rounded-xl border border-neutral-200 bg-white">
         <table className="w-full min-w-[720px] text-sm">

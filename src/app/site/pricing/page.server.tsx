@@ -20,8 +20,8 @@ interface Addon { id: string; name: string; description: string | null; price: n
 
 const list = (raw: unknown): string[] => { try { const v = raw ? JSON.parse(String(raw)) : []; return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 const rs = (n: number) => `Rs ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
-/** Plans always read Basic, Professional, Enterprise; other names follow. */
-const tier = (name: string) => (/\bbasic\b/i.test(name) ? 1 : /\bprofessional\b/i.test(name) ? 2 : /\benterprises?\b/i.test(name) ? 3 : 4);
+/** Plans always read Starter, Pro, Elite (older names Basic, Professional, Enterprise too); other names follow. */
+const tier = (name: string) => (/\b(starter|basic)\b/i.test(name) ? 1 : /\b(pro|professional)\b/i.test(name) ? 2 : /\b(elite|enterprises?)\b/i.test(name) ? 3 : 4);
 const BILLING: Record<string, string> = { one_time: "one time", monthly: "per month", yearly: "per year", per_term: "per plan term" };
 
 async function load(): Promise<{ plans: Plan[]; addons: Addon[] }> {

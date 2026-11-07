@@ -71,7 +71,7 @@ export function BranchLimitsCard({ tenantId }: { tenantId: string }) {
         <Button variant="primary" onClick={() => void call("policy", { limit: limit === "" ? null : Number(limit), unlimited, disabled })}>Save limits</Button>
         {saved && <span className="text-xs text-emerald-700">Saved</span>}
       </div>
-      <p className="text-[11px] text-neutral-500">Enterprise plans include 5 branches (the main branch counts). Blank uses the plan&apos;s number. Lowering the limit or turning multi-branch off never deletes or hides records: new branches are blocked, and with multi-branch off only the main branch is used.</p>
+      <p className="text-[11px] text-neutral-500">Mavin Elite plans include 5 branches (the main branch counts). Blank uses the plan&apos;s number. Lowering the limit or turning multi-branch off never deletes or hides records: new branches are blocked, and with multi-branch off only the main branch is used.</p>
       {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">{error}</p>}
 
       <div>

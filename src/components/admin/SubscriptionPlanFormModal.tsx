@@ -200,7 +200,7 @@ export function SubscriptionPlanFormModal({
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
           <Field label="Branches included">
-            <Input type="number" min="1" placeholder={/enterprise/i.test(name) ? "5" : "1"} value={branchLimit} onChange={(e) => setBranchLimit(e.target.value)} />
+            <Input type="number" min="1" placeholder={/elite|enterprise/i.test(name) ? "5" : "1"} value={branchLimit} onChange={(e) => setBranchLimit(e.target.value)} />
           </Field>
           <Field label="Grace period (days)">
             <Input type="number" min="0" max="365" value={graceDays} onChange={(e) => setGraceDays(e.target.value)} />
@@ -215,7 +215,7 @@ export function SubscriptionPlanFormModal({
             <Input type="number" min="0" placeholder="Default 3" value={webDomains} onChange={(e) => setWebDomains(e.target.value)} />
           </Field>
         </div>
-        <p className="-mt-1 text-[11px] text-neutral-500">Branches: the main branch counts (Enterprise 5 = main + 4). More can be approved per business in Tenants. After the plan ends, the business keeps working for the grace period (with a reminder), then access pauses if &quot;Lock after grace period&quot; is on.</p>
+        <p className="-mt-1 text-[11px] text-neutral-500">Branches: the main branch counts (Mavin Elite 5 = main + 4). More can be approved per business in Tenants. After the plan ends, the business keeps working for the grace period (with a reminder), then access pauses if &quot;Lock after grace period&quot; is on.</p>
         <div>
           <p className="mb-1.5 text-xs font-medium text-neutral-600">For business types <span className="font-normal text-neutral-400">(none ticked = every type)</span></p>
           <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-neutral-200 p-3 sm:grid-cols-3">
