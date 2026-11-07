@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { isTursoConfigured } from "@/lib/sync/engine";
+import { SERVER_DB, serverJson } from "@/lib/serverMode";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { loadCompanyProfile, saveCompanyProfile, type CompanyProfile, type RegNumber } from "@/lib/companyProfile";
 import { applyTheme, DEFAULT_THEME, GOOGLE_FONTS, type AppTheme } from "@/lib/theme";
@@ -27,7 +28,10 @@ import {
   type PaperSize,
 } from "@/lib/printTemplates";
 
-function StatusPill({ ok, label }: { ok: boolean; label: string }) {
+function StatusPill({ ok, label, okText = "Configured", badText = "Not configured" }: { ok: boolean | null; label: string; okText?: string; badText?: string }) {
+  if (ok === null) {
+    return <span className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">{label}: checking…</span>;
+  }
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
@@ -35,7 +39,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
       }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-600" : "bg-rose-600"}`} />
-      {label}: {ok ? "Configured" : "Not configured"}
+      {label}: {ok ? okText : badText}
     </span>
   );
 }
@@ -554,6 +558,12 @@ export default function GeneralSettingsPage() {
   const templatesEditable = useAuthStore((s) => s.currentTenant?.printTemplatesEditable !== false);
 
   const tauriReady = useIsTauri();
+  // Web version: a live check that the server's database answers.
+  const [dbOnline, setDbOnline] = useState<boolean | null>(SERVER_DB ? null : true);
+  useEffect(() => {
+    if (!SERVER_DB) return;
+    serverJson("/api/auth/me/").then(() => setDbOnline(true)).catch(() => setDbOnline(false));
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -567,8 +577,15 @@ export default function GeneralSettingsPage() {
       />
 
       <div className="flex flex-wrap gap-2 rounded-2xl bg-white px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
-        <StatusPill ok={isTursoConfigured()} label="Turso sync" />
-        <StatusPill ok={tauriReady} label="Desktop shell" />
+        {SERVER_DB ? (
+          // Web version: the database is reached through the server (its keys never reach the browser).
+          <StatusPill ok={dbOnline} label="Online database" okText="Connected" badText="Not reachable, check your internet" />
+        ) : (
+          <>
+            <StatusPill ok={isTursoConfigured()} label="Turso sync" />
+            <StatusPill ok={tauriReady} label="Desktop shell" />
+          </>
+        )}
       </div>
 
       <CompanyProfileCard tauriReady={tauriReady} />
