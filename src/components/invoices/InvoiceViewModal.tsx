@@ -25,7 +25,7 @@ import { printDirect } from "@/lib/print";
 import { measurementsRepo, measurementSummary } from "@/lib/cloth";
 import { fillWarranty, loadCompanyProfile, printedBusinessName, type CompanyProfile } from "@/lib/companyProfile";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
-import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
+import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -215,9 +215,10 @@ export function InvoiceViewModal({
   const printArea =
     template && !loading ? (
       <div ref={areaRef} id="invoice-print-area" className="print-area mx-auto w-fit bg-white p-3 print:p-0">
+        <PrintFooterFrame thermal={template.paper === "thermal"}>
         <BranchPrintLine />
-        <InvoicePrintLayout template={contractorTemplate(template, inv.invoice_type)} data={printData} />
-        <PoweredByFooter />
+        <InvoicePrintLayout template={contractorTemplate(template, inv.invoice_type)} data={printData} reserveBottomMm={template.paper === "thermal" ? 0 : 12} />
+        </PrintFooterFrame>
       </div>
     ) : null;
 

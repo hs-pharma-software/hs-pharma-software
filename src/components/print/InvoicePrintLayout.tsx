@@ -117,10 +117,13 @@ export function InvoicePrintLayout({
   template,
   data,
   editor,
+  reserveBottomMm = 0,
 }: {
   template: PrintTemplate;
   data: PrintData;
   editor?: EditorHooks;
+  /** Room kept free under the page (the MAVIN.pk line at the foot of A4 / A5 pages). */
+  reserveBottomMm?: number;
 }) {
   const paper = PAPERS.find((p) => p.id === template.paper)!;
   const contentMm = paper.widthMm - paper.marginMm * 2;
@@ -651,7 +654,7 @@ export function InvoicePrintLayout({
         width: `${contentMm}mm`,
         boxSizing: "border-box",
         // One full page high (a little under, so it never spills onto a blank second page).
-        ...(pinFooter ? { minHeight: `${pageHeightMm - paper.marginMm * 2 - 3}mm`, display: "flex", flexDirection: "column" } : {}),
+        ...(pinFooter ? { minHeight: `${pageHeightMm - paper.marginMm * 2 - 3 - reserveBottomMm}mm`, display: "flex", flexDirection: "column" } : {}),
         color: "#111",
         fontFamily: "Arial, Helvetica, sans-serif",
         lineHeight: 1.35,

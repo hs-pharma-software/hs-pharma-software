@@ -19,7 +19,7 @@ import QRCode from "react-qr-code";
 import { LAB_VISIT_INVOICE_TYPE, ensureLabVisitToken, labVisitIdFor } from "@/lib/repo/lab";
 import { labReportUrl, publicOrigin } from "@/lib/labReportView";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
-import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
+import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 
 /** A service bill (lab visit, banquet booking) printed with the business's
  * own invoice template and theme (General Settings > Print Templates), the
@@ -130,8 +130,9 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
         <>
           <div className="max-h-[65vh] overflow-auto">
             <div ref={areaRef} className="print-area mx-auto w-fit bg-white p-3 print:p-0">
+              <PrintFooterFrame thermal={template.paper === "thermal"}>
               <BranchPrintLine />
-              <InvoicePrintLayout template={template} data={data} />
+              <InvoicePrintLayout template={template} data={data} reserveBottomMm={template.paper === "thermal" ? 0 : 12} />
               {reportUrl && (
                 <div className="mx-auto mt-3 flex w-fit items-center gap-3 border-t border-dashed border-neutral-400 pt-3 text-neutral-800">
                   <QRCode value={reportUrl} size={template.paper === "thermal" ? 88 : 96} style={{ width: template.paper === "thermal" ? 88 : 96, height: template.paper === "thermal" ? 88 : 96 }} viewBox="0 0 256 256" />
@@ -140,7 +141,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
                   </p>
                 </div>
               )}
-              <PoweredByFooter />
+              </PrintFooterFrame>
             </div>
           </div>
           {message && <p className={`mt-2 whitespace-pre-line text-sm ${message.ok ? "text-emerald-700" : "text-rose-600"}`}>{message.text}</p>}

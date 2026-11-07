@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { printDirect } from "@/lib/print";
 import { publicReportUrl } from "@/lib/publicUrl";
 import { LabReportSheet } from "@/components/hospital/LabReportSheet";
-import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
+import { ReportWithFooterLine } from "@/components/brand/PageFooterLine";
 import { recordReportPrint, listReportLog, type LabReport, type ReportLogRow } from "@/lib/repo/labReports";
 
 /** A lab report on screen: print (counted and logged) and the access log. */
@@ -39,8 +39,7 @@ export function LabReportModal({ report, onClose }: { report: LabReport; onClose
   return (
     <Modal title={`Report ${r.request.lab_no}`} onClose={onClose} width="max-w-4xl">
       <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
-        <LabReportSheet report={r} qrUrl={publicReportUrl(r.publicToken)} />
-        <PoweredByFooter />
+        <ReportWithFooterLine><LabReportSheet report={r} qrUrl={publicReportUrl(r.publicToken)} /></ReportWithFooterLine>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">

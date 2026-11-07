@@ -7,7 +7,7 @@ import type { ClinicProfile } from "@/lib/clinicProfile";
 import { PAPERS } from "@/lib/printTemplates";
 import { PAPER_WIDTH, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 import type { LabReportDesign } from "@/lib/labReportDesigns";
-import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
+import { ReportWithFooterLine } from "@/components/brand/PageFooterLine";
 
 export type { LabPart, LabLine, LabReportView } from "@/lib/labReportView";
 export { SAMPLE_LAB_REPORT } from "@/lib/labReportView";
@@ -179,6 +179,7 @@ export function LabReportDocument({ view, design, t, profile, areaRef, logo = nu
       style={{ fontFamily: FONT[design.font], WebkitPrintColorAdjust: "exact", printColorAdjust: "exact", ...frame }}
     >
       <style>{`@media print { @page { size: ${p.css}; margin: ${p.marginMm}mm; } }`}</style>
+      <ReportWithFooterLine>
       {header}
       {title}
       {info}
@@ -213,8 +214,8 @@ export function LabReportDocument({ view, design, t, profile, areaRef, logo = nu
         <p className="mt-10 text-right text-xs text-neutral-600">{view.signedBy}</p>
       )}
       {t.footer && <p className="mt-4 border-t border-neutral-300 pt-1 text-center text-[0.85em] text-neutral-600">{t.footer}</p>}
-      <PoweredByFooter />
       </div>
+      </ReportWithFooterLine>
     </div>
   );
 }

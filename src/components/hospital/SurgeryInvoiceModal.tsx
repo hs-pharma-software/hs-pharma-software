@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { getSurgeryInvoice, type SurgeryInvoice } from "@/lib/repo/hospitalCare";
-import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
+import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 
 const rs = (n: number) => Number(n).toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
@@ -42,6 +42,7 @@ export function SurgeryInvoiceModal({ invoiceId, onClose, autoPrint = false }: {
       {!inv || !i ? <p className="text-sm text-neutral-400">Loading…</p> : (
         <>
           <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
+            <PrintFooterFrame thermal={false}>
             <div className="flex items-start justify-between gap-4 border-b-2 border-neutral-800 pb-2">
               <div>
                 <p className="text-xl font-bold leading-tight">{inv.hospital.name}</p>
@@ -85,7 +86,7 @@ export function SurgeryInvoiceModal({ invoiceId, onClose, autoPrint = false }: {
               <div className="mt-0.5 flex justify-between border-t border-neutral-800 pt-0.5 font-bold"><span>Balance</span><span className="tabular-nums">{rs(i.balance)}</span></div>
             </div>
             <p className="mt-6 text-center text-[11px] text-neutral-500">Payments are taken on the admission {inv.admission?.episode_no ?? ""}. Printed {localDateTime().replace("T", " ").slice(0, 16)}.</p>
-            <PoweredByFooter />
+            </PrintFooterFrame>
           </div>
           <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
             <Button onClick={onClose}>Close</Button>

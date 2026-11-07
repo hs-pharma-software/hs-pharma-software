@@ -9,7 +9,7 @@ import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { visitReceiptFor, collectVisitFees, type FeeScope, type ScopedReceipt } from "@/lib/repo/receptionFees";
 import type { PaymentMethod } from "@/lib/types-hospital";
-import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
+import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 
 const METHOD: Record<string, string> = { cash: "Cash", card: "Card", online: "Online transfer", bank: "Bank deposit" };
 const rs = (n: number) => n.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -57,6 +57,7 @@ export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: {
       {!r ? <p className="text-sm text-neutral-400">Loading…</p> : (
         <>
           <div ref={areaRef} className="print-area mx-auto w-full max-w-[140mm] bg-white text-[12px] text-neutral-900">
+            <PrintFooterFrame thermal={false}>
             <div className="border-b-2 border-neutral-800 pb-1.5 text-center">
               <p className="text-base font-bold leading-tight">{r.hospital.name}</p>
               {(r.hospital.address || r.hospital.phone) && <p className="text-[11px] text-neutral-600">{[r.hospital.address, r.hospital.phone].filter(Boolean).join(" · ")}</p>}
@@ -115,7 +116,7 @@ export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: {
               </div>
             </div>
             <p className="mt-3 text-center text-[10px] text-neutral-500">Printed {when(localDateTime())}. Thank you.</p>
-            <PoweredByFooter />
+            </PrintFooterFrame>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
