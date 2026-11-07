@@ -26,6 +26,7 @@ import { measurementsRepo, measurementSummary } from "@/lib/cloth";
 import { fillWarranty, loadCompanyProfile, printedBusinessName, type CompanyProfile } from "@/lib/companyProfile";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
+import { InvoiceShareButtons } from "./InvoiceShare";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -233,12 +234,13 @@ export function InvoiceViewModal({
       onClose={onClose}
       width="max-w-3xl"
     >
-      <div className="flex items-center justify-between pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
         <p className="text-xs text-neutral-500">
           {template ? `Prints on ${PAPERS.find((p) => p.id === template.paper)!.label}` : ""}
           <span className="text-neutral-400"> (change in Settings &gt; Print Templates)</span>
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <InvoiceShareButtons invoiceId={inv.id} size="sm" />
           {fbrSettings && !fbrInvoiceNo && !inv.is_return && canFbr && (
             <Button
               variant="secondary"

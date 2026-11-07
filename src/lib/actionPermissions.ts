@@ -1,15 +1,20 @@
 import { useAuthStore } from "../store/authStore";
+import { tenantAllows } from "./tenantFeatures";
+export { tenantAllows, toggleTenantAction, TENANT_OPT_IN_ACTIONS } from "./tenantFeatures";
 
 /** Actions an owner can allow or restrict per staff login. Stored on the
  * user as a list of DENIED keys, so anything not listed is allowed. An
  * opt-in action is the other way round: a staff login has it only when the
  * owner ticks it (stored as "+key"); the owner always has it. */
-export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: string; optIn?: true }[] = [
+export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: string; optIn?: true; tenantOptIn?: true }[] = [
   { key: "invoice.edit", label: "Edit invoices", group: "Invoices" },
   { key: "invoice.delete", label: "Delete invoices", group: "Invoices" },
   { key: "invoice.fbr_submit", label: "Submit invoices to FBR", group: "Invoices", optIn: true },
   { key: "invoice.refund", label: "Refund / return sales", group: "Invoices", optIn: true },
   { key: "invoice.purchase_rate", label: "See purchase rate while billing", group: "Invoices", optIn: true },
+  // Off for a business until the Super Admin allows it ("+key" in the business's list).
+  { key: "invoice.pdf", label: "Download invoice PDF", group: "Invoices", tenantOptIn: true },
+  { key: "invoice.whatsapp", label: "Send invoice on WhatsApp", group: "Invoices", tenantOptIn: true },
   { key: "memorized.edit", label: "Edit memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.delete", label: "Delete memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.convert", label: "Convert to invoice", group: "Memorized Invoices", optIn: true },
@@ -27,13 +32,14 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
 ];
 
 export type ActionKey =
-  | "invoice.edit" | "invoice.delete" | "invoice.fbr_submit" | "invoice.purchase_rate" | "invoice.refund"
+  | "invoice.edit" | "invoice.delete" | "invoice.fbr_submit" | "invoice.purchase_rate" | "invoice.refund" | "invoice.pdf" | "invoice.whatsapp"
   | "data.export" | "data.restore" | "finance.close"
   | "memorized.edit" | "memorized.delete" | "memorized.convert"
   | "purchase.edit" | "purchase.delete"
   | "rest.order" | "rest.discount" | "rest.void" | "rest.refund" | "rest.menu" | "rest.settings";
 
 const isOptIn = (key: string) => ACTION_PERMISSIONS.some((a) => a.key === key && a.optIn);
+
 
 /** Whether a staff login's stored list allows an action. */
 export function staffAllows(list: readonly string[] | null | undefined, key: string): boolean {
@@ -66,7 +72,7 @@ export function can(action: ActionKey): boolean {
   const { currentUser: user, currentTenant } = useAuthStore.getState();
   if (!user) return false;
   if (user.role === "super_admin") return true;
-  if ((currentTenant?.deniedActions ?? []).includes(action)) return false;
+  if (!tenantAllows(currentTenant?.deniedActions, action)) return false;
   if (user.role !== "staff") return true;
   return staffAllows(user.deniedActions, action);
 }
@@ -77,7 +83,7 @@ export function useCan(action: ActionKey): boolean {
   const tenantDenied = useAuthStore((s) => s.currentTenant?.deniedActions);
   if (!role) return false;
   if (role === "super_admin") return true;
-  if ((tenantDenied ?? []).includes(action)) return false;
+  if (!tenantAllows(tenantDenied, action)) return false;
   if (role !== "staff") return true;
   return staffAllows(denied, action);
 }

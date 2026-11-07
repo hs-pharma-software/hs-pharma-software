@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Minus, Plus, ShoppingCart, X, Maximize2 } from "lucide-react";
 import { InvoiceFormModal } from "@/components/invoices/InvoiceFormModal";
+import { InvoiceSavedNotice } from "@/components/invoices/InvoiceShare";
 import { PurchaseFormModal } from "@/components/purchases/PurchaseFormModal";
 import { canOpenKind, tabLabel, useFormTabs } from "@/store/formTabsStore";
 
@@ -12,6 +13,8 @@ import { canOpenKind, tabLabel, useFormTabs } from "@/store/formTabsStore";
 export function FormTabsHost() {
   const router = useRouter();
   const { tabs, activeId, minimized, openNew, activate, close, cycle, setMinimized, markSaved } = useFormTabs();
+  // The invoice just saved: PDF / WhatsApp offered (when allowed) after its tab closes.
+  const [saved, setSaved] = useState<{ id: string; no: number | null } | null>(null);
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
 
   useEffect(() => {
@@ -51,15 +54,18 @@ export function FormTabsHost() {
     return () => window.removeEventListener("keydown", onKey);
   }, [tabs, openNew, cycle, activate, router]);
 
-  if (tabs.length === 0) return null;
+  const notice = saved && <InvoiceSavedNotice key={saved.id} invoiceId={saved.id} invoiceNo={saved.no} onClose={() => setSaved(null)} />;
+  if (tabs.length === 0) return notice || null;
 
   return (
     <>
+      {notice}
       {tabs.map((t) => {
         const visible = t.id === activeId && !minimized;
-        const done = () => {
+        const done = (inv?: { id: string; no: number | null }) => {
           markSaved(t.kind);
           close(t.id);
+          if (t.kind === "invoice" && inv) setSaved(inv);
         };
         return (
           <div key={t.id} className={visible ? "" : "hidden"}>
@@ -71,7 +77,7 @@ export function FormTabsHost() {
                 draftId={t.draftId}
                 active={visible}
                 onClose={() => close(t.id)}
-                onSaved={done}
+                onSaved={() => done()}
               />
             )}
           </div>

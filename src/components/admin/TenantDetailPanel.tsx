@@ -7,7 +7,7 @@ import { PrintTemplatesModal } from "@/components/print/PrintTemplatesModal";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { tenantAllowedModules } from "@/lib/auth";
 import { parseAllowedModules } from "@/lib/repo/subscriptionPlans";
-import { ACTION_PERMISSIONS, parseDeniedActions } from "@/lib/actionPermissions";
+import { ACTION_PERMISSIONS, parseDeniedActions, tenantAllows, toggleTenantAction } from "@/lib/actionPermissions";
 import { PAPERS, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/lib/printTemplates";
 import { NAV } from "@/config/nav";
 import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
@@ -328,8 +328,8 @@ export function TenantDetailPanel({
                   <label key={a.key} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
                     <input
                       type="checkbox"
-                      checked={!denied.includes(a.key)}
-                      onChange={() => setDenied((d) => (d.includes(a.key) ? d.filter((k) => k !== a.key) : [...d, a.key]))}
+                      checked={tenantAllows(denied, a.key)}
+                      onChange={() => setDenied((d) => toggleTenantAction(d, a.key))}
                       className="accent-amber-500"
                     />
                     <span className="text-xs text-neutral-700">{a.label}</span>

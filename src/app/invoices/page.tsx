@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck, Copy } from "lucide-react";
+import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck, Copy, FileDown, MessageCircle } from "lucide-react";
 import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -27,6 +27,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Field";
 import { markInvoicePaid } from "@/lib/repo/invoicePayments";
 import type { PaymentMethod } from "@/lib/types-hospital";
+import { useInvoiceShare, WhatsAppShareDialog } from "@/components/invoices/InvoiceShare";
+import { fetchInvoicePdf, saveBlob } from "@/lib/invoiceShare";
 
 const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
 const isClinicVisit = (r: InvoiceListRow) => r.invoice_type === "clinic_visit";
@@ -153,6 +155,25 @@ export default function InvoicesPage() {
     }
   }
 
+  // Invoice PDF / WhatsApp (only when the Super Admin and owner allow it).
+  const share = useInvoiceShare();
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null);
+  const [waFor, setWaFor] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  async function downloadPdf(r: InvoiceListRow) {
+    if (pdfBusy) return;
+    setPdfBusy(r.id);
+    setShareError(null);
+    try {
+      const { blob, fileName } = await fetchInvoicePdf(r.id, "download");
+      saveBlob(blob, fileName);
+    } catch (e) {
+      setShareError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPdfBusy(null);
+    }
+  }
+
   /** "7 Nov" this year, "7 Nov 2025" otherwise (phone list). */
   const shortDate = (d: string) => {
     const x = new Date(`${d.slice(0, 10)}T00:00:00`);
@@ -220,6 +241,29 @@ export default function InvoicesPage() {
               className="hover:text-emerald-700"
             >
               <BadgeCheck size={16} />
+            </button>
+          )}
+          {share.pdf && (
+            <button
+              type="button"
+              title="Download PDF"
+              aria-label={`Download PDF of invoice ${r.invoice_no ?? ""}`}
+              disabled={pdfBusy === r.id}
+              onClick={(e) => { e.stopPropagation(); void downloadPdf(r); }}
+              className="hover:text-amber-700 disabled:opacity-40"
+            >
+              <FileDown size={16} />
+            </button>
+          )}
+          {share.whatsapp && (
+            <button
+              type="button"
+              title="Send on WhatsApp"
+              aria-label={`Send invoice ${r.invoice_no ?? ""} on WhatsApp`}
+              onClick={(e) => { e.stopPropagation(); setWaFor(r.id); }}
+              className="hover:text-emerald-700"
+            >
+              <MessageCircle size={16} />
             </button>
           )}
           <button
@@ -293,6 +337,8 @@ export default function InvoicesPage() {
               ...(isContractor && !isServiceBill(r) ? [{ label: "Clone", onClick: () => void openClone(r) }] : []),
               ...(canEdit && r.balance > 0.005 ? [{ label: `Mark paid (Rs ${r.balance.toFixed(2)})`, onClick: () => setPayingRow(r) }] : []),
               { label: "Print", onClick: () => void printInvoice(r), disabled: !!printing },
+              ...(share.pdf ? [{ label: pdfBusy === r.id ? "Preparing PDF…" : "Download PDF", onClick: () => void downloadPdf(r), disabled: pdfBusy === r.id }] : []),
+              ...(share.whatsapp ? [{ label: "Send on WhatsApp", onClick: () => setWaFor(r.id) }] : []),
               ...(canDelete && !isServiceBill(r) ? [{ label: "Delete", onClick: () => void handleDelete(r), danger: true, disabled: deletingId === r.id }] : []),
             ],
           })}
@@ -301,6 +347,8 @@ export default function InvoicesPage() {
 
 
       {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setPrinting(null)} />}
+      {shareError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{shareError}</p>}
+      {waFor && <WhatsAppShareDialog invoiceId={waFor} onClose={() => setWaFor(null)} />}
 
       {payingRow && <MarkPaidModal row={payingRow} onClose={() => setPayingRow(null)} onPaid={() => { setPayingRow(null); void reload(); }} />}
       {clinicInvoice && (

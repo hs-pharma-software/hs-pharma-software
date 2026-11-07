@@ -18,6 +18,7 @@ import { LabReportTemplatesCard } from "@/components/clinic/LabReportTemplatesCa
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { LinkedClinicsCard } from "@/components/settings/LinkedClinicsCard";
 import { ServiceFbrCard } from "@/components/settings/ServiceFbrCard";
+import { useBillori } from "@/lib/billoriState";
 import {
   PAPERS,
   loadDefaultPaper,
@@ -373,6 +374,8 @@ function BilloriCard({ tauriReady }: { tauriReady: boolean }) {
 
   async function save(val: boolean) {
     await setSetting(BILLORI_ENABLED_SETTING, val ? "true" : "false");
+    const tenantId = useAuthStore.getState().currentTenant?.id;
+    if (tenantId) useBillori.getState().set(tenantId, val);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   }

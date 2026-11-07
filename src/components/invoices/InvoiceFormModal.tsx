@@ -105,7 +105,8 @@ export function InvoiceFormModal({
   /** Start a new invoice as a copy of this one (customer, buyer details, lines). */
   cloneFrom?: Invoice | null;
   onClose: () => void;
-  onSaved: () => void;
+  /** The saved invoice (not for a draft). */
+  onSaved: (saved?: { id: string; no: number | null }) => void;
   /** False while another invoice tab is in front: keyboard shortcuts are
    * ignored so only the visible form reacts. */
   active?: boolean;
@@ -696,6 +697,8 @@ export function InvoiceFormModal({
     setError(null);
     try {
       let invoiceId: string;
+      // The edited invoice keeps its number; a new one gets the next.
+      let savedNo: number | null = invoice?.invoice_no ?? null;
       if (isEdit && invoice) {
         // Put back what the original items had deducted, delete them, then
         // deduct fresh for whatever the form now says - this way editing
@@ -706,6 +709,7 @@ export function InvoiceFormModal({
         invoiceId = invoice.id;
       } else {
         const invoiceNo = await nextInvoiceNo();
+        savedNo = invoiceNo;
         const created = await invoicesRepo.create({
           ...invoiceHeader(),
           invoice_no: invoiceNo,
@@ -729,7 +733,7 @@ export function InvoiceFormModal({
       if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
       // Billed from a website order: link it once, so it is not billed twice and its stock hold ends.
       if (webOrderId && !invoice && !isDraft) await serverJson("/api/web/manage/", { action: "linkInvoice", id: webOrderId, invoiceId }).catch(() => undefined);
-      onSaved();
+      onSaved(isDraft ? undefined : { id: invoiceId, no: savedNo });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

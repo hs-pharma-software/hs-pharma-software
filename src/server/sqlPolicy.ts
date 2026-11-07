@@ -1,3 +1,4 @@
+import { tenantAllows } from "../lib/tenantFeatures";
 /** What the browser may ask the database to do through /api/db. The app
  * sends parameterized statements; the server refuses anything that is not
  * plain data access by a logged-in user: schema changes, several statements
@@ -83,7 +84,7 @@ const OPT_IN_ACTIONS = new Set(["invoice.fbr_submit", "invoice.refund", "invoice
 /** Whether the caller may perform an action (same rule as lib/actionPermissions.ts can()). */
 export function callerCan(caller: Caller, action: string): boolean {
   if (caller.role === "super_admin") return true;
-  if ((caller.tenantDeniedActions ?? []).includes(action)) return false;
+  if (!tenantAllows(caller.tenantDeniedActions, action)) return false;
   if (caller.role !== "staff") return true;
   const list = caller.actions ?? [];
   return OPT_IN_ACTIONS.has(action) ? list.includes(`+${action}`) : !list.includes(action);

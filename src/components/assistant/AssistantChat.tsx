@@ -7,6 +7,9 @@ import type { GeminiContent } from "@/lib/gemini";
 import { askAssistant } from "@/lib/assistant";
 import { hasAiKey } from "@/lib/gemini";
 import { useIsTauri } from "@/lib/platform";
+import { usePathname } from "next/navigation";
+import { useAuthStore } from "@/store/authStore";
+import { useBillori } from "@/lib/billoriState";
 
 interface ChatLine {
   role: "user" | "assistant" | "error";
@@ -20,9 +23,28 @@ const SUGGESTIONS = [
   "Which DRAP-registered brands contain amoxicillin + clavulanic acid?",
 ];
 
-/** Floating AI assistant (bottom-right) for HS codes, FBR fields and medicine questions. */
+/** Floating AI assistant (bottom-right) for HS codes, FBR fields and medicine questions.
+ * Only while Billori is on for the business (Settings > Billori AI Assistant):
+ * off, or not known yet, means no button and no panel at all. */
 export function AssistantChat() {
   const tauriReady = useIsTauri();
+  const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
+  const enabled = useBillori((s) => (s.tenantId === tenantId ? s.enabled : null));
+  const load = useBillori((s) => s.load);
+  const pathname = usePathname();
+  // Read on sign-in, on every page change and when the tab comes back to the front.
+  useEffect(() => { void load(tenantId); }, [tenantId, pathname, load]);
+  useEffect(() => {
+    const again = () => { if (document.visibilityState === "visible") void load(tenantId); };
+    document.addEventListener("visibilitychange", again);
+    window.addEventListener("focus", again);
+    return () => { document.removeEventListener("visibilitychange", again); window.removeEventListener("focus", again); };
+  }, [tenantId, load]);
+  if (!tauriReady || enabled !== true) return null;
+  return <AssistantPanel />;
+}
+
+function AssistantPanel() {
   const [open, setOpen] = useState(false);
   const [keySet, setKeySet] = useState<boolean | null>(null);
   const [lines, setLines] = useState<ChatLine[]>([]);
@@ -64,8 +86,6 @@ export function AssistantChat() {
     setLines([]);
     setTranscript([]);
   }
-
-  if (!tauriReady) return null;
 
   return (
     <div className="print:hidden">

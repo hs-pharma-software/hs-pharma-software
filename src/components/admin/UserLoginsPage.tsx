@@ -16,7 +16,7 @@ import { RecoveryContact } from "@/components/auth/RecoveryContact";
 import { useAuthStore } from "@/store/authStore";
 import { NAV } from "@/config/nav";
 import { visibleNavFor } from "@/config/navFilter";
-import { ACTION_PERMISSIONS, parseDeniedActions, staffAllows, toggleStaffAction, staffListFor, restrictedCount } from "@/lib/actionPermissions";
+import { ACTION_PERMISSIONS as ALL_ACTIONS, parseDeniedActions, staffAllows, toggleStaffAction, staffListFor, restrictedCount, tenantAllows } from "@/lib/actionPermissions";
 import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import type { Tenant, UserAccount } from "@/lib/types2";
 
@@ -39,6 +39,8 @@ export function UserLoginsPage({
 }) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const currentTenant = useAuthStore((s) => s.currentTenant);
+  // Features the Super Admin has not switched on for this business are not offered per login.
+  const ACTION_PERMISSIONS = ALL_ACTIONS.filter((a) => !a.tenantOptIn || currentUser?.role === "super_admin" || tenantAllows(currentTenant?.deniedActions, a.key));
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
