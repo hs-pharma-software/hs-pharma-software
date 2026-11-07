@@ -65,8 +65,7 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         {/* Branding */}
         <div className="mb-8 flex flex-col items-center gap-3">
           <h1 className="sr-only">MAVIN.pk</h1>
-          <Image src="/mavin-header.png" alt="MAVIN.pk" width={1405} height={361} priority className="h-auto w-full max-w-[300px] object-contain" />
-          <MuawinTagline className="text-base font-medium text-[#0b2a6b]" logoClassName="h-9 w-auto" />
+          <Image src="/mavin-logo-tagline.png" alt="MAVIN.pk - Aap Key Business Ka معاون" width={487} height={132} priority className="h-auto w-full max-w-[320px] object-contain" />
         </div>
 
         {forgot ? (
