@@ -20,7 +20,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
   const about = topic && TOPICS[topic] ? `${TOPICS[topic]}${plan ? ` (${plan.slice(0, 20)})` : ""}` : null;
   return (
     <>
-      <PageIntro eyebrow="Contact" title="Talk to us.">
+      <PageIntro eyebrow="Contact" title="Contact MAVIN.pk">
         Questions about a product, pricing, FBR setup or an existing account.
       </PageIntro>
       <Section>

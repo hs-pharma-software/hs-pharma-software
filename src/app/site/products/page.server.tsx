@@ -14,7 +14,7 @@ export default async function ProductsPage() {
   const base = await siteBase();
   return (
     <>
-      <PageIntro eyebrow="Products" title="A version for each kind of business.">
+      <PageIntro eyebrow="Products" title="POS and business software for every sector">
         Every product runs on the same platform. Choose your sector to see its workflow, what it needs to get started and what is still on the way.
       </PageIntro>
       <Section>

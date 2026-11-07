@@ -19,7 +19,7 @@ export default async function FbrPage() {
   const base = await siteBase();
   return (
     <>
-      <PageIntro eyebrow="Integrations" title="FBR Digital Invoicing">
+      <PageIntro eyebrow="Integrations" title="FBR Digital Invoicing integration">
         Send sale invoices to FBR&apos;s Digital Invoicing system from the invoice screen. Available to FBR-registered businesses and switched on per business
         during onboarding.
         <div className="mt-6"><CtaLink href={at(base, "/contact?topic=fbr")}>Check Setup Eligibility</CtaLink></div>

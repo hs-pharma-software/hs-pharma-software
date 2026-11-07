@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import { withSeoMeta } from "@/config/seoMeta";
+import { pageUrl, withSeoMeta } from "@/config/seoMeta";
+import { PRODUCT_SEO } from "@/config/siteSeo";
+import { SITE_URL } from "@/config/site";
+import { JsonLd } from "@/components/site/JsonLd";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SITE_PRODUCTS, productFacts, siteProduct } from "@/config/siteProducts";
@@ -13,7 +16,8 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const p = siteProduct((await params).slug);
   if (!p) return {};
-  return withSeoMeta(`/products/${p.slug}`, { title: p.name, description: p.intro, alternates: { canonical: `/products/${p.slug}` } });
+  const seo = PRODUCT_SEO[p.slug];
+  return withSeoMeta(`/products/${p.slug}`, { title: seo?.title ?? p.name, description: seo?.description ?? p.intro });
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -26,9 +30,24 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     <CtaLink href={at(base, `/demo?type=${encodeURIComponent(p.name)}`)}>{pilot ? "Discuss a Pilot" : "Book a Demo"}</CtaLink>
   );
 
+  const seo = PRODUCT_SEO[p.slug];
+  const url = pageUrl(`/products/${p.slug}`);
+  // Structured data from what the page shows: the product, its FAQs, and where it sits.
+  const ld = [
+    { "@context": "https://schema.org", "@type": "SoftwareApplication", name: `MAVIN.pk ${p.name}`, applicationCategory: "BusinessApplication", operatingSystem: "Windows, Web browser", description: seo?.description ?? p.intro, url, publisher: { "@type": "Organization", name: "MAVIN.pk", url: `${SITE_URL}/` } },
+    ...(p.faqs.length ? [{ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: p.faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) }] : []),
+    { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+      { "@type": "ListItem", position: 2, name: "Products", item: pageUrl("/products") },
+      { "@type": "ListItem", position: 3, name: p.name, item: url },
+    ] },
+  ];
+
   return (
     <>
-      <PageIntro eyebrow={`${p.group} · ${p.name}`} title={p.headline}>
+      <JsonLd data={ld} />
+      <PageIntro eyebrow={`${p.group} · ${p.name}`} title={seo?.h1 ?? p.headline}>
+        {seo?.h1 && <p className="text-lg font-medium text-slate-800">{p.headline}</p>}
         <p>{p.intro}</p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {cta}
