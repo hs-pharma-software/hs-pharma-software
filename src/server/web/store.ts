@@ -16,6 +16,10 @@ import { HttpError } from "../db";
 import type { Sql } from "../subSupers";
 import { audit, iso, json, rateLimited, requireSite, type Site } from "./core";
 import { pageSlug } from "../../lib/web/sections";
+import { businessType } from "../../config/businessTypes";
+
+/** Pharmacies: every product ordered online needs a prescription (the pharmacist reviews it before confirming). */
+export const rxRequiredForOrders = (typeId: string | null | undefined) => businessType(typeId).family === "pharmacy";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -94,6 +98,8 @@ export async function saveListing(sql: Sql, actor: string, tenantId: string, pro
   const vis = ["hide", "status", "qty"].includes(String(l.stockVisibility)) ? String(l.stockVisibility) : "status";
   // A controlled (narcotic) medicine is never orderable online.
   const allowOrder = Boolean(l.allowOrder) && Number(p.is_narcotic) !== 1;
+  // A pharmacy's orderable products always need a prescription.
+  const rxRequired = Boolean(l.rxRequired) || (allowOrder && rxRequiredForOrders(site.businessType));
   const title = text(l.title, 140);
   const now = iso();
   const existing = (await sql.execute(`SELECT slug FROM web_products WHERE tenant_id = ? AND product_id = ?`, [tenantId, productId])).rows[0];
@@ -108,10 +114,10 @@ export async function saveListing(sql: Sql, actor: string, tenantId: string, pro
        description = excluded.description, images = excluded.images, online_price = excluded.online_price, featured = excluded.featured,
        online_category = excluded.online_category, rx_required = excluded.rx_required, stock_visibility = excluded.stock_visibility, updated_at = excluded.updated_at`,
     [tenantId, productId, slug, l.showOnline ? 1 : 0, allowOrder ? 1 : 0, title || null, text(l.description, 3000) || null, JSON.stringify(images), price,
-      l.featured ? 1 : 0, text(l.onlineCategory, 60) || null, l.rxRequired ? 1 : 0, vis, now, now],
+      l.featured ? 1 : 0, text(l.onlineCategory, 60) || null, rxRequired ? 1 : 0, vis, now, now],
   );
-  await audit(sql, tenantId, actor, "listing_saved", { productId, showOnline: Boolean(l.showOnline), allowOrder });
-  return { slug, allowOrder };
+  await audit(sql, tenantId, actor, "listing_saved", { productId, showOnline: Boolean(l.showOnline), allowOrder, rxRequired });
+  return { slug, allowOrder, rxRequired };
 }
 
 // ── Public catalogue ──────────────────────────────────────────────────────
@@ -145,7 +151,7 @@ export async function publicCatalog(sql: Sql, site: Site, f: { q?: string; categ
     const vis = String(r.stock_visibility);
     return {
       slug: String(r.slug), name: String(r.name), description: String(r.description ?? ""), images: json(r.images, []), price, category: String(r.category ?? ""),
-      featured: Number(r.featured) === 1, rxRequired: Number(r.rx_required) === 1,
+      featured: Number(r.featured) === 1, rxRequired: Number(r.rx_required) === 1 || (Number(r.allow_order) === 1 && rxRequiredForOrders(site.businessType)),
       orderable: site.storeEnabled && Number(r.allow_order) === 1 && Number(r.is_narcotic) !== 1 && price !== null && avail > 0,
       stock: { visibility: vis, inStock: avail > 0, qty: vis === "qty" ? avail : null },
     };
@@ -240,7 +246,7 @@ export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip:
       [t, t, slug],
     )).rows[0];
     if (!p || Number(p.allow_order) !== 1 || Number(p.is_narcotic) === 1 || p.price == null) throw new HttpError(409, "An item in your cart can no longer be ordered online. Remove it and try again.");
-    lines.push({ productId: String(p.product_id), name: String(p.name), qty, price: money(Number(p.price)), rx: Number(p.rx_required) === 1 });
+    lines.push({ productId: String(p.product_id), name: String(p.name), qty, price: money(Number(p.price)), rx: Number(p.rx_required) === 1 || rxRequiredForOrders(site.businessType) });
   }
   const subtotal = money(lines.reduce((n, l) => n + l.qty * l.price, 0));
   if (subtotal < st.minOrder) throw new HttpError(400, `The minimum order is Rs ${st.minOrder.toLocaleString("en-PK")}.`);

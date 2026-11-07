@@ -45,7 +45,9 @@ beforeEach(async () => {
   db = fullSchemaDb();
   sql = sqliteSql(db);
   resetWebRateLimits();
-  tenant("t1", "Hadayat Ullah & Sons Pharmacy");
+  // A general store: orderable products need no prescription unless marked (pharmacies: see below).
+  tenant("t1", "Hadayat Ullah & Sons Pharmacy", "general_store");
+  tenant("t3", "City Pharmacy", "retail_pharmacy");
   tenant("t2", "Other Store", "general_store");
   product("p1", "t1", "Panadol 500mg", { stock: 5, price: 100 });
   product("p2", "t1", "Antibiotic X", { stock: 10, price: 250 });
@@ -72,13 +74,13 @@ test("enabling twice creates one draft, from the business's own details, with a 
   const pages = await listPages(sql, "t1");
   assert.deepEqual(pages.map((p) => p.slug), ["home", "about", "contact"]);
   const s = await site();
-  assert.equal(s.template, "pharmacy");
+  assert.equal(s.template, "retail");
   assert.equal(s.subdomain, "hadayatullahandsonspharmacy");
   assert.equal(s.status, "draft");
   assert.equal(s.settings, null, "nothing is live yet");
   assert.equal(s.draftSettings!.contact.phone, "0300-1112223");
   assert.equal(s.draftSettings!.tagline, "", "nothing invented");
-  assert.ok(pages[0].sections.some((x) => x.type === "featured"), "pharmacy with store: products on the home page");
+  assert.ok(pages[0].sections.some((x) => x.type === "featured"), "shop with store: products on the home page");
   assert.equal(pages[0].published, null);
 });
 
@@ -260,4 +262,22 @@ test("isolation: who manages which website; the browser's SQL route cannot touch
   assert.equal(readPreviewToken(tok), "t1");
   assert.equal(readPreviewToken(tok.slice(0, -2) + "xx"), null);
   assert.equal(readPreviewToken(tok, Date.now() + 2 * 3600_000), null, "expires");
+});
+
+test("pharmacy: every orderable product needs a prescription, enforced on save and at checkout", async () => {
+  product("rx1", "t3", "Cough Syrup", { stock: 5, price: 120 });
+  await enableFeatures(sql, "admin", "t3", { website: true, store: true });
+  assert.equal((await loadSite(sql, "t3"))!.template, "pharmacy");
+  const r = await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: true, rxRequired: false });
+  assert.equal(r.rxRequired, true, "cannot be switched off while orderable");
+  const shownOnly = await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: false, rxRequired: false });
+  assert.equal(shownOnly.rxRequired, false, "a product only shown (not orderable) does not need it");
+  await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: true });
+  // A listing saved before this rule (no prescription flag) is still checked at checkout.
+  run(`UPDATE web_products SET rx_required = 0 WHERE tenant_id = 't3'`);
+  const s3 = (await loadSite(sql, "t3"))!;
+  assert.equal((await publicCatalog(sql, s3))[0].rxRequired, true);
+  await assert.rejects(placeOrder(sql, s3, order({ items: [{ slug: "cough-syrup", qty: 1 }] })), /prescription/);
+  const ok = await placeOrder(sql, s3, order({ items: [{ slug: "cough-syrup", qty: 1 }], prescriptions: [{ name: "rx.png", data: PNG }] }));
+  assert.equal(one(`SELECT rx_status FROM web_orders WHERE public_token = ?`, ok.token).rx_status, "pending_review");
 });

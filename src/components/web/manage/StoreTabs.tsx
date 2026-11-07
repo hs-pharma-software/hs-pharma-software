@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { useFormTabs } from "@/store/formTabsStore";
 import type { StoreSettings } from "@/lib/web/sections";
@@ -57,19 +57,46 @@ interface Row {
   listing: { showOnline: boolean; allowOrder: boolean; title: string; description: string; images: { url: string; alt: string }[]; onlinePrice: number | null; featured: boolean; onlineCategory: string; rxRequired: boolean; stockVisibility: string; slug: string } | null;
 }
 
-export function ProductsTab({ tenantId }: { tenantId?: string }) {
+/** `pharmacy`: every orderable product needs a prescription (the server enforces it too). */
+export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string; pharmacy?: boolean }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [q, setQ] = useState("");
   const [onlyListed, setOnlyListed] = useState(false);
-  const [edit, setEdit] = useState<Row | null>(null);
+  const [edit, setEdit] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => { webCall<Row[]>("products", { q, onlyListed }, tenantId).then(setRows).catch((e) => setError(errText(e))); }, [q, onlyListed, tenantId]);
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
+
+  async function quickToggle(r: Row) {
+    setBusy(r.productId);
+    setError(null);
+    const l = r.listing;
+    const on = !l?.showOnline;
+    try {
+      await webCall("saveListing", {
+        productId: r.productId,
+        listing: {
+          showOnline: on,
+          // A new listing becomes orderable at once (controlled medicines never are).
+          allowOrder: l ? l.allowOrder : on && !r.narcotic,
+          title: l?.title ?? "", description: l?.description ?? "", images: l?.images ?? [], onlinePrice: l?.onlinePrice ?? null,
+          featured: l?.featured ?? false, onlineCategory: l?.onlineCategory ?? "", rxRequired: (l?.rxRequired ?? false) || pharmacy, stockVisibility: l?.stockVisibility ?? "status",
+        },
+      }, tenantId);
+      load();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <div className={`${card} space-y-3`}>
       <div>
         <p className="text-sm font-semibold text-neutral-800">Products on the website</p>
         <p className="text-xs text-neutral-500">Only products you switch on appear online. Stock and the POS price come from your records; cost price, suppliers and batches are never shown.</p>
+        {pharmacy && <p className="mt-1 text-xs font-medium text-amber-800">Pharmacy: every product that can be ordered online needs a prescription. The customer attaches it at checkout and you approve it before confirming the order.</p>}
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <label htmlFor="pt-q" className={`${labelCls} min-w-[12rem] flex-1`}>Search<input id="pt-q" value={q} onChange={(e) => setQ(e.target.value)} className={inputCls} placeholder="Name or barcode" /></label>
@@ -82,24 +109,40 @@ export function ProductsTab({ tenantId }: { tenantId?: string }) {
             <thead className="text-left text-xs text-neutral-500"><tr><th className="py-1.5 pr-2 font-medium">Product</th><th className="py-1.5 pr-2 text-right font-medium">Stock</th><th className="py-1.5 pr-2 text-right font-medium">Price online</th><th className="py-1.5 pr-2 font-medium">Online</th><th className="py-1.5 font-medium"><span className="sr-only">Edit</span></th></tr></thead>
             <tbody className="divide-y divide-neutral-100">
               {rows.map((r) => (
-                <tr key={r.productId}>
+                <Fragment key={r.productId}>
+                <tr className={edit === r.productId ? "bg-neutral-50" : ""}>
                   <td className="py-2 pr-2"><span className="font-medium text-neutral-800">{r.listing?.title || r.name}</span>{r.narcotic && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-700">Controlled: not orderable online</span>}<span className="block text-xs text-neutral-400">{r.category ?? ""}</span></td>
                   <td className="py-2 pr-2 text-right tabular-nums">{r.stock}</td>
                   <td className="py-2 pr-2 text-right tabular-nums">{r.listing?.onlinePrice != null ? rs(r.listing.onlinePrice) : r.posPrice != null ? `${rs(r.posPrice)} (POS)` : "–"}</td>
                   <td className="py-2 pr-2 text-xs">{r.listing?.showOnline ? <span className="text-emerald-700">Shown{r.listing.allowOrder ? " · orderable" : ""}{r.listing.rxRequired ? " · Rx" : ""}{r.listing.featured ? " · featured" : ""}</span> : <span className="text-neutral-400">Hidden</span>}</td>
-                  <td className="py-2 text-right"><button type="button" className="text-xs font-medium text-[var(--accent)] hover:underline" onClick={() => setEdit(r)}>Edit</button></td>
+                  <td className="py-2 text-right">
+                    <span className="flex flex-wrap justify-end gap-2">
+                      <button type="button" disabled={busy === r.productId} onClick={() => void quickToggle(r)}
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${r.listing?.showOnline ? "border border-neutral-300 text-neutral-700 hover:bg-neutral-100" : "bg-[var(--accent)] text-white hover:opacity-90"}`}>
+                        {busy === r.productId ? "…" : r.listing?.showOnline ? "Take offline" : "Put online"}
+                      </button>
+                      <button type="button" aria-expanded={edit === r.productId} className="rounded-full border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100" onClick={() => setEdit(edit === r.productId ? null : r.productId)}>
+                        {edit === r.productId ? "Close" : "Edit"}
+                      </button>
+                    </span>
+                  </td>
                 </tr>
+                {edit === r.productId && (
+                  <tr><td colSpan={5} className="pb-3">
+                    <ListingEditor key={r.productId} row={r} tenantId={tenantId} pharmacy={pharmacy} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />
+                  </td></tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {edit && <ListingEditor row={edit} tenantId={tenantId} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
     </div>
   );
 }
 
-function ListingEditor({ row, tenantId, onClose, onSaved }: { row: Row; tenantId?: string; onClose: () => void; onSaved: () => void }) {
+function ListingEditor({ row, tenantId, pharmacy, onClose, onSaved }: { row: Row; tenantId?: string; pharmacy: boolean; onClose: () => void; onSaved: () => void }) {
   const l = row.listing;
   const [f, setF] = useState({
     showOnline: l?.showOnline ?? false, allowOrder: l?.allowOrder ?? false, title: l?.title ?? "", description: l?.description ?? "", images: l?.images ?? [],
@@ -111,8 +154,9 @@ function ListingEditor({ row, tenantId, onClose, onSaved }: { row: Row; tenantId
       <p className="text-sm font-semibold text-neutral-800">{row.name}</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Toggle id="le-show" checked={f.showOnline} onChange={(v) => setF({ ...f, showOnline: v })} label="Show on the website" />
-        <Toggle id="le-order" checked={f.allowOrder} disabled={row.narcotic} onChange={(v) => setF({ ...f, allowOrder: v })} label="Allow online orders" hint={row.narcotic ? "Controlled medicines cannot be ordered online." : undefined} />
-        <Toggle id="le-rx" checked={f.rxRequired} onChange={(v) => setF({ ...f, rxRequired: v })} label="Prescription required" hint="The customer attaches it; you review it before confirming." />
+        <Toggle id="le-order" checked={f.allowOrder} disabled={row.narcotic} onChange={(v) => setF({ ...f, allowOrder: v, rxRequired: v && pharmacy ? true : f.rxRequired })} label="Allow online orders" hint={row.narcotic ? "Controlled medicines cannot be ordered online." : undefined} />
+        <Toggle id="le-rx" checked={f.rxRequired || (pharmacy && f.allowOrder)} disabled={pharmacy && f.allowOrder} onChange={(v) => setF({ ...f, rxRequired: v })} label="Prescription required"
+          hint={pharmacy && f.allowOrder ? "Always on for a pharmacy's orderable products." : "The customer attaches it; you review it before confirming."} />
         <Toggle id="le-feat" checked={f.featured} onChange={(v) => setF({ ...f, featured: v })} label="Featured" />
       </div>
       <div className="grid gap-2 sm:grid-cols-2">

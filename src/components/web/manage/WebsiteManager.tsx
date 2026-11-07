@@ -7,6 +7,7 @@ import { DAYS, FONTS, type FontId, type SiteSettings, type StoreSettings } from 
 import { Builder, type PageInfo } from "./Builder";
 import { ProductsTab, OrdersTab, StoreSettingsCard } from "./StoreTabs";
 import { DomainsTab } from "./DomainsTab";
+import { businessType } from "@/config/businessTypes";
 import { ImageField, Note, card, errText, inputCls, labelCls, useUnsavedGuard, webCall } from "./shared";
 
 /** Settings > Website: everything a business does with its website and store.
@@ -89,7 +90,7 @@ export function WebsiteManager({ tenantId }: { tenantId?: string }) {
       {tab === "overview" && <OverviewTab o={o} tenantId={tenantId} liveUrl={liveUrl} onChanged={load} go={setTab} />}
       {tab === "pages" && <Builder pages={o.pages} settings={s.draftSettings} tenantId={tenantId} onPagesChanged={load} storeOn={s.storeEnabled} />}
       {tab === "branding" && <BrandingTab settings={s.draftSettings} tenantId={tenantId} onSaved={load} />}
-      {tab === "store" && <div className="space-y-4"><StoreSettingsCard settings={s.storeSettings} tenantId={tenantId} onSaved={load} /><ProductsTab tenantId={tenantId} /></div>}
+      {tab === "store" && <div className="space-y-4"><StoreSettingsCard settings={s.storeSettings} tenantId={tenantId} onSaved={load} /><ProductsTab tenantId={tenantId} pharmacy={businessType(s.businessType).family === "pharmacy"} /></div>}
       {tab === "orders" && <OrdersTab tenantId={tenantId} />}
       {tab === "domains" && <DomainsTab site={s} platformDomain={o.platformDomain} hostingConnected={o.hostingConnected} tenantId={tenantId} onChanged={load} />}
       {tab === "seo" && <SeoTab settings={s.draftSettings} tenantId={tenantId} onSaved={load} />}
