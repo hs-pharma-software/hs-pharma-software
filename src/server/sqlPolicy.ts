@@ -130,6 +130,7 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     if (NEVER.has(t) || t.startsWith("sqlite_")) return { ok: false, reason: `Table ${t} is not available.` };
     // Website and online store data (entitlements, orders, prescriptions) go through /api/web only.
     if (t.startsWith("web_")) return { ok: false, reason: "Website data is managed from Settings > Website." };
+    if (t.startsWith("mail_")) return { ok: false, reason: "Mail is managed from Super Admin > Mail." };
     if (!knownTables.has(t)) return { ok: false, reason: `Unknown table ${t}.` };
   }
   // Hospital records are for logins with a hospital section (a pharmacy cashier's login has none).

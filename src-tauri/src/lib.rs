@@ -1453,6 +1453,64 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Plans for the website's pricing page (business types, grace period, add-ons
+/// such as website, online store and custom domain) and the Super Admin mail
+/// section (mailboxes on mavin.pk and their messages). Additions only.
+fn schema_sql_v77() -> &'static str {
+    r#"
+    ALTER TABLE subscription_plans ADD COLUMN business_types TEXT;
+    ALTER TABLE subscription_plans ADD COLUMN grace_days INTEGER NOT NULL DEFAULT 7;
+    ALTER TABLE subscription_plans ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE subscription_plans ADD COLUMN tagline TEXT;
+    ALTER TABLE subscription_plans ADD COLUMN features TEXT;
+    ALTER TABLE subscription_plans ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS plan_addons (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        feature TEXT NOT NULL DEFAULT 'other',
+        price REAL NOT NULL DEFAULT 0,
+        billing TEXT NOT NULL DEFAULT 'monthly' CHECK (billing IN ('one_time','monthly','yearly','per_term')),
+        business_types TEXT,
+        is_public INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS mail_mailboxes (
+        id TEXT PRIMARY KEY,
+        address TEXT NOT NULL UNIQUE,
+        display_name TEXT,
+        created_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    INSERT OR IGNORE INTO mail_mailboxes (id, address, display_name, created_at) VALUES ('mailbox-info', 'info@mavin.pk', 'MAVIN.pk', '2026-11-07T00:00:00.000Z');
+    INSERT OR IGNORE INTO mail_mailboxes (id, address, display_name, created_at) VALUES ('mailbox-security', 'security@mavin.pk', 'MAVIN.pk Security', '2026-11-07T00:00:00.000Z');
+    CREATE TABLE IF NOT EXISTS mail_messages (
+        id TEXT PRIMARY KEY,
+        mailbox_id TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK (direction IN ('in','out')),
+        provider_id TEXT,
+        message_id TEXT,
+        in_reply_to TEXT,
+        from_addr TEXT NOT NULL,
+        to_addrs TEXT,
+        cc_addrs TEXT,
+        subject TEXT,
+        text_body TEXT,
+        html_body TEXT,
+        attachments TEXT,
+        read_at TEXT,
+        archived_at TEXT,
+        sent_by TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_mail_messages_provider ON mail_messages(mailbox_id, provider_id) WHERE provider_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_mail_messages_box ON mail_messages(mailbox_id, created_at);
+    "#
+}
+
 /// Website Builder and Online Store: per business website settings, pages
 /// (draft and published), revisions, online listings of existing products,
 /// domains, web orders (stock reserved, then billed through the POS invoice),
@@ -3866,6 +3924,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 76,
             description: "website_store",
             sql: schema_sql_v76(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 77,
+            description: "plans_addons_mail",
+            sql: schema_sql_v77(),
             kind: MigrationKind::Up,
         },
     ]

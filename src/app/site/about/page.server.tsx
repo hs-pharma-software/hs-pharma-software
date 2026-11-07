@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { withSeoMeta } from "@/config/seoMeta";
 import { PRODUCT_GROUPS } from "@/config/siteProducts";
-import { CtaLink, PageIntro, ReviewMark, Section, at, siteBase } from "@/components/site/chrome";
+import { CtaLink, PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
 export const metadata: Metadata = withSeoMeta("/about", {
   title: "About",
@@ -18,9 +18,9 @@ export default async function AboutPage() {
       </PageIntro>
       <Section title="Company">
         <dl className="grid max-w-2xl gap-3 text-sm sm:grid-cols-[10rem_1fr]">
-          <dt className="font-medium text-slate-700">Registered name</dt><dd><ReviewMark>legal name</ReviewMark></dd>
-          <dt className="font-medium text-slate-700">Address</dt><dd><ReviewMark>office address</ReviewMark></dd>
-          <dt className="font-medium text-slate-700">Registration</dt><dd><ReviewMark>NTN / company registration</ReviewMark></dd>
+          <dt className="font-medium text-slate-700">Address</dt><dd>Sargodha, Punjab, Pakistan</dd>
+          <dt className="font-medium text-slate-700">Phone</dt><dd><a href="tel:+923160585858" className="hover:underline">0316-0585858</a></dd>
+          <dt className="font-medium text-slate-700">Email</dt><dd><a href="mailto:info@mavin.pk" className="hover:underline">info@mavin.pk</a></dd>
         </dl>
       </Section>
       <Section title="Sectors we serve">

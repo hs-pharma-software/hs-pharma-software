@@ -271,6 +271,17 @@ export interface SubscriptionPlan extends BaseRow {
   allowed_modules: string;
   max_staff_logins: number;
   max_invoices_per_month: number | null;
+  /** v77: JSON list of business type ids (NULL = every type), grace days after expiry, shown on the website's pricing page. */
+  business_types?: string | null;
+  grace_days?: number;
+  is_public?: number;
+  tagline?: string | null;
+  /** JSON list of bullet points for the pricing page. */
+  features?: string | null;
+  sort_order?: number;
+  web_max_pages?: number | null;
+  web_max_storage_mb?: number | null;
+  web_max_custom_domains?: number | null;
 }
 
 export interface Tenant extends BaseRow {

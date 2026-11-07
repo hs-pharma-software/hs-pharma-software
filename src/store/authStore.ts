@@ -28,6 +28,10 @@ export interface SessionTenant {
   name: string;
   subscriptionStatus: string;
   subscriptionExpiresAt: string | null;
+  /** Days the business keeps working after the plan's end date (the plan's grace period). */
+  graceDays?: number;
+  /** Platform rule: lock once the grace period has ended (Super Admin > Subscription Plans). */
+  enforceExpiry?: boolean;
   allowedModules: string[];
   maxStaffLogins: number;
   maxInvoicesPerMonth: number | null;

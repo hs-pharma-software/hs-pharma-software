@@ -73,4 +73,12 @@ export const SEO_JOBS: JobDef[] = [
     id: "monthly_report", label: "Monthly report", description: "Last month's search performance, technical health, keywords, content and automation; trims SEO logs older than 180 days.", defaultCadence: "monthly", phase: 6,
     run: (ctx) => runMonthlyReport(ctx),
   },
+  {
+    id: "data_retention", label: "Data retention", description: "Deletes website contact and demo enquiries older than 12 months, as the privacy notice says.", defaultCadence: "monthly", phase: 6,
+    run: async (ctx) => {
+      const cut = new Date(ctx.now.getTime() - 365 * 86_400_000).toISOString();
+      const r = await ctx.sql.execute(`DELETE FROM site_queries WHERE created_at < ?`, [cut]);
+      return { deletedEnquiries: r.rowsAffected, olderThan: cut.slice(0, 10) };
+    },
+  },
 ];

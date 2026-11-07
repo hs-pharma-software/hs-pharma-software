@@ -356,6 +356,7 @@ const MIGRATIONS = [
   { version: 74, label: 'SEO Manager: GA4 daily visits by channel', statements: rustSchemaStatements(74) },
   { version: 75, label: 'Password recovery: login email/mobile, reset codes', statements: rustSchemaStatements(75) },
   { version: 76, label: 'Website builder and online store (additions only)', statements: rustSchemaStatements(76) },
+  { version: 77, label: 'Plans: business types, grace, add-ons; Super Admin mail (additions only)', statements: rustSchemaStatements(77) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

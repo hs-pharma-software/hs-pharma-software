@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { withSeoMeta } from "@/config/seoMeta";
 import { SITE_PRODUCTS } from "@/config/siteProducts";
-import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
+import { PageIntro, Section } from "@/components/site/chrome";
 import { LeadForm } from "@/components/site/LeadForm";
 
 export const metadata: Metadata = withSeoMeta("/contact", {
@@ -31,9 +31,9 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
           </div>
           <aside className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
             <h2 className="font-semibold text-[#0b2a6b]">Other ways to reach us</h2>
-            <p className="mt-2">Phone and WhatsApp: <ReviewMark>support number</ReviewMark></p>
-            <p className="mt-1">Email: <ReviewMark>support email</ReviewMark></p>
-            <p className="mt-1">Hours: <ReviewMark>support hours</ReviewMark></p>
+            <p className="mt-2">Phone: <a href="tel:+923160585858" className="font-medium hover:underline">0316-0585858</a></p>
+            <p className="mt-1">Email: <a href="mailto:info@mavin.pk" className="font-medium hover:underline">info@mavin.pk</a></p>
+            <p className="mt-1">Hours: Monday to Saturday, 9am to 6pm</p>
           </aside>
         </div>
       </Section>

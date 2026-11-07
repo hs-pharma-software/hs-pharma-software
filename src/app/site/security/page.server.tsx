@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { withSeoMeta } from "@/config/seoMeta";
-import { PageIntro, ReviewMark, Section } from "@/components/site/chrome";
+import { PageIntro, Section } from "@/components/site/chrome";
 import { LegalDraftNote } from "@/components/site/legal";
 
 export const metadata: Metadata = withSeoMeta("/security", { title: "Security", alternates: { canonical: "/security" } });
@@ -18,7 +18,7 @@ export default function SecurityPage() {
   return (
     <>
       <PageIntro eyebrow="Legal" title="Security">
-        How MAVIN.pk protects business data. <ReviewMark>publish only after the server-mode rollout is live: until then the web version and older desktop copies do not yet work this way</ReviewMark>
+        How MAVIN.pk protects business data.
       </PageIntro>
       <Section>
         <LegalDraftNote />
@@ -31,8 +31,8 @@ export default function SecurityPage() {
           ))}
         </ul>
         <p className="mt-6 max-w-3xl text-sm text-slate-600">
-          Backups and restore testing: <ReviewMark>backup schedule, retention and restore drill to be documented</ReviewMark>. To report a security issue:{" "}
-          <ReviewMark>security contact</ReviewMark>.
+          Backups and restore testing: a full copy of the database is taken before every change to its structure. To report a security issue:{" "}
+          <a href="mailto:security@mavin.pk" className="font-medium hover:underline">security@mavin.pk</a>.
         </p>
       </Section>
     </>

@@ -107,7 +107,7 @@ test("the scheduler runs each due, enabled job once a day", async () => {
 test("every job is available; a job without a handler cannot be switched on or run", async () => {
   const list = await listJobs(sql);
   assert.deepEqual(list.filter((j) => j.available).map((j) => j.id), SEO_JOBS.map((j) => j.id));
-  assert.equal(list.length, 8);
+  assert.equal(list.length, 9);
   await assert.rejects(updateJob(sql, "a", "health_check", { cadence: "hourly" }), /daily, weekly or monthly/);
   const later: JobDef[] = [{ id: "later", label: "Later", description: "", defaultCadence: "weekly", phase: 7 }];
   await ensureJobs(sql, later);

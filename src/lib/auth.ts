@@ -8,6 +8,8 @@ import { isTursoConfigured, pullAuthData } from "./sync/engine";
 import type { SubscriptionPlan, Tenant, UserAccount, UserRole } from "./types2";
 import { SERVER_DB, desktopViaServer, serverJson, ServerRequestError, setDesktopSession } from "./serverMode";
 import { dbExecute } from "./db";
+import { getGlobalSetting } from "./repo/settings";
+import { DEFAULT_GRACE_DAYS, ENFORCE_EXPIRY_SETTING } from "./subscription";
 
 /** Salted SHA-256, the scheme the server also uses (src/server/db.ts). On the
  * web and on a desktop that syncs through the server, the server checks
@@ -74,6 +76,8 @@ async function buildSessionTenant(tenant: Tenant): Promise<SessionTenant> {
     name: tenant.name,
     subscriptionStatus: tenant.subscription_status,
     subscriptionExpiresAt: tenant.subscription_expires_at,
+    graceDays: plan?.grace_days ?? DEFAULT_GRACE_DAYS,
+    enforceExpiry: (await getGlobalSetting(ENFORCE_EXPIRY_SETTING).catch(() => null)) === "1",
     allowedModules: tenantAllowedModules(tenant, plan),
     maxStaffLogins: plan?.max_staff_logins ?? 0,
     maxInvoicesPerMonth: plan?.max_invoices_per_month ?? null,
