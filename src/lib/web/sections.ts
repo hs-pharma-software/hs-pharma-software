@@ -73,6 +73,8 @@ export const FONTS = {
 export type FontId = keyof typeof FONTS;
 
 export interface StoreSettings {
+  /** Every product in the business's stock list is online unless taken offline (new products too). */
+  autoList: boolean;
   pickup: boolean;
   delivery: boolean;
   zones: { name: string; charge: number }[];
@@ -88,7 +90,7 @@ export interface StoreSettings {
 export const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export const defaultStoreSettings = (): StoreSettings => ({
-  pickup: true, delivery: false, zones: [], minOrder: 0, payment: { cod: false, pickup: true, bank: false }, bankDetails: "",
+  autoList: true, pickup: true, delivery: false, zones: [], minOrder: 0, payment: { cod: false, pickup: true, bank: false }, bankDetails: "",
   reserveHours: 24, notice: "", rxNotice: "Upload a clear photo of a valid prescription. The pharmacist checks it before the order is confirmed.",
 });
 
@@ -227,6 +229,7 @@ export function cleanStoreSettings(input: unknown): StoreSettings {
   const p = (r.payment ?? {}) as Record<string, unknown>;
   const zones = Array.isArray(r.zones) ? r.zones.slice(0, 30) : [];
   const out: StoreSettings = {
+    autoList: r.autoList === undefined ? true : bool(r.autoList),
     pickup: bool(r.pickup), delivery: bool(r.delivery),
     zones: zones.map((z, i) => { const o = (z ?? {}) as Record<string, unknown>; return { name: str(o.name, 60, `Zone ${i + 1} name`, true), charge: num(o.charge, 0, 100000, `Zone ${i + 1} charge`) }; }),
     minOrder: num(r.minOrder, 0, 10_000_000, "Minimum order"),

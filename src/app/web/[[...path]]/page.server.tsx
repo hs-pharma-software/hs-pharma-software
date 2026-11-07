@@ -6,8 +6,8 @@ import { WEB_HOST_HEADER } from "@/lib/webRoute";
 import { webContext, sectionData, type WebContext } from "@/server/web/publicSite";
 import { orderByToken, publicCatalog, publicCategories } from "@/server/web/store";
 import { FONTS } from "@/lib/web/sections";
-import { ProductCard, SectionView, SiteFooter, SiteHeader, rs, sized, themeStyle, type Links } from "@/components/web/Render";
-import { AddToCart, CartButton, Checkout, ReportLookup, RequestForm } from "@/components/web/Client";
+import { ProductCard, SectionView, SiteFooter, SiteHeader, priceLines, rs, sized, stockText, themeStyle, type Links } from "@/components/web/Render";
+import { AddToCart, CartButton, Checkout, ReportLookup, RequestForm, ShopSearch } from "@/components/web/Client";
 
 /** A business's public website and store (served for its own addresses only:
  * see src/proxy.server.ts and resolveHost). Address map:
@@ -115,14 +115,7 @@ export default async function WebPage(p: Params) {
         <div className="mx-auto max-w-6xl px-4 py-10">
           <h1 className="text-2xl font-bold text-neutral-900">Shop</h1>
           {ctx.site.storeSettings.notice && <p className="mt-2 whitespace-pre-line text-sm text-neutral-600">{ctx.site.storeSettings.notice}</p>}
-          <form className="mt-6 flex flex-wrap gap-2" action={ctx.storeBase || "/"} method="get">
-            {ctx.preview && <input type="hidden" name="preview" value={ctx.preview} />}
-            <label htmlFor="shop-q" className="sr-only">Search products</label>
-            <input id="shop-q" name="q" defaultValue={q} placeholder="Search products" className="min-w-0 flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
-            <label htmlFor="shop-c" className="sr-only">Category</label>
-            <select id="shop-c" name="c" defaultValue={c} className="rounded-lg border border-neutral-300 px-3 py-2 text-sm"><option value="">All categories</option>{cats.map((x) => <option key={x} value={x}>{x}</option>)}</select>
-            <button type="submit" className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--wa)" }}>Search</button>
-          </form>
+          <ShopSearch action={ctx.storeBase || "/"} initialQ={q} initialC={c} categories={cats} preview={ctx.preview} itemBase={`${ctx.storeBase}/item`} />
           {items.length ? (
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">{items.map((x) => <ProductCard key={x.slug} p={x} links={links} action={<AddToCart p={x} preview={preview} />} />)}</div>
           ) : <p className="mt-8 text-neutral-600">{q || c ? "No products match. Try another search." : "Products will appear here soon."}</p>}
@@ -148,9 +141,10 @@ export default async function WebPage(p: Params) {
             <a href={links.store("")} className="text-sm text-neutral-500 hover:underline">← Shop</a>
             <h1 className="mt-2 text-2xl font-bold text-neutral-900">{prod.name}</h1>
             {prod.category && <p className="mt-1 text-sm text-neutral-500">{prod.category}</p>}
-            <p className="mt-4 text-2xl font-semibold" style={{ color: "var(--wp)" }}>{prod.price === null ? "Ask for price" : rs(prod.price)}</p>
+            <p className="mt-4 text-2xl font-semibold" style={{ color: "var(--wp)" }}>{priceLines(prod).main}</p>
+            {priceLines(prod).pack && <p className="mt-1 text-sm text-neutral-600">{priceLines(prod).pack}</p>}
             {prod.rxRequired && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">A valid prescription is needed. You can attach it at checkout; the pharmacist checks it before confirming.</p>}
-            {prod.stock.visibility !== "hide" && <p className="mt-3 text-sm text-neutral-600">{prod.stock.inStock ? (prod.stock.qty !== null ? `${prod.stock.qty} in stock` : "In stock") : "Out of stock"}</p>}
+            {(prod.stock.visibility !== "hide" || !prod.stock.inStock) && <p className={`mt-3 text-sm ${prod.stock.inStock ? "text-neutral-600" : "font-medium text-rose-700"}`}>{stockText(prod)}</p>}
             <div className="mt-5 max-w-xs"><AddToCart p={prod} preview={preview} /></div>
             {prod.description && <div className="mt-6 space-y-2 whitespace-pre-line text-neutral-700">{prod.description}</div>}
           </div>

@@ -17,6 +17,7 @@ import {
   available, linkInvoice, listProductsForListing, orderByToken, orderDetail, orderForInvoice, placeOrder, prescriptionFile, publicCatalog, reviewPrescription, saveListing, setOrderStatus, setPaymentStatus,
 } from "@/server/web/store";
 import { analyzeSql, authorize, type Caller } from "@/server/sqlPolicy";
+import { resetAutoList } from "@/server/web/store";
 import type { Sql } from "@/server/subSupers";
 
 let db: DatabaseSync;
@@ -45,6 +46,7 @@ beforeEach(async () => {
   db = fullSchemaDb();
   sql = sqliteSql(db);
   resetWebRateLimits();
+  resetAutoList();
   // A general store: orderable products need no prescription unless marked (pharmacies: see below).
   tenant("t1", "Hadayat Ullah & Sons Pharmacy", "general_store");
   tenant("t3", "City Pharmacy", "retail_pharmacy");
@@ -135,22 +137,42 @@ test("free subdomains: normalised, reserved names refused, one business per name
   assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
 });
 
-test("listings: only this business's products (and shared catalogue it stocks); controlled medicines never orderable", async () => {
+test("listings: only this business's products (and shared catalogue it stocks), all online by default; controlled medicines need a prescription", async () => {
   await enableFeatures(sql, "admin", "t1", { website: true, store: true });
   await assert.rejects(saveListing(sql, "o", "t1", "p-other", { showOnline: true }), /not found/);
-  await saveListing(sql, "o", "t1", "shared", { showOnline: true, allowOrder: true });
-  const r = await saveListing(sql, "o", "t1", "p3", { showOnline: true, allowOrder: true });
-  assert.equal(r.allowOrder, false);
+  const r = await saveListing(sql, "o", "t1", "p3", { showOnline: true, allowOrder: true, rxRequired: false });
+  assert.equal(r.allowOrder, true);
+  assert.equal(r.rxRequired, true, "controlled: always");
   const list = await listProductsForListing(sql, "t1", {});
   assert.deepEqual(list.map((x) => x.productId).sort(), ["p1", "p2", "p3", "shared"]);
+  assert.ok(list.every((x) => x.listing?.showOnline), "every product is online by default");
   assert.ok(!JSON.stringify(list).includes("purchase_price"));
-  // Another business sees nothing of t1's listing.
-  await enableFeatures(sql, "admin", "t2", { website: true, store: true });
-  assert.equal((await publicCatalog(sql, (await loadSite(sql, "t2"))!)).length, 0);
   const cat = await publicCatalog(sql, await site());
-  assert.deepEqual(cat.map((c) => c.slug).sort(), ["controlled-y", "shared-catalogue-syrup"]);
-  assert.equal(cat.find((c) => c.slug === "controlled-y")!.orderable, false);
+  assert.deepEqual(cat.map((c) => c.slug).sort(), ["antibiotic-x", "controlled-y", "panadol-500mg", "shared-catalogue-syrup"]);
+  const ctrl = cat.find((c) => c.slug === "controlled-y")!;
+  assert.equal(ctrl.orderable, true);
+  assert.equal(ctrl.rxRequired, true);
+  assert.equal(cat.find((c) => c.slug === "panadol-500mg")!.rxRequired, false, "normal products: only when ticked");
   assert.ok(!JSON.stringify(cat).match(/purchase|batch|supplier|40/), "no cost or batch data");
+  // Another business never sees t1's products.
+  await enableFeatures(sql, "admin", "t2", { website: true, store: true });
+  const other = await publicCatalog(sql, (await loadSite(sql, "t2"))!);
+  assert.deepEqual(other.map((c) => c.slug), ["other-shop-item"]);
+  // Taken offline stays offline; out of stock stays shown as out of stock.
+  await saveListing(sql, "o", "t1", "p1", { showOnline: false });
+  run("UPDATE product_batches SET qty = 0 WHERE product_id = 'p2'");
+  resetAutoList();
+  const cat2 = await publicCatalog(sql, await site());
+  assert.ok(!cat2.some((c) => c.slug === "panadol-500mg"));
+  const out = cat2.find((c) => c.slug === "antibiotic-x")!;
+  assert.equal(out.stock.inStock, false);
+  assert.equal(out.orderable, false);
+  // Switched off: new products are not added automatically.
+  const st = (await site()).storeSettings;
+  await saveStoreSettings(sql, "o", "t1", { ...st, autoList: false });
+  product("p9", "t1", "Brand New", { stock: 3, price: 50 });
+  resetAutoList();
+  assert.ok(!(await publicCatalog(sql, await site())).some((c) => c.slug === "brand-new"));
 });
 
 test("checkout: server prices, reservation, no overselling, duplicate submissions return one order", async () => {
@@ -264,20 +286,37 @@ test("isolation: who manages which website; the browser's SQL route cannot touch
   assert.equal(readPreviewToken(tok, Date.now() + 2 * 3600_000), null, "expires");
 });
 
-test("pharmacy: every orderable product needs a prescription, enforced on save and at checkout", async () => {
+test("prescriptions: normal products only when ticked; controlled medicines always, even on older listings", async () => {
   product("rx1", "t3", "Cough Syrup", { stock: 5, price: 120 });
+  product("rx2", "t3", "Controlled Z", { stock: 5, price: 200, narcotic: true });
   await enableFeatures(sql, "admin", "t3", { website: true, store: true });
   assert.equal((await loadSite(sql, "t3"))!.template, "pharmacy");
-  const r = await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: true, rxRequired: false });
-  assert.equal(r.rxRequired, true, "cannot be switched off while orderable");
-  const shownOnly = await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: false, rxRequired: false });
-  assert.equal(shownOnly.rxRequired, false, "a product only shown (not orderable) does not need it");
+  assert.equal((await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: true })).rxRequired, false);
+  assert.equal((await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: true, rxRequired: true })).rxRequired, true);
   await saveListing(sql, "o", "t3", "rx1", { showOnline: true, allowOrder: true });
-  // A listing saved before this rule (no prescription flag) is still checked at checkout.
-  run(`UPDATE web_products SET rx_required = 0 WHERE tenant_id = 't3'`);
+  // A controlled medicine saved without the flag (older listing) is still checked at checkout.
+  await saveListing(sql, "o", "t3", "rx2", { showOnline: true, allowOrder: true });
+  run("UPDATE web_products SET rx_required = 0 WHERE tenant_id = 't3'");
   const s3 = (await loadSite(sql, "t3"))!;
-  assert.equal((await publicCatalog(sql, s3))[0].rxRequired, true);
-  await assert.rejects(placeOrder(sql, s3, order({ items: [{ slug: "cough-syrup", qty: 1 }] })), /prescription/);
-  const ok = await placeOrder(sql, s3, order({ items: [{ slug: "cough-syrup", qty: 1 }], prescriptions: [{ name: "rx.png", data: PNG }] }));
-  assert.equal(one(`SELECT rx_status FROM web_orders WHERE public_token = ?`, ok.token).rx_status, "pending_review");
+  assert.equal((await publicCatalog(sql, s3)).find((c) => c.slug === "controlled-z")!.rxRequired, true);
+  const normal = await placeOrder(sql, s3, order({ items: [{ slug: "cough-syrup", qty: 1 }] }));
+  assert.equal(one("SELECT rx_status FROM web_orders WHERE public_token = ?", normal.token).rx_status, null);
+  await assert.rejects(placeOrder(sql, s3, order({ items: [{ slug: "controlled-z", qty: 1 }] })), /prescription/);
+  const ok = await placeOrder(sql, s3, order({ items: [{ slug: "controlled-z", qty: 1 }], prescriptions: [{ name: "rx.png", data: PNG }] }));
+  assert.equal(one("SELECT rx_status FROM web_orders WHERE public_token = ?", ok.token).rx_status, "pending_review");
+});
+
+test("units: prices and stock per base unit, packs offered; quantities in base units", async () => {
+  run("INSERT INTO uoms (id, tenant_id, name, created_at, updated_at) VALUES ('u-cap', 't1', 'Capsule', ?, ?)", T, T);
+  run("INSERT INTO uoms (id, tenant_id, name, created_at, updated_at) VALUES ('u-strip', 't1', 'Strip', ?, ?)", T, T);
+  run("UPDATE products SET base_unit_id = 'u-cap', secondary_unit_id = 'u-strip', packing = 10 WHERE id = 'p2'");
+  run("UPDATE product_batches SET qty = 40 WHERE product_id = 'p2'");
+  await enableFeatures(sql, "admin", "t1", { website: true, store: true });
+  const p = (await publicCatalog(sql, await site())).find((c) => c.slug === "antibiotic-x")!;
+  assert.equal(p.unit, "Capsule");
+  assert.deepEqual(p.pack, { name: "Strip", size: 10 });
+  assert.equal(p.price, 250);
+  const r = await placeOrder(sql, await site(), order({ items: [{ slug: "antibiotic-x", qty: 25 }] }));
+  assert.equal(one("SELECT subtotal FROM web_orders WHERE public_token = ?", r.token).subtotal, 6250);
+  assert.equal(await available(sql, "t1", "p2"), 15);
 });

@@ -15,6 +15,7 @@ export function StoreSettingsCard({ settings, tenantId, onSaved }: { settings: S
   return (
     <div className={`${card} space-y-3`}>
       <p className="text-sm font-semibold text-neutral-800">Ordering, delivery and payment</p>
+      <Toggle id="ss-auto" checked={s.autoList} onChange={(v) => up({ autoList: v })} label="Show every product online" hint="All products in your stock list appear on the website, new ones too, including when out of stock (shown as Out of stock). Use Take offline to hide one." />
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-2">
           <Toggle id="ss-pick" checked={s.pickup} onChange={(v) => up({ pickup: v })} label="Pickup from the shop" />
@@ -57,7 +58,7 @@ interface Row {
   listing: { showOnline: boolean; allowOrder: boolean; title: string; description: string; images: { url: string; alt: string }[]; onlinePrice: number | null; featured: boolean; onlineCategory: string; rxRequired: boolean; stockVisibility: string; slug: string } | null;
 }
 
-/** `pharmacy`: every orderable product needs a prescription (the server enforces it too). */
+/** `pharmacy`: shows the prescription rules (controlled medicines always need one; the server enforces it). */
 export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string; pharmacy?: boolean }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [q, setQ] = useState("");
@@ -79,9 +80,9 @@ export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string;
         listing: {
           showOnline: on,
           // A new listing becomes orderable at once (controlled medicines never are).
-          allowOrder: l ? l.allowOrder : on && !r.narcotic,
+          allowOrder: l ? l.allowOrder : on,
           title: l?.title ?? "", description: l?.description ?? "", images: l?.images ?? [], onlinePrice: l?.onlinePrice ?? null,
-          featured: l?.featured ?? false, onlineCategory: l?.onlineCategory ?? "", rxRequired: (l?.rxRequired ?? false) || pharmacy, stockVisibility: l?.stockVisibility ?? "status",
+          featured: l?.featured ?? false, onlineCategory: l?.onlineCategory ?? "", rxRequired: (l?.rxRequired ?? false) || r.narcotic, stockVisibility: l?.stockVisibility ?? "status",
         },
       }, tenantId);
       load();
@@ -96,7 +97,7 @@ export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string;
       <div>
         <p className="text-sm font-semibold text-neutral-800">Products on the website</p>
         <p className="text-xs text-neutral-500">Only products you switch on appear online. Stock and the POS price come from your records; cost price, suppliers and batches are never shown.</p>
-        {pharmacy && <p className="mt-1 text-xs font-medium text-amber-800">Pharmacy: every product that can be ordered online needs a prescription. The customer attaches it at checkout and you approve it before confirming the order.</p>}
+        {pharmacy && <p className="mt-1 text-xs font-medium text-amber-800">Prescriptions: controlled medicines always need one. For other medicines, open Edit and tick Prescription required where needed. The customer attaches it at checkout and you approve it before confirming.</p>}
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <label htmlFor="pt-q" className={`${labelCls} min-w-[12rem] flex-1`}>Search<input id="pt-q" value={q} onChange={(e) => setQ(e.target.value)} className={inputCls} placeholder="Name or barcode" /></label>
@@ -111,7 +112,7 @@ export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string;
               {rows.map((r) => (
                 <Fragment key={r.productId}>
                 <tr className={edit === r.productId ? "bg-neutral-50" : ""}>
-                  <td className="py-2 pr-2"><span className="font-medium text-neutral-800">{r.listing?.title || r.name}</span>{r.narcotic && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-700">Controlled: not orderable online</span>}<span className="block text-xs text-neutral-400">{r.category ?? ""}</span></td>
+                  <td className="py-2 pr-2"><span className="font-medium text-neutral-800">{r.listing?.title || r.name}</span>{r.narcotic && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-700">Controlled: prescription always required</span>}<span className="block text-xs text-neutral-400">{r.category ?? ""}</span></td>
                   <td className="py-2 pr-2 text-right tabular-nums">{r.stock}</td>
                   <td className="py-2 pr-2 text-right tabular-nums">{r.listing?.onlinePrice != null ? rs(r.listing.onlinePrice) : r.posPrice != null ? `${rs(r.posPrice)} (POS)` : "–"}</td>
                   <td className="py-2 pr-2 text-xs">{r.listing?.showOnline ? <span className="text-emerald-700">Shown{r.listing.allowOrder ? " · orderable" : ""}{r.listing.rxRequired ? " · Rx" : ""}{r.listing.featured ? " · featured" : ""}</span> : <span className="text-neutral-400">Hidden</span>}</td>
@@ -129,7 +130,7 @@ export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string;
                 </tr>
                 {edit === r.productId && (
                   <tr><td colSpan={5} className="pb-3">
-                    <ListingEditor key={r.productId} row={r} tenantId={tenantId} pharmacy={pharmacy} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />
+                    <ListingEditor key={r.productId} row={r} tenantId={tenantId} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />
                   </td></tr>
                 )}
                 </Fragment>
@@ -142,7 +143,7 @@ export function ProductsTab({ tenantId, pharmacy = false }: { tenantId?: string;
   );
 }
 
-function ListingEditor({ row, tenantId, pharmacy, onClose, onSaved }: { row: Row; tenantId?: string; pharmacy: boolean; onClose: () => void; onSaved: () => void }) {
+function ListingEditor({ row, tenantId, onClose, onSaved }: { row: Row; tenantId?: string; onClose: () => void; onSaved: () => void }) {
   const l = row.listing;
   const [f, setF] = useState({
     showOnline: l?.showOnline ?? false, allowOrder: l?.allowOrder ?? false, title: l?.title ?? "", description: l?.description ?? "", images: l?.images ?? [],
@@ -154,9 +155,9 @@ function ListingEditor({ row, tenantId, pharmacy, onClose, onSaved }: { row: Row
       <p className="text-sm font-semibold text-neutral-800">{row.name}</p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Toggle id="le-show" checked={f.showOnline} onChange={(v) => setF({ ...f, showOnline: v })} label="Show on the website" />
-        <Toggle id="le-order" checked={f.allowOrder} disabled={row.narcotic} onChange={(v) => setF({ ...f, allowOrder: v, rxRequired: v && pharmacy ? true : f.rxRequired })} label="Allow online orders" hint={row.narcotic ? "Controlled medicines cannot be ordered online." : undefined} />
-        <Toggle id="le-rx" checked={f.rxRequired || (pharmacy && f.allowOrder)} disabled={pharmacy && f.allowOrder} onChange={(v) => setF({ ...f, rxRequired: v })} label="Prescription required"
-          hint={pharmacy && f.allowOrder ? "Always on for a pharmacy's orderable products." : "The customer attaches it; you review it before confirming."} />
+        <Toggle id="le-order" checked={f.allowOrder} onChange={(v) => setF({ ...f, allowOrder: v })} label="Allow online orders" />
+        <Toggle id="le-rx" checked={f.rxRequired || row.narcotic} disabled={row.narcotic} onChange={(v) => setF({ ...f, rxRequired: v })} label="Prescription required"
+          hint={row.narcotic ? "Always on for controlled medicines." : "The customer attaches it; you review it before confirming."} />
         <Toggle id="le-feat" checked={f.featured} onChange={(v) => setF({ ...f, featured: v })} label="Featured" />
       </div>
       <div className="grid gap-2 sm:grid-cols-2">

@@ -3,7 +3,7 @@
  * a suspended or switched-off website answers nothing. */
 import { clientIp, jsonError, HttpError } from "@/server/db";
 import { sqlForServer } from "@/server/subSupersApi";
-import { loadSite } from "@/server/web/core";
+import { loadSite, rateLimited } from "@/server/web/core";
 import { resolveHost } from "@/server/web/domains";
 import { orderByToken, placeOrder, publicCatalog, submitRequest } from "@/server/web/store";
 import { findLabReport } from "@/server/web/labLookup";
@@ -29,6 +29,14 @@ export async function POST(req: Request): Promise<Response> {
         const slugs = Array.isArray(b.slugs) ? b.slugs.filter((s): s is string => typeof s === "string").slice(0, 40) : [];
         const all = await publicCatalog(sql, site);
         result = { items: all.filter((p) => slugs.includes(p.slug)), store: { pickup: site.storeSettings.pickup, delivery: site.storeSettings.delivery, zones: site.storeSettings.zones, minOrder: site.storeSettings.minOrder, payment: site.storeSettings.payment, bankDetails: site.storeSettings.bankDetails, rxNotice: site.storeSettings.rxNotice } };
+        break;
+      }
+      case "suggest": {
+        // Search suggestions as the visitor types.
+        if (!site.storeEnabled) throw new HttpError(404, "The store is closed.");
+        if (rateLimited(`suggest:${site.tenantId}:${ip ?? "?"}`, 120, 60_000)) throw new HttpError(429, "Slow down a little.");
+        const q = typeof b.q === "string" ? b.q.trim().slice(0, 60) : "";
+        result = q.length < 2 ? [] : (await publicCatalog(sql, site, { q, limit: 8 })).map((p) => ({ slug: p.slug, name: p.name, price: p.price, unit: p.unit }));
         break;
       }
       case "checkout": result = await placeOrder(sql, site, b, ip); break;

@@ -14,12 +14,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { HttpError } from "../db";
 import type { Sql } from "../subSupers";
-import { audit, iso, json, rateLimited, requireSite, type Site } from "./core";
+import { audit, iso, json, loadSite, rateLimited, requireSite, type Site } from "./core";
 import { pageSlug } from "../../lib/web/sections";
-import { businessType } from "../../config/businessTypes";
-
-/** Pharmacies: every product ordered online needs a prescription (the pharmacist reviews it before confirming). */
-export const rxRequiredForOrders = (typeId: string | null | undefined) => businessType(typeId).family === "pharmacy";
+/** Prescriptions: a product needs one when the business marks it; a controlled
+ * (narcotic) medicine always does. The pharmacist reviews it before confirming. */
+export const needsRx = (rxFlag: unknown, narcotic: unknown) => Number(rxFlag) === 1 || Number(narcotic) === 1;
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -48,7 +47,42 @@ export async function available(sql: Sql, tenantId: string, productId: string, n
 
 // ── Listings (business side) ──────────────────────────────────────────────
 
+const autoListedAt = new Map<string, number>();
+
+/** Store setting "every product online": products of this business with no
+ * listing yet get one (shown, orderable; controlled medicines need a
+ * prescription). Products taken offline keep their listing and stay offline.
+ * `throttle`: at most every two minutes (public pages call it). */
+export async function autoListProducts(sql: Sql, site: Site, throttle = false): Promise<number> {
+  if (!site.storeEnabled || !site.storeSettings.autoList) return 0;
+  const t = site.tenantId;
+  if (throttle && Date.now() - (autoListedAt.get(t) ?? 0) < 120_000) return 0;
+  autoListedAt.set(t, Date.now());
+  const q = named(`SELECT p.id, p.name, p.is_narcotic FROM products p WHERE p.deleted_at IS NULL AND ${OWNED}
+    AND NOT EXISTS (SELECT 1 FROM web_products w WHERE w.tenant_id = :t AND w.product_id = p.id) LIMIT 3000`, t);
+  const missing = (await sql.execute(q.sql, argsFor(q))).rows;
+  if (!missing.length) return 0;
+  const taken = new Set((await sql.execute(`SELECT slug FROM web_products WHERE tenant_id = ?`, [t])).rows.map((r) => String(r.slug)));
+  const now = iso();
+  const stmts = missing.map((p) => {
+    const base = pageSlug(String(p.name)) || "item";
+    let slug = base;
+    for (let i = 2; taken.has(slug); i++) slug = `${base}-${i}`;
+    taken.add(slug);
+    return {
+      sql: `INSERT INTO web_products (tenant_id, product_id, slug, show_online, allow_order, rx_required, stock_visibility, created_at, updated_at)
+            VALUES (?, ?, ?, 1, 1, ?, 'status', ?, ?) ON CONFLICT(tenant_id, product_id) DO NOTHING`,
+      args: [t, String(p.id), slug, Number(p.is_narcotic) === 1 ? 1 : 0, now, now],
+    };
+  });
+  for (let i = 0; i < stmts.length; i += 300) await sql.batch(stmts.slice(i, i + 300));
+  return stmts.length;
+}
+export const resetAutoList = () => autoListedAt.clear();
+
 export async function listProductsForListing(sql: Sql, tenantId: string, f: { q?: unknown; onlyListed?: unknown; offset?: unknown }) {
+  const site = await loadSite(sql, tenantId);
+  if (site) await autoListProducts(sql, site);
   const q = typeof f.q === "string" ? f.q.trim().slice(0, 60) : "";
   const where = [`p.deleted_at IS NULL`, OWNED];
   const args: unknown[] = [];
@@ -96,10 +130,9 @@ export async function saveListing(sql: Sql, actor: string, tenantId: string, pro
   const price = l.onlinePrice === null || l.onlinePrice === "" || l.onlinePrice === undefined ? null : Number(l.onlinePrice);
   if (price !== null && (!Number.isFinite(price) || price <= 0 || price > 10_000_000)) throw new HttpError(400, "Online price must be a positive amount, or empty to use the POS price.");
   const vis = ["hide", "status", "qty"].includes(String(l.stockVisibility)) ? String(l.stockVisibility) : "status";
-  // A controlled (narcotic) medicine is never orderable online.
-  const allowOrder = Boolean(l.allowOrder) && Number(p.is_narcotic) !== 1;
-  // A pharmacy's orderable products always need a prescription.
-  const rxRequired = Boolean(l.rxRequired) || (allowOrder && rxRequiredForOrders(site.businessType));
+  const allowOrder = Boolean(l.allowOrder);
+  // Controlled medicines always need a prescription.
+  const rxRequired = needsRx(l.rxRequired ? 1 : 0, p.is_narcotic);
   const title = text(l.title, 140);
   const now = iso();
   const existing = (await sql.execute(`SELECT slug FROM web_products WHERE tenant_id = ? AND product_id = ?`, [tenantId, productId])).rows[0];
@@ -123,13 +156,21 @@ export async function saveListing(sql: Sql, actor: string, tenantId: string, pro
 // ── Public catalogue ──────────────────────────────────────────────────────
 
 export interface PublicProduct {
-  slug: string; name: string; description: string; images: { url: string; alt: string }[]; price: number | null; category: string;
-  featured: boolean; orderable: boolean; rxRequired: boolean; stock: { visibility: string; inStock: boolean; qty: number | null };
+  slug: string; name: string; description: string; images: { url: string; alt: string }[];
+  /** Price of one base unit (the POS price list is per base unit). */
+  price: number | null; category: string;
+  featured: boolean; orderable: boolean; rxRequired: boolean;
+  /** Stock is counted in base units. */
+  stock: { visibility: string; inStock: boolean; qty: number | null };
+  /** The base unit's name (e.g. Capsule) and, when the product has one, its pack (e.g. Strip of 10). */
+  unit: string | null; pack: { name: string; size: number } | null;
 }
 
 /** Listed products, as the public sees them: never cost, supplier, batch or internal notes. */
 export async function publicCatalog(sql: Sql, site: Site, f: { q?: string; category?: string; slug?: string; featured?: boolean; limit?: number; now?: Date } = {}): Promise<PublicProduct[]> {
   const t = site.tenantId;
+  // New products in the POS appear online (when the store lists everything).
+  await autoListProducts(sql, site, true);
   const where = [`w.tenant_id = ?`, `w.show_online = 1`, `p.deleted_at IS NULL`];
   const args: unknown[] = [];
   if (f.slug) { where.push(`w.slug = ?`); args.push(f.slug); }
@@ -140,8 +181,9 @@ export async function publicCatalog(sql: Sql, site: Site, f: { q?: string; categ
   const listRows = (await sql.execute(
     `SELECT w.slug, COALESCE(w.title, p.name) AS name, w.description, w.images, COALESCE(w.online_price, ${POS_PRICE_SQL}) AS price,
             COALESCE(w.online_category, c.name, '') AS category, w.featured, w.allow_order, w.rx_required, w.stock_visibility, p.is_narcotic,
-            ${stockSql("p.id")} - ${reservedSql("p.id")} AS avail
+            ${stockSql("p.id")} - ${reservedSql("p.id")} AS avail, bu.name AS unit, su.name AS pack_unit, p.packing
      FROM web_products w JOIN products p ON p.id = w.product_id LEFT JOIN categories c ON c.id = p.category_id
+     LEFT JOIN uoms bu ON bu.id = p.base_unit_id LEFT JOIN uoms su ON su.id = p.secondary_unit_id
      WHERE ${where.join(" AND ")} ORDER BY w.featured DESC, name LIMIT ?`,
     [t, t, today(), t, now, t, ...args, Math.min(f.limit ?? 200, 500)],
   )).rows;
@@ -151,9 +193,11 @@ export async function publicCatalog(sql: Sql, site: Site, f: { q?: string; categ
     const vis = String(r.stock_visibility);
     return {
       slug: String(r.slug), name: String(r.name), description: String(r.description ?? ""), images: json(r.images, []), price, category: String(r.category ?? ""),
-      featured: Number(r.featured) === 1, rxRequired: Number(r.rx_required) === 1 || (Number(r.allow_order) === 1 && rxRequiredForOrders(site.businessType)),
-      orderable: site.storeEnabled && Number(r.allow_order) === 1 && Number(r.is_narcotic) !== 1 && price !== null && avail > 0,
+      featured: Number(r.featured) === 1, rxRequired: needsRx(r.rx_required, r.is_narcotic),
+      orderable: site.storeEnabled && Number(r.allow_order) === 1 && price !== null && avail > 0,
       stock: { visibility: vis, inStock: avail > 0, qty: vis === "qty" ? avail : null },
+      unit: r.unit ? String(r.unit) : null,
+      pack: Number(r.packing) > 1 ? { name: r.pack_unit ? String(r.pack_unit) : "Pack", size: Number(r.packing) } : null,
     };
   });
 }
@@ -235,7 +279,7 @@ export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip:
     const o = (it ?? {}) as Record<string, unknown>;
     const slug = typeof o.slug === "string" ? o.slug : "";
     const qty = Number(o.qty);
-    if (!slug || !Number.isInteger(qty) || qty < 1 || qty > 999) throw new HttpError(400, "Check the quantities in your cart.");
+    if (!slug || !Number.isInteger(qty) || qty < 1 || qty > 9999) throw new HttpError(400, "Check the quantities in your cart.");
     want.set(slug, (want.get(slug) ?? 0) + qty);
   }
   const lines: { productId: string; name: string; qty: number; price: number; rx: boolean }[] = [];
@@ -245,8 +289,8 @@ export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip:
        FROM web_products w JOIN products p ON p.id = w.product_id WHERE w.tenant_id = ? AND w.slug = ? AND w.show_online = 1 AND p.deleted_at IS NULL`,
       [t, t, slug],
     )).rows[0];
-    if (!p || Number(p.allow_order) !== 1 || Number(p.is_narcotic) === 1 || p.price == null) throw new HttpError(409, "An item in your cart can no longer be ordered online. Remove it and try again.");
-    lines.push({ productId: String(p.product_id), name: String(p.name), qty, price: money(Number(p.price)), rx: Number(p.rx_required) === 1 || rxRequiredForOrders(site.businessType) });
+    if (!p || Number(p.allow_order) !== 1 || p.price == null) throw new HttpError(409, "An item in your cart can no longer be ordered online. Remove it and try again.");
+    lines.push({ productId: String(p.product_id), name: String(p.name), qty, price: money(Number(p.price)), rx: needsRx(p.rx_required, p.is_narcotic) });
   }
   const subtotal = money(lines.reduce((n, l) => n + l.qty * l.price, 0));
   if (subtotal < st.minOrder) throw new HttpError(400, `The minimum order is Rs ${st.minOrder.toLocaleString("en-PK")}.`);

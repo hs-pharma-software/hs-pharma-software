@@ -6,7 +6,21 @@ import type { ReactNode } from "react";
 import type { Img, Section, SiteSettings } from "@/lib/web/sections";
 import { FONTS } from "@/lib/web/sections";
 
-export interface ProductCardData { slug: string; name: string; price: number | null; images: Img[]; orderable: boolean; rxRequired: boolean; stock: { visibility: string; inStock: boolean; qty: number | null } }
+export interface ProductCardData {
+  slug: string; name: string; price: number | null; images: Img[]; orderable: boolean; rxRequired: boolean; stock: { visibility: string; inStock: boolean; qty: number | null };
+  /** Base unit name (prices and stock are per base unit) and the pack, if any. */
+  unit?: string | null; pack?: { name: string; size: number } | null;
+}
+
+/** "Rs 38.85 / Capsule" and "Strip of 10: Rs 388.50". */
+export function priceLines(p: ProductCardData): { main: string; pack: string | null } {
+  if (p.price === null) return { main: "Ask for price", pack: null };
+  return {
+    main: `${rs(p.price)}${p.unit ? ` / ${p.unit}` : ""}`,
+    pack: p.pack ? `${p.pack.name} of ${p.pack.size}: ${rs(Math.round(p.price * p.pack.size * 100) / 100)}` : null,
+  };
+}
+export const stockText = (p: ProductCardData) => (p.stock.inStock ? (p.stock.qty !== null ? `${p.stock.qty} ${p.unit ?? ""} in stock`.replace("  ", " ") : "In stock") : "Out of stock");
 export interface RenderData {
   featured: ProductCardData[];
   categories: string[];
@@ -101,10 +115,11 @@ export function ProductCard({ p, links, action }: { p: ProductCardData; links: L
       </a>
       <div className="flex flex-1 flex-col gap-1 p-3">
         <a href={links.store(`/item/${p.slug}`)} className="line-clamp-2 text-sm font-medium text-neutral-900 hover:underline">{p.name}</a>
-        <p className="text-sm font-semibold" style={{ color: "var(--wp)" }}>{p.price === null ? "Ask for price" : rs(p.price)}</p>
+        <p className="text-sm font-semibold" style={{ color: "var(--wp)" }}>{priceLines(p).main}</p>
+        {priceLines(p).pack && <p className="text-xs text-neutral-500">{priceLines(p).pack}</p>}
         <div className="flex flex-wrap gap-1 text-[11px]">
           {p.rxRequired && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">Prescription needed</span>}
-          {p.stock.visibility !== "hide" && <span className={`rounded px-1.5 py-0.5 ${p.stock.inStock ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>{p.stock.inStock ? (p.stock.qty !== null ? `${p.stock.qty} in stock` : "In stock") : "Out of stock"}</span>}
+          {(p.stock.visibility !== "hide" || !p.stock.inStock) && <span className={`rounded px-1.5 py-0.5 ${p.stock.inStock ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{stockText(p)}</span>}
         </div>
         {action && <div className="mt-auto pt-2">{action}</div>}
       </div>

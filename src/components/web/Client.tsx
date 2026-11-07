@@ -34,18 +34,33 @@ export function CartButton({ href }: { href: string }) {
   return <a href={href} className="rounded-full px-3 py-1.5 text-xs font-semibold text-white" style={{ background: "var(--wp)" }} aria-label={`Cart, ${n} items`}>Cart{n ? ` (${n})` : ""}</a>;
 }
 
+/** Adds to the cart in base units (e.g. capsules) or whole packs (e.g. strips of 10); the cart counts base units. */
 export function AddToCart({ p, preview }: { p: ProductCardData; preview?: boolean }) {
   const [qty, setQty] = useState(1);
+  const [byPack, setByPack] = useState(false);
   const [added, setAdded] = useState(false);
   if (!p.orderable) return <p className="text-xs text-neutral-500">{p.price === null ? "Call us to order" : p.stock.inStock ? "Available in store" : "Out of stock"}</p>;
+  const per = byPack && p.pack ? p.pack.size : 1;
+  const options: [boolean, string][] = p.pack ? [[false, p.unit ?? "Unit"], [true, `${p.pack.name} (${p.pack.size})`]] : [];
   return (
-    <div className="flex items-center gap-2">
-      <label className="sr-only" htmlFor={`q-${p.slug}`}>Quantity</label>
-      <input id={`q-${p.slug}`} type="number" min={1} max={p.stock.qty ?? 999} value={qty} onChange={(e) => setQty(Math.max(1, Math.min(999, Math.round(Number(e.target.value) || 1))))} className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm" />
-      <button type="button" disabled={preview} className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60" style={{ background: "var(--wa)" }}
-        onClick={() => { const c = readCart(); const ex = c.find((l) => l.slug === p.slug); if (ex) ex.qty = Math.min(999, ex.qty + qty); else c.push({ slug: p.slug, qty }); writeCart(c); setAdded(true); setTimeout(() => setAdded(false), 1500); }}>
-        {preview ? "Preview" : added ? "Added" : "Add to cart"}
-      </button>
+    <div className="space-y-1.5">
+      {options.length > 0 && (
+        <div className="flex gap-1 text-[11px]" role="group" aria-label="Buy by">
+          {options.map(([v, label]) => (
+            <button key={String(v)} type="button" aria-pressed={byPack === v} onClick={() => setByPack(v)}
+              className={`rounded-full border px-2 py-0.5 ${byPack === v ? "border-[var(--wa)] bg-[var(--wa)] text-white" : "border-neutral-300 text-neutral-600"}`}>{label}</button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <label className="sr-only" htmlFor={`q-${p.slug}`}>Quantity</label>
+        <input id={`q-${p.slug}`} type="number" min={1} max={999} value={qty} onChange={(e) => setQty(Math.max(1, Math.min(999, Math.round(Number(e.target.value) || 1))))} className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm" />
+        <button type="button" disabled={preview} className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60" style={{ background: "var(--wa)" }}
+          onClick={() => { const units = qty * per; const c = readCart(); const ex = c.find((l) => l.slug === p.slug); if (ex) ex.qty = Math.min(9999, ex.qty + units); else c.push({ slug: p.slug, qty: Math.min(9999, units) }); writeCart(c); setAdded(true); setTimeout(() => setAdded(false), 1500); }}>
+          {preview ? "Preview" : added ? "Added" : "Add to cart"}
+        </button>
+      </div>
+      {per > 1 && <p className="text-[11px] text-neutral-500">= {qty * per} {p.unit ?? "units"}</p>}
     </div>
   );
 }
@@ -154,9 +169,11 @@ export function Checkout({ orderBase, preview }: { orderBase: string; preview?: 
         <ul className="divide-y divide-black/5 rounded-xl border border-black/5 bg-white">
           {lines.map((l) => (
             <li key={l.slug} className="flex flex-wrap items-center gap-3 p-3">
-              <span className="min-w-0 flex-1 text-sm font-medium text-neutral-900">{l.p!.name}{l.p!.rxRequired && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">Prescription</span>}</span>
+              <span className="min-w-0 flex-1 text-sm font-medium text-neutral-900">{l.p!.name}{l.p!.rxRequired && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800">Prescription</span>}
+                <span className="block text-xs font-normal text-neutral-500">{cartUnitText(l.p!, l.qty)}</span>
+              </span>
               <label className="sr-only" htmlFor={`cq-${l.slug}`}>Quantity</label>
-              <input id={`cq-${l.slug}`} type="number" min={0} max={999} value={l.qty} onChange={(e) => update(l.slug, Math.max(0, Math.min(999, Math.round(Number(e.target.value) || 0))))} className="w-16 rounded-lg border border-neutral-300 px-2 py-1 text-sm" />
+              <input id={`cq-${l.slug}`} type="number" min={0} max={9999} value={l.qty} onChange={(e) => update(l.slug, Math.max(0, Math.min(9999, Math.round(Number(e.target.value) || 0))))} className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm" />
               <span className="w-24 text-right text-sm tabular-nums">{l.p!.price === null ? "–" : rs(l.p!.price * l.qty)}</span>
             </li>
           ))}
@@ -242,6 +259,72 @@ export function ReportLookup({ preview }: { preview?: boolean }) {
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
       <button type="submit" disabled={busy || preview} className={btn} style={{ background: "var(--wa)" }}>{preview ? "Preview: lookup is off" : busy ? "Finding your report…" : "Get report"}</button>
       <p className="text-xs text-neutral-500">Your report opens on the next page; use “Download PDF” there to save it.</p>
+    </form>
+  );
+}
+
+/** "Rs 38.85 each · Capsule · 2 Strip + 3" for a cart line (quantity in base units). */
+function cartUnitText(p: ProductCardData, qty: number): string {
+  const parts: string[] = [];
+  if (p.price !== null) parts.push(`${rs(p.price)} each`);
+  if (p.unit) parts.push(p.unit);
+  if (p.pack && qty >= p.pack.size) parts.push(`${Math.floor(qty / p.pack.size)} ${p.pack.name}${qty % p.pack.size ? ` + ${qty % p.pack.size}` : ""}`);
+  return parts.join(" · ");
+}
+
+interface Suggestion { slug: string; name: string; price: number | null; unit: string | null }
+
+/** Shop search with suggestions: type, move with the arrow keys, Enter opens
+ * the highlighted product (or searches), Escape closes the list. */
+export function ShopSearch({ action, initialQ, initialC, categories, preview, itemBase }: { action: string; initialQ: string; initialC: string; categories: string[]; preview: string | null; itemBase: string }) {
+  const [q, setQ] = useState(initialQ);
+  const [items, setItems] = useState<Suggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setItems([]); return; }
+    const t = setTimeout(() => {
+      api<Suggestion[]>({ action: "suggest", q: term }).then((r) => { setItems(r); setActive(-1); }).catch(() => setItems([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q]);
+  const go = (slug: string) => { window.location.assign(new URL(`${itemBase}/${slug}${preview ? `?preview=${encodeURIComponent(preview)}` : ""}`, window.location.href).href); };
+  const shown = open && items.length > 0;
+  return (
+    <form className="mt-6 flex flex-wrap gap-2" action={action} method="get" role="search">
+      {preview && <input type="hidden" name="preview" value={preview} />}
+      <div className="relative min-w-0 flex-1">
+        <label htmlFor="shop-q" className="sr-only">Search products</label>
+        <input id="shop-q" name="q" value={q} autoComplete="off" placeholder="Search products"
+          role="combobox" aria-expanded={shown} aria-controls="shop-suggest" aria-autocomplete="list" aria-activedescendant={active >= 0 ? `sg-${active}` : undefined}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={(e) => {
+            if (!shown) return;
+            if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => (a + 1) % items.length); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => (a <= 0 ? items.length - 1 : a - 1)); }
+            else if (e.key === "Enter" && active >= 0) { e.preventDefault(); go(items[active].slug); }
+            else if (e.key === "Escape") { setOpen(false); setActive(-1); }
+          }}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+        {shown && (
+          <ul id="shop-suggest" role="listbox" aria-label="Suggestions" className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
+            {items.map((it, i) => (
+              <li key={it.slug} id={`sg-${i}`} role="option" aria-selected={i === active}
+                onMouseDown={(e) => { e.preventDefault(); go(it.slug); }} onMouseEnter={() => setActive(i)}
+                className={`flex cursor-pointer justify-between gap-3 px-3 py-2 text-sm ${i === active ? "bg-neutral-100" : ""}`}>
+                <span className="truncate text-neutral-900">{it.name}</span>
+                <span className="shrink-0 tabular-nums text-neutral-500">{it.price === null ? "" : `${rs(it.price)}${it.unit ? ` / ${it.unit}` : ""}`}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <label htmlFor="shop-c" className="sr-only">Category</label>
+      <select id="shop-c" name="c" defaultValue={initialC} className="rounded-lg border border-neutral-300 px-3 py-2 text-sm"><option value="">All categories</option>{categories.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+      <button type="submit" className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--wa)" }}>Search</button>
     </form>
   );
 }
