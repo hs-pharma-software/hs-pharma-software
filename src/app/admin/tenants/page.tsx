@@ -14,6 +14,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { nowIso } from "@/lib/id";
 import type { Tenant, SubscriptionPlan } from "@/lib/types2";
 import { BUSINESS_TYPES, FAMILY_LABELS, businessType } from "@/config/businessTypes";
+import { annualPrice, offersAnnual } from "@/lib/planPricing";
 
 function addDaysIso(days: number): string {
   const d = new Date();
@@ -51,12 +52,17 @@ export default function TenantsPage() {
     void reload();
   }
 
-  async function renew(t: Tenant) {
+  /** Renews for one plan term, or for a year at the plan's yearly price. */
+  async function renew(t: Tenant, yearly = false) {
     const plan = plans.find((p) => p.id === t.subscription_plan_id);
+    if (yearly && plan) {
+      const a = annualPrice(plan.price, plan.duration_days, plan.annual_discount_pct);
+      if (!confirm(`Renew ${t.name} for one year at Rs ${a.price.toLocaleString("en-PK")} (${a.pct}% off Rs ${a.full.toLocaleString("en-PK")})?`)) return;
+    }
     await tenantsRepo.update(t.id, {
       subscription_status: "active",
       subscription_started_at: nowIso(),
-      subscription_expires_at: addDaysIso(plan?.duration_days ?? 30),
+      subscription_expires_at: addDaysIso(yearly ? 365 : plan?.duration_days ?? 30),
     });
     void reload();
   }
@@ -117,6 +123,9 @@ export default function TenantsPage() {
           <button type="button" onClick={() => void renew(t)} className="text-emerald-600 hover:underline">
             Renew
           </button>
+          {(() => { const p = plans.find((x) => x.id === t.subscription_plan_id); return p && offersAnnual(p) ? (
+            <button type="button" onClick={() => void renew(t, true)} className="text-emerald-700 hover:underline" title={`Yearly, ${p.annual_discount_pct ?? 20}% off`}>Renew 1 year</button>
+          ) : null; })()}
           <button type="button" onClick={() => void toggleSuspend(t)} className="text-amber-600 hover:underline">
             {t.subscription_status === "active" ? "Suspend" : "Activate"}
           </button>

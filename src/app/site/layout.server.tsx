@@ -30,8 +30,9 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <DraftNotice />
       <SiteHeader base={base} />
       <main id="main" className="flex-1">{children}</main>
-      <KeywordMarquee items={popular} base={base} />
       <SiteFooter base={base} />
+      {/* At the very bottom, below the footer. */}
+      <KeywordMarquee items={popular} base={base} />
       <SiteAnalytics />
     </div>
   );

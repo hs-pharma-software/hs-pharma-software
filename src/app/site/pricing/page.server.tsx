@@ -4,6 +4,7 @@ import { withSeoMeta } from "@/config/seoMeta";
 import { BUSINESS_TYPES, businessType } from "@/config/businessTypes";
 import { CtaLink, PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 import { sqlForServer } from "@/server/subSupersApi";
+import { annualPrice, descriptionClasses, offersAnnual, parseDescriptionStyle, termLabel } from "@/lib/planPricing";
 
 export const metadata: Metadata = withSeoMeta("/pricing", {
   title: "Pricing",
@@ -13,23 +14,25 @@ export const metadata: Metadata = withSeoMeta("/pricing", {
 export const dynamic = "force-dynamic";
 
 /** Plans and add-ons the Super Admin marked "Show on the website's pricing page". */
-interface Plan { id: string; name: string; tagline: string | null; price: number; days: number; staff: number; grace: number; features: string[]; types: string[] }
+interface Plan { id: string; name: string; tagline: string | null; description: string | null; descStyle: string | null; price: number; days: number; staff: number; grace: number; features: string[]; types: string[]; annual: boolean; annualPct: number }
 interface Addon { id: string; name: string; description: string | null; price: number; billing: string; types: string[] }
 
 const list = (raw: unknown): string[] => { try { const v = raw ? JSON.parse(String(raw)) : []; return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 const rs = (n: number) => `Rs ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
-const term = (days: number) => (days === 30 || days === 31 ? "per month" : days === 365 || days === 366 ? "per year" : days === 90 ? "per 3 months" : days === 180 ? "per 6 months" : `per ${days} days`);
 const BILLING: Record<string, string> = { one_time: "one time", monthly: "per month", yearly: "per year", per_term: "per plan term" };
 
 async function load(): Promise<{ plans: Plan[]; addons: Addon[] }> {
   try {
     const sql = sqlForServer();
     const plans = (await sql.execute(
-      `SELECT id, name, tagline, price, duration_days, max_staff_logins, grace_days, features, business_types FROM subscription_plans
+      `SELECT * FROM subscription_plans
        WHERE deleted_at IS NULL AND is_public = 1 ORDER BY sort_order, price`,
     )).rows.map((r) => ({
-      id: String(r.id), name: String(r.name), tagline: (r.tagline as string | null) ?? null, price: Number(r.price) || 0, days: Number(r.duration_days) || 30,
+      id: String(r.id), name: String(r.name), tagline: (r.tagline as string | null) ?? null, description: (r.description as string | null) ?? null, descStyle: (r.description_style as string | null) ?? null,
+      price: Number(r.price) || 0, days: Number(r.duration_days) || 30,
       staff: Number(r.max_staff_logins) || 0, grace: Number(r.grace_days) || 0, features: list(r.features), types: list(r.business_types),
+      annual: offersAnnual({ price: Number(r.price) || 0, duration_days: Number(r.duration_days) || 30, annual_enabled: r.annual_enabled === undefined ? 1 : Number(r.annual_enabled) }),
+      annualPct: r.annual_discount_pct == null ? 20 : Number(r.annual_discount_pct),
     }));
     const addons = (await sql.execute(`SELECT id, name, description, price, billing, business_types FROM plan_addons WHERE deleted_at IS NULL AND is_public = 1 ORDER BY sort_order, name`)).rows
       .map((r) => ({ id: String(r.id), name: String(r.name), description: (r.description as string | null) ?? null, price: Number(r.price) || 0, billing: String(r.billing), types: list(r.business_types) }));
@@ -43,7 +46,10 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const base = await siteBase();
   const sp = await searchParams;
   const want = typeof sp.type === "string" && BUSINESS_TYPES.some((t) => t.id === sp.type) ? sp.type : "";
+  const yearly = sp.billing === "yearly";
+  const qs = (o: { type?: string; billing?: string }) => { const q = new URLSearchParams(); const t = o.type ?? want; const b = o.billing ?? (yearly ? "yearly" : ""); if (t) q.set("type", t); if (b) q.set("billing", b); const x = q.toString(); return x ? `?${x}` : ""; };
   const { plans, addons } = await load();
+  const maxPct = Math.max(0, ...plans.filter((p) => p.annual).map((p) => p.annualPct));
   const fits = (types: string[]) => !want || !types.length || types.includes(want);
   const shownPlans = plans.filter((p) => fits(p.types));
   const shownAddons = addons.filter((a) => fits(a.types));
@@ -57,11 +63,17 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       {plans.length > 0 && (
         <Section>
           <nav aria-label="Business type" className="flex flex-wrap gap-2">
-            <Link href={at(base, "/pricing")} className={`rounded-full border px-3 py-1.5 text-sm ${!want ? "border-[#0b2a6b] bg-[#0b2a6b] text-white" : "border-slate-300 text-slate-700 hover:border-[#1565c0]"}`}>All</Link>
+            <Link href={at(base, `/pricing${qs({ type: "" })}`)} className={`rounded-full border px-3 py-1.5 text-sm ${!want ? "border-[#0b2a6b] bg-[#0b2a6b] text-white" : "border-slate-300 text-slate-700 hover:border-[#1565c0]"}`}>All</Link>
             {typeChips.map((t) => (
-              <Link key={t.id} href={at(base, `/pricing?type=${t.id}`)} className={`rounded-full border px-3 py-1.5 text-sm ${want === t.id ? "border-[#0b2a6b] bg-[#0b2a6b] text-white" : "border-slate-300 text-slate-700 hover:border-[#1565c0]"}`}>{t.label}</Link>
+              <Link key={t.id} href={at(base, `/pricing${qs({ type: t.id })}`)} className={`rounded-full border px-3 py-1.5 text-sm ${want === t.id ? "border-[#0b2a6b] bg-[#0b2a6b] text-white" : "border-slate-300 text-slate-700 hover:border-[#1565c0]"}`}>{t.label}</Link>
             ))}
           </nav>
+          {plans.some((p) => p.annual) && (
+            <div className="mt-4 inline-flex rounded-full border border-slate-300 bg-white p-1 text-sm" role="group" aria-label="Billing period">
+              <Link href={at(base, `/pricing${qs({ billing: "" })}`)} aria-current={!yearly ? "page" : undefined} className={`rounded-full px-4 py-1.5 ${!yearly ? "bg-[#0b2a6b] text-white" : "text-slate-700"}`}>Monthly</Link>
+              <Link href={at(base, `/pricing${qs({ billing: "yearly" })}`)} aria-current={yearly ? "page" : undefined} className={`rounded-full px-4 py-1.5 ${yearly ? "bg-[#0b2a6b] text-white" : "text-slate-700"}`}>Yearly{maxPct > 0 ? <span className={`ml-1 text-xs font-semibold ${yearly ? "text-[#5ec8ff]" : "text-emerald-700"}`}>save {maxPct}%</span> : null}</Link>
+            </div>
+          )}
         </Section>
       )}
       <Section>
@@ -71,14 +83,25 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
               <li key={p.id} className="flex flex-col rounded-xl border border-slate-200 bg-white p-6">
                 <h2 className="text-lg font-semibold text-[#0b2a6b]">{p.name}</h2>
                 {p.tagline && <p className="mt-1 text-sm text-slate-600">{p.tagline}</p>}
-                <p className="mt-4"><span className="text-3xl font-bold text-slate-900">{p.price ? rs(p.price) : "On quote"}</span>{p.price ? <span className="ml-1 text-sm text-slate-500">{term(p.days)}</span> : null}</p>
+                {p.description && <p className={`mt-2 whitespace-pre-line text-slate-600 ${descriptionClasses(parseDescriptionStyle(p.descStyle))}`}>{p.description}</p>}
+                {!p.price ? (
+                  <p className="mt-4 text-2xl font-bold text-slate-900">Price on request</p>
+                ) : yearly && p.annual ? (() => { const a = annualPrice(p.price, p.days, p.annualPct); return (
+                  <div className="mt-4">
+                    <p><span className="text-3xl font-bold text-slate-900">{rs(a.price)}</span><span className="ml-1 text-sm text-slate-500">per year</span></p>
+                    <p className="mt-1 text-sm"><span className="text-slate-400 line-through">{rs(a.full)}</span> <span className="font-semibold text-emerald-700">Save {rs(a.saving)} ({a.pct}% off)</span></p>
+                  </div>
+                ); })() : (
+                  <p className="mt-4"><span className="text-3xl font-bold text-slate-900">{rs(p.price)}</span><span className="ml-1 text-sm text-slate-500">{termLabel(p.days)}</span>
+                    {p.annual && !yearly && <span className="mt-1 block text-xs text-emerald-700">or {rs(annualPrice(p.price, p.days, p.annualPct).price)} per year ({p.annualPct}% off)</span>}</p>
+                )}
                 <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-700">
                   {p.features.map((x) => <li key={x}>• {x}</li>)}
                   {p.staff > 0 && <li>• {p.staff} staff login{p.staff === 1 ? "" : "s"}</li>}
                   {p.grace > 0 && <li>• {p.grace}-day grace period after the renewal date</li>}
                 </ul>
                 <p className="mt-4 text-xs text-slate-500">{p.types.length ? `For: ${p.types.map((t) => businessType(t).label).join(", ")}` : "For every business type"}</p>
-                <div className="mt-5"><CtaLink href={at(base, `/contact?topic=pricing&plan=${encodeURIComponent(p.name)}`)}>Get Started</CtaLink></div>
+                <div className="mt-5"><CtaLink href={at(base, `/contact?topic=pricing&plan=${encodeURIComponent(p.name)}${yearly && p.annual ? "&billing=yearly" : ""}`)}>{p.price ? "Get Started" : "Get a Quote"}</CtaLink></div>
               </li>
             ))}
           </ul>
@@ -96,7 +119,8 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
               <li key={a.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
                 <p className="font-medium text-slate-900">{a.name}</p>
                 {a.description && <p className="mt-1 text-sm text-slate-600">{a.description}</p>}
-                <p className="mt-2 text-sm font-semibold text-[#0b2a6b]">{a.price ? `${rs(a.price)} ${BILLING[a.billing] ?? ""}` : "On quote"}</p>
+                {a.price ? <p className="mt-2 text-sm font-semibold text-[#0b2a6b]">{`${rs(a.price)} ${BILLING[a.billing] ?? ""}`}</p>
+                  : <Link href={at(base, `/contact?topic=pricing&addon=${encodeURIComponent(a.name)}`)} className="mt-2 inline-block rounded-full bg-[#0b2a6b] px-3 py-1 text-xs font-semibold text-white hover:bg-[#0d3a8f]">Get a Quote</Link>}
               </li>
             ))}
           </ul>

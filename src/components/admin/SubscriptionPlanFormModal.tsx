@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Italic } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +9,8 @@ import { subscriptionPlansRepo, parseAllowedModules } from "@/lib/repo/subscript
 import { NAV } from "@/config/nav";
 import type { SubscriptionPlan } from "@/lib/types2";
 import { BUSINESS_TYPES } from "@/config/businessTypes";
+import { visibleNavFor } from "@/config/navFilter";
+import { DEFAULT_ANNUAL_DISCOUNT, DESCRIPTION_SIZES, annualPrice, descriptionClasses, parseDescriptionStyle, type DescriptionStyle } from "@/lib/planPricing";
 
 export function SubscriptionPlanFormModal({
   plan,
@@ -41,9 +44,20 @@ export function SubscriptionPlanFormModal({
   const [webPages, setWebPages] = useState(plan?.web_max_pages != null ? String(plan.web_max_pages) : "");
   const [webStorage, setWebStorage] = useState(plan?.web_max_storage_mb != null ? String(plan.web_max_storage_mb) : "");
   const [webDomains, setWebDomains] = useState(plan?.web_max_custom_domains != null ? String(plan.web_max_custom_domains) : "");
+  const [annualOn, setAnnualOn] = useState(plan ? plan.annual_enabled !== 0 : true);
+  const [annualPct, setAnnualPct] = useState(String(plan?.annual_discount_pct ?? DEFAULT_ANNUAL_DISCOUNT));
+  const [descStyle, setDescStyle] = useState<DescriptionStyle>(parseDescriptionStyle(plan?.description_style));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Modules of the ticked business types only (none ticked: every module).
+  const shownModules = useMemo(() => {
+    if (!types.size) return NAV;
+    const keys = new Set([...types].flatMap((t) => visibleNavFor(t, null, null).map((n) => n.moduleKey)));
+    return NAV.filter((n) => keys.has(n.moduleKey));
+  }, [types]);
+  const yearly = annualPrice(Number(price) || 0, Number(durationDays) || 30, Number(annualPct));
 
   function toggleModule(key: string) {
     setModules((prev) => {
@@ -64,7 +78,11 @@ export function SubscriptionPlanFormModal({
         description: description || null,
         price: Number(price) || 0,
         duration_days: Number(durationDays) || 30,
-        allowed_modules: JSON.stringify([...modules]),
+        // Only modules the plan's business types have (hidden ticks are not kept).
+        allowed_modules: JSON.stringify([...modules].filter((k) => shownModules.some((n) => n.moduleKey === k))),
+        annual_enabled: annualOn ? 1 : 0,
+        annual_discount_pct: Math.max(0, Math.min(90, Number(annualPct) || 0)),
+        description_style: JSON.stringify(descStyle),
         max_staff_logins: Number(maxStaffLogins) || 1,
         max_invoices_per_month: maxInvoicesPerMonth === "" ? null : Number(maxInvoicesPerMonth),
         business_types: types.size ? JSON.stringify([...types]) : null,
@@ -95,12 +113,46 @@ export function SubscriptionPlanFormModal({
           <Field label="Name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
           </Field>
-          <Field label="Price">
+          <Field label="Price (Rs, per term)">
             <Input type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} />
           </Field>
         </div>
-        <Field label="Description">
-          <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <p className="-mt-1 text-[11px] text-neutral-500">Price 0 shows &quot;Get a Quote&quot; on the website instead of a price.</p>
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 p-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-neutral-800">
+            <input type="checkbox" checked={annualOn} onChange={(e) => setAnnualOn(e.target.checked)} /> Offer a yearly subscription
+          </label>
+          {annualOn && (
+            <>
+              <Field label="Yearly discount (%)">
+                <Input type="number" min="0" max="90" value={annualPct} onChange={(e) => setAnnualPct(e.target.value)} className="w-24" />
+              </Field>
+              <p className="pb-1.5 text-xs text-neutral-600">
+                {Number(price) > 0 && Number(durationDays) < 360
+                  ? <>Yearly: <b>Rs {yearly.price.toLocaleString("en-PK")}</b> instead of Rs {yearly.full.toLocaleString("en-PK")} (saves Rs {yearly.saving.toLocaleString("en-PK")})</>
+                  : "Set a price and a term shorter than a year to see the yearly price."}
+              </p>
+            </>
+          )}
+        </div>
+        <Field label="Description (shown on the website's plan card)">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Description style">
+              <select aria-label="Font size" value={descStyle.size} onChange={(e) => setDescStyle({ ...descStyle, size: e.target.value as DescriptionStyle["size"] })} className="rounded-md border border-neutral-300 px-2 py-1 text-xs">
+                {Object.entries(DESCRIPTION_SIZES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              {([["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight]] as const).map(([a, Icon]) => (
+                <button key={a} type="button" aria-label={`Align ${a}`} aria-pressed={descStyle.align === a} onClick={() => setDescStyle({ ...descStyle, align: a })}
+                  className={`rounded-md border px-1.5 py-1 ${descStyle.align === a ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-neutral-300"}`}><Icon size={14} /></button>
+              ))}
+              <button type="button" aria-label="Bold" aria-pressed={descStyle.bold} onClick={() => setDescStyle({ ...descStyle, bold: !descStyle.bold })}
+                className={`rounded-md border px-1.5 py-1 ${descStyle.bold ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-neutral-300"}`}><Bold size={14} /></button>
+              <button type="button" aria-label="Italic" aria-pressed={descStyle.italic} onClick={() => setDescStyle({ ...descStyle, italic: !descStyle.italic })}
+                className={`rounded-md border px-1.5 py-1 ${descStyle.italic ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-neutral-300"}`}><Italic size={14} /></button>
+            </div>
+            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Everything a single pharmacy needs to bill, track batches and expiry, and send invoices to FBR." />
+            {description.trim() && <p className={`whitespace-pre-line rounded-md bg-neutral-50 px-3 py-2 text-slate-600 ${descriptionClasses(descStyle)}`}>{description}</p>}
+          </div>
         </Field>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Duration (Days)" required>
@@ -174,9 +226,9 @@ export function SubscriptionPlanFormModal({
           </Field>
         </div>
         <div>
-          <p className="mb-1.5 text-xs font-medium text-neutral-600">Allowed Modules</p>
+          <p className="mb-1.5 text-xs font-medium text-neutral-600">Allowed Modules <span className="font-normal text-neutral-400">{types.size ? `(for ${[...types].map((t) => BUSINESS_TYPES.find((b) => b.id === t)?.label ?? t).join(", ")})` : "(all business types)"}</span></p>
           <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-neutral-200 p-3 sm:grid-cols-3">
-            {NAV.map((item) => (
+            {shownModules.map((item) => (
               <label key={item.moduleKey} className="flex items-center gap-1.5 text-sm text-neutral-700">
                 <input
                   type="checkbox"

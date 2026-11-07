@@ -282,6 +282,10 @@ export interface SubscriptionPlan extends BaseRow {
   web_max_pages?: number | null;
   web_max_storage_mb?: number | null;
   web_max_custom_domains?: number | null;
+  /** v78: yearly option and its discount (%), and the description's text style on the pricing page (JSON). */
+  annual_enabled?: number;
+  annual_discount_pct?: number;
+  description_style?: string | null;
 }
 
 export interface Tenant extends BaseRow {

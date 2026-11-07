@@ -1453,6 +1453,18 @@ fn schema_sql_v69() -> &'static str {
     "#
 }
 
+/// Plans: a yearly option with its discount (20% by default) and the
+/// description's text style on the pricing page; FBR Digital Invoicing
+/// integration as an add-on (price on quote until set). Additions only.
+fn schema_sql_v78() -> &'static str {
+    r#"
+    ALTER TABLE subscription_plans ADD COLUMN annual_enabled INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE subscription_plans ADD COLUMN annual_discount_pct REAL NOT NULL DEFAULT 20;
+    ALTER TABLE subscription_plans ADD COLUMN description_style TEXT;
+    INSERT OR IGNORE INTO plan_addons (id, name, description, feature, price, billing, business_types, is_public, sort_order, created_at, updated_at) VALUES ('addon-fbr-integration', 'FBR Digital Invoicing integration', 'Send your sale invoices to FBR Digital Invoicing from the POS: registration check, sandbox testing and go-live.', 'fbr_setup', 0, 'one_time', NULL, 1, 10, '2026-11-07T00:00:00.000Z', '2026-11-07T00:00:00.000Z');
+    "#
+}
+
 /// Plans for the website's pricing page (business types, grace period, add-ons
 /// such as website, online store and custom domain) and the Super Admin mail
 /// section (mailboxes on mavin.pk and their messages). Additions only.
@@ -3930,6 +3942,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 77,
             description: "plans_addons_mail",
             sql: schema_sql_v77(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 78,
+            description: "plan_annual_style_fbr_addon",
+            sql: schema_sql_v78(),
             kind: MigrationKind::Up,
         },
     ]
