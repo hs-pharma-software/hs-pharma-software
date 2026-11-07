@@ -32,6 +32,7 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
           <aside className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
             <h2 className="font-semibold text-[#0b2a6b]">Other ways to reach us</h2>
             <p className="mt-2">Phone: <a href="tel:+923160585858" className="font-medium hover:underline">0316-0585858</a></p>
+            <p className="mt-1">WhatsApp: <a href="https://wa.me/923160585858" target="_blank" rel="noopener noreferrer" className="font-medium text-emerald-700 hover:underline">+92 316 0585858</a></p>
             <p className="mt-1">Email: <a href="mailto:info@mavin.pk" className="font-medium hover:underline">info@mavin.pk</a></p>
             <p className="mt-1">Hours: Monday to Saturday, 9am to 6pm</p>
           </aside>

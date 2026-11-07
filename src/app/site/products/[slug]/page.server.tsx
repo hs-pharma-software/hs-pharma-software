@@ -27,7 +27,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const facts = productFacts(p);
   const pilot = p.cta === "pilot";
   const cta = (
-    <CtaLink href={at(base, `/demo?type=${encodeURIComponent(p.name)}`)}>{pilot ? "Discuss a Pilot" : "Book a Demo"}</CtaLink>
+    <>
+      <CtaLink href={at(base, `/demo?type=${encodeURIComponent(p.name)}`)}>{pilot ? "Discuss a Pilot" : "Book a Demo"}</CtaLink>
+      {/* Pricing opens on this business type's plans. */}
+      <CtaLink variant="secondary" href={at(base, `/pricing?type=${p.typeId}`)}>See Prices</CtaLink>
+    </>
   );
 
   const seo = PRODUCT_SEO[p.slug];
@@ -104,7 +108,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <Section>
         <div className="flex flex-col items-start gap-4 rounded-2xl border border-slate-200 bg-white p-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-base font-semibold text-[#0b2a6b]">{pilot ? `Planning a ${p.name} rollout?` : `See ${p.name} with your own products.`}</p>
-          {cta}
+          <div className="flex flex-wrap gap-3">{cta}</div>
         </div>
         <p className="mt-4 text-sm"><Link href={at(base, "/products")} className="text-[#1565c0] hover:underline">All products</Link></p>
       </Section>

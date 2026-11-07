@@ -15,11 +15,13 @@ export const metadata: Metadata = withSeoMeta("/pricing", {
 export const dynamic = "force-dynamic";
 
 /** Plans and add-ons the Super Admin marked "Show on the website's pricing page". */
-interface Plan { id: string; name: string; tagline: string | null; description: string | null; descStyle: string | null; price: number; days: number; staff: number; grace: number; features: string[]; types: string[]; annual: boolean; annualPct: number }
+interface Plan { id: string; name: string; sort: number; tagline: string | null; description: string | null; descStyle: string | null; price: number; days: number; staff: number; grace: number; features: string[]; types: string[]; annual: boolean; annualPct: number }
 interface Addon { id: string; name: string; description: string | null; price: number; billing: string; types: string[] }
 
 const list = (raw: unknown): string[] => { try { const v = raw ? JSON.parse(String(raw)) : []; return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 const rs = (n: number) => `Rs ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
+/** Plans always read Basic, Professional, Enterprise; other names follow. */
+const tier = (name: string) => (/\bbasic\b/i.test(name) ? 1 : /\bprofessional\b/i.test(name) ? 2 : /\benterprises?\b/i.test(name) ? 3 : 4);
 const BILLING: Record<string, string> = { one_time: "one time", monthly: "per month", yearly: "per year", per_term: "per plan term" };
 
 async function load(): Promise<{ plans: Plan[]; addons: Addon[] }> {
@@ -29,12 +31,12 @@ async function load(): Promise<{ plans: Plan[]; addons: Addon[] }> {
       `SELECT * FROM subscription_plans
        WHERE deleted_at IS NULL AND is_public = 1 ORDER BY sort_order, price`,
     )).rows.map((r) => ({
-      id: String(r.id), name: String(r.name), tagline: (r.tagline as string | null) ?? null, description: (r.description as string | null) ?? null, descStyle: (r.description_style as string | null) ?? null,
+      id: String(r.id), name: String(r.name), sort: Number(r.sort_order) || 0, tagline: (r.tagline as string | null) ?? null, description: (r.description as string | null) ?? null, descStyle: (r.description_style as string | null) ?? null,
       price: Number(r.price) || 0, days: Number(r.duration_days) || 30,
       staff: Number(r.max_staff_logins) || 0, grace: Number(r.grace_days) || 0, features: list(r.features), types: list(r.business_types),
       annual: offersAnnual({ price: Number(r.price) || 0, duration_days: Number(r.duration_days) || 30, annual_enabled: r.annual_enabled === undefined ? 1 : Number(r.annual_enabled) }),
       annualPct: r.annual_discount_pct == null ? 20 : Number(r.annual_discount_pct),
-    }));
+    })).sort((a, b) => tier(a.name) - tier(b.name) || a.sort - b.sort || a.price - b.price);
     const addons = (await sql.execute(`SELECT id, name, description, price, billing, business_types FROM plan_addons WHERE deleted_at IS NULL AND is_public = 1 ORDER BY sort_order, name`)).rows
       .map((r) => ({ id: String(r.id), name: String(r.name), description: (r.description as string | null) ?? null, price: Number(r.price) || 0, billing: String(r.billing), types: list(r.business_types) }));
     return { plans, addons };
@@ -54,6 +56,13 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const fits = (types: string[]) => !want || !types.length || types.includes(want);
   const shownPlans = plans.filter((p) => fits(p.types));
   const shownAddons = addons.filter((a) => fits(a.types));
+  const groups: { key: string; title: string; plans: Plan[] }[] = [];
+  for (const p of shownPlans) {
+    const key = [...p.types].sort().join(",");
+    let g = groups.find((x) => x.key === key);
+    if (!g) groups.push((g = { key, title: p.types.length ? `${p.types.map((t) => businessType(t).label).join(", ")} plans` : "Plans for every business type", plans: [] }));
+    g.plans.push(p);
+  }
   const usedTypes = new Set(plans.flatMap((p) => p.types));
   const typeChips = BUSINESS_TYPES.filter((t) => usedTypes.has(t.id) || !usedTypes.size);
   return (
@@ -79,11 +88,15 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       )}
       <Section>
         {shownPlans.length ? (
+          <div className="space-y-10">
+          {groups.map((g) => (
+          <div key={g.key}>
+          {(groups.length > 1 || !want) && <h2 className="mb-4 text-xl font-semibold tracking-tight text-[#0b2a6b]">{g.title}</h2>}
           <ul className="grid auto-rows-fr items-stretch gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {shownPlans.map((p) => (
+            {g.plans.map((p) => (
               // Same width and height in each row; price and button at the same place on every card.
               <li key={p.id} className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-6">
-                <h2 className="text-lg font-semibold text-[#0b2a6b]">{p.name}</h2>
+                <h3 className="text-lg font-semibold text-[#0b2a6b]">{p.name}</h3>
                 <p className="mt-1 min-h-10 text-sm text-slate-600">{p.tagline ?? ""}</p>
                 <div className="mt-3 min-h-[4.5rem]">
                   {!p.price ? (
@@ -107,6 +120,9 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
               </li>
             ))}
           </ul>
+          </div>
+          ))}
+          </div>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-slate-700">
             <p>{plans.length ? "No plans listed for this business type yet." : "Plans and prices are confirmed for your sector and size."} Contact us for a quote.</p>

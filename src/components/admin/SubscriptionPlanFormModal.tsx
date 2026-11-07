@@ -50,6 +50,13 @@ export function SubscriptionPlanFormModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Typed text is never thrown away without asking.
+  const [dirty, setDirty] = useState(false);
+  function close() {
+    if (dirty && !confirm("Close without saving? Your changes will be lost.")) return;
+    onClose();
+  }
 
   // Modules of the ticked business types only (none ticked: every module).
   const shownModules = useMemo(() => {
@@ -72,6 +79,7 @@ export function SubscriptionPlanFormModal({
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       const payload = {
         name: name.trim(),
@@ -101,14 +109,17 @@ export function SubscriptionPlanFormModal({
         await subscriptionPlansRepo.create(payload);
       }
       onSaved();
+    } catch (err) {
+      // Keep the form open with everything typed, and say why it was not saved.
+      setError(`Not saved: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title={isEdit ? "Edit Subscription Plan" : "Add Subscription Plan"} onClose={onClose} width="max-w-2xl">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <Modal title={isEdit ? "Edit Subscription Plan" : "Add Subscription Plan"} onClose={close} width="max-w-2xl">
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Name" required>
             <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
@@ -135,25 +146,27 @@ export function SubscriptionPlanFormModal({
             </>
           )}
         </div>
-        <Field label="Description (shown on the website's plan card)">
+        {/* Not inside a <label>: a click on the preview or the toolbar's gaps would move the cursor to the size box. */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="plan-description" className="text-xs font-medium text-neutral-600">Description (shown on the website&apos;s plan card)</label>
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Description style">
               <select aria-label="Font size" value={descStyle.size} onChange={(e) => setDescStyle({ ...descStyle, size: e.target.value as DescriptionStyle["size"] })} className="rounded-md border border-neutral-300 px-2 py-1 text-xs">
                 {Object.entries(DESCRIPTION_SIZES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
               {([["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight]] as const).map(([a, Icon]) => (
-                <button key={a} type="button" aria-label={`Align ${a}`} aria-pressed={descStyle.align === a} onClick={() => setDescStyle({ ...descStyle, align: a })}
+                <button key={a} type="button" aria-label={`Align ${a}`} aria-pressed={descStyle.align === a} onClick={() => { setDescStyle({ ...descStyle, align: a }); setDirty(true); }}
                   className={`rounded-md border px-1.5 py-1 ${descStyle.align === a ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-neutral-300"}`}><Icon size={14} /></button>
               ))}
-              <button type="button" aria-label="Bold" aria-pressed={descStyle.bold} onClick={() => setDescStyle({ ...descStyle, bold: !descStyle.bold })}
+              <button type="button" aria-label="Bold" aria-pressed={descStyle.bold} onClick={() => { setDescStyle({ ...descStyle, bold: !descStyle.bold }); setDirty(true); }}
                 className={`rounded-md border px-1.5 py-1 ${descStyle.bold ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-neutral-300"}`}><Bold size={14} /></button>
-              <button type="button" aria-label="Italic" aria-pressed={descStyle.italic} onClick={() => setDescStyle({ ...descStyle, italic: !descStyle.italic })}
+              <button type="button" aria-label="Italic" aria-pressed={descStyle.italic} onClick={() => { setDescStyle({ ...descStyle, italic: !descStyle.italic }); setDirty(true); }}
                 className={`rounded-md border px-1.5 py-1 ${descStyle.italic ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-neutral-300"}`}><Italic size={14} /></button>
             </div>
-            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Everything a single pharmacy needs to bill, track batches and expiry, and send invoices to FBR." />
+            <Textarea id="plan-description" rows={8} className="min-h-40 resize-y" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Everything a single pharmacy needs to bill, track batches and expiry, and send invoices to FBR." />
             {description.trim() && <p className={`whitespace-pre-line rounded-md bg-neutral-50 px-3 py-2 text-slate-600 ${descriptionClasses(descStyle)}`}>{description}</p>}
           </div>
-        </Field>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field label="Duration (Days)" required>
             <Input
@@ -240,6 +253,7 @@ export function SubscriptionPlanFormModal({
             ))}
           </div>
         </div>
+        {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="flex items-center justify-between border-t border-neutral-200 pt-3">
           {/* Delete \u2014 only shown when editing an existing plan */}
           {isEdit && plan && (
@@ -274,7 +288,7 @@ export function SubscriptionPlanFormModal({
           {!isEdit && <span />}
 
           <div className="flex gap-2">
-            <Button type="button" onClick={onClose}>Reset</Button>
+            <Button type="button" onClick={close}>Cancel</Button>
             <Button type="submit" variant="primary" disabled={saving}>
               {saving ? "Saving..." : "Save"}
             </Button>
