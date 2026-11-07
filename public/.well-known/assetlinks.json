@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "pk.mavin.business",
+      "sha256_cert_fingerprints": [
+        "C5:69:1E:42:58:81:42:10:37:E9:5C:DA:67:FF:CC:C3:5D:4F:A4:90:DD:03:F3:A2:D9:7F:93:40:B0:FB:7D:46",
+        "4E:B4:94:3B:A6:D3:B9:95:96:8D:6F:47:1F:73:B0:FF:4B:FA:9F:08:69:C1:6D:6E:CE:49:4E:44:1D:0E:9E:02"
+      ]
+    }
+  }
+]
