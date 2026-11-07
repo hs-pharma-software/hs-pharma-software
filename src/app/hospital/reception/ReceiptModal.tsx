@@ -9,6 +9,7 @@ import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { visitReceiptFor, collectVisitFees, type FeeScope, type ScopedReceipt } from "@/lib/repo/receptionFees";
 import type { PaymentMethod } from "@/lib/types-hospital";
+import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
 
 const METHOD: Record<string, string> = { cash: "Cash", card: "Card", online: "Online transfer", bank: "Bank deposit" };
 const rs = (n: number) => n.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -114,6 +115,7 @@ export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: {
               </div>
             </div>
             <p className="mt-3 text-center text-[10px] text-neutral-500">Printed {when(localDateTime())}. Thank you.</p>
+            <PoweredByFooter />
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">

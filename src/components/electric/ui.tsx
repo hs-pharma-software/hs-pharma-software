@@ -18,6 +18,7 @@ import { loadFbrSettings } from "@/lib/fbr";
 import { printDirect } from "@/lib/print";
 import { EsInvoice, type EsBusiness, type InvoiceLang } from "./EsInvoice";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
+import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
 
 export { useLoad, useAction } from "@/components/restaurant/ui";
 
@@ -397,6 +398,7 @@ export function DocModal({ docId, onClose, onChanged }: { docId: string; onClose
             <div ref={area} className="print-area mx-auto w-fit bg-white p-4 print:p-0">
               <BranchPrintLine />
               <EsInvoice doc={data.doc} items={data.items} business={business} lang={lang} paper={paper} terms={terms} />
+              <PoweredByFooter />
             </div>
           </div>
         </div>

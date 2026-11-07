@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { getSurgeryInvoice, type SurgeryInvoice } from "@/lib/repo/hospitalCare";
+import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
 
 const rs = (n: number) => Number(n).toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
@@ -84,6 +85,7 @@ export function SurgeryInvoiceModal({ invoiceId, onClose, autoPrint = false }: {
               <div className="mt-0.5 flex justify-between border-t border-neutral-800 pt-0.5 font-bold"><span>Balance</span><span className="tabular-nums">{rs(i.balance)}</span></div>
             </div>
             <p className="mt-6 text-center text-[11px] text-neutral-500">Payments are taken on the admission {inv.admission?.episode_no ?? ""}. Printed {localDateTime().replace("T", " ").slice(0, 16)}.</p>
+            <PoweredByFooter />
           </div>
           <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
             <Button onClick={onClose}>Close</Button>

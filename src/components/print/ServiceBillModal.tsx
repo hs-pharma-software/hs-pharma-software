@@ -19,6 +19,7 @@ import QRCode from "react-qr-code";
 import { LAB_VISIT_INVOICE_TYPE, ensureLabVisitToken, labVisitIdFor } from "@/lib/repo/lab";
 import { labReportUrl, publicOrigin } from "@/lib/labReportView";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
+import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
 
 /** A service bill (lab visit, banquet booking) printed with the business's
  * own invoice template and theme (General Settings > Print Templates), the
@@ -139,6 +140,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
                   </p>
                 </div>
               )}
+              <PoweredByFooter />
             </div>
           </div>
           {message && <p className={`mt-2 whitespace-pre-line text-sm ${message.ok ? "text-emerald-700" : "text-rose-600"}`}>{message.text}</p>}
