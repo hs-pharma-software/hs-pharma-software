@@ -1,3 +1,4 @@
+import { BRANCH_TAB_KEY, BRANCH_UNAVAILABLE } from "@/config/branchTables";
 /** The web version reaches the database through the server (/api/db) instead
  * of holding a database token in the page. Set NEXT_PUBLIC_DB_MODE=server in
  * Vercel to switch it on (see docs/server-layer.md). The desktop app keeps its
@@ -54,9 +55,20 @@ export function desktopToken(): string | null {
 
 /** A JSON call to the app's own server: with the session cookie on the web,
  * with the desktop's session token from the desktop app. */
+/** This tab's branch (multi-branch businesses), sent with every request; the server checks it. */
+function tabBranch(): string | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage.getItem(BRANCH_TAB_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export async function serverJson<T>(path: string, body?: unknown, method = body === undefined ? "GET" : "POST"): Promise<T> {
   const desktop = desktopViaServer();
   const headers: Record<string, string> = body === undefined ? {} : { "Content-Type": "application/json" };
+  const branch = tabBranch();
+  if (branch) headers["X-Branch"] = branch;
   const token = desktop ? desktopToken() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
   const init: RequestInit = { method, headers, body: body === undefined ? undefined : JSON.stringify(body) };
@@ -66,6 +78,11 @@ export async function serverJson<T>(path: string, body?: unknown, method = body 
     : await fetch(path, { ...init, credentials: "same-origin" });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
+    // The tab's branch was closed or unassigned: back to the login's default branch, with fresh data.
+    if (res.status === 409 && data.error === BRANCH_UNAVAILABLE && typeof window !== "undefined") {
+      try { window.sessionStorage.removeItem(BRANCH_TAB_KEY); } catch { /* storage off */ }
+      window.location.reload();
+    }
     if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/login")) {
       if (desktop) setDesktopSession(null); // keep working offline; the next login resumes sync
       else window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));

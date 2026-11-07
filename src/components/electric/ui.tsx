@@ -17,6 +17,7 @@ import { tenantsRepo } from "@/lib/repo/tenants";
 import { loadFbrSettings } from "@/lib/fbr";
 import { printDirect } from "@/lib/print";
 import { EsInvoice, type EsBusiness, type InvoiceLang } from "./EsInvoice";
+import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 
 export { useLoad, useAction } from "@/components/restaurant/ui";
 
@@ -394,6 +395,7 @@ export function DocModal({ docId, onClose, onChanged }: { docId: string; onClose
           </div>
           <div className="overflow-x-auto rounded-xl bg-neutral-100 p-3">
             <div ref={area} className="print-area mx-auto w-fit bg-white p-4 print:p-0">
+              <BranchPrintLine />
               <EsInvoice doc={data.doc} items={data.items} business={business} lang={lang} paper={paper} terms={terms} />
             </div>
           </div>

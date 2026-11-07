@@ -13,7 +13,14 @@
  * businesses, a hospital / clinic reading its linked pharmacy's products, the
  * prescription mailbox between the two businesses that share a message, the
  * caller's own settings keys plus the global keys the app reads, and the
- * tenant list of hospital pharmacies. The Super Admin is not rewritten. */
+ * tenant list of hospital pharmacies. The Super Admin is not rewritten.
+ *
+ * Branches (Enterprise, server/branches.ts): records of BRANCH_TABLES stay in
+ * the request's active branch the same way: reads see that branch only (the
+ * main branch also sees rows not yet assigned), a new record gets the active
+ * branch, and "All Branches" (active null) reads every branch the login may
+ * open but refuses changes. A record's branch is never changed here. */
+import { BRANCH_TABLES } from "../config/branchTables";
 
 export interface Scope {
   tenantId: string;
@@ -23,6 +30,8 @@ export interface Scope {
   linkedPharmacies: string[];
   /** Staff HR records limited to the caller's own (sqlPolicy.personalScope). */
   personal?: { userId: string; readOwnOnly: string[]; writeOwnOnly: Record<string, string[]> };
+  /** The request's branch (absent before migration v79 or for logins without a business). */
+  branch?: { active: string | null; accessible: string[]; mainId: string; writable: boolean };
 }
 
 /** table -> its columns (lower case). */
@@ -94,7 +103,25 @@ const ownStaff = (s: Scope) =>
 function readCondition(table: string, s: Scope, schema: Schema): string | null {
   const t = table.toLowerCase();
   const base = businessCondition(t, s, schema);
-  return base && s.personal?.readOwnOnly.includes(t) ? `(${base} AND ${ownStaff(s)})` : base;
+  const own = base && s.personal?.readOwnOnly.includes(t) ? `(${base} AND ${ownStaff(s)})` : base;
+  const branch = branchCondition(t, s, schema);
+  return own && branch ? `(${own} AND ${branch})` : own;
+}
+
+/** Rows of a branch-owned table in the request's branch (or every branch it may open, for "All Branches"). */
+function branchCondition(t: string, s: Scope, schema: Schema): string | null {
+  if (!s.branch || !BRANCH_TABLES.has(t) || !schema.get(t)?.has("branch_id")) return null;
+  const ids = s.branch.active ? [s.branch.active] : s.branch.accessible;
+  if (!ids.length) return "0";
+  const main = ids.includes(s.branch.mainId) ? " OR branch_id IS NULL" : "";
+  return `(branch_id IN (${list(ids)})${main})`;
+}
+
+/** A change to a branch-owned record needs one active, open branch. */
+function branchWritable(t: string, s: Scope, schema: Schema): void {
+  if (!s.branch || !BRANCH_TABLES.has(t) || !schema.get(t)?.has("branch_id")) return;
+  if (!s.branch.active) throw new ScopeError("All Branches is for reports. Choose one branch to record or change this.");
+  if (!s.branch.writable) throw new ScopeError("This branch is inactive or archived: its records can be viewed but not changed.");
 }
 
 function businessCondition(t: string, s: Scope, schema: Schema): string | null {
@@ -218,12 +245,14 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
     if (!target) throw new ScopeError("Unrecognised statement.");
     const table = target[1].toLowerCase();
     const cond = writeCondition(table, s, schema);
+    branchWritable(table, s, schema);
     const bodyStart = target.index + target[0].length;
     if (head === "update") {
       const setAt = topLevel(mask, bodyStart, /^SET\b/i);
       const whereAt = topLevel(mask, bodyStart, /^WHERE\b/i);
       const assignments = mask.slice(setAt ? setAt.index + 3 : bodyStart, whereAt ? whereAt.index : mask.length);
       if (/\btenant_id\s*=/i.test(assignments)) throw new ScopeError("Records cannot be moved to another business.");
+      if (/\bbranch_id\s*=/i.test(assignments)) throw new ScopeError("Records cannot be moved to another branch here; use a stock transfer.");
       if (table === "users" && /\b(role|username)\s*=/i.test(assignments)) throw new ScopeError("A login's role and username are changed by the Super Admin.");
       if (MAILBOX_OWNERS[table] && MAILBOX_OWNERS[table].some((c) => new RegExp(`\\b${c}\\s*=`, "i").test(assignments))) throw new ScopeError("The businesses of a shared record cannot be changed.");
       const own = s.personal?.writeOwnOnly[table];
@@ -254,6 +283,11 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
     const cols = splitTop(mask, open + 1, close).map(([a, b]) => mask.slice(a, b).trim().toLowerCase());
     const valuesAt = topLevel(mask, close + 1, /^VALUES\b/i);
     if (!valuesAt) throw new ScopeError("An insert must use VALUES.");
+    // A new branch record goes to the active branch (added when the insert does not name one).
+    const branchOwned = Boolean(s.branch && BRANCH_TABLES.has(table) && schema.get(table)?.has("branch_id"));
+    if (branchOwned) branchWritable(table, s, schema);
+    const addBranch = branchOwned && !cols.includes("branch_id");
+    if (addBranch) edits.push({ at: close, end: close, text: ", branch_id" });
 
     // Which column(s) must hold the caller's business, and what NULL may mean there.
     const owners = MAILBOX_OWNERS[table];
@@ -284,6 +318,13 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
       if (vals.length !== cols.length) throw new ScopeError("Columns and values do not match.");
       tuples++;
       const get = (col: string) => { const i = cols.indexOf(col); return i < 0 ? { ok: true, value: undefined } : valueAt(vals[i][0], vals[i][1]); };
+      if (branchOwned) {
+        if (addBranch) edits.push({ at: close2, end: close2, text: `, ${q(s.branch!.active!)}` });
+        else {
+          const b = get("branch_id");
+          if (!b.ok || b.value !== s.branch!.active) throw new ScopeError("A record can only be added to the branch you are working in.");
+        }
+      }
       if (tenantCol) {
         const v = get("tenant_id");
         if (!v.ok) throw new ScopeError("The business of a new record must be a plain value.");

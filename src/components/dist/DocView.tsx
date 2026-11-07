@@ -11,6 +11,7 @@ import { DEVELOPER_CREDIT } from "@/lib/printTemplates";
 import { dist, errorText } from "@/lib/dist";
 import type { DistDoc, DistDocItem } from "@/lib/dist/store";
 import { Err, Note, money, useLoad } from "./ui";
+import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 
 const TITLE: Record<string, string> = { sale: "SALES INVOICE", sale_return: "CREDIT NOTE (SALES RETURN)", purchase: "PURCHASE INVOICE", purchase_return: "PURCHASE RETURN" };
 
@@ -33,6 +34,7 @@ export function DocView({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
           <div className="overflow-x-auto rounded-xl bg-neutral-100 p-3">
             <div ref={area} className="print-area mx-auto w-[190mm] bg-white p-6 text-[12px] text-black">
+              <BranchPrintLine />
               <DocPrint doc={d} items={data.data.items} />
             </div>
           </div>

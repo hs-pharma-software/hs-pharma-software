@@ -18,6 +18,7 @@ import type { Invoice } from "@/lib/types2";
 import QRCode from "react-qr-code";
 import { LAB_VISIT_INVOICE_TYPE, ensureLabVisitToken, labVisitIdFor } from "@/lib/repo/lab";
 import { labReportUrl, publicOrigin } from "@/lib/labReportView";
+import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 
 /** A service bill (lab visit, banquet booking) printed with the business's
  * own invoice template and theme (General Settings > Print Templates), the
@@ -128,6 +129,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
         <>
           <div className="max-h-[65vh] overflow-auto">
             <div ref={areaRef} className="print-area mx-auto w-fit bg-white p-3 print:p-0">
+              <BranchPrintLine />
               <InvoicePrintLayout template={template} data={data} />
               {reportUrl && (
                 <div className="mx-auto mt-3 flex w-fit items-center gap-3 border-t border-dashed border-neutral-400 pt-3 text-neutral-800">

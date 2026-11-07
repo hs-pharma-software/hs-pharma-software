@@ -19,6 +19,7 @@ import { PraBackground } from "@/components/restaurant/PraBackground";
 import { LanguageSync } from "@/components/electric/LanguageSync";
 import { subscriptionPhase, trialState } from "@/lib/subscription";
 import { TrialNotice } from "./TrialNotice";
+import { BranchModeNotice } from "@/components/branches/BranchSwitcher";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -66,6 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-5">
           {!subscriptionLocked && trial.trial && <TrialNotice state={trial} />}
+          {!subscriptionLocked && <BranchModeNotice />}
           {!subscriptionLocked && !trial.trial && (phase.phase === "grace" || phase.phase === "ended") && (
             <div role="status" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
               {phase.phase === "grace"

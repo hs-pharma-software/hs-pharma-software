@@ -30,8 +30,13 @@ const OWNED = `(p.tenant_id = :t OR p.id IN (SELECT product_id FROM product_batc
 const named = (sqlText: string, t: string) => ({ sql: sqlText.replace(/:t/g, "?"), n: (sqlText.match(/:t/g) ?? []).length, t });
 const argsFor = (q: { n: number; t: string }) => Array.from({ length: q.n }, () => q.t);
 
-/** Sellable stock of a product for this business (unexpired batches). Arguments: tenant, [product if "?"], today. */
+/** The branch that fills online orders (Branches: "Fills online orders"; the main branch by default). `t` is the tenant id expression. */
+export const fulfillmentBranchSql = (t: string) =>
+  `COALESCE((SELECT id FROM branches WHERE tenant_id = ${t} AND online_fulfillment = 1 AND status = 'active' LIMIT 1), 'main-' || ${t})`;
+/** Sellable stock of a product for this business (unexpired batches of the fulfillment branch;
+ * other branches' stock is not offered). Arguments: tenant, [product if "?"], today. */
 export const stockSql = (product: string) => `COALESCE((SELECT SUM(b.qty) FROM product_batches b WHERE b.tenant_id = ? AND b.product_id = ${product} AND b.deleted_at IS NULL AND b.qty > 0
+  AND COALESCE(b.branch_id, 'main-' || b.tenant_id) = ${fulfillmentBranchSql("b.tenant_id")}
   AND (b.expiry_date IS NULL OR b.expiry_date = '' OR substr(b.expiry_date, 1, 10) >= ?)), 0)`;
 /** Units held by open web orders not yet billed. Arguments: tenant, [product if "?"], now. */
 export const reservedSql = (product: string) => `COALESCE((SELECT SUM(i.qty) FROM web_order_items i JOIN web_orders o ON o.id = i.order_id
@@ -319,10 +324,10 @@ export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip:
   const stmts: { sql: string; args: unknown[] }[] = [
     {
       sql: `INSERT INTO web_orders (id, tenant_id, order_no, public_token, idempotency_key, status, payment_method, payment_status, fulfillment, zone, customer_name, phone, email, address, notes,
-              subtotal, delivery_charge, total, rx_required, rx_status, reserved_until, ip, created_at, updated_at)
-            SELECT ?, ?, COALESCE(MAX(order_no), 0) + 1, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM web_orders WHERE tenant_id = ?`,
+              subtotal, delivery_charge, total, rx_required, rx_status, reserved_until, ip, created_at, updated_at, branch_id)
+            SELECT ?, ?, COALESCE(MAX(order_no), 0) + 1, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${fulfillmentBranchSql("?")} FROM web_orders WHERE tenant_id = ?`,
       args: [id, t, token, key, payment, payment === "bank" ? "awaiting_transfer" : "unpaid", fulfillment, zone, name, phone, email || null, address || null, text(input.notes, 500, "notes") || null,
-        subtotal, delivery, total, rxRequired ? 1 : 0, rxRequired ? "pending_review" : null, hold, ip, t0, t0, t],
+        subtotal, delivery, total, rxRequired ? 1 : 0, rxRequired ? "pending_review" : null, hold, ip, t0, t0, t, t, t],
     },
   ];
   // Each line goes in only if enough unreserved stock remains (other open orders count, this one does not yet).

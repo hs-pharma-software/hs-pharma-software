@@ -14,6 +14,7 @@ import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplat
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { linkOfTenant, unlinkPharmacy } from "@/lib/repo/pharmacyLink";
 import { WebsiteAdminCard } from "@/components/web/manage/WebsiteAdminCard";
+import { BranchLimitsCard } from "@/components/admin/BranchLimitsCard";
 import { SERVER_DB } from "@/lib/serverMode";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
 import {
@@ -371,6 +372,12 @@ export function TenantDetailPanel({
             </div>
           )}
         </Section>
+
+        {SERVER_DB && (
+          <Section title="Branches & Limits" hint="Takes effect at once (not with Save Changes). Branch records are never changed here.">
+            <BranchLimitsCard tenantId={tenant.id} />
+          </Section>
+        )}
 
         {SERVER_DB && (
           <Section title="Website & Domains" hint="Takes effect at once (not with Save Changes). The POS is never affected.">

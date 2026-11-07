@@ -10,6 +10,7 @@ import { praVerifyUrl } from "@/lib/restaurant/praModel";
 import { printDirect } from "@/lib/print";
 import { DEVELOPER_CREDIT } from "@/lib/printTemplates";
 import type { KotRow, OrderItemRow, OrderRow } from "@/lib/restaurant/store";
+import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 
 export const money = (n: number | null | undefined) =>
   `Rs ${(Number(n) || 0).toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -275,6 +276,7 @@ export function usePrinter() {
   const view = job ? (
     <div className="pointer-events-none fixed inset-0 -z-10 opacity-0 print:z-auto print:opacity-100">
       <div ref={area} className="print-area bg-white">
+              <BranchPrintLine />
         {job.kind === "receipt" ? <ReceiptView data={job.data} /> : <KotView data={job.data} />}
       </div>
     </div>

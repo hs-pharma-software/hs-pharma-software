@@ -24,6 +24,7 @@ import {
 import { printDirect } from "@/lib/print";
 import { measurementsRepo, measurementSummary } from "@/lib/cloth";
 import { fillWarranty, loadCompanyProfile, printedBusinessName, type CompanyProfile } from "@/lib/companyProfile";
+import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -213,6 +214,7 @@ export function InvoiceViewModal({
   const printArea =
     template && !loading ? (
       <div ref={areaRef} id="invoice-print-area" className="print-area mx-auto w-fit bg-white p-3 print:p-0">
+              <BranchPrintLine />
         <InvoicePrintLayout template={contractorTemplate(template, inv.invoice_type)} data={printData} />
       </div>
     ) : null;

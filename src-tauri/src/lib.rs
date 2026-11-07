@@ -1465,6 +1465,299 @@ fn schema_sql_v78() -> &'static str {
     "#
 }
 
+/// Multi-branch (Enterprise): branches, users per branch, capacity requests,
+/// audit, stock transfers; branch_id on branch-owned records (existing rows go
+/// to each business's main branch); document numbers per branch.
+fn schema_sql_v79() -> &'static str {
+    r#"
+    -- Multi-branch (Enterprise). One business = one tenant; its branches are rows here.
+    -- The main branch of every business has the id 'main-' || tenant id, so existing
+    -- records are assigned to it below and new businesses get it on first use.
+    CREATE TABLE IF NOT EXISTS branches (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        code TEXT NOT NULL,
+        name TEXT NOT NULL,
+        is_main INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        manager_user_id TEXT,
+        hours TEXT,
+        settings TEXT,
+        online_fulfillment INTEGER NOT NULL DEFAULT 0,
+        capacity_released INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_branches_code ON branches (tenant_id, code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_branches_main ON branches (tenant_id) WHERE is_main = 1;
+    CREATE TABLE IF NOT EXISTS branch_users (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL REFERENCES branches(id),
+        user_id TEXT NOT NULL REFERENCES users(id),
+        is_manager INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_branch_users ON branch_users (branch_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_branch_users_user ON branch_users (user_id);
+    CREATE TABLE IF NOT EXISTS branch_capacity_requests (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        requested_by TEXT,
+        extra INTEGER NOT NULL,
+        current_limit INTEGER,
+        reason TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        approved_limit INTEGER,
+        decided_by TEXT,
+        decided_at TEXT,
+        decision_note TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_branch_capreq_tenant ON branch_capacity_requests (tenant_id, status);
+    CREATE TABLE IF NOT EXISTS branch_audit (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT,
+        actor_user_id TEXT,
+        actor_role TEXT,
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_branch_audit_tenant ON branch_audit (tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS branch_transfers (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        transfer_no INTEGER NOT NULL,
+        from_branch_id TEXT NOT NULL REFERENCES branches(id),
+        to_branch_id TEXT NOT NULL REFERENCES branches(id),
+        status TEXT NOT NULL DEFAULT 'in_transit',
+        note TEXT,
+        idempotency_key TEXT,
+        created_by TEXT,
+        dispatched_at TEXT NOT NULL,
+        received_by TEXT,
+        received_at TEXT,
+        receipt_note TEXT,
+        cancelled_by TEXT,
+        cancelled_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_branch_transfers_no ON branch_transfers (tenant_id, transfer_no);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_branch_transfers_idem ON branch_transfers (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS branch_transfer_items (
+        id TEXT PRIMARY KEY,
+        transfer_id TEXT NOT NULL REFERENCES branch_transfers(id),
+        tenant_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        source_batch_id TEXT NOT NULL,
+        batch_no TEXT,
+        expiry_date TEXT,
+        purchase_price REAL,
+        qty REAL NOT NULL,
+        received_qty REAL,
+        dest_batch_id TEXT,
+        note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_branch_transfer_items ON branch_transfer_items (transfer_id);
+    -- Branch allowance: plan default (Enterprise 5, others 1), Super Admin override or unlimited.
+    ALTER TABLE subscription_plans ADD COLUMN branch_limit INTEGER;
+    ALTER TABLE tenants ADD COLUMN branch_limit INTEGER;
+    ALTER TABLE tenants ADD COLUMN branch_unlimited INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tenants ADD COLUMN multi_branch_disabled INTEGER NOT NULL DEFAULT 0;
+    UPDATE subscription_plans SET branch_limit = 5 WHERE branch_limit IS NULL AND UPPER(name) LIKE '%ENTERPRISE%';
+    INSERT OR IGNORE INTO branches (id, tenant_id, code, name, is_main, status, address, phone, email, online_fulfillment, created_at, updated_at)
+        SELECT 'main-' || id, id, 'MAIN', 'Main Branch', 1, 'active', address, phone, email, 1, '2026-11-07T12:00:00.000Z', '2026-11-07T12:00:00.000Z' FROM tenants;
+    -- Branch-owned records: every existing row goes to its business's main branch.
+    ALTER TABLE product_batches ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_product_batches_branch ON product_batches (tenant_id, branch_id);
+    UPDATE product_batches SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE product_batch_expiry_changes ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_product_batch_expiry_changes_branch ON product_batch_expiry_changes (tenant_id, branch_id);
+    UPDATE product_batch_expiry_changes SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE invoices ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_invoices_branch ON invoices (tenant_id, branch_id);
+    UPDATE invoices SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE invoice_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_branch ON invoice_items (tenant_id, branch_id);
+    UPDATE invoice_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE orders ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders (tenant_id, branch_id);
+    UPDATE orders SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE order_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_order_items_branch ON order_items (tenant_id, branch_id);
+    UPDATE order_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE purchases ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_purchases_branch ON purchases (tenant_id, branch_id);
+    UPDATE purchases SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE purchase_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_branch ON purchase_items (tenant_id, branch_id);
+    UPDATE purchase_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE purchase_drafts ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_purchase_drafts_branch ON purchase_drafts (tenant_id, branch_id);
+    UPDATE purchase_drafts SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE expenses ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_expenses_branch ON expenses (tenant_id, branch_id);
+    UPDATE expenses SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE revenues ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_revenues_branch ON revenues (tenant_id, branch_id);
+    UPDATE revenues SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE cash_register_entries ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_cash_register_entries_branch ON cash_register_entries (tenant_id, branch_id);
+    UPDATE cash_register_entries SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE bank_ledger_entries ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_bank_ledger_entries_branch ON bank_ledger_entries (tenant_id, branch_id);
+    UPDATE bank_ledger_entries SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE ledger_adjustments ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_ledger_adjustments_branch ON ledger_adjustments (tenant_id, branch_id);
+    UPDATE ledger_adjustments SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE audits ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_audits_branch ON audits (tenant_id, branch_id);
+    UPDATE audits SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE audit_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_audit_items_branch ON audit_items (tenant_id, branch_id);
+    UPDATE audit_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE financial_closings ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_financial_closings_branch ON financial_closings (tenant_id, branch_id);
+    UPDATE financial_closings SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE mobile_imei_units ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_mobile_imei_units_branch ON mobile_imei_units (tenant_id, branch_id);
+    UPDATE mobile_imei_units SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE rest_tables ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_rest_tables_branch ON rest_tables (tenant_id, branch_id);
+    UPDATE rest_tables SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE rest_orders ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_rest_orders_branch ON rest_orders (tenant_id, branch_id);
+    UPDATE rest_orders SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE rest_order_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_rest_order_items_branch ON rest_order_items (tenant_id, branch_id);
+    UPDATE rest_order_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE rest_kots ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_rest_kots_branch ON rest_kots (tenant_id, branch_id);
+    UPDATE rest_kots SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE rest_pra_submissions ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_rest_pra_submissions_branch ON rest_pra_submissions (tenant_id, branch_id);
+    UPDATE rest_pra_submissions SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE es_docs ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_es_docs_branch ON es_docs (tenant_id, branch_id);
+    UPDATE es_docs SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE es_doc_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_es_doc_items_branch ON es_doc_items (tenant_id, branch_id);
+    UPDATE es_doc_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE es_payments ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_es_payments_branch ON es_payments (tenant_id, branch_id);
+    UPDATE es_payments SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE es_warranty_claims ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_es_warranty_claims_branch ON es_warranty_claims (tenant_id, branch_id);
+    UPDATE es_warranty_claims SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE clinic_appointments ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_clinic_appointments_branch ON clinic_appointments (tenant_id, branch_id);
+    UPDATE clinic_appointments SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE clinic_consultations ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_clinic_consultations_branch ON clinic_consultations (tenant_id, branch_id);
+    UPDATE clinic_consultations SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE clinic_prescriptions ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_clinic_prescriptions_branch ON clinic_prescriptions (tenant_id, branch_id);
+    UPDATE clinic_prescriptions SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE clinic_orders ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_clinic_orders_branch ON clinic_orders (tenant_id, branch_id);
+    UPDATE clinic_orders SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE lab_visits ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_lab_visits_branch ON lab_visits (tenant_id, branch_id);
+    UPDATE lab_visits SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_lab_requests ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_lab_requests_branch ON hospital_lab_requests (tenant_id, branch_id);
+    UPDATE hospital_lab_requests SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE banquet_halls ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_banquet_halls_branch ON banquet_halls (tenant_id, branch_id);
+    UPDATE banquet_halls SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE banquet_bookings ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_banquet_bookings_branch ON banquet_bookings (tenant_id, branch_id);
+    UPDATE banquet_bookings SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE banquet_booking_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_banquet_booking_items_branch ON banquet_booking_items (tenant_id, branch_id);
+    UPDATE banquet_booking_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE banquet_payments ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_banquet_payments_branch ON banquet_payments (tenant_id, branch_id);
+    UPDATE banquet_payments SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_episodes ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_episodes_branch ON hospital_episodes (tenant_id, branch_id);
+    UPDATE hospital_episodes SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_charges ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_charges_branch ON hospital_charges (tenant_id, branch_id);
+    UPDATE hospital_charges SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_payments ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_payments_branch ON hospital_payments (tenant_id, branch_id);
+    UPDATE hospital_payments SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_lab_orders ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_lab_orders_branch ON hospital_lab_orders (tenant_id, branch_id);
+    UPDATE hospital_lab_orders SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_imaging_orders_branch ON hospital_imaging_orders (tenant_id, branch_id);
+    UPDATE hospital_imaging_orders SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_cash_closings ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_cash_closings_branch ON hospital_cash_closings (tenant_id, branch_id);
+    UPDATE hospital_cash_closings SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_vitals ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_vitals_branch ON hospital_vitals (tenant_id, branch_id);
+    UPDATE hospital_vitals SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_mar_entries ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_mar_entries_branch ON hospital_mar_entries (tenant_id, branch_id);
+    UPDATE hospital_mar_entries SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_surgery_bookings ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_surgery_bookings_branch ON hospital_surgery_bookings (tenant_id, branch_id);
+    UPDATE hospital_surgery_bookings SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE hospital_er_triage ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_hospital_er_triage_branch ON hospital_er_triage (tenant_id, branch_id);
+    UPDATE hospital_er_triage SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE dist_docs ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_dist_docs_branch ON dist_docs (tenant_id, branch_id);
+    UPDATE dist_docs SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE dist_doc_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_dist_doc_items_branch ON dist_doc_items (tenant_id, branch_id);
+    UPDATE dist_doc_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE dist_payments ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_dist_payments_branch ON dist_payments (tenant_id, branch_id);
+    UPDATE dist_payments SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE dist_bookings ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_dist_bookings_branch ON dist_bookings (tenant_id, branch_id);
+    UPDATE dist_bookings SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE dist_booking_items ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_dist_booking_items_branch ON dist_booking_items (tenant_id, branch_id);
+    UPDATE dist_booking_items SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    ALTER TABLE web_orders ADD COLUMN branch_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_web_orders_branch ON web_orders (tenant_id, branch_id);
+    UPDATE web_orders SET branch_id = 'main-' || tenant_id WHERE branch_id IS NULL AND tenant_id IS NOT NULL;
+    -- Document numbers run per branch.
+    DROP INDEX IF EXISTS ux_rest_orders_no;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_orders_branch_no ON rest_orders (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), order_no);
+    DROP INDEX IF EXISTS ux_rest_orders_invoice;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_orders_branch_invoice ON rest_orders (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), invoice_no) WHERE invoice_no IS NOT NULL;
+    DROP INDEX IF EXISTS ux_rest_pra_usin;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_rest_pra_branch_usin ON rest_pra_submissions (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), usin, invoice_type);
+    DROP INDEX IF EXISTS ux_es_docs_no;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_es_docs_branch_no ON es_docs (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), doc_type, doc_no);
+    DROP INDEX IF EXISTS ux_dist_bookings_no;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_bookings_branch_no ON dist_bookings (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), booking_no);
+    DROP INDEX IF EXISTS ux_dist_docs_no;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_docs_branch_no ON dist_docs (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), doc_type, doc_no);
+    DROP INDEX IF EXISTS ux_hosp_episode_no;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_episode_branch_no ON hospital_episodes (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), episode_no);
+    DROP INDEX IF EXISTS ux_hosp_labreq_labno;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_labreq_branch_labno ON hospital_lab_requests (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), lab_no);
+    DROP INDEX IF EXISTS ux_hosp_labreq_invoice;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hosp_labreq_branch_invoice ON hospital_lab_requests (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), invoice_no);
+    DROP INDEX IF EXISTS ux_cash_closing_no;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_cash_closing_branch_no ON hospital_cash_closings (tenant_id, COALESCE(branch_id, 'main-' || tenant_id), closing_no);
+    "#
+}
+
 /// Plans for the website's pricing page (business types, grace period, add-ons
 /// such as website, online store and custom domain) and the Super Admin mail
 /// section (mailboxes on mavin.pk and their messages). Additions only.
@@ -3948,6 +4241,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 78,
             description: "plan_annual_style_fbr_addon",
             sql: schema_sql_v78(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 79,
+            description: "multi_branch",
+            sql: schema_sql_v79(),
             kind: MigrationKind::Up,
         },
     ]

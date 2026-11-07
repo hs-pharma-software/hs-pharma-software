@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/authStore";
 import { triggerManualSync } from "@/components/sync/SyncProvider";
 import { UpdateChecker } from "./UpdateChecker";
 import { ProfilePanel } from "./ProfilePanel";
+import { BranchSwitcher } from "@/components/branches/BranchSwitcher";
 
 export function Topbar() {
   const online = useAppStore((s) => s.online);
@@ -46,6 +47,7 @@ export function Topbar() {
 
       {/* Tight on a phone so every control fits in 390px. */}
       <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+        <BranchSwitcher />
         <LanguageToggle />
         <div className="relative">
           <motion.button

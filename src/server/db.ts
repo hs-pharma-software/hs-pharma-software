@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
 import { verifySession, requestToken, SESSION_HOURS } from "./session";
 import { analyzeSql, authorize, personalScope, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
-import { scopeStatement, ScopeError, type Schema } from "./tenantScope";
+import { scopeStatement, ScopeError, type Schema, type Scope } from "./tenantScope";
 import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
@@ -104,7 +104,7 @@ export interface ClientStatement { sql: string; args?: unknown[] }
 const MAX_STATEMENTS = 200;
 
 /** Checks every statement, then runs them (several together as one atomic batch). */
-export async function runForCaller(caller: Caller, statements: ClientStatement[], batch: boolean, ip: string | null) {
+export async function runForCaller(caller: Caller, statements: ClientStatement[], batch: boolean, ip: string | null, branch?: Scope["branch"]) {
   if (!Array.isArray(statements) || statements.length === 0) throw new HttpError(400, "No statement.");
   if (statements.length > MAX_STATEMENTS) throw new HttpError(400, "Too many statements in one request.");
   const { names: known, schema } = await schemaInfo();
@@ -119,7 +119,7 @@ export async function runForCaller(caller: Caller, statements: ClientStatement[]
     if (caller.role !== "super_admin") {
       try {
         sql = scopeStatement(s.sql, s.args ?? [], {
-          tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [], personal: personalScope(caller),
+          tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [], personal: personalScope(caller), branch,
         }, schema);
       } catch (e) {
         if (e instanceof ScopeError) throw new HttpError(403, e.message);

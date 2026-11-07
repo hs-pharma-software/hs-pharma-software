@@ -358,6 +358,7 @@ const MIGRATIONS = [
   { version: 76, label: 'Website builder and online store (additions only)', statements: rustSchemaStatements(76) },
   { version: 77, label: 'Plans: business types, grace, add-ons; Super Admin mail (additions only)', statements: rustSchemaStatements(77) },
   { version: 78, label: 'Plans: yearly option and discount, description style; FBR add-on', statements: rustSchemaStatements(78) },
+  { version: 79, label: 'Multi-branch: branches, capacity, transfers; branch_id on branch records (existing rows to the main branch)', statements: rustSchemaStatements(79) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,
