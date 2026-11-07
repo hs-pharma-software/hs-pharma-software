@@ -21,3 +21,18 @@ export function subscriptionPhase(expiresAt: string | null | undefined, graceDay
   if (now <= until) return { phase: "grace", endedOn: day(end), graceUntil: day(until), daysLeft: Math.max(0, Math.ceil((until.getTime() - now.getTime()) / 86_400_000)) };
   return { phase: "ended", endedOn: day(end), graceUntil: day(until) };
 }
+
+/** Free trial (demo account): the plan's features for TRIAL_DAYS, then the
+ * business pauses until the owner confirms the subscription. */
+export const TRIAL_DAYS = 3;
+export const TRIAL_STATUS = "trial";
+
+export type TrialState = { trial: false } | { trial: true; ended: boolean; endsOn: string; daysLeft: number };
+
+export function trialState(status: string | null | undefined, expiresAt: string | null | undefined, now = new Date()): TrialState {
+  if (status !== TRIAL_STATUS) return { trial: false };
+  const end = expiresAt ? new Date(expiresAt) : null;
+  if (!end || Number.isNaN(end.getTime())) return { trial: true, ended: true, endsOn: "", daysLeft: 0 };
+  const ms = end.getTime() - now.getTime();
+  return { trial: true, ended: ms <= 0, endsOn: end.toISOString().slice(0, 10), daysLeft: Math.max(0, Math.ceil(ms / 86_400_000)) };
+}

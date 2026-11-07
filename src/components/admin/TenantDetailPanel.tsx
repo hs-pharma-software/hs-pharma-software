@@ -158,7 +158,7 @@ export function TenantDetailPanel({
           <div className="flex items-center gap-2">
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                tenant.subscription_status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                tenant.subscription_status === "active" ? "bg-emerald-100 text-emerald-700" : tenant.subscription_status === "trial" ? "bg-sky-100 text-sky-800" : "bg-rose-100 text-rose-700"
               }`}
             >
               {tenant.subscription_status}

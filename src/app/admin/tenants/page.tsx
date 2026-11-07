@@ -15,6 +15,7 @@ import { nowIso } from "@/lib/id";
 import type { Tenant, SubscriptionPlan } from "@/lib/types2";
 import { BUSINESS_TYPES, FAMILY_LABELS, businessType } from "@/config/businessTypes";
 import { annualPrice, offersAnnual } from "@/lib/planPricing";
+import { TRIAL_DAYS, TRIAL_STATUS, trialState } from "@/lib/subscription";
 
 function addDaysIso(days: number): string {
   const d = new Date();
@@ -47,12 +48,20 @@ export default function TenantsPage() {
 
   async function toggleSuspend(t: Tenant) {
     await tenantsRepo.update(t.id, {
-      subscription_status: t.subscription_status === "active" ? "suspended" : "active",
+      subscription_status: t.subscription_status === "active" || t.subscription_status === TRIAL_STATUS ? "suspended" : "active",
     });
     void reload();
   }
 
-  /** Renews for one plan term, or for a year at the plan's yearly price. */
+  /** A trial gets TRIAL_DAYS more, counted from today or from its current end, whichever is later. */
+  async function extendTrial(t: Tenant) {
+    const end = t.subscription_expires_at ? new Date(t.subscription_expires_at).getTime() : 0;
+    const from = Math.max(Date.now(), end);
+    await tenantsRepo.update(t.id, { subscription_status: TRIAL_STATUS, subscription_expires_at: new Date(from + TRIAL_DAYS * 86_400_000).toISOString() });
+    void reload();
+  }
+
+  /** Renews for one plan term, or for a year at the plan's yearly price (a trial becomes paid). */
   async function renew(t: Tenant, yearly = false) {
     const plan = plans.find((p) => p.id === t.subscription_plan_id);
     if (yearly && plan) {
@@ -100,17 +109,17 @@ export default function TenantsPage() {
     { header: "Plan", render: (t) => planName(t.subscription_plan_id) },
     {
       header: "Status",
-      render: (t) => (
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            t.subscription_status === "active"
-              ? "bg-emerald-100 text-emerald-700"
-              : "bg-rose-100 text-rose-700"
-          }`}
-        >
-          {t.subscription_status}
-        </span>
-      ),
+      render: (t) => {
+        const tr = trialState(t.subscription_status, t.subscription_expires_at);
+        if (tr.trial) {
+          return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tr.ended ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>{tr.ended ? "trial ended" : `trial · ${tr.daysLeft}d left`}</span>;
+        }
+        return (
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${t.subscription_status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+            {t.subscription_status}
+          </span>
+        );
+      },
     },
     {
       header: "Expires On",
@@ -121,13 +130,16 @@ export default function TenantsPage() {
       render: (t) => (
         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           <button type="button" onClick={() => void renew(t)} className="text-emerald-600 hover:underline">
-            Renew
+            {t.subscription_status === TRIAL_STATUS ? "Convert to paid" : "Renew"}
           </button>
+          {t.subscription_status === TRIAL_STATUS && (
+            <button type="button" onClick={() => void extendTrial(t)} className="text-sky-700 hover:underline">Extend trial</button>
+          )}
           {(() => { const p = plans.find((x) => x.id === t.subscription_plan_id); return p && offersAnnual(p) ? (
             <button type="button" onClick={() => void renew(t, true)} className="text-emerald-700 hover:underline" title={`Yearly, ${p.annual_discount_pct ?? 20}% off`}>Renew 1 year</button>
           ) : null; })()}
           <button type="button" onClick={() => void toggleSuspend(t)} className="text-amber-600 hover:underline">
-            {t.subscription_status === "active" ? "Suspend" : "Activate"}
+            {t.subscription_status === "active" || t.subscription_status === TRIAL_STATUS ? "Suspend" : "Activate"}
           </button>
         </div>
       ),

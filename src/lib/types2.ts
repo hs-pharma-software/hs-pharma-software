@@ -258,7 +258,8 @@ export interface FinancialClosing extends TenantRow {
 // (a `tenants` row IS a tenant; `users.tenant_id` is nullable for the Super
 // Admin) \u2014 so they extend plain `BaseRow`, not `TenantRow`.
 
-export type SubscriptionStatus = "active" | "suspended" | "expired";
+/** "trial": a free trial (demo account) until its end date, then paused until the owner confirms. */
+export type SubscriptionStatus = "active" | "trial" | "suspended" | "expired";
 export type UserRole = "super_admin" | "owner" | "staff";
 
 export interface SubscriptionPlan extends BaseRow {

@@ -8,6 +8,7 @@ import { tenantsRepo } from "@/lib/repo/tenants";
 import { createUser, AuthError } from "@/lib/auth";
 import { nowIso } from "@/lib/id";
 import type { Tenant, SubscriptionPlan } from "@/lib/types2";
+import { TRIAL_DAYS } from "@/lib/subscription";
 import { BUSINESS_TYPES, FAMILY_LABELS, businessType, defaultModulesFor } from "@/config/businessTypes";
 import { parseAllowedModules } from "@/lib/repo/subscriptionPlans";
 
@@ -41,6 +42,7 @@ export function TenantFormModal({
   const [loginPassword, setLoginPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [trial, setTrial] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,9 +76,10 @@ export function TenantFormModal({
           allowed_modules: JSON.stringify(defaultModulesFor(type, plan ? parseAllowedModules(plan) : [])),
           fbr_allowed: 1,
           print_templates_editable: 1,
-          subscription_status: "active",
+          // A free trial runs TRIAL_DAYS; the owner confirms to start the plan's term.
+          subscription_status: trial ? "trial" : "active",
           subscription_started_at: nowIso(),
-          subscription_expires_at: addDaysIso(plan?.duration_days ?? 30),
+          subscription_expires_at: addDaysIso(trial ? TRIAL_DAYS : plan?.duration_days ?? 30),
           is_active: 1,
         });
         await createUser({
@@ -149,6 +152,16 @@ export function TenantFormModal({
             <Input type="number" min="0" max="100" step="0.1" value={mrpDiscountPct} onChange={(e) => setMrpDiscountPct(e.target.value)} />
           </Field>
         </div>
+
+        {!isEdit && (
+          <label className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={trial} onChange={(e) => setTrial(e.target.checked)} />
+            <span>
+              <b>Demo account: {TRIAL_DAYS}-day free trial</b>
+              <span className="block text-xs text-neutral-600">The business uses its plan for {TRIAL_DAYS} days. When the owner confirms the subscription, the plan&apos;s full term starts; if not, the account pauses after the trial (records are kept).</span>
+            </span>
+          </label>
+        )}
 
         {!isEdit && (
           <div className="rounded-xl border border-neutral-200 p-4">

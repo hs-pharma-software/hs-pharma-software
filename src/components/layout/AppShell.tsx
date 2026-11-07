@@ -17,7 +17,8 @@ import { useAppStore } from "@/store/appStore";
 import { moduleKeyForPath, hasModuleAccess } from "@/lib/moduleAccess";
 import { PraBackground } from "@/components/restaurant/PraBackground";
 import { LanguageSync } from "@/components/electric/LanguageSync";
-import { subscriptionPhase } from "@/lib/subscription";
+import { subscriptionPhase, trialState } from "@/lib/subscription";
+import { TrialNotice } from "./TrialNotice";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,7 +30,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Ended plans: a reminder during the grace period; locked after it only when the platform enforces expiry.
   const phase = currentTenant ? subscriptionPhase(currentTenant.subscriptionExpiresAt, currentTenant.graceDays) : { phase: "none" as const };
   const expiredLock = phase.phase === "ended" && Boolean(currentTenant?.enforceExpiry);
-  const subscriptionLocked = Boolean(currentTenant) && (currentTenant?.subscriptionStatus !== "active" || expiredLock);
+  // Free trial: full plan access until it ends, then paused until the owner confirms.
+  const trial = trialState(currentTenant?.subscriptionStatus, currentTenant?.subscriptionExpiresAt);
+  const trialEnded = trial.trial && trial.ended;
+  const subscriptionLocked = Boolean(currentTenant) && ((currentTenant?.subscriptionStatus !== "active" && !trial.trial) || expiredLock || trialEnded);
 
   // Close mobile sidebar on navigation.
   useEffect(() => {
@@ -61,14 +65,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto p-4 md:p-5">
-          {!subscriptionLocked && (phase.phase === "grace" || phase.phase === "ended") && (
+          {!subscriptionLocked && trial.trial && <TrialNotice state={trial} />}
+          {!subscriptionLocked && !trial.trial && (phase.phase === "grace" || phase.phase === "ended") && (
             <div role="status" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
               {phase.phase === "grace"
                 ? `Your plan ended on ${phase.endedOn}. Renew within ${phase.daysLeft} day${phase.daysLeft === 1 ? "" : "s"} (by ${phase.graceUntil}) to keep using MAVIN.pk without interruption.`
                 : `Your plan ended on ${phase.endedOn}. Please renew to keep using MAVIN.pk.`}
             </div>
           )}
-          {subscriptionLocked ? (
+          {trialEnded && trial.trial ? (
+            <TrialNotice state={trial} />
+          ) : subscriptionLocked ? (
             <div className="mx-auto mt-10 max-w-md rounded-2xl border border-amber-300 bg-amber-50 p-6 text-center">
               <p className="font-serif text-lg text-amber-900">{expiredLock ? "Subscription ended" : `Subscription ${currentTenant?.subscriptionStatus}`}</p>
               <p className="mt-2 text-sm text-amber-800">
