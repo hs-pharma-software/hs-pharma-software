@@ -4,6 +4,7 @@ import { withSeoMeta } from "@/config/seoMeta";
 import { BUSINESS_TYPES, businessType } from "@/config/businessTypes";
 import { CtaLink, PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 import { sqlForServer } from "@/server/subSupersApi";
+import { ReadMore } from "@/components/site/ReadMore";
 import { annualPrice, descriptionClasses, offersAnnual, parseDescriptionStyle, termLabel } from "@/lib/planPricing";
 
 export const metadata: Metadata = withSeoMeta("/pricing", {
@@ -78,30 +79,31 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       )}
       <Section>
         {shownPlans.length ? (
-          <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid auto-rows-fr items-stretch gap-4 md:grid-cols-2 lg:grid-cols-3">
             {shownPlans.map((p) => (
-              <li key={p.id} className="flex flex-col rounded-xl border border-slate-200 bg-white p-6">
+              // Same width and height in each row; price and button at the same place on every card.
+              <li key={p.id} className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-6">
                 <h2 className="text-lg font-semibold text-[#0b2a6b]">{p.name}</h2>
-                {p.tagline && <p className="mt-1 text-sm text-slate-600">{p.tagline}</p>}
-                {p.description && <p className={`mt-2 whitespace-pre-line text-slate-600 ${descriptionClasses(parseDescriptionStyle(p.descStyle))}`}>{p.description}</p>}
-                {!p.price ? (
-                  <p className="mt-4 text-2xl font-bold text-slate-900">Price on request</p>
-                ) : yearly && p.annual ? (() => { const a = annualPrice(p.price, p.days, p.annualPct); return (
-                  <div className="mt-4">
-                    <p><span className="text-3xl font-bold text-slate-900">{rs(a.price)}</span><span className="ml-1 text-sm text-slate-500">per year</span></p>
-                    <p className="mt-1 text-sm"><span className="text-slate-400 line-through">{rs(a.full)}</span> <span className="font-semibold text-emerald-700">Save {rs(a.saving)} ({a.pct}% off)</span></p>
-                  </div>
-                ); })() : (
-                  <p className="mt-4"><span className="text-3xl font-bold text-slate-900">{rs(p.price)}</span><span className="ml-1 text-sm text-slate-500">{termLabel(p.days)}</span>
-                    {p.annual && !yearly && <span className="mt-1 block text-xs text-emerald-700">or {rs(annualPrice(p.price, p.days, p.annualPct).price)} per year ({p.annualPct}% off)</span>}</p>
-                )}
-                <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-700">
-                  {p.features.map((x) => <li key={x}>• {x}</li>)}
-                  {p.staff > 0 && <li>• {p.staff} staff login{p.staff === 1 ? "" : "s"}</li>}
-                  {p.grace > 0 && <li>• {p.grace}-day grace period after the renewal date</li>}
-                </ul>
+                <p className="mt-1 min-h-10 text-sm text-slate-600">{p.tagline ?? ""}</p>
+                <div className="mt-3 min-h-[4.5rem]">
+                  {!p.price ? (
+                    <p className="text-2xl font-bold text-slate-900">Price on request</p>
+                  ) : yearly && p.annual ? (() => { const y = annualPrice(p.price, p.days, p.annualPct); return (
+                    <>
+                      <p><span className="text-3xl font-bold text-slate-900">{rs(y.price)}</span><span className="ml-1 text-sm text-slate-500">per year</span></p>
+                      <p className="mt-1 text-sm"><span className="text-slate-400 line-through">{rs(y.full)}</span> <span className="font-semibold text-emerald-700">Save {rs(y.saving)} ({y.pct}% off)</span></p>
+                    </>
+                  ); })() : (
+                    <p><span className="text-3xl font-bold text-slate-900">{rs(p.price)}</span><span className="ml-1 text-sm text-slate-500">{termLabel(p.days)}</span>
+                      {p.annual && !yearly && <span className="mt-1 block text-xs text-emerald-700">or {rs(annualPrice(p.price, p.days, p.annualPct).price)} per year ({p.annualPct}% off)</span>}</p>
+                  )}
+                </div>
+                <div className="mt-4"><CtaLink href={at(base, `/contact?topic=pricing&plan=${encodeURIComponent(p.name)}${yearly && p.annual ? "&billing=yearly" : ""}`)}>{p.price ? "Get Started" : "Get a Quote"}</CtaLink></div>
+                <div className="mt-5 flex-1 border-t border-slate-100 pt-4">
+                  {p.description && <ReadMore text={p.description} lines={6} className={`text-slate-600 ${descriptionClasses(parseDescriptionStyle(p.descStyle))}`} />}
+                  {p.features.length > 0 && <ul className="mt-3 space-y-2 text-sm text-slate-700">{p.features.map((x) => <li key={x}>• {x}</li>)}</ul>}
+                </div>
                 <p className="mt-4 text-xs text-slate-500">{p.types.length ? `For: ${p.types.map((t) => businessType(t).label).join(", ")}` : "For every business type"}</p>
-                <div className="mt-5"><CtaLink href={at(base, `/contact?topic=pricing&plan=${encodeURIComponent(p.name)}${yearly && p.annual ? "&billing=yearly" : ""}`)}>{p.price ? "Get Started" : "Get a Quote"}</CtaLink></div>
               </li>
             ))}
           </ul>
