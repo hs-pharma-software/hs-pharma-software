@@ -153,6 +153,13 @@ export default function InvoicesPage() {
     }
   }
 
+  /** "7 Nov" this year, "7 Nov 2025" otherwise (phone list). */
+  const shortDate = (d: string) => {
+    const x = new Date(`${d.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(x.getTime())) return d;
+    return x.toLocaleDateString("en-PK", { day: "numeric", month: "short", ...(x.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }) });
+  };
+
   const columns: Column<InvoiceListRow>[] = [
     { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
     { header: "Date", render: (r) => r.date },
@@ -265,7 +272,31 @@ export default function InvoicesPage() {
           Run inside the desktop app to manage invoices.
         </p>
       ) : (
-        <DataTable columns={columns} rows={rows} onRowClick={(r) => void openView(r)} />
+        <DataTable
+          columns={columns}
+          rows={rows}
+          onRowClick={(r) => void openView(r)}
+          mobile={(r) => ({
+            title: <>#{r.invoice_no ?? "—"} <span className="font-normal text-neutral-600">· {r.customer_name}</span></>,
+            meta: (
+              <>
+                <span>{shortDate(r.date)}</span>
+                {isServiceBill(r) && <span className="rounded-full bg-violet-100 px-1.5 text-[10px] font-medium text-violet-700">{isSurgery(r) ? "Surgery" : "Clinic visit"}</span>}
+                {r.balance > 0.005 && <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">Due Rs {r.balance.toFixed(2)}</span>}
+                {r.fbr_invoice_no && <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] font-medium text-emerald-800">FBR</span>}
+              </>
+            ),
+            value: `Rs ${r.total.toFixed(2)}`,
+            actions: [
+              { label: "View", onClick: () => void openView(r) },
+              ...(canEdit && !isServiceBill(r) ? [{ label: "Edit", onClick: () => void openEdit(r) }] : []),
+              ...(isContractor && !isServiceBill(r) ? [{ label: "Clone", onClick: () => void openClone(r) }] : []),
+              ...(canEdit && r.balance > 0.005 ? [{ label: `Mark paid (Rs ${r.balance.toFixed(2)})`, onClick: () => setPayingRow(r) }] : []),
+              { label: "Print", onClick: () => void printInvoice(r), disabled: !!printing },
+              ...(canDelete && !isServiceBill(r) ? [{ label: "Delete", onClick: () => void handleDelete(r), danger: true, disabled: deletingId === r.id }] : []),
+            ],
+          })}
+        />
       )}
 
 

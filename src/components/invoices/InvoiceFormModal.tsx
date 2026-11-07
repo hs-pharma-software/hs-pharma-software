@@ -1190,7 +1190,7 @@ export function InvoiceFormModal({
 
         {error && <p className="text-sm text-rose-600">{error}</p>}
 
-        <div className="sticky -bottom-4 z-10 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-4 py-3 shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.15)] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:shadow-none">
+        <div className="sticky -bottom-3 z-10 -mx-3 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-3 py-2.5 shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.15)] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:shadow-none">
           <span className="mr-auto text-sm font-semibold tabular-nums text-neutral-900 sm:hidden">Payable {payable.toFixed(2)}</span>
           <Button type="button" onClick={onClose}>
             Reset

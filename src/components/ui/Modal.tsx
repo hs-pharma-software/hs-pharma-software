@@ -87,7 +87,7 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
         className={`flex max-h-[94dvh] w-full ${width} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl ring-1 ring-black/5 outline-none sm:max-h-[90vh] sm:rounded-2xl`}
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2 sm:px-5 sm:py-3.5">
           <h2 id={`${id}-title`} className="min-w-0 truncate text-base font-semibold tracking-tight text-neutral-900">{title}</h2>
           <motion.button
             type="button"
@@ -101,7 +101,7 @@ export function Modal({
             <X size={15} />
           </motion.button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-5">{children}</div>
       </motion.div>
     </motion.div>
   );

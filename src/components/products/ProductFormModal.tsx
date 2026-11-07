@@ -691,16 +691,18 @@ export function ProductFormModal({
           onUndo={(p, sug) => void undoCategorySuggestion(p, sug)}
         />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Max Stock Quantity (Base Unit)">
             <Input type="number" min="0" step="any" value={maxStockQty} onChange={(e) => setMaxStockQty(e.target.value)} />
           </Field>
           <Field label="Stock Expiry Limit (No. Of Days)">
             <Input type="number" min="0" step="1" value={expiryLimitDays} onChange={(e) => setExpiryLimitDays(e.target.value)} />
           </Field>
-          <Field label="Location">
-            <Input value={location} onChange={(e) => setLocation(e.target.value)} />
-          </Field>
+          <div className="col-span-2 sm:col-span-1">
+            <Field label="Location">
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} />
+            </Field>
+          </div>
         </div>
 
         {/* FBR / Tax Details */}
@@ -839,7 +841,7 @@ export function ProductFormModal({
                 />
               )}
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {!isClothStore && (
                 <Field label="Batch No">
                   <Input value={batchNo} onChange={(e) => setBatchNo(e.target.value)} />

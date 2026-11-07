@@ -87,6 +87,13 @@ export default function ProductsPage() {
     setModalOpen(true);
   }
 
+  /** Available stock as the list shows it (in the secondary unit when the item is packed). */
+  const availText = (r: ProductListRow) => {
+    const packing = r.packing || 1;
+    if (r.secondary_unit_id && packing > 1) return `${r.avail_qty * packing} ${r.secondary_unit_name ?? ""}`.trim();
+    return `${r.avail_qty} ${r.base_unit_name ?? ""}`.trim();
+  };
+
   const columns: Column<ProductListRow>[] = [
     {
       header: "FBR",
@@ -110,13 +117,7 @@ export default function ProductsPage() {
     { header: "UOM", render: (r) => r.base_unit_name ?? "—" },
     {
       header: "Avail Qty",
-      render: (r) => {
-        const packing = r.packing || 1;
-        if (r.secondary_unit_id && packing > 1) {
-          return `${r.avail_qty * packing} ${r.secondary_unit_name ?? ""}`.trim();
-        }
-        return `${r.avail_qty} ${r.base_unit_name ?? ""}`.trim();
-      },
+      render: (r) => availText(r),
     },
     { header: "Sale Price", render: (r) => (r.sale_price != null ? r.sale_price.toFixed(2) : "—") },
     { header: "HS Code", render: (r) => r.hs_code ?? "—" },
@@ -191,7 +192,7 @@ export default function ProductsPage() {
         }
       />
 
-      <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+      <div className="mb-3 flex items-center gap-2 rounded-xl bg-white px-2 py-2 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:px-4 sm:py-2.5">
         <Input
           placeholder="Search by product, barcode or company..."
           value={search}
@@ -209,6 +210,17 @@ export default function ProductsPage() {
           columns={columns}
           rows={filtered}
           onRowClick={(r) => void openEdit(r.id)}
+          mobile={(r) => ({
+            title: r.name,
+            meta: r.avail_qty > 0
+              ? <span className="tabular-nums">Avail {availText(r)}</span>
+              : <span className="font-medium text-rose-600">Out of stock</span>,
+            value: r.sale_price != null ? `Rs ${r.sale_price.toFixed(2)}` : "—",
+            actions: [
+              { label: "Edit", onClick: () => void openEdit(r.id) },
+              ...(canTopUp ? [{ label: "Add stock", onClick: () => { setTopUp(r); setTopUpQty(""); setTopUpPrice(""); setTopUpError(null); } }] : []),
+            ],
+          })}
         />
       )}
 
