@@ -1,7 +1,12 @@
 "use client";
 
+import { Fragment } from "react";
 import QRCode from "react-qr-code";
+import { KEEP_TOGETHER } from "@/components/clinic/LabReportDocument";
 import type { LabReport } from "@/lib/repo/labReports";
+
+/** Same column widths in every test's table, so the columns line up down the page. */
+const COLS = ["30%", "14%", "18%", "12%", "26%"];
 
 /** The laboratory report as printed and as shown online (QR code). Only the
  * verified results are in `report.tests`. */
@@ -43,53 +48,62 @@ export function LabReportSheet({ report: r, qrUrl }: { report: LabReport; qrUrl:
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="mt-2 w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-neutral-400 text-[11px] uppercase tracking-wide text-neutral-600">
-              <th className="py-1 pr-2 font-semibold">Test</th>
-              <th className="py-1 pr-2 font-semibold">Sample</th>
-              <th className="py-1 pr-2 font-semibold">Result</th>
-              <th className="py-1 pr-2 font-semibold">Unit</th>
-              <th className="py-1 pr-2 font-semibold">Reference range</th>
-            </tr>
-          </thead>
-          <tbody>
-            {r.tests.map((t) => {
-              if (t.components.length) {
-                return [
-                  <tr key={t.id} className="border-b border-neutral-200">
-                    <td colSpan={2} className="pb-0.5 pt-2 pr-2 font-semibold">{t.test_name}</td>
-                    <td colSpan={3} className="pb-0.5 pt-2 text-neutral-600">{t.sample_type ?? ""}</td>
-                  </tr>,
-                  ...t.components.map((c, i) => {
-                    const abnormal = c.flag === "H" || c.flag === "L";
-                    const header = c.group && c.group !== t.components[i - 1]?.group ? c.group : null;
-                    return [
-                      header ? <tr key={`${t.id}-g-${c.key}`}><td colSpan={5} className="pt-1 pl-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{header}</td></tr> : null,
-                      <tr key={`${t.id}-${c.key}`} className="border-b border-neutral-50 align-top">
-                        <td colSpan={2} className="py-0.5 pl-3 pr-2">{c.name}</td>
-                        <td className={`py-0.5 pr-2 tabular-nums ${abnormal ? "font-bold" : ""}`}>{c.value}{abnormal ? ` ${c.flag === "H" ? "H ↑" : "L ↓"}` : ""}</td>
-                        <td className="py-0.5 pr-2">{c.unit ?? ""}</td>
-                        <td className="py-0.5 pr-2">{c.ref_range ?? ""}</td>
-                      </tr>,
-                    ];
-                  }),
-                ];
-              }
-              const abnormal = t.flag === "H" || t.flag === "L";
-              return (
-                <tr key={t.id} className="border-b border-neutral-100 align-top">
-                  <td className="py-1.5 pr-2 font-medium">{t.test_name}</td>
-                  <td className="py-1.5 pr-2 text-neutral-600">{t.sample_type ?? "—"}</td>
-                  <td className={`py-1.5 pr-2 tabular-nums ${abnormal ? "font-bold" : ""}`}>{t.result_value}{abnormal ? ` ${t.flag === "H" ? "H ↑" : "L ↓"}` : ""}</td>
-                  <td className="py-1.5 pr-2">{t.unit ?? ""}</td>
-                  <td className="py-1.5 pr-2">{t.ref_range ?? ""}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* One table per test, each kept on one page (a test that does not fit starts on the next page with its name). */}
+      <div className="mt-2 overflow-x-auto print:overflow-visible">
+        {r.tests.map((t, idx) => {
+          const abnormalT = t.flag === "H" || t.flag === "L";
+          return (
+            <div key={t.id} style={KEEP_TOGETHER}>
+              <table className="w-full table-fixed border-collapse text-left">
+                <colgroup>{COLS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+                {idx === 0 && (
+                  <thead>
+                    <tr className="border-b border-neutral-400 text-[11px] uppercase tracking-wide text-neutral-600">
+                      <th className="py-1 pr-2 font-semibold">Test</th>
+                      <th className="py-1 pr-2 font-semibold">Sample</th>
+                      <th className="py-1 pr-2 font-semibold">Result</th>
+                      <th className="py-1 pr-2 font-semibold">Unit</th>
+                      <th className="py-1 pr-2 font-semibold">Reference range</th>
+                    </tr>
+                  </thead>
+                )}
+                <tbody>
+                  {t.components.length ? (
+                    <>
+                      <tr className="border-b border-neutral-200">
+                        <td colSpan={2} className="pb-0.5 pt-2 pr-2 font-semibold">{t.test_name}</td>
+                        <td colSpan={3} className="pb-0.5 pt-2 text-neutral-600">{t.sample_type ?? ""}</td>
+                      </tr>
+                      {t.components.map((c, i) => {
+                        const abnormal = c.flag === "H" || c.flag === "L";
+                        const header = c.group && c.group !== t.components[i - 1]?.group ? c.group : null;
+                        return (
+                          <Fragment key={c.key}>
+                            {header && <tr><td colSpan={5} className="pt-1 pl-3 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{header}</td></tr>}
+                            <tr className="border-b border-neutral-50 align-top">
+                              <td colSpan={2} className="py-0.5 pl-3 pr-2">{c.name}</td>
+                              <td className={`py-0.5 pr-2 tabular-nums ${abnormal ? "font-bold" : ""}`}>{c.value}{abnormal ? ` ${c.flag === "H" ? "H ↑" : "L ↓"}` : ""}</td>
+                              <td className="py-0.5 pr-2">{c.unit ?? ""}</td>
+                              <td className="py-0.5 pr-2">{c.ref_range ?? ""}</td>
+                            </tr>
+                          </Fragment>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <tr className="border-b border-neutral-100 align-top">
+                      <td className="py-1.5 pr-2 font-medium">{t.test_name}</td>
+                      <td className="py-1.5 pr-2 text-neutral-600">{t.sample_type ?? "—"}</td>
+                      <td className={`py-1.5 pr-2 tabular-nums ${abnormalT ? "font-bold" : ""}`}>{t.result_value}{abnormalT ? ` ${t.flag === "H" ? "H ↑" : "L ↓"}` : ""}</td>
+                      <td className="py-1.5 pr-2">{t.unit ?? ""}</td>
+                      <td className="py-1.5 pr-2">{t.ref_range ?? ""}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
       </div>
 
       {r.pendingTests.length > 0 && (
@@ -98,7 +112,7 @@ export function LabReportSheet({ report: r, qrUrl }: { report: LabReport; qrUrl:
         </p>
       )}
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-6 text-xs">
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-6 text-xs" style={KEEP_TOGETHER}>
         <div>
           {[...new Map(r.tests.map((t) => [`${t.verified_by_name}|${t.verified_by_license}`, t])).values()].map((t) => (
             <p key={`${t.verified_by_name}${t.verified_by_license}`}>

@@ -7,6 +7,7 @@ import type { ClinicProfile } from "@/lib/clinicProfile";
 import { PAPERS } from "@/lib/printTemplates";
 import { PAPER_WIDTH, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 import type { LabReportDesign } from "@/lib/labReportDesigns";
+import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
 
 export type { LabPart, LabLine, LabReportView } from "@/lib/labReportView";
 export { SAMPLE_LAB_REPORT } from "@/lib/labReportView";
@@ -18,6 +19,11 @@ const FONT: Record<LabReportDesign["font"], string> = {
 };
 
 const abnormal = (f: string | null | undefined) => f === "H" || f === "L";
+/** A block the printer keeps on one page: a test that does not fit in the space
+ * left starts on the next page with its heading, instead of leaving the heading behind. */
+export const KEEP_TOGETHER: React.CSSProperties = { breakInside: "avoid", pageBreakInside: "avoid" };
+/** Same column widths in every test's table, so the columns line up down the page. */
+const COLS = ["36%", "16%", "13%", "23%", "12%"];
 
 function Flag({ flag, design }: { flag: string | null | undefined; design: LabReportDesign }) {
   if (!abnormal(flag)) return null;
@@ -116,51 +122,52 @@ export function LabReportDocument({ view, design, t, profile, areaRef, logo = nu
   const rowStyle = (i: number) => (design.table === "striped" && i % 2 === 1 ? { background: tint } : undefined);
 
   let rowIndex = 0;
+  const cols = <colgroup>{COLS.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>;
+  const row = (key: string, name: string, value: string | null | undefined, unit: string | null | undefined, range: string | null | undefined, flag: string | null | undefined, sub: boolean) => {
+    const n = rowIndex++;
+    return (
+      <tr key={key} className={rowCls} style={rowStyle(n)}>
+        <td className={`${sub ? "py-1 pl-2 pr-1" : "px-1 py-1.5 font-medium"} ${cell}`}>{name}</td>
+        <td className={`px-1 ${sub ? "py-1 font-semibold tabular-nums" : "py-1.5 font-bold"} ${cell} ${abnormal(flag) ? "text-rose-700" : ""}`}>{value}</td>
+        <td className={`px-1 ${sub ? "py-1" : "py-1.5"} ${cell}`}>{unit ?? (sub ? "" : "—")}</td>
+        <td className={`px-1 ${sub ? "py-1" : "py-1.5"} ${cell}`}>{range ?? (sub ? "" : "—")}</td>
+        <td className={`px-1 ${sub ? "py-1" : "py-1.5"} ${cell}`}>{sub || abnormal(flag) ? <Flag flag={flag} design={design} /> : flag === "N" ? "Normal" : "—"}</td>
+      </tr>
+    );
+  };
+  // One table per test, each kept on one page; the column header goes with the first test.
   const results = view.lab.length > 0 && (
-    <table className="mt-4 w-full border-collapse">
-      <thead>
-        <tr className={headRow.className} style={headRow.style}>
-          {["Test", "Result", "Unit", "Normal range", "Flag"].map((h) => <th key={h} className={`px-1 py-1 ${cell}`}>{h}</th>)}
-        </tr>
-      </thead>
-      <tbody>
-        {view.lab.map((o) =>
-          o.parts.length > 0 ? (
-            <Fragment key={o.id}>
-              <tr><td colSpan={5} className={`px-1 pt-3 font-semibold ${cell}`} style={{ color: design.header === "plain" ? undefined : acc }}>{o.name}</td></tr>
-              {o.parts.map((c, i, all) => {
-                const n = rowIndex++;
-                return (
-                  <Fragment key={c.key}>
-                    {c.group && c.group !== all[i - 1]?.group && (
-                      <tr><td colSpan={5} className={`px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 ${cell}`}>{c.group}</td></tr>
-                    )}
-                    <tr className={rowCls} style={rowStyle(n)}>
-                      <td className={`py-1 pl-2 pr-1 ${cell}`}>{c.name}</td>
-                      <td className={`px-1 py-1 font-semibold tabular-nums ${cell} ${abnormal(c.flag) ? "text-rose-700" : ""}`}>{c.value}</td>
-                      <td className={`px-1 py-1 ${cell}`}>{c.unit ?? ""}</td>
-                      <td className={`px-1 py-1 ${cell}`}>{c.range ?? ""}</td>
-                      <td className={`px-1 py-1 ${cell}`}><Flag flag={c.flag} design={design} /></td>
-                    </tr>
-                  </Fragment>
-                );
-              })}
-            </Fragment>
-          ) : (() => {
-            const n = rowIndex++;
-            return (
-              <tr key={o.id} className={rowCls} style={rowStyle(n)}>
-                <td className={`px-1 py-1.5 font-medium ${cell}`}>{o.name}</td>
-                <td className={`px-1 py-1.5 font-bold ${cell} ${abnormal(o.flag) ? "text-rose-700" : ""}`}>{o.value}</td>
-                <td className={`px-1 py-1.5 ${cell}`}>{o.unit ?? "—"}</td>
-                <td className={`px-1 py-1.5 ${cell}`}>{o.range ?? "—"}</td>
-                <td className={`px-1 py-1.5 ${cell}`}>{abnormal(o.flag) ? <Flag flag={o.flag} design={design} /> : o.flag === "N" ? "Normal" : "—"}</td>
-              </tr>
-            );
-          })(),
-        )}
-      </tbody>
-    </table>
+    <div className="mt-4">
+      {view.lab.map((o, idx) => (
+        <div key={o.id} style={KEEP_TOGETHER}>
+          <table className="w-full table-fixed border-collapse">
+            {cols}
+            {idx === 0 && (
+              <thead>
+                <tr className={headRow.className} style={headRow.style}>
+                  {["Test", "Result", "Unit", "Normal range", "Flag"].map((h) => <th key={h} className={`px-1 py-1 ${cell}`}>{h}</th>)}
+                </tr>
+              </thead>
+            )}
+            <tbody>
+              {o.parts.length > 0 ? (
+                <>
+                  <tr><td colSpan={5} className={`px-1 pt-3 font-semibold ${cell}`} style={{ color: design.header === "plain" ? undefined : acc }}>{o.name}</td></tr>
+                  {o.parts.map((c, i, all) => (
+                    <Fragment key={c.key}>
+                      {c.group && c.group !== all[i - 1]?.group && (
+                        <tr><td colSpan={5} className={`px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 ${cell}`}>{c.group}</td></tr>
+                      )}
+                      {row(c.key, c.name, c.value, c.unit, c.range, c.flag, true)}
+                    </Fragment>
+                  ))}
+                </>
+              ) : row(o.id, o.name, o.value, o.unit, o.range, o.flag, false)}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
   );
 
   const frame = design.frame === "double" ? { border: `3px double ${acc}`, padding: "10px" } : design.frame === "single" ? { border: `1.5px solid ${acc}`, padding: "10px" } : {};
@@ -177,18 +184,19 @@ export function LabReportDocument({ view, design, t, profile, areaRef, logo = nu
       {info}
       {results}
       {view.radiology.map((o) => (
-        <div key={o.id} className="mt-4 flex flex-col gap-2">
+        <div key={o.id} className="mt-4 flex flex-col gap-2" style={KEEP_TOGETHER}>
           <p className="font-semibold" style={{ color: acc }}>{o.name}</p>
           {o.findings && <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Findings</p><p className="whitespace-pre-line">{o.findings}</p></div>}
           <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Impression</p><p className="whitespace-pre-line font-semibold">{o.impression}</p></div>
         </div>
       ))}
       {view.comments.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-4" style={KEEP_TOGETHER}>
           <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pathologist&apos;s comments</p>
           {view.comments.map((c) => <p key={c} className="whitespace-pre-line">{c}</p>)}
         </div>
       )}
+      <div style={KEEP_TOGETHER}>
       {qrUrl && (
         <div className="mt-5 flex items-center gap-3">
           <div className="shrink-0 rounded border p-1" style={{ borderColor: acc }}>
@@ -205,6 +213,8 @@ export function LabReportDocument({ view, design, t, profile, areaRef, logo = nu
         <p className="mt-10 text-right text-xs text-neutral-600">{view.signedBy}</p>
       )}
       {t.footer && <p className="mt-4 border-t border-neutral-300 pt-1 text-center text-[0.85em] text-neutral-600">{t.footer}</p>}
+      <PoweredByFooter />
+      </div>
     </div>
   );
 }
