@@ -159,7 +159,7 @@ export default function ProductsPage() {
             >
               Add
             </Button>
-            <Button
+            <Button className="max-sm:hidden"
               onClick={() => {
                 const PROD_HEADERS = ["Barcode","Product Name","Company","Category","Sub Category","UOM","Avail Qty","Sale Price","HS Code"];
                 exportCsv(
@@ -171,7 +171,7 @@ export default function ProductsPage() {
             >
               Export CSV
             </Button>
-            <Button
+            <Button className="max-sm:hidden"
               onClick={() => {
                 const sample = [
                   ["PARACETAMOL 500MG TAB","5000168002658","GSK","Analgesics","Tablets","Tablet","4.20","5.00","4.50","5.50","3004.9090","10","0"],
@@ -183,7 +183,7 @@ export default function ProductsPage() {
             >
               Sample File
             </Button>
-            <Button onClick={() => setImportOpen(true)} disabled={!tauriReady}>
+            <Button className="max-sm:hidden" onClick={() => setImportOpen(true)} disabled={!tauriReady}>
               Import CSV
             </Button>
             <Button onClick={() => void reload()}>Refresh</Button>
