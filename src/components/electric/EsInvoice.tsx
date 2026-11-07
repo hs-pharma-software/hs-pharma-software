@@ -2,7 +2,6 @@
 
 import QRCode from "react-qr-code";
 import { translate, type Lang } from "@/lib/i18n";
-import { DEVELOPER_CREDIT } from "@/lib/printTemplates";
 import type { EsDoc, EsDocItem } from "@/lib/electric/store";
 
 export type InvoiceLang = "en" | "ur" | "bi";
@@ -285,9 +284,6 @@ export function EsInvoice({
       {!doc.fbr_invoice_no && (
         <div style={{ textAlign: "center", fontSize: "0.8em", color: "#555" }}>{L("inv.notOfficial")}</div>
       )}
-      <div style={{ textAlign: "center", fontSize: "0.75em", color: "#777", borderTop: "1px solid #ddd", marginTop: 4, paddingTop: 2, fontFamily: "Arial, sans-serif" }} dir="ltr">
-        {DEVELOPER_CREDIT}
-      </div>
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import QRCode from "react-qr-code";
 import {
-  DEVELOPER_CREDIT,
   PAPERS,
   blockText,
   type BlockConfig,
@@ -668,18 +667,6 @@ export function InvoicePrintLayout({
       <div style={pinFooter ? { marginTop: "auto", paddingTop: 8 } : undefined}>
       {visible.slice(splitAt).map(blockView)}
       {decor(skin.bottom, true)}
-      <div
-        style={{
-          marginTop: 10,
-          borderTop: colored ? `2px solid ${A}` : "1px solid #ddd",
-          paddingTop: 3,
-          textAlign: "center",
-          fontSize: `${Math.max(8, base - 3)}px`,
-          color: colored ? P : "#777",
-        }}
-      >
-        {DEVELOPER_CREDIT}
-      </div>
       </div>
     </div>
   );

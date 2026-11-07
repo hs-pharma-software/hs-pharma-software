@@ -7,7 +7,6 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/store/authStore";
 import { printDirect } from "@/lib/print";
-import { DEVELOPER_CREDIT } from "@/lib/printTemplates";
 import { dist, errorText } from "@/lib/dist";
 import type { DistDoc, DistDocItem } from "@/lib/dist/store";
 import { Err, Note, money, useLoad } from "./ui";
@@ -118,7 +117,6 @@ function DocPrint({ doc, items }: { doc: DistDoc; items: DistDocItem[] }) {
           {snap.overridden ? ` Rate/amount overridden by authorised user: ${snap.overrideReason}.` : ""}
         </div>
       )}
-      <p className="mt-6 text-center text-[9px] text-neutral-500" style={{ fontFamily: "Arial, sans-serif" }}>{DEVELOPER_CREDIT}</p>
     </div>
   );
 }

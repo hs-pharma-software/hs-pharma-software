@@ -8,7 +8,6 @@ import { businessType } from "@/config/businessTypes";
 import { errorText } from "@/lib/restaurant";
 import { praVerifyUrl } from "@/lib/restaurant/praModel";
 import { printDirect } from "@/lib/print";
-import { DEVELOPER_CREDIT } from "@/lib/printTemplates";
 import type { KotRow, OrderItemRow, OrderRow } from "@/lib/restaurant/store";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 import { PoweredByFooter } from "@/components/brand/PoweredByFooter";
@@ -207,7 +206,7 @@ export function ReceiptView({ data }: { data: ReceiptData }) {
         <div style={{ textAlign: "center", marginTop: 6, fontSize: 10 }}>PRA fiscal number: pending ({order.pra_status.replace("_", " ")})</div>
       ) : null}
       <div style={{ borderTop: "1px dashed #000", margin: "6px 0 2px" }} />
-      <div style={{ textAlign: "center", fontSize: 9 }}>Thank you! · {DEVELOPER_CREDIT}</div>
+      <div style={{ textAlign: "center", fontSize: 9 }}>Thank you!</div>
     </div>
   );
 }

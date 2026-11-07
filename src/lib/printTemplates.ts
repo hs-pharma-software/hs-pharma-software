@@ -157,9 +157,6 @@ export function blockLabel(id: BlockId, businessType: string | null | undefined)
   return (PHARMACY_FAMILY_TYPES as readonly string[]).includes(businessType ?? "") ? label : label.replace(/^Pharmacy/, "Business");
 }
 
-/** Printed under every template; not editable. */
-export const DEVELOPER_CREDIT = "UhuD Developers, +92 3006049200";
-
 const b = (id: BlockId, align: Align, size: BlockSize = "md", visible = true): BlockConfig => ({ id, visible, align, size });
 
 export const DEFAULT_TEMPLATES: Record<PaperSize, PrintTemplate> = {
