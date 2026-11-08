@@ -72,6 +72,20 @@ function rustSchemaStatements(n) {
   return stripped.split(';').map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
+/** Like rustSchemaStatements, keeping each CREATE TRIGGER ... END (whose
+ * body has its own semicolons) as one statement. */
+function rustSchemaStatementsWithTriggers(n) {
+  const out = [];
+  let trig = null;
+  for (const s of rustSchemaStatements(n)) {
+    if (trig !== null) { trig += '; ' + s; if (/^END$/i.test(s)) { out.push(trig.replace(/; END$/i, '; END')); trig = null; } continue; }
+    if (/^CREATE TRIGGER/i.test(s)) { trig = s; continue; }
+    out.push(s);
+  }
+  if (trig !== null) throw new Error('Unterminated trigger in schema_sql_v' + n);
+  return out;
+}
+
 const MIGRATIONS = [
   // v1 — base schema (all CREATE TABLE IF NOT EXISTS, safe to re-run)
   { version: 1, label: 'Base schema', statements: [
@@ -360,6 +374,7 @@ const MIGRATIONS = [
   { version: 78, label: 'Plans: yearly option and discount, description style; FBR add-on', statements: rustSchemaStatements(78) },
   { version: 79, label: 'Multi-branch: branches, capacity, transfers; branch_id on branch records (existing rows to the main branch)', statements: rustSchemaStatements(79) },
   { version: 80, label: 'Online payments: merchants (encrypted secrets), attempts, events, refunds, requests, audit', statements: rustSchemaStatements(80) },
+  { version: 81, label: 'Offline desktop pilot: devices, operations, stock exceptions, change sequence (triggers), invoices.offline_ref', statements: rustSchemaStatementsWithTriggers(81) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

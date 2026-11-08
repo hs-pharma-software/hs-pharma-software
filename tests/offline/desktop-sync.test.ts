@@ -1,0 +1,450 @@
+/** Offline desktop pilot, end to end: the real desktop core (desktop/src/core)
+ * against the real server service (src/server/offline) on two separate
+ * SQLite databases, joined by an in-process transport that can drop the
+ * connection or lose a response. Made-up business; no network, no
+ * production database, no real money. */
+import { test, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { fullSchemaDb } from "../catalog/fullDb.ts";
+import { sqliteSql } from "../server/sqliteSql.ts";
+import type { Sql } from "@/server/subSupers";
+import type { Caller } from "@/server/sqlPolicy";
+import { HttpError } from "@/server/db";
+import * as off from "@/server/offline/service";
+import { signGrant, verifyGrant, type SignedGrant } from "@/offline/protocol";
+import { OfflineDevice, TransportError, type Transport } from "../../desktop/src/core/device.ts";
+
+const keys = generateKeyPairSync("ed25519");
+const PUB = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+const PRIV = keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+process.env.OFFLINE_GRANT_PRIVATE_KEY = Buffer.from(PRIV).toString("base64");
+
+let db: DatabaseSync;
+let sql: Sql;
+let root: string;
+let clock: Date;
+const T = "2026-11-08T08:00:00.000Z";
+const run = (q: string, ...a: unknown[]) => db.prepare(q).run(...(a as never[]));
+const one = (q: string, ...a: unknown[]) => db.prepare(q).get(...(a as never[])) as Record<string, unknown>;
+const all = (q: string, ...a: unknown[]) => db.prepare(q).all(...(a as never[])) as Record<string, unknown>[];
+
+/** Users the fake login knows (password in clear here only, for the test). */
+const LOGINS: Record<string, { password: string; caller: Caller }> = {};
+/** The network between the two: up, down, or answering but losing the reply. */
+const net = { down: false, loseReplyOf: null as string | null, failPullAfter: -1, pulls: 0 };
+
+const transport: Transport = {
+  async post<R>(path: string, body: unknown, headers: Record<string, string>): Promise<R> {
+    if (net.down) throw new TransportError("fetch failed", null);
+    const b = body as Record<string, unknown>;
+    try {
+      let result: unknown;
+      if (path === "/api/auth/login/") {
+        const l = LOGINS[String(b.username)];
+        if (!l || l.password !== b.password) throw new HttpError(401, "Incorrect username or password.");
+        return { userId: l.caller.userId, token: `tok-${b.username}` } as R;
+      }
+      const caller = () => {
+        const u = Object.entries(LOGINS).find(([n]) => headers.Authorization === `Bearer tok-${n}`);
+        if (!u) throw new HttpError(401, "Your session has ended.");
+        return u[1].caller;
+      };
+      const device = () => off.deviceFromAuth(sql, headers["X-Mavin-Device"] ?? null);
+      off.checkProtocol(b.protocol);
+      switch (b.action) {
+        case "provision": result = await off.provisionDevice(sql, caller(), b); break;
+        case "enrol": result = await off.enrolUser(sql, await device(), caller()); break;
+        case "pull": {
+          if (net.failPullAfter >= 0 && net.pulls++ >= net.failPullAfter) throw new TransportError("connection reset", null);
+          result = await off.pull(sql, await device(), b.cursor, b.status as never);
+          break;
+        }
+        case "push": result = { results: await off.push(sql, await device(), b.ops, b.status as never) }; break;
+        default: throw new HttpError(400, "Unknown action.");
+      }
+      // The server did the work, but the reply never arrives.
+      if (net.loseReplyOf === b.action) { net.loseReplyOf = null; throw new TransportError("socket hang up", null); }
+      return { result } as R;
+    } catch (e) {
+      if (e instanceof TransportError) throw e;
+      if (e instanceof HttpError) throw new TransportError(e.message, e.status);
+      throw e;
+    }
+  },
+};
+
+const secrets = new Map<string, string>();
+const opened: OfflineDevice[] = [];
+const newDevice = () => { const d = new OfflineDevice({ dataRoot: root, publicKeyPem: PUB, appVersion: "0.1.0-test", transport, secrets: { get: (k) => secrets.get(k) ?? null, set: (k, v) => void secrets.set(k, v) }, now: () => clock }); opened.push(d); return d; };
+
+function tenant(id: string, type = "retail_pharmacy", flags = ["+desktop.offline"]) {
+  run(`INSERT INTO tenants (id, name, business_type, denied_actions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, id, `Shop ${id}`, type, JSON.stringify(flags), T, T);
+}
+function user(id: string, tenantId: string, username: string, role: "owner" | "staff" = "owner", permissions: string[] | null = null) {
+  run(`INSERT INTO users (id, tenant_id, username, display_name, role, password_hash, password_salt, is_active, permissions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'x', 'x', 1, ?, ?, ?)`,
+    id, tenantId, username, `User ${username}`, role, permissions ? JSON.stringify(permissions) : null, T, T);
+  LOGINS[username] = { password: "pass-1234", caller: { userId: id, role, tenantId, permissions } };
+}
+function product(id: string, tenantId: string, name: string, o: { packing?: number; tax?: number; price?: number; narcotic?: boolean; imei?: boolean; barcode?: string } = {}) {
+  run(`INSERT INTO products (id, tenant_id, name, barcode, packing, gst_rate_pct, is_narcotic, track_imei, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, tenantId, name, o.barcode ?? null, o.packing ?? 1, o.tax ?? 0, o.narcotic ? 1 : 0, o.imei ? 1 : 0, T, T);
+  if (o.price != null) run(`INSERT INTO price_list (id, product_id, tenant_id, sale_price, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, `${id}-pr`, id, tenantId, o.price, T, T);
+}
+function batch(id: string, productId: string, tenantId: string, qty: number, expiry: string, branch = `main-${tenantId}`) {
+  run(`INSERT INTO product_batches (id, product_id, tenant_id, branch_id, batch_no, expiry_date, qty, purchase_price, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 40, ?, ?)`, id, productId, tenantId, branch, `B-${id}`, expiry, qty, T, T);
+}
+const serverQty = (id: string) => Number(one(`SELECT qty FROM product_batches WHERE id = ?`, id).qty);
+const invoices = () => all(`SELECT * FROM invoices WHERE tenant_id = 't1'`);
+
+async function provisioned() {
+  const d = newDevice();
+  await d.provision("owner1", "pass-1234");
+  const r = await d.sync();
+  assert.equal(r.error, null);
+  return d;
+}
+
+beforeEach(() => {
+  db = fullSchemaDb();
+  sql = sqliteSql(db);
+  root = mkdtempSync(join(tmpdir(), "mavin-offline-"));
+  clock = new Date(T);
+  secrets.clear();
+  for (const k of Object.keys(LOGINS)) delete LOGINS[k];
+  Object.assign(net, { down: false, loseReplyOf: null, failPullAfter: -1, pulls: 0 });
+  tenant("t1");
+  tenant("t2");
+  user("u1", "t1", "owner1");
+  user("u2", "t2", "owner2");
+  user("s1", "t1", "cashier", "staff", ["invoices"]);
+  product("p1", "t1", "Panadol 500mg", { packing: 10, price: 100, barcode: "8964000001" });
+  product("p2", "t1", "Syrup X", { price: 250.5, tax: 18 });
+  product("pn", "t1", "Controlled Y", { price: 300, narcotic: true });
+  product("pi", "t1", "Phone Z", { price: 30000, imei: true });
+  batch("b1a", "p1", "t1", 5, "2027-01-31");
+  batch("b1b", "p1", "t1", 20, "2028-06-30");
+  batch("b2", "p2", "t1", 3, "2027-12-31");
+  batch("bn", "pn", "t1", 4, "2027-12-31");
+  product("q1", "t2", "Other shop item", { price: 70 });
+  batch("bq", "q1", "t2", 9, "2027-12-31");
+});
+afterEach(() => {
+  for (const d of opened.splice(0)) d.close();
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("provision online, download, sell offline, restart, reconnect: one invoice, stock taken once", async () => {
+  let d = await provisioned();
+  const st = d.status();
+  assert.ok(st.provisioned && st.catalogReady && st.tenantName === "Shop t1" && /^D[0-9A-F]{4}$/.test(st.deviceCode));
+  assert.deepEqual(d.search("panadol").map((p) => [p.name, p.available, p.price]), [["Panadol 500mg", 25, 100]]);
+  assert.deepEqual(d.search("8964000001").map((p) => p.id), ["p1"], "barcode");
+
+  net.down = true;
+  // 7 packs: 5 from the earlier expiry, 2 from the next (FEFO, as online).
+  const { sale, receipt } = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 7 }, { productId: "p2", unit: "pack", qty: 1 }], tendered: 1000 });
+  assert.deepEqual(sale.lines.map((l) => [l.batchId, l.qtyPacks]), [["b1a", 5], ["b1b", 2], ["b2", 1]]);
+  assert.equal(sale.totals.payable, 995.59); // 700 + 250.5 * 1.18
+  assert.equal(sale.totals.change, 4.41);
+  assert.match(receipt, /Not submitted to FBR/);
+  assert.equal(d.search("panadol")[0].available, 18, "local stock moved at once");
+  assert.equal((await d.sync()).error?.startsWith("No connection"), true);
+  assert.equal(d.status().provisioned && d.status().pending, 1);
+
+  // Power cut / restart: everything is still there.
+  d.close();
+  d = newDevice();
+  assert.equal(d.status().provisioned && d.status().pending, 1);
+  assert.equal(d.search("panadol")[0].available, 18);
+  assert.equal(invoices().length, 0, "nothing reached the server yet");
+
+  // The connection comes back: the app syncs at once (retry delays are for repeated failures).
+  net.down = false;
+  const r = await d.sync({ manual: true });
+  assert.equal(r.error, null);
+  assert.equal(r.applied, 1);
+  const inv = invoices();
+  assert.equal(inv.length, 1);
+  assert.equal(inv[0].id, sale.saleId);
+  assert.equal(inv[0].offline_ref, sale.offlineRef);
+  assert.equal(inv[0].invoice_no, 1);
+  assert.equal(inv[0].branch_id, "main-t1");
+  assert.equal(Number(inv[0].payable), 995.59);
+  assert.equal(inv[0].fbr_invoice_no, null, "no FBR number is invented");
+  assert.equal(all(`SELECT * FROM invoice_items WHERE invoice_id = ?`, sale.saleId).length, 3);
+  assert.deepEqual([serverQty("b1a"), serverQty("b1b"), serverQty("b2")], [0, 18, 2]);
+  // After the download includes the sale, the local figure is the server's (not subtracted twice).
+  assert.equal(d.search("panadol")[0].available, 18);
+  assert.equal(d.status().provisioned && d.status().pending, 0);
+  assert.equal(d.recentSales()[0].server_invoice_no, 1);
+});
+
+test("the same operation delivered again, or after a lost reply, makes one sale", async () => {
+  const d = await provisioned();
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 2 }], tendered: 1000 });
+  net.loseReplyOf = "push";
+  assert.match(String((await d.sync()).error), /No connection/);
+  assert.equal(invoices().length, 1, "the server applied it");
+  const r = await d.sync({ manual: true });
+  assert.equal(r.error, null);
+  assert.equal(invoices().length, 1, "the repeat got the stored answer");
+  assert.equal(serverQty("b2"), 1, "stock taken once");
+  // A raw repeat of the same body: still one.
+  const body = JSON.parse(String((all(`SELECT payload FROM offline_ops`)[0]).payload));
+  const dev = (await off.deviceFromAuth(sql, `${d.status().provisioned ? all(`SELECT id FROM offline_devices`)[0].id : ""}:${[...secrets.values()][0]}`));
+  const again = await off.push(sql, dev, [{ opId: String(one(`SELECT op_id FROM offline_ops`).op_id), kind: "sale.create", entityId: body.saleId, schemaVersion: 1, dependsOn: [], occurredAt: body.occurredAt, userId: body.userId, payload: body }]);
+  assert.equal(again[0].status, "applied");
+  assert.equal(invoices().length, 1);
+});
+
+test("cloud stock changed meanwhile: the sale is kept and a visible exception is raised, no invented stock", async () => {
+  const d = await provisioned();
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 3 }], tendered: 1000 });
+  // Meanwhile the web counter sold 2 of the same batch.
+  run(`UPDATE product_batches SET qty = 1, updated_at = ? WHERE id = 'b2'`, T);
+  net.down = false;
+  const r = await d.sync();
+  assert.equal(r.conflicts, 1);
+  assert.equal(invoices().length, 1, "sale and cash kept");
+  assert.equal(serverQty("b2"), 0, "never below zero");
+  const x = all(`SELECT * FROM offline_exceptions`);
+  assert.equal(x.length, 1);
+  assert.equal(x[0].qty, 2);
+  assert.equal(x[0].invoice_id, sale.saleId);
+  assert.equal(d.status().provisioned && d.status().conflicts, 1);
+  const owner: Caller = LOGINS.owner1.caller;
+  assert.equal((await off.listExceptions(sql, owner, "t1"))[0].status, "open");
+  await assert.rejects(off.resolveException(sql, owner, String(x[0].id), ""), /Say what was done/);
+  await off.resolveException(sql, owner, String(x[0].id), "Counted shelf, adjusted stock");
+  assert.equal(one(`SELECT status FROM offline_exceptions`).status, "resolved");
+  assert.equal(Number(one(`SELECT payable FROM invoices`).payable), Number(sale.totals.payable), "the sale itself is never rewritten");
+});
+
+test("an interrupted first download resumes where it stopped", async () => {
+  for (let i = 0; i < 620; i++) { product(`bulk${String(i).padStart(4, "0")}`, "t1", `Bulk ${i}`, { price: 10 }); batch(`bb${i}`, `bulk${String(i).padStart(4, "0")}`, "t1", 1, "2028-01-01"); }
+  const d = newDevice();
+  await d.provision("owner1", "pass-1234");
+  net.failPullAfter = 1; // the second page fails
+  assert.match(String((await d.sync()).error), /No connection/);
+  const after1 = d.status();
+  assert.ok(after1.provisioned && !after1.catalogReady && after1.downloading && after1.products === 500);
+  net.failPullAfter = -1;
+  net.pulls = 0;
+  const r = await d.sync();
+  assert.equal(r.error, null);
+  const s = d.status();
+  assert.ok(s.provisioned && s.catalogReady && s.products === 624);
+  assert.ok(r.pulledPages < 7, "did not start again from the first page");
+});
+
+test("downloads never create outgoing operations (no sync loop)", async () => {
+  const d = await provisioned();
+  run(`UPDATE price_list SET sale_price = 120, updated_at = ? WHERE id = 'p1-pr'`, T);
+  run(`UPDATE product_batches SET qty = 30, updated_at = ? WHERE id = 'b1b'`, T);
+  const r = await d.sync();
+  assert.equal(r.pushed, 0);
+  assert.equal(d.search("panadol")[0].price, 120);
+  assert.equal(d.search("panadol")[0].available, 35);
+  const again = await d.sync();
+  assert.equal(again.pushed, 0);
+  assert.equal(all(`SELECT * FROM offline_ops`).length, 0);
+});
+
+test("signing out and restarting keep pending work; offline sign-in only within the allowance", async () => {
+  let d = await provisioned();
+  net.down = true;
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 });
+  d.signOut();
+  d.close();
+  d = newDevice();
+  await assert.rejects(d.signIn("owner1", "wrong"), /Incorrect/);
+  await assert.rejects(d.signIn("cashier", "pass-1234"), /not signed in online on this computer/);
+  const u = await d.signIn("owner1", "pass-1234");
+  assert.equal(u.online, false);
+  assert.equal(d.status().provisioned && d.status().pending, 1);
+  // 72 hours later the allowance has ended: no selling, but the pending sale is kept and can be sent.
+  const ends = d.status().provisioned ? String(d.status().allowanceEndsAt) : "";
+  assert.ok(Date.parse(ends) - Date.now() > 71 * 3600_000, "72 hours from the server's time");
+  clock = new Date(Date.parse(ends) + 3600_000);
+  assert.match(String(d.sellBlock()), /allowance ended/);
+  assert.throws(() => d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 }), /allowance ended/);
+  net.down = false;
+  const r = await d.sync({ manual: true });
+  assert.equal(r.applied, 1);
+  const renewed = d.status().provisioned ? String(d.status().allowanceEndsAt) : "";
+  assert.ok(Date.parse(renewed) > Date.parse(ends), "reconnecting issued a new allowance");
+});
+
+test("a computer clock moved back blocks offline sales", async () => {
+  const d = await provisioned();
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 });
+  clock = new Date(Date.parse(T) - 3600_000);
+  assert.match(String(d.sellBlock()), /clock is earlier/);
+});
+
+test("an edited or foreign allowance is not accepted", () => {
+  const p = { v: 1 as const, deviceId: "x", deviceCode: "DAAAA", tenantId: "t1", tenantName: "", businessType: "", branchId: "b", branchName: "", users: [], modules: ["sale.cash" as const], issuedAt: T, expiresAt: "2099-01-01T00:00:00Z" };
+  const g = signGrant(p, PRIV);
+  assert.ok(verifyGrant(g, PUB));
+  const tampered: SignedGrant = { ...g, payload: Buffer.from(JSON.stringify({ ...p, expiresAt: "2199-01-01T00:00:00Z" })).toString("base64url") };
+  assert.equal(verifyGrant(tampered, PUB), null);
+  const other = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  assert.equal(verifyGrant(signGrant(p, other), PUB), null);
+});
+
+test("editing the saved allowance on disk does not extend it", async () => {
+  const d = await provisioned();
+  const file = join(root, JSON.parse(readFileSync(join(root, "device.json"), "utf8")).dbFile);
+  d.close();
+  const { DatabaseSync } = await import("node:sqlite");
+  const raw = new DatabaseSync(file);
+  const g = JSON.parse(String((raw.prepare(`SELECT value FROM meta WHERE key = 'grant'`).get() as { value: string }).value)) as SignedGrant;
+  const p = JSON.parse(Buffer.from(g.payload, "base64url").toString());
+  p.expiresAt = "2199-01-01T00:00:00Z";
+  raw.prepare(`UPDATE meta SET value = ? WHERE key = 'grant'`).run(JSON.stringify({ ...g, payload: Buffer.from(JSON.stringify(p)).toString("base64url") }));
+  raw.close();
+  const d2 = newDevice();
+  assert.equal(d2.grant(), null);
+  net.down = true;
+  await d2.signIn("owner1", "pass-1234");
+  assert.match(String(d2.sellBlock()), /no valid offline allowance/);
+});
+
+test("businesses and branches stay apart", async () => {
+  const d = await provisioned();
+  assert.deepEqual(d.search("other shop"), [], "another business's products are never downloaded");
+  // Another business's owner cannot sign in on this device.
+  await assert.rejects(d.signIn("owner2", "pass-1234"), /another business/);
+  // A forged sale using another business's batch is not applied.
+  const dev = (await off.deviceFromAuth(sql, `${String(one(`SELECT id FROM offline_devices`).id)}:${[...secrets.values()][0]}`));
+  const { sale } = (() => { net.down = true; return d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 }); })();
+  const forged = { ...sale, saleId: "forged-sale-0001", offlineRef: sale.offlineRef.replace(/\d+$/, "999999"), lines: sale.lines.map((l) => ({ ...l, lineId: "forged-line-0001", batchId: "bq", productId: "q1" })) };
+  const res = await off.push(sql, dev, [{ opId: "forged-op-00001", kind: "sale.create", entityId: forged.saleId, schemaVersion: 1, dependsOn: [], occurredAt: forged.occurredAt, userId: forged.userId, payload: forged }]);
+  assert.equal(res[0].status, "held");
+  assert.equal(serverQty("bq"), 9);
+  assert.equal(all(`SELECT * FROM invoices WHERE id = 'forged-sale-0001'`).length, 0);
+  // Wrong device secret.
+  await assert.rejects(off.deviceFromAuth(sql, `${String(one(`SELECT id FROM offline_devices`).id)}:${"x".repeat(43)}`), /not set up/);
+  // A second active device on the same branch is refused.
+  await assert.rejects(off.provisionDevice(sql, LOGINS.owner1.caller, {}), /already has an offline checkout device/);
+  // Other business types are not offered offline billing.
+  tenant("t3", "lab");
+  user("u3", "t3", "lab1");
+  await assert.rejects(off.provisionDevice(sql, LOGINS.lab1.caller, {}), /pharmacies, medical stores and general stores only/);
+  // Without the Super Admin's switch: no device.
+  tenant("t4", "general_store", []);
+  user("u4", "t4", "gs1");
+  await assert.rejects(off.provisionDevice(sql, LOGINS.gs1.caller, {}), /not enabled/);
+  // Device management of another business is refused.
+  await assert.rejects(off.listDevices(sql, LOGINS.owner2.caller, "t1"), /Only the business owner/);
+});
+
+test("revoked device: its unsent sales are held for review, not lost, not applied until approved", async () => {
+  const d = await provisioned();
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 });
+  const id = String(one(`SELECT id FROM offline_devices`).id);
+  await off.revokeDevice(sql, LOGINS.owner1.caller, id, "Computer replaced");
+  net.down = false;
+  const r = await d.sync();
+  assert.equal(r.held, 1);
+  assert.match(String(r.error), /turned off/, "the allowance is not renewed");
+  assert.equal(invoices().length, 0);
+  assert.equal(serverQty("b2"), 3);
+  const held = await off.listHeld(sql, LOGINS.owner1.caller, "t1");
+  assert.equal(held[0].offlineRef, sale.offlineRef);
+  const res = await off.decideHeld(sql, LOGINS.owner1.caller, held[0].opId, true, "");
+  assert.equal(res.status, "applied");
+  assert.equal(invoices().length, 1);
+  assert.equal(serverQty("b2"), 2);
+  assert.equal(String(one(`SELECT decided_by FROM offline_ops`).decided_by), "u1");
+});
+
+test("loose units: quantities and money stay exact", async () => {
+  const d = await provisioned();
+  const { sale } = d.createSale({ lines: [{ productId: "p1", unit: "loose", qty: 3 }], tendered: 50 });
+  assert.equal(sale.lines[0].qtyPacks, 0.3);
+  assert.equal(sale.totals.payable, 30);
+  await d.sync();
+  assert.equal(Number(one(`SELECT qty FROM invoice_items`).qty), 0.3);
+  assert.equal(Math.round(serverQty("b1a") * 1e6) / 1e6, 4.7);
+  // The rest of a pack: 47 tablets left in the first batch, sold exactly to zero.
+  const r = d.createSale({ lines: [{ productId: "p1", unit: "loose", qty: 47 }], tendered: 500 });
+  assert.deepEqual(r.sale.lines.map((l) => [l.batchId, l.qtyPacks]), [["b1a", 4.7]]);
+  await d.sync();
+  assert.equal(serverQty("b1a"), 0);
+});
+
+test("controlled medicines need the buyer; IMEI products stay online-only", async () => {
+  const d = await provisioned();
+  assert.throws(() => d.createSale({ lines: [{ productId: "pn", unit: "pack", qty: 1 }], tendered: 300 }), /buyer's name and mobile/);
+  d.createSale({ lines: [{ productId: "pn", unit: "pack", qty: 1 }], customerName: "Ali", customerPhone: "03001234567", tendered: 300 });
+  assert.match(String(d.search("phone z")[0]?.onlineOnly), /IMEI/);
+  assert.throws(() => d.createSale({ lines: [{ productId: "pi", unit: "pack", qty: 1 }], tendered: 30000 }), /IMEI/);
+  assert.equal((await d.sync()).applied, 1);
+});
+
+test("a staff login enrolled online can sell offline; the server keeps captured prices", async () => {
+  const d = await provisioned();
+  const u = await d.signIn("cashier", "pass-1234");
+  assert.equal(u.online, true);
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 });
+  // Price raised online before the sale arrives: the invoice keeps the counter's price.
+  run(`UPDATE price_list SET sale_price = 999 WHERE id = 'p2-pr'`);
+  await d.sync();
+  assert.equal(Number(one(`SELECT sale_price FROM invoice_items WHERE invoice_id = ?`, sale.saleId).sale_price), 250.5);
+});
+
+test("a forged total or tampered line is refused before anything is booked", async () => {
+  const d = await provisioned();
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 });
+  const dev = await off.deviceFromAuth(sql, `${String(one(`SELECT id FROM offline_devices`).id)}:${[...secrets.values()][0]}`);
+  const bad = { ...sale, saleId: "bad-sale-000001", totals: { ...sale.totals, payable: 1 } };
+  const res = await off.push(sql, dev, [{ opId: "bad-op-0000001", kind: "sale.create", entityId: bad.saleId, schemaVersion: 1, dependsOn: [], occurredAt: bad.occurredAt, userId: bad.userId, payload: bad }]);
+  assert.equal(res[0].status, "rejected");
+  assert.match(String(res[0].error), /totals/);
+  assert.equal(invoices().length, 0);
+});
+
+test("the local database keeps a backup before a schema change and refuses a newer one", async () => {
+  const d = await provisioned();
+  const file = d.backupNow();
+  assert.ok(readFileSync(file).length > 0);
+  d.close();
+  const { DatabaseSync } = await import("node:sqlite");
+  const dbFile = join(root, JSON.parse(readFileSync(join(root, "device.json"), "utf8")).dbFile);
+  const raw = new DatabaseSync(dbFile);
+  raw.exec("PRAGMA user_version = 99");
+  raw.close();
+  assert.throws(() => newDevice(), /newer MAVIN desktop version/);
+  writeFileSync(join(root, "touch"), "");
+});
+
+test("server change log records web edits for devices to pull", () => {
+  const before = Number(one(`SELECT COUNT(*) AS n FROM offline_changes`).n);
+  run(`UPDATE product_batches SET qty = qty + 1 WHERE id = 'b1a'`);
+  run(`INSERT INTO price_list (id, product_id, tenant_id, sale_price, created_at, updated_at) VALUES ('np', 'p1', 't1', 110, ?, ?)`, T, T);
+  const rows = all(`SELECT tbl, row_id, tenant_id, branch_id FROM offline_changes ORDER BY seq DESC LIMIT 2`);
+  assert.equal(Number(one(`SELECT COUNT(*) AS n FROM offline_changes`).n), before + 2);
+  assert.deepEqual(rows.map((r) => r.tbl).sort(), ["price_list", "product_batches"]);
+  assert.equal(rows.find((r) => r.tbl === "product_batches")!.branch_id, "main-t1");
+});
+
+test("a device behind the trimmed change log downloads everything again", async () => {
+  const d = await provisioned();
+  run(`UPDATE product_batches SET qty = 21 WHERE id = 'b1b'`);
+  run(`UPDATE offline_changes SET changed_at = '2000-01-01T00:00:00.000Z'`);
+  run(`UPDATE product_batches SET qty = 22 WHERE id = 'b1b'`);
+  assert.ok((await off.pruneChanges(sql)).removed > 0);
+  const r = await d.sync();
+  assert.equal(r.error, null);
+  assert.equal(d.search("panadol")[0].available, 27);
+  assert.equal(d.status().provisioned && d.status().catalogReady, true);
+});

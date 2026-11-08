@@ -511,6 +511,7 @@ const BASE_NAV: NavItem[] = [
       { label: "General Settings", href: "/settings" },
       { label: "Website", href: "/settings/website" },
       { label: "Online Payments", href: "/settings/payments" },
+      { label: "Offline Desktop", href: "/settings/offline-desktop" },
       { label: "Backup", href: "/settings/backup" },
       { label: "Restore", href: "/settings/restore" },
       { label: "User Logins", href: "/settings/logins" },

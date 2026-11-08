@@ -15,6 +15,7 @@ import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { linkOfTenant, unlinkPharmacy } from "@/lib/repo/pharmacyLink";
 import { WebsiteAdminCard } from "@/components/web/manage/WebsiteAdminCard";
 import { BranchLimitsCard } from "@/components/admin/BranchLimitsCard";
+import { OfflineDevicesManager } from "@/components/offline/OfflineDevicesManager";
 import { SERVER_DB } from "@/lib/serverMode";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
 import {
@@ -313,7 +314,7 @@ export function TenantDetailPanel({
         </Section>
 
         <Section title="Permissions" hint="Applies to every login of this business, owner included.">
-          {(["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts", "Restaurant", "Payments"] as const)
+          {(["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts", "Restaurant", "Payments", "Offline Desktop"] as const)
             .filter((group) => {
               if (group === "Restaurant") return typeId === "restaurant";
               if (group === "Invoices" || group === "Memorized Invoices") return moduleAllowedForType(typeId, "invoices");
@@ -376,6 +377,12 @@ export function TenantDetailPanel({
         {SERVER_DB && (
           <Section title="Branches & Limits" hint="Takes effect at once (not with Save Changes). Branch records are never changed here.">
             <BranchLimitsCard tenantId={tenant.id} />
+          </Section>
+        )}
+
+        {SERVER_DB && (
+          <Section title="Offline Desktop" hint="Pilot. The switch is under Permissions > Offline Desktop; devices, allowance and exceptions here take effect at once.">
+            <OfflineDevicesManager tenantId={tenant.id} superAdmin />
           </Section>
         )}
 

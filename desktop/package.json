@@ -1,0 +1,54 @@
+{
+  "name": "mavin-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "MAVIN.pk offline desktop (pilot)",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist && esbuild src/renderer.ts --bundle --platform=browser --format=iife --target=chrome130 --outfile=renderer/renderer.js",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25.12"
+  },
+  "productName": "MAVIN Offline",
+  "author": "MAVIN.pk",
+  "build": {
+    "appId": "pk.mavin.offline",
+    "productName": "MAVIN Offline",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "renderer/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/offline-public.pem",
+        "to": "offline-public.pem"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "MAVIN-Offline-Setup-${version}.exe"
+    }
+  }
+}

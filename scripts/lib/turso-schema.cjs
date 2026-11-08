@@ -35,18 +35,19 @@ function snapshot(db) {
     tables[name] = Object.fromEntries(db.prepare(`PRAGMA table_info("${name}")`).all().map((c) => [c.name, Number(c.notnull)]));
   }
   const indexes = new Set(db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL`).all().map((r) => r.name).filter((n) => !INTERNAL(n)));
-  return { tables, indexes };
+  const triggers = new Set(db.prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger'`).all().map((r) => r.name));
+  return { tables, indexes, triggers };
 }
 
 /** What each version adds: tables, columns, indexes, and columns whose NOT NULL changed (table rebuilds). */
 function expectedByVersion(upTo = latestVersion()) {
   const db = new DatabaseSync(':memory:');
   const versions = [];
-  let prev = { tables: {}, indexes: new Set() };
+  let prev = { tables: {}, indexes: new Set(), triggers: new Set() };
   for (let v = 1; v <= upTo; v++) {
     db.exec(schemaSql(v));
     const cur = snapshot(db);
-    const adds = { version: v, tables: [], columns: [], indexes: [], nullability: [] };
+    const adds = { version: v, tables: [], columns: [], indexes: [], triggers: [], nullability: [] };
     for (const [t, cols] of Object.entries(cur.tables)) {
       if (!prev.tables[t]) { adds.tables.push(t); continue; }
       for (const [c, notnull] of Object.entries(cols)) {
@@ -55,6 +56,7 @@ function expectedByVersion(upTo = latestVersion()) {
       }
     }
     for (const i of cur.indexes) if (!prev.indexes.has(i)) adds.indexes.push(i);
+    for (const g of cur.triggers) if (!prev.triggers.has(g)) adds.triggers.push(g);
     versions.push(adds);
     prev = cur;
   }
@@ -86,7 +88,8 @@ async function liveSnapshot(query) {
     (tables[r.t] ??= {})[r.c] = Number(r.nn);
   }
   const idx = await query(`SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL`);
-  return { tables, indexes: new Set(idx.map((r) => r.name).filter((n) => !INTERNAL(n))) };
+  const trg = await query(`SELECT name FROM sqlite_master WHERE type = 'trigger'`);
+  return { tables, indexes: new Set(idx.map((r) => r.name).filter((n) => !INTERNAL(n))), triggers: new Set(trg.map((r) => r.name)) };
 }
 
 /** What a version added (and the final schema still has) that the live schema lacks. */
@@ -99,6 +102,7 @@ function missingFor(adds, live, final) {
     if (!live.tables[t] || !(c in live.tables[t])) missing.push(`column ${tc}`);
   }
   for (const i of adds.indexes) if (final.indexes.has(i) && !live.indexes.has(i)) missing.push(`index ${i}`);
+  for (const g of adds.triggers ?? []) if (final.triggers?.has(g) && !live.triggers?.has(g)) missing.push(`trigger ${g}`);
   for (const { column, notnull } of adds.nullability) {
     const [t, c] = column.split('.');
     if (live.tables[t] && c in live.tables[t] && live.tables[t][c] !== notnull) missing.push(`${column} should be ${notnull ? 'NOT NULL' : 'nullable'}`);

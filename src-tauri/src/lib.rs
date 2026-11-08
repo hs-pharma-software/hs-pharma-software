@@ -1867,6 +1867,112 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v81() -> &'static str {
+    r#"
+    -- Offline desktop (pilot): approved checkout devices, the operations they
+    -- send (exactly once by op_id), stock exceptions to reconcile, and a
+    -- server-side change sequence the devices pull from (no device clocks).
+    CREATE TABLE IF NOT EXISTS offline_devices (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        device_code TEXT NOT NULL,
+        secret_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        allowed_users TEXT NOT NULL DEFAULT '[]',
+        modules TEXT NOT NULL DEFAULT '["sale.cash"]',
+        max_offline_hours INTEGER NOT NULL DEFAULT 72,
+        registered_by TEXT,
+        registered_at TEXT NOT NULL,
+        revoked_at TEXT,
+        revoked_by TEXT,
+        revoke_reason TEXT,
+        last_seen_at TEXT,
+        last_sync_at TEXT,
+        last_pending INTEGER,
+        last_failed INTEGER,
+        app_version TEXT,
+        protocol INTEGER,
+        next_receipt_no INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_offline_devices_code ON offline_devices (tenant_id, device_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_offline_devices_branch_active ON offline_devices (tenant_id, branch_id) WHERE status = 'active';
+    CREATE TABLE IF NOT EXISTS offline_ops (
+        op_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        user_id TEXT,
+        kind TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        depends_on TEXT,
+        payload TEXT NOT NULL,
+        occurred_at TEXT,
+        received_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        result TEXT,
+        error TEXT,
+        applied_seq INTEGER,
+        decided_by TEXT,
+        decided_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_offline_ops_device ON offline_ops (tenant_id, device_id, received_at);
+    CREATE INDEX IF NOT EXISTS idx_offline_ops_status ON offline_ops (tenant_id, status);
+    CREATE TABLE IF NOT EXISTS offline_exceptions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        op_id TEXT NOT NULL,
+        invoice_id TEXT,
+        product_id TEXT,
+        batch_id TEXT,
+        kind TEXT NOT NULL,
+        qty REAL,
+        detail TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution TEXT,
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_offline_exceptions_tenant ON offline_exceptions (tenant_id, status);
+    CREATE TABLE IF NOT EXISTS offline_changes (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        tbl TEXT NOT NULL,
+        row_id TEXT NOT NULL,
+        tenant_id TEXT,
+        branch_id TEXT,
+        changed_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_offline_changes_tenant ON offline_changes (tenant_id, seq);
+    ALTER TABLE invoices ADD COLUMN offline_ref TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_invoices_offline_ref ON invoices (tenant_id, offline_ref) WHERE offline_ref IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_offline_chg_batches_ins AFTER INSERT ON product_batches BEGIN
+        INSERT INTO offline_changes (tbl, row_id, tenant_id, branch_id, changed_at) VALUES ('product_batches', NEW.id, NEW.tenant_id, NEW.branch_id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_offline_chg_batches_upd AFTER UPDATE ON product_batches BEGIN
+        INSERT INTO offline_changes (tbl, row_id, tenant_id, branch_id, changed_at) VALUES ('product_batches', NEW.id, NEW.tenant_id, NEW.branch_id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_offline_chg_products_ins AFTER INSERT ON products BEGIN
+        INSERT INTO offline_changes (tbl, row_id, tenant_id, branch_id, changed_at) VALUES ('products', NEW.id, NEW.tenant_id, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_offline_chg_products_upd AFTER UPDATE ON products BEGIN
+        INSERT INTO offline_changes (tbl, row_id, tenant_id, branch_id, changed_at) VALUES ('products', NEW.id, NEW.tenant_id, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_offline_chg_prices_ins AFTER INSERT ON price_list BEGIN
+        INSERT INTO offline_changes (tbl, row_id, tenant_id, branch_id, changed_at) VALUES ('price_list', NEW.id, NEW.tenant_id, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_offline_chg_prices_upd AFTER UPDATE ON price_list BEGIN
+        INSERT INTO offline_changes (tbl, row_id, tenant_id, branch_id, changed_at) VALUES ('price_list', NEW.id, NEW.tenant_id, NULL, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
 /// Plans for the website's pricing page (business types, grace period, add-ons
 /// such as website, online store and custom domain) and the Super Admin mail
 /// section (mailboxes on mavin.pk and their messages). Additions only.
@@ -4362,6 +4468,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 80,
             description: "online_payments",
             sql: schema_sql_v80(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 81,
+            description: "offline_desktop",
+            sql: schema_sql_v81(),
             kind: MigrationKind::Up,
         },
     ]

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+  <title>MAVIN Offline</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="bar" id="bar">
+    <strong class="brand">MAVIN Offline <span class="tag">pilot</span></strong>
+    <span id="who" class="muted"></span>
+    <span class="spacer"></span>
+    <span id="net" class="pill">…</span>
+    <span id="queue" class="pill">…</span>
+    <button id="syncBtn" type="button">Sync now</button>
+    <button id="outBtn" type="button" hidden>Sign out</button>
+  </header>
+  <p id="notice" class="notice" hidden></p>
+
+  <main id="setup" hidden class="card narrow">
+    <h1>Set up this computer</h1>
+    <p class="muted">The business owner signs in online once. This computer becomes the offline checkout for one branch. It needs Offline Desktop switched on for the business by MAVIN.pk.</p>
+    <form id="setupForm">
+      <label>Username <input id="setupUser" autocomplete="username" required></label>
+      <label>Password <input id="setupPass" type="password" autocomplete="current-password" required></label>
+      <label>Name for this computer <input id="setupName" placeholder="Counter 1" maxlength="60"></label>
+      <button class="primary" type="submit">Set up</button>
+    </form>
+    <p class="muted small" id="serverLine"></p>
+  </main>
+
+  <main id="login" hidden class="card narrow">
+    <h1>Sign in</h1>
+    <p class="muted" id="loginWhere"></p>
+    <form id="loginForm">
+      <label>Username <input id="loginUser" autocomplete="username" required></label>
+      <label>Password <input id="loginPass" type="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    <p class="muted small">Without internet, only logins that have signed in online on this computer can sign in, until the offline allowance ends.</p>
+  </main>
+
+  <main id="pos" hidden class="pos">
+    <section class="card">
+      <label class="search">Product name or barcode <input id="search" autocomplete="off" placeholder="Type or scan, then Enter"></label>
+      <ul id="results" class="results"></ul>
+    </section>
+    <section class="card">
+      <h2>Bill</h2>
+      <div class="scroll">
+        <table id="cart"><thead><tr><th>Product</th><th>Unit</th><th class="num">Qty</th><th class="num">Disc %</th><th class="num">Price</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="grid2">
+        <label>Customer name <input id="custName" maxlength="120"></label>
+        <label>Mobile <input id="custPhone" maxlength="30"></label>
+      </div>
+      <p class="muted small" id="rxNote" hidden>Controlled medicine on the bill: name and mobile are required.</p>
+      <div class="totals"><span>Estimated total</span><strong id="estTotal">0.00</strong></div>
+      <label>Cash received <input id="tendered" type="number" min="0" step="0.01" inputmode="decimal"></label>
+      <p id="saleError" class="error" hidden></p>
+      <button id="saveBtn" class="primary" type="button">Save cash sale and print</button>
+      <p class="muted small">Cash only offline. JazzCash, Easypaisa and card payments, FBR submission and credit sales need MAVIN.pk online.</p>
+    </section>
+    <section class="card">
+      <h2>Sales on this computer</h2>
+      <p class="muted small">Only this computer's sales, not the business's totals.</p>
+      <div class="scroll"><table id="sales"><thead><tr><th>Receipt</th><th>Date</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      <details>
+        <summary>Support</summary>
+        <p class="muted small">Details for MAVIN.pk support. No customer names or phone numbers are included.</p>
+        <button id="diagBtn" type="button">Show details</button>
+        <button id="backupBtn" type="button">Back up now</button>
+        <pre id="diag" class="diag" hidden></pre>
+      </details>
+    </section>
+  </main>
+  <script src="renderer.js"></script>
+</body>
+</html>

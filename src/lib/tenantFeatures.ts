@@ -5,6 +5,8 @@ export const TENANT_OPT_IN_ACTIONS: readonly string[] = [
   "invoice.pdf", "invoice.whatsapp",
   // Online payments (server/payments): each switch on its own.
   "payments.online", "payments.jazzcash", "payments.easypaisa", "payments.card", "payments.custom_merchant", "payments.refund",
+  // Offline desktop pilot (server/offline): devices, offline allowance, sync.
+  "desktop.offline",
 ];
 
 /** Whether the business's list (set by the Super Admin) allows an action. */
