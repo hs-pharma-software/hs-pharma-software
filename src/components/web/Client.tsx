@@ -104,7 +104,56 @@ export function RequestForm({ kind, preview }: { kind: "contact" | "appointment"
 
 interface CartInfo {
   items: ProductCardData[];
-  store: { pickup: boolean; delivery: boolean; zones: { name: string; charge: number }[]; minOrder: number; payment: { cod: boolean; pickup: boolean; bank: boolean }; bankDetails: string; rxNotice: string };
+  store: { pickup: boolean; delivery: boolean; zones: { name: string; charge: number }[]; minOrder: number; payment: { cod: boolean; pickup: boolean; bank: boolean }; bankDetails: string; rxNotice: string; online?: { provider: string; method: string; label: string }[] };
+}
+
+/** Sends the customer to the provider's hosted page (form the server built). */
+async function goToPayment(api: <T>(b: Record<string, unknown>) => Promise<T>, token: string, choice: { provider: string; method: string }, returnPath: string, idempotencyKey: string) {
+  const r = await api<{ form: { action: string; method: "POST" | "GET"; fields: Record<string, string> } }>({ action: "payOnline", token, provider: choice.provider, method: choice.method, returnPath, idempotencyKey });
+  const form = document.createElement("form");
+  form.method = r.form.method;
+  form.action = r.form.action;
+  for (const [k, v] of Object.entries(r.form.fields)) {
+    const i = document.createElement("input");
+    i.type = "hidden";
+    i.name = k;
+    i.value = v;
+    form.appendChild(i);
+  }
+  document.body.appendChild(form);
+  form.submit();
+}
+
+/** Order page: pay (again) for an online order that is not paid yet. Paid status comes only from the server. */
+export function PayNow({ token, orderBase }: { token: string; orderBase: string }) {
+  const [options, setOptions] = useState<{ provider: string; method: string; label: string }[] | null>(null);
+  const [choice, setChoice] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [key] = useState(() => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-pay`);
+  useEffect(() => {
+    api<{ store: { online?: { provider: string; method: string; label: string }[] } }>({ action: "cart", slugs: [] })
+      .then((r) => setOptions(r.store.online ?? []))
+      .catch(() => setOptions([]));
+  }, []);
+  if (!options) return null;
+  if (!options.length) return <p className="mt-2 text-sm text-neutral-600">Online payment is not available right now. Please contact the shop.</p>;
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border border-neutral-200 bg-white p-3 text-sm">
+      {options.map((o, i) => <label key={`${o.provider}-${o.method}`} className="flex items-center gap-2"><input type="radio" name="paynow" checked={choice === i} onChange={() => setChoice(i)} /> {o.label}</label>)}
+      {error && <p role="alert" className="text-rose-700">{error}</p>}
+      <button type="button" disabled={busy} onClick={async () => {
+        setBusy(true);
+        setError(null);
+        try {
+          await goToPayment(api, token, options[choice], orderBase, key);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+          setBusy(false);
+        }
+      }} className="min-h-10 rounded-lg px-4 py-2 font-semibold text-white disabled:opacity-60" style={{ background: "var(--wa)" }}>{busy ? "Opening…" : "Pay now"}</button>
+    </div>
+  );
 }
 
 /** Cart and checkout in one page: lines checked against the server, then the order form. */
@@ -133,7 +182,9 @@ export function Checkout({ orderBase, preview }: { orderBase: string; preview?: 
   const delivery = f.fulfillment === "delivery" ? zone?.charge ?? 0 : 0;
   const needsRx = lines.some((l) => l.p!.rxRequired);
   const unavailable = cart.filter((l) => !info?.items.find((i) => i.slug === l.slug && i.orderable));
-  const pays = info ? ([["cod", "Cash on delivery", f.fulfillment === "delivery" && info.store.payment.cod], ["pickup", "Pay on pickup", f.fulfillment === "pickup" && info.store.payment.pickup], ["bank", "Bank transfer", info.store.payment.bank]] as const).filter((p) => p[2]) : [];
+  const online = info?.store.online ?? [];
+  const [onlineChoice, setOnlineChoice] = useState(0);
+  const pays = info ? ([["cod", "Cash on delivery", f.fulfillment === "delivery" && info.store.payment.cod], ["pickup", "Pay on pickup", f.fulfillment === "pickup" && info.store.payment.pickup], ["bank", "Bank transfer", info.store.payment.bank], ["online", "Pay online", online.length > 0]] as const).filter((p) => p[2]) : [];
 
   const update = (slug: string, qty: number) => { const c = cart.map((l) => (l.slug === slug ? { ...l, qty } : l)).filter((l) => l.qty > 0); setCart(c); writeCart(c); };
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
@@ -159,7 +210,13 @@ export function Checkout({ orderBase, preview }: { orderBase: string; preview?: 
       try {
         const r = await api<{ token: string }>({ action: "checkout", idempotencyKey: key, items: lines.map((l) => ({ slug: l.slug, qty: l.qty })), ...f, prescriptions: files });
         writeCart([]);
-        window.location.assign(new URL(`${orderBase}/${r.token}`, window.location.href).href);
+        const orderUrl = new URL(`${orderBase}/${r.token}`, window.location.href);
+        if (f.payment === "online" && online[onlineChoice]) {
+          // Order saved; now to the provider's secure page (the shop sees the order as unpaid until the provider confirms).
+          await goToPayment(api, r.token, online[onlineChoice], new URL(orderBase, window.location.href).pathname, `${key}-pay`);
+          return;
+        }
+        window.location.assign(orderUrl.href);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setBusy(false);
@@ -220,6 +277,12 @@ export function Checkout({ orderBase, preview }: { orderBase: string; preview?: 
           <legend className="mb-1 font-medium text-neutral-900">Payment</legend>
           {pays.map(([k, label]) => <label key={k} className="flex items-center gap-2"><input type="radio" name="pay" required checked={f.payment === k} onChange={() => setF({ ...f, payment: k })} /> {label}</label>)}
           {f.payment === "bank" && <p className="whitespace-pre-line rounded-lg bg-neutral-50 p-2 text-xs text-neutral-700">{info.store.bankDetails}{"\n"}The shop confirms your transfer before sending the order.</p>}
+          {f.payment === "online" && (
+            <div className="space-y-1 rounded-lg bg-neutral-50 p-2 text-sm">
+              {online.map((o, i) => <label key={`${o.provider}-${o.method}`} className="flex items-center gap-2"><input type="radio" name="online" checked={onlineChoice === i} onChange={() => setOnlineChoice(i)} /> {o.label}</label>)}
+              <p className="text-xs text-neutral-600">You pay on {online[onlineChoice]?.label.split(" · ")[0] ?? "the provider"}&apos;s secure page; card details are entered there, not on this site.</p>
+            </div>
+          )}
         </fieldset>
         <p className="text-xs text-neutral-500">Prices and stock are checked again when you place the order. The shop confirms it before preparing it.</p>
         {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}

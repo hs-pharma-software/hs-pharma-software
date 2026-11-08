@@ -1758,6 +1758,115 @@ fn schema_sql_v79() -> &'static str {
     "#
 }
 
+/// Online payments: merchant connections (platform and per business, secrets
+/// encrypted), payment attempts, provider events, refunds, access requests, audit.
+fn schema_sql_v80() -> &'static str {
+    r#"
+    -- Online payments (JazzCash, Easypaisa, cards through their hosted pages).
+    -- Merchant connections: the platform's own (tenant_id NULL) and each business's.
+    -- Secrets are stored encrypted (credentials_enc); masked hints only for display.
+    CREATE TABLE IF NOT EXISTS payment_merchants (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT,
+        provider TEXT NOT NULL,
+        environment TEXT NOT NULL DEFAULT 'sandbox',
+        status TEXT NOT NULL DEFAULT 'setup',
+        enabled INTEGER NOT NULL DEFAULT 0,
+        methods TEXT,
+        approved_domains TEXT,
+        credentials_enc TEXT,
+        credential_hints TEXT,
+        last_test_at TEXT,
+        last_test_ok INTEGER,
+        last_test_note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_merchants ON payment_merchants (COALESCE(tenant_id, '~platform'), provider, environment);
+    -- One row per attempt to pay; an order may have several, only one can be paid.
+    CREATE TABLE IF NOT EXISTS payment_attempts (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT,
+        branch_id TEXT,
+        purpose TEXT NOT NULL,
+        ref_id TEXT NOT NULL,
+        merchant_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        method TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'PKR',
+        reference TEXT NOT NULL,
+        idempotency_key TEXT,
+        status TEXT NOT NULL DEFAULT 'created',
+        provider_txn_ref TEXT,
+        provider_status TEXT,
+        settlement_status TEXT NOT NULL DEFAULT 'unsettled',
+        return_url TEXT,
+        paid_at TEXT,
+        applied_at TEXT,
+        review_note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_attempts_ref ON payment_attempts (reference);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_attempts_idem ON payment_attempts (purpose, ref_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_payment_attempts_ref ON payment_attempts (purpose, ref_id);
+    CREATE INDEX IF NOT EXISTS idx_payment_attempts_tenant ON payment_attempts (tenant_id, created_at);
+    -- What the provider said (redacted), each time.
+    CREATE TABLE IF NOT EXISTS payment_events (
+        id TEXT PRIMARY KEY,
+        attempt_id TEXT,
+        tenant_id TEXT,
+        kind TEXT NOT NULL,
+        provider_status TEXT,
+        verified INTEGER NOT NULL DEFAULT 0,
+        note TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_payment_events_attempt ON payment_events (attempt_id, created_at);
+    CREATE TABLE IF NOT EXISTS payment_refunds (
+        id TEXT PRIMARY KEY,
+        attempt_id TEXT NOT NULL,
+        tenant_id TEXT,
+        amount_minor INTEGER NOT NULL,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT,
+        provider_ref TEXT,
+        idempotency_key TEXT,
+        requested_by TEXT,
+        completed_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_refunds_idem ON payment_refunds (attempt_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS payment_access_requests (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        methods TEXT NOT NULL,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        requested_by TEXT,
+        decided_by TEXT,
+        decision_note TEXT,
+        created_at TEXT NOT NULL,
+        decided_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_payment_requests_tenant ON payment_access_requests (tenant_id, status);
+    CREATE TABLE IF NOT EXISTS payment_audit (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT,
+        actor_user_id TEXT,
+        actor_role TEXT,
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_payment_audit_tenant ON payment_audit (tenant_id, created_at);
+    "#
+}
+
 /// Plans for the website's pricing page (business types, grace period, add-ons
 /// such as website, online store and custom domain) and the Super Admin mail
 /// section (mailboxes on mavin.pk and their messages). Additions only.
@@ -4247,6 +4356,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 79,
             description: "multi_branch",
             sql: schema_sql_v79(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 80,
+            description: "online_payments",
+            sql: schema_sql_v80(),
             kind: MigrationKind::Up,
         },
     ]

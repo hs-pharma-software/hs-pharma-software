@@ -313,7 +313,7 @@ export function TenantDetailPanel({
         </Section>
 
         <Section title="Permissions" hint="Applies to every login of this business, owner included.">
-          {(["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts", "Restaurant"] as const)
+          {(["Invoices", "Memorized Invoices", "Purchases", "Data", "Accounts", "Restaurant", "Payments"] as const)
             .filter((group) => {
               if (group === "Restaurant") return typeId === "restaurant";
               if (group === "Invoices" || group === "Memorized Invoices") return moduleAllowedForType(typeId, "invoices");

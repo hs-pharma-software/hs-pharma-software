@@ -7,7 +7,7 @@ import { webContext, sectionData, type WebContext } from "@/server/web/publicSit
 import { orderByToken, publicCatalog, publicCategories } from "@/server/web/store";
 import { FONTS } from "@/lib/web/sections";
 import { ProductCard, SectionView, SiteFooter, SiteHeader, priceLines, rs, sized, stockText, themeStyle, type Links } from "@/components/web/Render";
-import { AddToCart, CartButton, Checkout, ReportLookup, RequestForm, ShopSearch } from "@/components/web/Client";
+import { AddToCart, CartButton, Checkout, PayNow, ReportLookup, RequestForm, ShopSearch } from "@/components/web/Client";
 
 /** A business's public website and store (served for its own addresses only:
  * see src/proxy.server.ts and resolveHost). Address map:
@@ -163,6 +163,14 @@ export default async function WebPage(p: Params) {
         <p className="mt-2 text-neutral-700">Status: <b>{STEP[o.status] ?? o.status}</b></p>
         {o.rxStatus === "pending_review" && <p className="mt-2 text-sm text-amber-800">The pharmacist is checking your prescription.</p>}
         {o.rxStatus === "clarification" && <p className="mt-2 text-sm text-amber-800">The pharmacy needs more information about your prescription and will contact you.</p>}
+        {o.paymentMethod === "online" && (o.paymentStatus === "paid"
+          ? <p className="mt-2 text-sm font-medium text-emerald-700">Paid online.</p>
+          : o.status !== "cancelled" && o.status !== "rejected" && (
+            <div className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+              <p>Payment not confirmed yet. If you have just paid, it shows here once the payment provider confirms it.</p>
+              <PayNow token={w.token} orderBase="/order" />
+            </div>
+          ))}
         {o.paymentMethod === "bank" && o.paymentStatus !== "paid" && <p className="mt-2 whitespace-pre-line rounded-lg bg-neutral-50 p-3 text-sm text-neutral-700">Pay by bank transfer to:{"\n"}{ctx.site.storeSettings.bankDetails}{"\n"}Mention order #{o.orderNo}. The shop confirms your payment.</p>}
         <ul className="mt-6 divide-y divide-black/5 rounded-xl border border-black/5 bg-white text-sm">
           {o.items.map((i, k) => <li key={k} className="flex justify-between gap-3 p-3"><span>{i.name} × {i.qty}</span><span className="tabular-nums">{rs(i.total)}</span></li>)}

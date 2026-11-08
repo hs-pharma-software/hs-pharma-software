@@ -510,6 +510,7 @@ const BASE_NAV: NavItem[] = [
     children: [
       { label: "General Settings", href: "/settings" },
       { label: "Website", href: "/settings/website" },
+      { label: "Online Payments", href: "/settings/payments" },
       { label: "Backup", href: "/settings/backup" },
       { label: "Restore", href: "/settings/restore" },
       { label: "User Logins", href: "/settings/logins" },

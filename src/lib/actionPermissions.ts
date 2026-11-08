@@ -15,6 +15,12 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
   // Off for a business until the Super Admin allows it ("+key" in the business's list).
   { key: "invoice.pdf", label: "Download invoice PDF", group: "Invoices", tenantOptIn: true },
   { key: "invoice.whatsapp", label: "Send invoice on WhatsApp", group: "Invoices", tenantOptIn: true },
+  { key: "payments.online", label: "Online payments", group: "Payments", tenantOptIn: true },
+  { key: "payments.jazzcash", label: "JazzCash", group: "Payments", tenantOptIn: true },
+  { key: "payments.easypaisa", label: "Easypaisa", group: "Payments", tenantOptIn: true },
+  { key: "payments.card", label: "Visa / Mastercard cards", group: "Payments", tenantOptIn: true },
+  { key: "payments.custom_merchant", label: "Own merchant account", group: "Payments", tenantOptIn: true },
+  { key: "payments.refund", label: "Refund online payments", group: "Payments", tenantOptIn: true, optIn: true },
   { key: "memorized.edit", label: "Edit memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.delete", label: "Delete memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.convert", label: "Convert to invoice", group: "Memorized Invoices", optIn: true },
@@ -33,6 +39,7 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
 
 export type ActionKey =
   | "invoice.edit" | "invoice.delete" | "invoice.fbr_submit" | "invoice.purchase_rate" | "invoice.refund" | "invoice.pdf" | "invoice.whatsapp"
+  | "payments.online" | "payments.jazzcash" | "payments.easypaisa" | "payments.card" | "payments.custom_merchant" | "payments.refund"
   | "data.export" | "data.restore" | "finance.close"
   | "memorized.edit" | "memorized.delete" | "memorized.convert"
   | "purchase.edit" | "purchase.delete"

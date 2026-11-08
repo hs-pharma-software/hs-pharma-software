@@ -1,7 +1,11 @@
 /** Features the Super Admin switches on per business: off until the business's
  * action list holds "+key" (Tenants > Tenant Detail > Permissions). Every other
  * action is on unless the list holds "key". Shared by the app and the server. */
-export const TENANT_OPT_IN_ACTIONS: readonly string[] = ["invoice.pdf", "invoice.whatsapp"];
+export const TENANT_OPT_IN_ACTIONS: readonly string[] = [
+  "invoice.pdf", "invoice.whatsapp",
+  // Online payments (server/payments): each switch on its own.
+  "payments.online", "payments.jazzcash", "payments.easypaisa", "payments.card", "payments.custom_merchant", "payments.refund",
+];
 
 /** Whether the business's list (set by the Super Admin) allows an action. */
 export function tenantAllows(list: readonly string[] | null | undefined, key: string): boolean {

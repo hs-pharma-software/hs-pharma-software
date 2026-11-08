@@ -79,7 +79,7 @@ export interface Caller {
 /** Writes to these tables are an action that needs its permission. */
 export const TABLE_ACTIONS: Record<string, string> = { financial_closings: "finance.close" };
 /** Opt-in actions: staff have them only when ticked ("+key"). Same list as lib/actionPermissions.ts. */
-const OPT_IN_ACTIONS = new Set(["invoice.fbr_submit", "invoice.refund", "invoice.purchase_rate", "data.export", "data.restore", "finance.close", "memorized.edit", "memorized.delete", "memorized.convert"]);
+const OPT_IN_ACTIONS = new Set(["invoice.fbr_submit", "invoice.refund", "invoice.purchase_rate", "data.export", "data.restore", "finance.close", "memorized.edit", "memorized.delete", "memorized.convert", "payments.refund"]);
 
 /** Whether the caller may perform an action (same rule as lib/actionPermissions.ts can()). */
 export function callerCan(caller: Caller, action: string): boolean {

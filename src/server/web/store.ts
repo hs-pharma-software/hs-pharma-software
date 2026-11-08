@@ -16,6 +16,7 @@ import { HttpError } from "../db";
 import type { Sql } from "../subSupers";
 import { audit, iso, json, loadSite, rateLimited, requireSite, type Site } from "./core";
 import { pageSlug } from "../../lib/web/sections";
+import { offeredMethods } from "../payments";
 /** Prescriptions: a product needs one when the business marks it; a controlled
  * (narcotic) medicine always does. The pharmacist reviews it before confirming. */
 export const needsRx = (rxFlag: unknown, narcotic: unknown) => Number(rxFlag) === 1 || Number(narcotic) === 1;
@@ -234,7 +235,7 @@ export function sniffFile(buf: Buffer): string | null {
   return null;
 }
 
-export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip: string | null = null, now = new Date()) {
+export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip: string | null = null, now = new Date(), verifiedHost?: string) {
   const t = site.tenantId;
   if (!site.storeEnabled || site.publicSuspended || !site.tenantActive) throw new HttpError(403, "This store is not taking orders right now.");
   const key = typeof input.idempotencyKey === "string" && /^[\w-]{16,64}$/.test(input.idempotencyKey) ? input.idempotencyKey : "";
@@ -272,7 +273,9 @@ export async function placeOrder(sql: Sql, site: Site, input: CheckoutInput, ip:
     address = text(input.address, 300, "delivery address", true);
   }
   const payment = String(input.payment ?? "");
-  const allowed = { cod: st.payment.cod && fulfillment === "delivery", pickup: st.payment.pickup && fulfillment === "pickup", bank: st.payment.bank };
+  // Online: only when this website address has an active, approved payment connection.
+  const online = payment === "online" && verifiedHost ? (await offeredMethods(sql, site.tenantId, verifiedHost)).length > 0 : false;
+  const allowed = { cod: st.payment.cod && fulfillment === "delivery", pickup: st.payment.pickup && fulfillment === "pickup", bank: st.payment.bank, online };
   if (!(payment in allowed) || !allowed[payment as keyof typeof allowed]) throw new HttpError(400, "Choose a way to pay that is offered.");
 
   // Lines: merge duplicates, server prices only.
@@ -443,11 +446,21 @@ export async function setOrderStatus(sql: Sql, actor: string, tenantId: string, 
     }
   }
   if ((to === "dispatched" || to === "completed") && String(o.payment_method) === "bank" && o.payment_status !== "paid") throw new HttpError(409, "Confirm the bank transfer first.");
+  if ((to === "dispatched" || to === "completed") && String(o.payment_method) === "online" && o.payment_status !== "paid") throw new HttpError(409, "The online payment is not confirmed yet.");
   if (to === "completed" && !o.invoice_id) throw new HttpError(409, "Bill the order in the POS first (Create invoice), so stock and accounts are updated.");
   const claimed = await sql.execute(`UPDATE web_orders SET status = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = ?`, [to, iso(), id, tenantId, o.status]);
   if (!claimed.rowsAffected) throw new HttpError(409, "The order was just changed by someone else. Reload it.");
   await sql.batch([event(id, tenantId, actor, to, why || null)]);
   await audit(sql, tenantId, actor, "order_status", { id, from: o.status, to });
+}
+
+/** An order to pay online, by its private token (the amount is the stored total, never the browser's). */
+export async function orderForPayment(sql: Sql, tenantId: string, token: string) {
+  if (!/^[\w-]{20,64}$/.test(token)) return null;
+  const o = (await sql.execute(
+    `SELECT id, order_no, total, branch_id, payment_method, payment_status, status, phone, email FROM web_orders WHERE tenant_id = ? AND public_token = ?`, [tenantId, token],
+  )).rows[0];
+  return o ?? null;
 }
 
 /** Payment kept separate from fulfilment: bank transfers stay pending until staff confirm them. */
