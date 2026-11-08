@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as the web app's theme colour (app.webmanifest). -->
+    <color name="brand">#0B2A6B</color>
+    <color name="navigation">#FFFFFF</color>
+    <color name="splash_background">#FFFFFF</color>
+</resources>

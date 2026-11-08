@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MAVIN Business</string>
+    <string name="launch_url">https://app.mavin.pk/dashboard/</string>
+    <string name="provider_authority">pk.mavin.business.fileprovider</string>
+    <!-- The website this app opens (must match assetlinks.json on app.mavin.pk). -->
+    <string name="asset_statements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {\"namespace\": \"web\", \"site\": \"https://app.mavin.pk\"}
+        }]
+    </string>
+</resources>

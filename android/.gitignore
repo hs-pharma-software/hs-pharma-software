@@ -1,0 +1,13 @@
+# Build output and machine settings
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Release signing key and its passwords: never share or commit
+signing/
