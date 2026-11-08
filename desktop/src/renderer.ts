@@ -209,6 +209,10 @@ $("saveBtn").addEventListener("click", async () => {
     cart = [];
     renderCart();
     for (const id of ["custName", "custPhone", "tendered"]) ($(id) as HTMLInputElement).value = "";
+    // Stock figures changed: clear the old search results.
+    search.value = "";
+    $("results").replaceChildren();
+    search.focus();
     notice(`Saved ${r.sale.offlineRef}: ${money(r.sale.totals.payable)}, change ${money(r.sale.totals.change)}.`);
     await call("print", r.sale.saleId).catch((e) => notice(`Saved, but printing failed: ${e instanceof Error ? e.message : e}. Reprint from the list.`));
     void call("sync").then(refresh);

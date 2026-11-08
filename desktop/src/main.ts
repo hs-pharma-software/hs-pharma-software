@@ -18,6 +18,8 @@ if (!app.requestSingleInstanceLock()) app.quit(); // one process per Windows use
 
 const dataRoot = app.getPath("userData");
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
+/** Development only (never in the installed app): a test server's public key. */
+const publicKeyFile = !app.isPackaged && process.env.MAVIN_PUBLIC_KEY_FILE ? process.env.MAVIN_PUBLIC_KEY_FILE : join(resources, "offline-public.pem");
 
 /** Secrets encrypted by Windows for this user account (safeStorage = DPAPI). */
 const secrets: SecretStore = {
@@ -66,6 +68,17 @@ function createWindow() {
     if (/^https:\/\/(app|www)\.mavin\.pk\//.test(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
+  // MAVIN_DEBUG=1: page errors and console to the terminal (support / smoke tests).
+  if (process.env.MAVIN_DEBUG === "1") {
+    win.webContents.on("console-message", (e) => console.log(`[page] ${e.message}`));
+    win.webContents.on("did-fail-load", (_e, code, desc) => console.log(`[page] load failed ${code} ${desc}`));
+    win.webContents.on("did-finish-load", () => {
+      console.log("[page] loaded");
+      const shot = process.env.MAVIN_SHOT;
+      if (shot) setTimeout(() => void win?.webContents.capturePage().then((img) => { writeFileSync(shot, img.toPNG()); console.log(`[page] screenshot ${shot}`); }), 2500);
+    });
+    win.webContents.on("render-process-gone", (_e, d) => console.log(`[page] crashed ${d.reason}`));
+  }
   void win.loadFile(join(__dirname, "..", "renderer", "index.html"));
 }
 
@@ -122,6 +135,9 @@ for (const [name, fn] of Object.entries(handlers)) {
 
 /** Prints the receipt text through a hidden window (the Windows print dialog). */
 async function printReceipt(text: string) {
+  // Development smoke tests: no print dialog.
+  if (!app.isPackaged && process.env.MAVIN_NO_PRINT === "1") { console.log(`[print]
+${text}`); return true; }
   const p = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false } });
   const esc = text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   await p.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><meta charset="utf-8"><style>@page{margin:4mm}body{margin:0;font:12px/1.35 Consolas,monospace;white-space:pre}</style><body>${esc}</body>`)}`);
@@ -132,7 +148,7 @@ async function printReceipt(text: string) {
 
 app.whenReady().then(() => {
   device = new OfflineDevice({
-    dataRoot, publicKeyPem: readFileSync(join(resources, "offline-public.pem"), "utf8"), appVersion: app.getVersion(), transport, secrets,
+    dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets,
   });
   createWindow();
   // Background sync; repeated failures wait longer (see OfflineDevice.backoff).
