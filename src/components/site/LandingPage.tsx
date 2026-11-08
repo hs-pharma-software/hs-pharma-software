@@ -162,6 +162,7 @@ export function LandingPage() {
               <a href="#solutions" className="nav-link nav-extra">Solutions</a>
               <a href="#features" className="nav-link nav-extra">Features</a>
               <Link href={link.site("/demo")} className="nav-link nav-extra">Book a Demo</Link>
+              <Link href={link.site("/download")} className="nav-link nav-extra">Downloads</Link>
               <a href={link.app("/dashboard")} style={{
                 padding:"8px clamp(12px, 4vw, 22px)",
                 background:"#0b2a6b",
@@ -260,6 +261,18 @@ export function LandingPage() {
                 boxShadow:"0 2px 8px rgba(0,0,0,.06)",
               }}>
                 🌐 Open Web App
+              </a>
+              <a href={ANDROID_RELEASE.path} download type="application/vnd.android.package-archive" className="web-btn" title={`${ANDROID_RELEASE.appName} ${ANDROID_RELEASE.versionName} · ${androidSizeLabel()}`} style={{
+                display:"inline-flex",alignItems:"center",gap:9,
+                padding:"15px 30px",
+                background:"#fff",
+                border:"1.5px solid #e2e8f0",
+                borderRadius:13,color:"#334155",
+                textDecoration:"none",fontSize:16,fontWeight:700,
+                letterSpacing:"-.01em",
+                boxShadow:"0 2px 8px rgba(0,0,0,.06)",
+              }}>
+                📱 Download for Android
               </a>
             </div>
 
