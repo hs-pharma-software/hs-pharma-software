@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AlertCircle, ChevronDown, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -38,6 +39,7 @@ import { imeiListProblem, imeisOfPurchase, parseImeis, receiveImeis, removePurch
 import { useAuthStore } from "@/store/authStore";
 import type { Supplier, Product, Uom } from "@/lib/types";
 import { localDate } from "@/lib/localDate";
+import { PHONE_QUERY, useMediaQuery } from "@/lib/useMediaQuery";
 
 interface Line {
   product: Product;
@@ -83,6 +85,50 @@ function linesKey(lines: Line[]): string {
     })
   );
 }
+
+/** A line that can't be saved, and the field to fix (data-field name). */
+interface LineProblem {
+  field: string;
+  message: string;
+}
+
+/** Problems that stop a save, per line, in line order. Same rules as the grid:
+ * no negative numbers (the inputs' min="0") and, for IMEI-tracked products,
+ * one IMEI per handset received, none repeated across lines. */
+function linesProblems(lines: Line[]): (LineProblem | null)[] {
+  const seen = new Set<string>();
+  const numbers: [keyof Line, string, string][] = [
+    ["purchasePrice", "purchase", "Purchase rate"],
+    ["salePrice", "retail", "Sale rate"],
+    ["qty", "qty", "Quantity"],
+    ["bonusQty", "bonus", "Bonus"],
+    ["stPct", "st", "S.T %"],
+    ["whtPct", "wht", "W.T %"],
+  ];
+  return lines.map((l) => {
+    for (const [key, field, label] of numbers) {
+      if (Number(l[key]) < 0) return { field, message: `${l.product.name}: ${label} can't be negative.` };
+    }
+    if (!l.product.track_imei) return null;
+    const sec = l.unit === "secondary";
+    const units = toBaseUnitQty(l.qty, sec, l.product.packing || 1) + toBaseUnitQty(l.bonusQty, sec, l.product.packing || 1);
+    const list = parseImeis(l.imeis ?? "");
+    const problem = imeiListProblem(list, units, l.product.name) ?? list.map((i) => (seen.has(i) ? `IMEI ${i} is entered twice.` : (seen.add(i), null))).find(Boolean) ?? null;
+    return problem ? { field: "imei", message: problem } : null;
+  });
+}
+
+/** A labelled field in a phone product row. */
+function RowField({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <label className={`flex min-w-0 flex-col gap-0.5 ${wide ? "col-span-full" : ""}`}>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const rowInput = "w-full min-w-0 rounded-lg border border-neutral-300 bg-white px-2 py-1.5";
 
 function makeLine(p: Product): Line {
   return {
@@ -146,6 +192,11 @@ export function PurchaseFormModal({
   const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(draftId) || Boolean(fromOrder));
   const [uoms, setUoms] = useState<Uom[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
+  // Phones: products are compact rows; one opens at a time to enter its details.
+  const isPhone = useMediaQuery(PHONE_QUERY);
+  const [openRow, setOpenRow] = useState<number | null>(null);
+  // Error marks on product rows show once a save has been tried.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   /** Snapshot of the saved lines; if unchanged, an edit only updates the
    * header (paid amount, description...) and leaves stock alone. */
   const originalLinesKey = useRef<string | null>(null);
@@ -343,8 +394,12 @@ export function PurchaseFormModal({
   // Keyboard entry: a new line opens at its first empty field; Enter moves to the
   // next empty field of the line, and from the last one back to the product search.
   const pickerRef = useRef<ProductPickerHandle>(null);
-  const linesRef = useRef<HTMLTableSectionElement>(null);
+  const linesRef = useRef<HTMLDivElement>(null);
   const focusRow = useRef<number | null>(null);
+  // Focus the row's first field when none is empty (a product picked again).
+  const focusFirstIfNone = useRef(false);
+  // Phones: the field to focus once its (just opened) row has rendered.
+  const focusField = useRef<{ row: number; field: string } | null>(null);
   const cellsOf = (row: number) => Array.from(linesRef.current?.querySelectorAll<HTMLInputElement>(`[data-row="${row}"] [data-cell]`) ?? []);
   const isEmpty = (el: HTMLInputElement) => el.value.trim() === "" || (el.dataset.zeroEmpty === "1" && Number(el.value) === 0);
   function focusCell(el: HTMLInputElement | undefined) {
@@ -355,10 +410,30 @@ export function PurchaseFormModal({
   useEffect(() => {
     if (focusRow.current === null) return;
     const row = focusRow.current;
+    const cells = cellsOf(row);
+    // Phones: wait for the row to open and render its fields.
+    if (cells.length === 0 && row < lines.length && isPhone && openRow !== row) return;
     focusRow.current = null;
-    focusCell(cellsOf(row).find(isEmpty));
-  }, [lines]);
-  function onLineKeyDown(e: React.KeyboardEvent<HTMLTableSectionElement>) {
+    const firstIfNone = focusFirstIfNone.current;
+    focusFirstIfNone.current = false;
+    focusCell(cells.find(isEmpty) ?? (firstIfNone ? cells[0] : undefined));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, openRow]);
+  /** Focus the pending field if its row is on screen; true when done. */
+  function tryFocusField(): boolean {
+    const f = focusField.current;
+    if (!f) return true;
+    const el = linesRef.current?.querySelector<HTMLElement>(`[data-row="${f.row}"] [data-field="${f.field}"]`);
+    if (!el) return false;
+    focusField.current = null;
+    el.focus();
+    el.scrollIntoView({ block: "center" });
+    return true;
+  }
+  useEffect(() => {
+    tryFocusField();
+  });
+  function onLineKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const el = e.target as HTMLInputElement;
     if (e.key !== "Enter" || !el.dataset?.cell) return;
     e.preventDefault();
@@ -370,6 +445,13 @@ export function PurchaseFormModal({
   async function addProduct(p: Product) {
     const existing = lines.findIndex((l) => l.product.id === p.id);
     if (existing >= 0) {
+      // Already on the list: go to that line (phones: open it, close the other).
+      if (isPhone && openRow !== existing) {
+        focusRow.current = existing;
+        focusFirstIfNone.current = true;
+        setOpenRow(existing);
+        return;
+      }
       focusCell(cellsOf(existing).find(isEmpty) ?? cellsOf(existing)[0]);
       return;
     }
@@ -377,6 +459,8 @@ export function PurchaseFormModal({
     const salePrice = price?.salePrice ?? 0;
     focusRow.current = lines.length;
     setLines((prev) => [...prev, { ...makeLine(p), salePrice, initialSalePrice: salePrice }]);
+    // Phones: the new product opens for entry and the previous one closes.
+    setOpenRow(lines.length);
   }
 
   function updateLine(idx: number, patch: Partial<Line>) {
@@ -385,6 +469,7 @@ export function PurchaseFormModal({
 
   function removeLine(idx: number) {
     setLines((prev) => prev.filter((_, i) => i !== idx));
+    setOpenRow((o) => (o === null || o === idx ? null : o > idx ? o - 1 : o));
   }
 
   /** Paid on the quantity bought; sales tax and withholding tax are both added. */
@@ -399,22 +484,25 @@ export function PurchaseFormModal({
   }, 0);
   const payable = subtotal - (Number(discountRs) || 0);
   const balance = payable - (Number(paidAmount) || 0);
+  // Error marks on the phone rows (after a save attempt).
+  const rowProblems = submitAttempted ? linesProblems(lines) : [];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!supplierId || lines.length === 0) return;
-    // Mobile shop: one IMEI per handset received, none repeated.
-    const seen = new Set<string>();
-    for (const l of lines) {
-      if (!l.product.track_imei) continue;
-      const sec = l.unit === "secondary";
-      const units = toBaseUnitQty(l.qty, sec, l.product.packing || 1) + toBaseUnitQty(l.bonusQty, sec, l.product.packing || 1);
-      const list = parseImeis(l.imeis ?? "");
-      const problem = imeiListProblem(list, units, l.product.name) ?? list.map((i) => (seen.has(i) ? `IMEI ${i} is entered twice.` : (seen.add(i), null))).find(Boolean) ?? null;
-      if (problem) {
-        setError(problem);
-        return;
+    // Negative numbers; mobile shop: one IMEI per handset received, none repeated.
+    setSubmitAttempted(true);
+    const problems = linesProblems(lines);
+    const bad = problems.findIndex(Boolean);
+    if (bad >= 0) {
+      setError(problems[bad]!.message);
+      // Phones: open the line and put the cursor in the field to fix.
+      if (isPhone) {
+        focusField.current = { row: bad, field: problems[bad]!.field };
+        // Already open: focus now; otherwise once it has opened.
+        if (!tryFocusField()) setOpenRow(bad);
       }
+      return;
     }
     setSaving(true);
     setError(null);
@@ -574,10 +662,129 @@ export function PurchaseFormModal({
         </div>
 
         <Field label="Barcode/Product Name">
-          <ProductPicker ref={pickerRef} onSelect={(p) => void addProduct(p)} />
+          {/* Enter in the search picks the highlighted product (ProductPicker);
+              it must never submit the whole purchase. */}
+          <div onKeyDown={(e) => { if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault(); }}>
+            <ProductPicker ref={pickerRef} onSelect={(p) => void addProduct(p)} />
+          </div>
         </Field>
 
-        <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
+        {isPhone ? (
+        <div ref={linesRef} onKeyDown={onLineKeyDown} className="flex flex-col gap-2">
+          {lines.length === 0 ? (
+            <p className="rounded-xl px-3 py-5 text-center text-sm text-neutral-400 ring-1 ring-black/[0.06]">No products added yet</p>
+          ) : (
+            lines.map((l, idx) => {
+              const open = openRow === idx;
+              const problem = submitAttempted ? rowProblems[idx] : null;
+              const bodyId = `purchase-line-${idx}`;
+              return (
+                <div key={idx} data-row={idx} className={`rounded-xl bg-white ring-1 ${problem ? "ring-rose-300" : "ring-black/[0.08]"}`}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={bodyId}
+                    onClick={() => setOpenRow(open ? null : idx)}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 py-2 text-left"
+                  >
+                    {problem && <AlertCircle size={16} aria-hidden className="shrink-0 text-rose-600" />}
+                    <span className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium text-neutral-900">
+                      {l.product.name}
+                      {problem && <span className="sr-only"> (needs correction)</span>}
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">{lineTotal(l).toFixed(2)}</span>
+                    <ChevronDown size={18} aria-hidden className={`shrink-0 text-neutral-500 transition-transform ${open ? "rotate-180" : ""}`} />
+                  </button>
+                  {open && (
+                    <div id={bodyId} className="flex flex-col gap-2 border-t border-neutral-100 px-3 pb-3 pt-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">Unit</span>
+                        {hasSecondaryUnit(l.product) ? (
+                          <UnitToggle
+                            baseLabel={unitName(l.product.base_unit_id)}
+                            secondaryLabel={unitName(l.product.secondary_unit_id)}
+                            value={l.unit}
+                            onChange={(u) => toggleLineUnit(idx, u === "secondary")}
+                          />
+                        ) : (
+                          <span className="text-sm text-neutral-600">{unitName(l.product.base_unit_id)}</span>
+                        )}
+                      </div>
+                      {!noBatches && (
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2">
+                          <RowField label="Batch">
+                            <input data-cell="batch" data-field="batch" value={l.batchNo} onChange={(e) => updateLine(idx, { batchNo: e.target.value })} className={rowInput} />
+                          </RowField>
+                          <RowField label="Expiry">
+                            <input data-cell="expiry" data-field="expiry" type="date" value={l.expiryDate} onChange={(e) => updateLine(idx, { expiryDate: e.target.value })} className={rowInput} />
+                          </RowField>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-2">
+                        <RowField label="Purchase Rate">
+                          <input type="number" inputMode="decimal" min="0" step="any" data-cell="purchase" data-field="purchase" data-zero-empty="1" value={l.purchasePrice} onChange={(e) => updateLine(idx, { purchasePrice: Number(e.target.value) })} className={rowInput} />
+                        </RowField>
+                        <RowField label="Sale Rate">
+                          <input
+                            type="number" inputMode="decimal" min="0" step="any" data-cell="retail" data-field="retail" data-zero-empty="1"
+                            value={l.salePrice}
+                            onChange={(e) => updateLine(idx, { salePrice: Number(e.target.value) })}
+                            title={l.salePrice !== l.initialSalePrice ? `Changed from ${l.initialSalePrice.toFixed(2)} - will update the price list` : "Current retail price"}
+                            className={`${rowInput} ${l.salePrice !== l.initialSalePrice ? "!border-amber-400 bg-amber-50" : ""}`}
+                          />
+                        </RowField>
+                        <RowField label="Quantity">
+                          <input type="number" inputMode="decimal" min="0" step="any" data-cell="qty" data-field="qty" data-zero-empty="1" value={l.qty} onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })} className={rowInput} />
+                        </RowField>
+                        <RowField label="Bonus">
+                          <input type="number" inputMode="decimal" min="0" step="any" data-cell="bonus" data-field="bonus" value={l.bonusQty} onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })} title="Free units the supplier added" className={rowInput} />
+                        </RowField>
+                        <RowField label="S.T %">
+                          <input type="number" inputMode="decimal" min="0" step="any" data-cell="st" data-field="st" value={l.stPct} onChange={(e) => updateLine(idx, { stPct: Number(e.target.value) })} className={rowInput} />
+                        </RowField>
+                        <RowField label="W.T %">
+                          <input type="number" inputMode="decimal" min="0" step="any" data-cell="wht" data-field="wht" value={l.whtPct} onChange={(e) => updateLine(idx, { whtPct: Number(e.target.value) })} className={rowInput} />
+                        </RowField>
+                      </div>
+                      {Boolean(l.product.track_imei) && (
+                        <RowField label="IMEIs" wide>
+                          <textarea
+                            data-field="imei"
+                            aria-label={`IMEIs of ${l.product.name}`}
+                            rows={2}
+                            value={l.imeis ?? ""}
+                            onChange={(e) => updateLine(idx, { imeis: e.target.value })}
+                            placeholder="Scan IMEIs, one per line"
+                            className={`${rowInput} font-mono text-sm`}
+                          />
+                          <span className="text-[10px] text-neutral-500">{parseImeis(l.imeis ?? "").length} IMEI(s) for {l.qty + l.bonusQty} unit(s)</span>
+                        </RowField>
+                      )}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          className={`text-xs tabular-nums ${l.bonusQty > 0 ? "font-semibold text-emerald-700" : "text-neutral-500"}`}
+                          title="Cost of one unit with the bonus counted (rate x qty / (qty + bonus))"
+                        >
+                          Net rate {purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, 0, 0).netRate.toFixed(2)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeLine(idx)}
+                          aria-label={`Remove ${l.product.name}`}
+                          className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-sm font-medium text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
+                        >
+                          <Trash2 size={14} aria-hidden /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+        ) : (
+        <div ref={linesRef} onKeyDown={onLineKeyDown} className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
           <table className="w-full min-w-max text-sm">
             <thead>
               <tr className="bg-neutral-900 text-left text-white">
@@ -596,7 +803,7 @@ export function PurchaseFormModal({
                 <th className="px-2 py-2"></th>
               </tr>
             </thead>
-            <tbody ref={linesRef} onKeyDown={onLineKeyDown}>
+            <tbody>
               {lines.length === 0 ? (
                 <tr>
                   <td colSpan={noBatches ? 11 : 13} className="px-2 py-6 text-center text-neutral-400">
@@ -745,8 +952,9 @@ export function PurchaseFormModal({
             </tbody>
           </table>
         </div>
+        )}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
           <Field label="Discount Rs (F12)">
             <Input type="number" min="0" step="any" value={discountRs} onChange={(e) => setDiscountRs(e.target.value)} />
           </Field>
@@ -757,7 +965,7 @@ export function PurchaseFormModal({
             <Input value={payable.toFixed(2)} disabled />
           </Field>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
           <Field label="Paid (F8)" required>
             <Input type="number" min="0" step="any" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} required />
           </Field>
@@ -779,8 +987,15 @@ export function PurchaseFormModal({
           <p className="whitespace-pre-line rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>
         )}
 
-        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3">
-          {!isEdit && draftStatus && <span className="mr-auto text-[11px] text-neutral-400">{draftStatus}</span>}
+        {!isEdit && draftStatus && <p className="text-[11px] text-neutral-400 sm:hidden">{draftStatus}</p>}
+
+        {/* Phones: pinned to the bottom of the sheet with the payable amount. */}
+        <div className="form-actions items-center">
+          {!isEdit && draftStatus && <span className="mr-auto text-[11px] text-neutral-400 max-sm:hidden">{draftStatus}</span>}
+          <span className="mr-auto flex shrink-0 flex-col text-[11px] leading-tight text-neutral-500 sm:hidden">
+            Payable
+            <span className="text-sm font-semibold tabular-nums text-neutral-900">{payable.toFixed(2)}</span>
+          </span>
           <Button type="button" onClick={onClose}>
             Reset
           </Button>

@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri, useIsTauri } from "@/lib/platform";
+import { useInAndroidApp } from "@/lib/inAndroidApp";
 import { dbSelect } from "@/lib/db";
 import { searchProductsByNameOrBarcode } from "@/lib/repo/products";
 import { addStockToBatch, receiveStock, stockSupplierNames, supplierOf } from "@/lib/repo/stock";
@@ -219,6 +220,9 @@ export default function StockPage() {
   }
 
   const tauriReady = useIsTauri();
+  // Export CSV and Sample File are for a computer; the Android app (TWA) leaves
+  // them out. Hidden until known so they don't flash up in the app.
+  const showFileActions = useInAndroidApp() === false;
   const printDate = new Date().toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric" });
 
   return (
@@ -236,6 +240,7 @@ export default function StockPage() {
             >
               Add
             </Button>
+            {showFileActions && (
             <Button
               onClick={() => {
                 const STOCK_CSV_HEADERS = ["Barcode","Product Name","Company","Batch No","Expiry Date","Location","UOM","Avail Qty","Sale Price","Purchase Price","Supplier"];
@@ -248,6 +253,8 @@ export default function StockPage() {
             >
               Export CSV
             </Button>
+            )}
+            {showFileActions && (
             <Button
               onClick={() => {
                 const headers = ["Barcode","Product Name","Company","Batch No","Expiry Date (YYYY-MM-DD)","Location","UOM","Quantity","Purchase Price Per Unit"];
@@ -261,6 +268,7 @@ export default function StockPage() {
             >
               Sample File
             </Button>
+            )}
             <Button onClick={() => window.print()}>Print Report</Button>
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
