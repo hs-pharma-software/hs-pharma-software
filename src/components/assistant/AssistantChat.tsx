@@ -10,6 +10,7 @@ import { useIsTauri } from "@/lib/platform";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useBillori } from "@/lib/billoriState";
+import { useOpenDialogCount } from "@/components/ui/Modal";
 
 interface ChatLine {
   role: "user" | "assistant" | "error";
@@ -45,6 +46,7 @@ export function AssistantChat() {
 }
 
 function AssistantPanel() {
+  const dialogs = useOpenDialogCount();
   const [open, setOpen] = useState(false);
   const [keySet, setKeySet] = useState<boolean | null>(null);
   const [lines, setLines] = useState<ChatLine[]>([]);
@@ -90,7 +92,7 @@ function AssistantPanel() {
   return (
     <div className="print:hidden">
       {open && (
-        <div className="fixed bottom-20 right-5 z-[60] flex h-[560px] max-h-[calc(100vh-7rem)] w-[400px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(0,0,0,0.18)] ring-1 ring-black/[0.06]">
+        <div className="fixed bottom-[calc(8.5rem+env(safe-area-inset-bottom))] right-2 z-[60] flex h-[560px] max-h-[calc(100dvh-11rem)] w-[400px] max-w-[calc(100vw-1rem)] md:bottom-20 md:right-5 md:max-h-[calc(100vh-7rem)] md:max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_12px_40px_rgba(0,0,0,0.18)] ring-1 ring-black/[0.06]">
           <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900 text-white">
               <Sparkles size={15} />
@@ -197,11 +199,13 @@ function AssistantPanel() {
         </div>
       )}
 
+      {/* Hidden while a form or dialog is open (it would cover Save); above the phone's bottom bar. */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="AI Assistant"
-        className="fixed bottom-5 right-5 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-neutral-900 text-white shadow-[0_6px_20px_rgba(0,0,0,0.25)] transition hover:scale-105"
+        aria-label="AI Assistant"
+        className={`fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-[60] h-12 w-12 items-center justify-center rounded-full bg-neutral-900 text-white shadow-[0_6px_20px_rgba(0,0,0,0.25)] transition hover:scale-105 md:bottom-5 md:right-5 ${dialogs > 0 && !open ? "hidden" : "flex"}`}
       >
         {open ? <X size={20} /> : <Sparkles size={20} />}
       </button>

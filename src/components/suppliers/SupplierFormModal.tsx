@@ -67,23 +67,25 @@ export function SupplierFormModal({
             <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
           </Field>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+          <div className="col-span-2 sm:col-span-1">
+            <Field label="Email">
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+          </div>
           <Field label="CNIC">
             <Input value={cnic} onChange={(e) => setCnic(e.target.value)} />
           </Field>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Phone No">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </Field>
-          <Field label="Address">
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} />
-          </Field>
+          <div className="col-span-2 sm:col-span-1">
+            <Field label="Address">
+              <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+            </Field>
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
           <Field label="Discount %">
             <Input type="number" min="0" step="any" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
           </Field>
@@ -94,7 +96,7 @@ export function SupplierFormModal({
         <Field label="Description">
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        <div className="form-actions">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>

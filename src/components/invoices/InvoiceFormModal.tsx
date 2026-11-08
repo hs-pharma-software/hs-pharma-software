@@ -173,6 +173,8 @@ export function InvoiceFormModal({
   const [paid, setPaid] = useState(String(invoice?.paid ?? 0));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phones: buyer details folded into one line unless opened or needed.
+  const [buyerOpen, setBuyerOpen] = useState(false);
   const [uoms, setUoms] = useState<Uom[]>([]);
 
   // Refs for keyboard navigation
@@ -540,6 +542,8 @@ export function InvoiceFormModal({
   }
 
   const narcoticNames = lines.filter((l) => l.product.is_narcotic).map((l) => l.product.name);
+  // Opened by the person, or when it matters: narcotics (name and mobile needed), a registered buyer, or an error to fix.
+  const buyerShown = buyerOpen || narcoticNames.length > 0 || buyerRegType === "Registered" || Boolean(error);
   const total = lines.reduce((s, l) => s + l.salePrice * l.qty, 0);
   const lineDiscountTotal = lines.reduce((s, l) => s + l.salePrice * l.qty * (l.discountPct / 100), 0);
   const taxTotal = lines.reduce((s, l) => {
@@ -785,7 +789,7 @@ export function InvoiceFormModal({
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
       <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           {canPickDate && (
             <Field label="Invoice Date" required>
               <Input
@@ -834,7 +838,7 @@ export function InvoiceFormModal({
           </Field>
           {!isContractor && (
           <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <Field label="Salesman (Optional)">
                 <Select value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}>
                   <option value="">{"\u2014"}</option>
@@ -851,8 +855,8 @@ export function InvoiceFormModal({
             </Button>
           </div>
           )}
-          <div className={`flex items-end gap-1.5 ${isContractor ? "sm:col-span-4" : ""}`}>
-            <div className="flex-1">
+          <div className={`col-span-2 flex items-end gap-1.5 sm:col-span-1 ${isContractor ? "sm:col-span-4" : ""}`}>
+            <div className="min-w-0 flex-1">
               <Field label="Customer Name (F3)">
                 {isContractor ? (
                   <CustomerPicker
@@ -882,11 +886,20 @@ export function InvoiceFormModal({
         </div>
 
         <div className="rounded-xl bg-neutral-50/80 p-3 ring-1 ring-black/[0.04]">
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-5 w-7 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
+          <button
+            type="button"
+            onClick={() => setBuyerOpen((v) => !v)}
+            aria-expanded={buyerShown}
+            className="flex w-full items-center gap-2 text-left sm:pointer-events-none sm:mb-2"
+          >
+            <div className="flex h-5 w-7 shrink-0 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
             <span className="text-xs font-semibold text-neutral-700">Customer &amp; Buyer Details</span>
-            {fbrEnabled && <span className="text-[11px] text-neutral-400">Sent to FBR with this invoice</span>}
-          </div>
+            {fbrEnabled && <span className="hidden text-[11px] text-neutral-400 sm:inline">Sent to FBR with this invoice</span>}
+            <span className="ml-auto min-w-0 truncate text-[11px] text-neutral-500 sm:hidden">
+              {buyerShown ? "Hide" : `${customerName.trim() || "Walk-in"} · ${buyerRegType}${buyerProvince ? ` · ${buyerProvince}` : ""}`}
+            </span>
+          </button>
+          <div className={buyerShown ? "mt-2 sm:mt-0" : "max-sm:hidden"}>
           {narcoticNames.length > 0 && (
             <p className="mb-2 rounded-lg bg-rose-50 px-3 py-1.5 text-xs text-rose-700 ring-1 ring-rose-200">
               Narcotic product on this invoice ({narcoticNames.join(", ")}). Customer name and mobile number are required.
@@ -934,7 +947,7 @@ export function InvoiceFormModal({
               }}
             />
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
             <Field label="Customer Name" required={narcoticNames.length > 0}>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in Customer" />
             </Field>
@@ -952,13 +965,15 @@ export function InvoiceFormModal({
                 <option value="Registered">Registered</option>
               </Select>
             </Field>
-            <Field label="Buyer NTN / CNIC" required={buyerRegType === "Registered"}>
-              <Input
-                value={buyerNtn}
-                onChange={(e) => setBuyerNtn(e.target.value)}
-                placeholder="NTN (e.g. 1234567 or A123456) or CNIC (13 digits)"
-              />
-            </Field>
+            <div className="col-span-2 sm:col-span-1">
+              <Field label="Buyer NTN / CNIC" required={buyerRegType === "Registered"}>
+                <Input
+                  value={buyerNtn}
+                  onChange={(e) => setBuyerNtn(e.target.value)}
+                  placeholder="NTN (e.g. 1234567 or A123456) or CNIC (13 digits)"
+                />
+              </Field>
+            </div>
             <Field label="Buyer Province" required={fbrEnabled}>
               <Select value={buyerProvince} onChange={(e) => setBuyerProvince(e.target.value)}>
                 <option value="">Select...</option>
@@ -972,6 +987,7 @@ export function InvoiceFormModal({
             <Field label="Buyer Address">
               <Input value={buyerAddress} onChange={(e) => setBuyerAddress(e.target.value)} />
             </Field>
+          </div>
           </div>
         </div>
 
@@ -1163,7 +1179,7 @@ export function InvoiceFormModal({
           })()}
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <Field label="Total">
             <Input value={total.toFixed(2)} disabled />
           </Field>
@@ -1177,7 +1193,7 @@ export function InvoiceFormModal({
             <Input value={taxTotal.toFixed(2)} disabled />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <Field label="Payable">
             <Input value={payable.toFixed(2)} disabled />
           </Field>
@@ -1195,8 +1211,11 @@ export function InvoiceFormModal({
         {error && <p className="text-sm text-rose-600">{error}</p>}
 
         <div className="sticky -bottom-3 z-10 -mx-3 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-3 py-2.5 shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.15)] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:shadow-none">
-          <span className="mr-auto text-sm font-semibold tabular-nums text-neutral-900 sm:hidden">Payable {payable.toFixed(2)}</span>
-          <Button type="button" onClick={onClose}>
+          <span className="flex w-full items-baseline justify-between text-sm font-semibold tabular-nums text-neutral-900 sm:hidden">
+            <span className="text-neutral-500">Payable</span>
+            <span className="text-base">Rs {payable.toFixed(2)}</span>
+          </span>
+          <Button type="button" onClick={onClose} className="max-sm:px-3">
             Reset
           </Button>
           {!isEdit && (
@@ -1205,11 +1224,12 @@ export function InvoiceFormModal({
               onClick={() => void handleDraft()}
               disabled={saving || lines.length === 0}
               title="Ctrl+D"
+              className="max-sm:px-3"
             >
               Draft
             </Button>
           )}
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S">
+          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S" className="max-sm:flex-1">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>

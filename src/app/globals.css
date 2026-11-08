@@ -309,3 +309,27 @@ summary {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* A form's Save / Cancel row. Phones: pinned to the bottom of the dialog,
+   buttons sharing the width; larger screens: a plain row on the right. */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  border-top: 1px solid #e5e5e5;
+  padding-top: 0.75rem;
+}
+@media (max-width: 639.98px) {
+  .form-actions {
+    position: sticky;
+    bottom: calc(-0.75rem - env(safe-area-inset-bottom, 0px));
+    z-index: 10;
+    margin: 0 -0.75rem;
+    padding: 0.625rem 0.75rem calc(0.625rem + env(safe-area-inset-bottom, 0px));
+    background: #fff;
+    box-shadow: 0 -6px 12px -8px rgba(0, 0, 0, 0.15);
+  }
+  .form-actions > button {
+    flex: 1 1 0;
+  }
+}

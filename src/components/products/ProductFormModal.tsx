@@ -532,13 +532,16 @@ export function ProductFormModal({
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
           <Field label="Barcode">
             <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} />
           </Field>
-          <Field label="Product Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-          </Field>
+          {/* Phones: the name first, on its own row. */}
+          <div className="col-span-2 max-sm:order-first sm:col-span-1">
+            <Field label="Product Name" required>
+              <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+            </Field>
+          </div>
           <Field label="Company Name">
             <SuggestInput id="product-company" value={companyName} onChange={setCompanyName} suggestions={companies} placeholder="Type or pick a company" />
           </Field>
@@ -563,7 +566,7 @@ export function ProductFormModal({
         )}
 
         {isClothStore && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
             <Field label="Type">
               <Input id="pf-attr-type" list="pf-cloth-types" value={attrType} onChange={(e) => setAttrType(e.target.value)} placeholder="e.g. Shalwar Kameez" />
               <datalist id="pf-cloth-types">{clothTypes.map((t) => <option key={t} value={t} />)}</datalist>
@@ -623,9 +626,9 @@ export function ProductFormModal({
         </label>
         )}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          <div className="col-span-2 flex items-end gap-1.5 sm:col-span-1">
+            <div className="min-w-0 flex-1">
               <Field label="Base Unit" required>
                 <UomCombobox value={baseUnitId} onChange={setBaseUnitId} uoms={uoms} required placeholder="Search base unit..." />
               </Field>
@@ -640,7 +643,7 @@ export function ProductFormModal({
           </Field>
 
           <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <Field label="Secondary Unit">
                 <UomCombobox value={secondaryUnitId} onChange={setSecondaryUnitId} uoms={uoms} placeholder="Search secondary unit..." />
               </Field>
@@ -651,9 +654,9 @@ export function ProductFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          <div className="col-span-2 flex items-end gap-1.5 sm:col-span-1">
+            <div className="min-w-0 flex-1">
               <Field label="Category">
                 <SearchSelect id="product-category" value={categoryId} placeholder="Search category..." emptyText="No categories yet — click + to add one"
                   onChange={(v) => { if (v !== categoryId) { setCategoryId(v); setSubCategoryId(""); } }}
@@ -666,7 +669,7 @@ export function ProductFormModal({
           </div>
 
           <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <Field label="Sub Category">
                 <SearchSelect id="product-sub-category" value={subCategoryId} onChange={setSubCategoryId} disabled={!categoryId}
                   placeholder={categoryId ? "Search sub category..." : "Choose a category first"} emptyText="No sub categories yet — click + to add one"
@@ -878,7 +881,7 @@ export function ProductFormModal({
           </>
         )}
 
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        <div className="form-actions">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>

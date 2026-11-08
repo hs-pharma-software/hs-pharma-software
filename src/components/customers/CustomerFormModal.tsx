@@ -105,7 +105,7 @@ export function CustomerFormModal({
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
           <Field label="Phone">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
           </Field>
@@ -119,7 +119,7 @@ export function CustomerFormModal({
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
           <Field label="CNIC Number">
             <Input
               value={cnicNtn}
@@ -136,7 +136,7 @@ export function CustomerFormModal({
               placeholder="9999997 or ABC12XY"
               maxLength={8}
             />
-            <p className="mt-1 text-[11px] text-neutral-400">7 or 8 characters (alphanumeric)</p>
+            <p className="mt-1 text-[11px] text-neutral-400">7 or 8 characters</p>
           </Field>
         </div>
 
@@ -151,10 +151,10 @@ export function CustomerFormModal({
         </Field>
 
         <Field label="Address">
-          <Textarea rows={3} value={address} onChange={(e) => setAddress(e.target.value)} />
+          <Textarea rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
         </Field>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
           <Field label="Registration Type">
             <Select value={registrationType} onChange={(e) => setRegistrationType(e.target.value)}>
               <option value="Individual">Individual</option>
@@ -173,7 +173,7 @@ export function CustomerFormModal({
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-amber-600" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
             <h4 className="text-sm font-semibold text-neutral-800">FBR Configuration</h4>
           </div>
-          <p className="mb-3 text-[11px] text-neutral-500">
+          <p className="mb-3 text-[11px] text-neutral-500 max-sm:hidden">
             Required for FBR (Federal Board of Revenue) compliance and invoice submission.
           </p>
 
@@ -191,14 +191,14 @@ export function CustomerFormModal({
               )}
             </Field>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               <Field label="FBR Registration Status">
                 <Select value={salesTaxStatus} onChange={(e) => setSalesTaxStatus(e.target.value)}>
                   <option value="unknown">Unknown</option>
                   <option value="registered">Registered</option>
                   <option value="unregistered">Unregistered</option>
                 </Select>
-                <p className="mt-1 text-[11px] text-neutral-400">Auto-updated when CNIC / NTN is entered</p>
+                <p className="mt-1 text-[11px] text-neutral-400 max-sm:hidden">Auto-updated when CNIC / NTN is entered</p>
               </Field>
               <Field label="FBR Active Status">
                 <Select value={fbrActiveStatus} onChange={(e) => setFbrActiveStatus(e.target.value)}>
@@ -206,14 +206,14 @@ export function CustomerFormModal({
                   <option value="active">Active</option>
                   <option value="inactive">In-Active</option>
                 </Select>
-                <p className="mt-1 text-[11px] text-neutral-400">Auto-updated when CNIC / NTN is entered</p>
+                <p className="mt-1 text-[11px] text-neutral-400 max-sm:hidden">Auto-updated when CNIC / NTN is entered</p>
               </Field>
             </div>
           </div>
         </div>
 
         {/* ── Financial / accounting ── */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
           <Field label="Opening Balance" required>
             <Input type="number" step="any" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} required />
           </Field>
@@ -228,7 +228,7 @@ export function CustomerFormModal({
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
           <Field label="Discount %">
             <Input type="number" min="0" step="any" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
           </Field>
@@ -239,7 +239,7 @@ export function CustomerFormModal({
               <option value="non-filer">Non-Filer</option>
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="col-span-2 grid grid-cols-2 gap-2 sm:col-span-1">
             <Field label="License #">
               <Input value={licenseNo} onChange={(e) => setLicenseNo(e.target.value)} />
             </Field>
@@ -253,7 +253,7 @@ export function CustomerFormModal({
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        <div className="form-actions">
           <Button type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving…" : isEdit ? "Save" : "Create"}

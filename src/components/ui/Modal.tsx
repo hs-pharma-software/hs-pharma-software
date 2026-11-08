@@ -1,11 +1,22 @@
 ﻿"use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { X } from "lucide-react";
 import { motion } from "motion/react";
 
 /** Open dialogs, newest last: Escape closes only the top one. */
 const stack: string[] = [];
+const listeners = new Set<() => void>();
+const changed = () => listeners.forEach((l) => l());
+
+/** How many dialogs are open (floating buttons hide while a form is open). */
+export function useOpenDialogCount(): number {
+  return useSyncExternalStore(
+    (l) => { listeners.add(l); return () => { listeners.delete(l); }; },
+    () => stack.length,
+    () => 0,
+  );
+}
 
 /** Note: callers conditionally render `<Modal />` itself (`{open && <Modal/>}`),
  * so there's no persistent parent for `AnimatePresence` to track an exit
@@ -39,6 +50,7 @@ export function Modal({
 
   useEffect(() => {
     stack.push(id);
+    changed();
     // Keep the page behind still while the dialog is open.
     const body = document.body;
     const before = body.style.overflow;
@@ -49,6 +61,7 @@ export function Modal({
     return () => {
       const i = stack.lastIndexOf(id);
       if (i >= 0) stack.splice(i, 1);
+      changed();
       if (!stack.length) body.style.overflow = before;
       if (prev && document.contains(prev)) prev.focus({ preventScroll: true });
     };

@@ -248,7 +248,7 @@ export default function ProductsPage() {
               <Input type="number" min="0" step="any" value={topUpPrice} onChange={(e) => setTopUpPrice(e.target.value)} />
             </Field>
             {topUpError && <p className="text-sm text-rose-600">{topUpError}</p>}
-            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+            <div className="form-actions">
               <Button type="button" onClick={() => setTopUp(null)}>
                 Cancel
               </Button>
