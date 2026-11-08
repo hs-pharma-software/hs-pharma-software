@@ -262,17 +262,18 @@ export function LandingPage() {
               }}>
                 🌐 Open Web App
               </a>
-              <a href={ANDROID_RELEASE.path} download type="application/vnd.android.package-archive" className="web-btn" title={`${ANDROID_RELEASE.appName} ${ANDROID_RELEASE.versionName} · ${androidSizeLabel()}`} style={{
-                display:"inline-flex",alignItems:"center",gap:9,
-                padding:"15px 30px",
-                background:"#fff",
-                border:"1.5px solid #e2e8f0",
-                borderRadius:13,color:"#334155",
-                textDecoration:"none",fontSize:16,fontWeight:700,
-                letterSpacing:"-.01em",
-                boxShadow:"0 2px 8px rgba(0,0,0,.06)",
+            </div>
+            {/* Android app: its own row under the three buttons */}
+            <div className="fi4" style={{display:"flex",justifyContent:"center",marginTop:-50,marginBottom:64}}>
+              <a href={ANDROID_RELEASE.path} download type="application/vnd.android.package-archive" className="dl-btn" title={`${ANDROID_RELEASE.appName} ${ANDROID_RELEASE.versionName} · ${androidSizeLabel()}`} style={{
+                display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
+                padding:"15px 28px",
+                background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
+                borderRadius:13,color:"white",
+                textDecoration:"none",fontSize:16,fontWeight:800,
+                letterSpacing:"-.02em",
               }}>
-                📱 Download for Android
+                Download for Android
               </a>
             </div>
 
