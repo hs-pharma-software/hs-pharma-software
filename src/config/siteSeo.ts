@@ -47,6 +47,11 @@ export const PAGE_SEO: Record<string, { title: string; description: string; h1?:
     title: "POS Software Guides & Resources",
     description: "Getting-started steps, product guides and FBR Digital Invoicing setup for MAVIN.pk POS and business software.",
   },
+  "/download": {
+    title: "Download the MAVIN Business Android App",
+    description: "Download MAVIN Business for Android (APK): your MAVIN.pk account full screen on your phone. Install steps, update help and release notes.",
+    h1: "MAVIN Business for Android",
+  },
   "/help": {
     title: "Help & Support for MAVIN.pk Customers",
     description: "Help for MAVIN.pk customers: support by phone and email, Monday to Saturday, 9am to 6pm.",

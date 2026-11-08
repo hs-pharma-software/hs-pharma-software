@@ -23,6 +23,19 @@ const nextConfig: NextConfig = {
         // and so do the public site pages (src/app/site/**/page.server.tsx) and
         // src/proxy.server.ts.
         pageExtensions: ["tsx", "ts", "jsx", "js", "server.ts", "server.tsx"],
+        // The Android app (versioned file names, never replaced): saved as a
+        // file with the APK type, cached for good.
+        async headers() {
+          return [{
+            source: "/downloads/android/:file*",
+            headers: [
+              { key: "Content-Type", value: "application/vnd.android.package-archive" },
+              { key: "Content-Disposition", value: "attachment" },
+              { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+              { key: "X-Content-Type-Options", value: "nosniff" },
+            ],
+          }];
+        },
       }),
 };
 

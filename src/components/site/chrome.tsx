@@ -53,7 +53,7 @@ export function SiteHeader({ base }: { base: string }) {
 export function SiteFooter({ base }: { base: string }) {
   const cols: { title: string; links: [string, string][] }[] = [
     { title: "Products", links: [["All products", "/products"], ["Platform", "/platform"], ["Integrations", "/integrations"], ["Pricing", "/pricing"]] },
-    { title: "Support", links: [["Help", "/help"], ["Resources", "/resources"], ["Contact", "/contact"], ["Book a Demo", "/demo"]] },
+    { title: "Support", links: [["Help", "/help"], ["Android App", "/download"], ["Resources", "/resources"], ["Contact", "/contact"], ["Book a Demo", "/demo"]] },
     { title: "Company", links: [["About", "/about"], ["Privacy", "/privacy"], ["Terms", "/terms"], ["Security", "/security"]] },
   ];
   return (

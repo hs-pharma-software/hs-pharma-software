@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PRODUCT_GROUPS, SITE_PRODUCTS, productFacts, type ProductGroup } from "@/config/siteProducts";
 import { APP_URL, isSiteHost } from "@/config/site";
 import { SiteAnalytics } from "@/components/site/SiteAnalytics";
+import { ANDROID_RELEASE, androidReleaseDateLabel, androidSizeLabel } from "@/config/androidRelease";
 
 /** Where this page's links go. On mavin.pk the site pages have clean
  * addresses and the app lives on app.mavin.pk; on the app's own address the
@@ -378,6 +379,42 @@ export function LandingPage() {
                   <p style={{fontSize:13.5,color:"#64748b",lineHeight:1.65}}>{f.desc}</p>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* ══════════ ANDROID APP ══════════ */}
+          <section id="android-app" style={{padding:"64px 24px",background:"#fff",borderTop:"1px solid #e2e8f0"}}>
+            <div style={{maxWidth:880,margin:"0 auto",display:"flex",flexWrap:"wrap",gap:28,alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{flex:"1 1 320px",minWidth:0}}>
+                <p style={{fontSize:12,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"#1565c0",marginBottom:8}}>Download Android App</p>
+                <h2 style={{fontSize:"clamp(24px,3.4vw,34px)",fontWeight:800,letterSpacing:"-.03em",color:"#0f172a",marginBottom:10}}>
+                  {ANDROID_RELEASE.appName} on your phone
+                </h2>
+                <p style={{color:"#64748b",fontSize:15,lineHeight:1.7,marginBottom:12}}>
+                  Your MAVIN.pk account full screen on Android. The app uses MAVIN.pk&apos;s online services, so it needs an internet connection.
+                </p>
+                <p style={{color:"#94a3b8",fontSize:13}}>
+                  Version {ANDROID_RELEASE.versionName} · {androidSizeLabel()} · Released {androidReleaseDateLabel()} · {ANDROID_RELEASE.minAndroid}
+                </p>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"stretch",flex:"0 1 260px"}}>
+                <a href={ANDROID_RELEASE.path} download type="application/vnd.android.package-archive" className="dl-btn" style={{
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
+                  padding:"15px 28px",
+                  background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
+                  borderRadius:13,color:"white",
+                  textDecoration:"none",fontSize:16,fontWeight:800,letterSpacing:"-.02em",
+                }}>
+                  Download for Android
+                </a>
+                <Link href={link.site("/download")} className="web-btn" style={{
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",
+                  padding:"12px 24px",background:"#fff",border:"1.5px solid #e2e8f0",
+                  borderRadius:13,color:"#334155",textDecoration:"none",fontSize:14,fontWeight:700,
+                }}>
+                  How to install · What&apos;s new
+                </Link>
+              </div>
             </div>
           </section>
 

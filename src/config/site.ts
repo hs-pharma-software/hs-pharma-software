@@ -44,5 +44,5 @@ export const SITE_NAV = [
 /** Every public page, for the sitemap (product pages are added from the registry). */
 export const SITE_PAGES = [
   "/", "/products", "/platform", "/integrations", "/integrations/fbr-digital-invoicing", "/pricing", "/demo", "/contact",
-  "/resources", "/help", "/about", "/privacy", "/terms", "/security",
+  "/resources", "/download", "/help", "/about", "/privacy", "/terms", "/security",
 ] as const;
