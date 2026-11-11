@@ -1867,6 +1867,14 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v82() -> &'static str {
+    r#"
+    -- Purchases: extra discount % per product line (on the supplier's rate,
+    -- before sales tax and withholding tax). Existing lines: 0.
+    ALTER TABLE purchase_items ADD COLUMN disc_pct REAL NOT NULL DEFAULT 0;
+    "#
+}
+
 fn schema_sql_v81() -> &'static str {
     r#"
     -- Offline desktop (pilot): approved checkout devices, the operations they
@@ -4474,6 +4482,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 81,
             description: "offline_desktop",
             sql: schema_sql_v81(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 82,
+            description: "purchase_line_discount",
+            sql: schema_sql_v82(),
             kind: MigrationKind::Up,
         },
     ]

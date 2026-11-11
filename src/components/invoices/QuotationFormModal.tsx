@@ -9,9 +9,9 @@ import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { customersRepo } from "@/lib/repo/customers";
 import { salesmenRepo } from "@/lib/repo/salesmen";
-import { invoicesRepo, invoiceItemsRepo, nextQuotationNo } from "@/lib/repo/invoices";
+import { invoicesRepo, invoiceItemsRepo, nextQuotationNo, listItemsForInvoice } from "@/lib/repo/invoices";
 import { listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
-import { getLatestPrice } from "@/lib/repo/products";
+import { getLatestPrice, productsRepo } from "@/lib/repo/products";
 import { listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, roundPrice, toBaseUnitQty } from "@/lib/uom";
 import type { Customer, Product, Uom } from "@/lib/types";
@@ -32,7 +32,16 @@ interface Line {
  * never touches stock (no deductStock calls) - it just records the lines the
  * customer was quoted. Stock is only committed once the quotation is
  * accepted, via convertQuotationToInvoice() in the list page. */
-export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = false }: {
+  onClose: () => void;
+  onSaved: () => void;
+  /** Open this quotation (view or edit) instead of a new one. */
+  quotationId?: string;
+  /** Read only: nothing can be changed or saved. */
+  viewOnly?: boolean;
+}) {
+  const [loading, setLoading] = useState(Boolean(quotationId));
+  const [quotationNo, setQuotationNo] = useState<number | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
   const [customerId, setCustomerId] = useState("");
@@ -54,6 +63,35 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
     void salesmenRepo.list().then(setSalesmen);
     void listUomsWithShared().then(setUoms);
   }, []);
+
+  // An existing quotation: its header and lines (lines in base units, as saved).
+  useEffect(() => {
+    if (!quotationId) return;
+    void (async () => {
+      try {
+        const q = await invoicesRepo.get(quotationId);
+        if (!q || !q.is_quotation) throw new Error("Quotation not found.");
+        setQuotationNo(q.quotation_no ?? null);
+        setCustomerId(q.customer_id ?? "");
+        setSalesmanId(q.salesman_id ?? "");
+        setInvoiceType(q.invoice_type === "wholesale" ? "Wholesale" : "Retail");
+        setDescription(q.description ?? "");
+        setDiscountRs(String(q.discount_rs ?? 0));
+        setCharges(String(q.charges ?? 0));
+        const rebuilt: Line[] = [];
+        for (const item of await listItemsForInvoice(quotationId)) {
+          const product = await productsRepo.get(item.product_id);
+          if (!product) continue;
+          rebuilt.push({ product, batch: null, qty: item.qty, salePrice: item.sale_price ?? 0, taxPct: item.tax_pct ?? 0, discountPct: item.discount_pct ?? 0, unit: "base" });
+        }
+        setLines(rebuilt);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [quotationId]);
 
   function unitName(id: string | null) {
     return uoms.find((u) => u.id === id)?.name ?? "Unit";
@@ -131,6 +169,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (viewOnly) return;
     if (lines.length === 0) {
       setError("Add at least one product line.");
       return;
@@ -138,11 +177,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
     setSaving(true);
     setError(null);
     try {
-      const quotationNo = await nextQuotationNo();
-      const quotation = await invoicesRepo.create({
-        invoice_no: null,
-        quotation_no: quotationNo,
-        date: localDate(),
+      const header = {
         inv_on: "cash",
         invoice_type: invoiceType.toLowerCase(),
         description: description || null,
@@ -156,6 +191,21 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
         payable,
         paid: 0,
         balance: payable,
+      };
+      let quotation: { id: string };
+      if (quotationId) {
+        // Editing: same number and date; the lines are replaced (a quotation never touched stock).
+        const current = await invoicesRepo.get(quotationId);
+        if (!current || !current.is_quotation) throw new Error("Quotation not found.");
+        if (current.converted_invoice_id) throw new Error("This quotation was already turned into an invoice and can no longer be edited.");
+        await invoicesRepo.update(quotationId, header);
+        for (const item of await listItemsForInvoice(quotationId)) await invoiceItemsRepo.remove(item.id);
+        quotation = { id: quotationId };
+      } else quotation = await invoicesRepo.create({
+        invoice_no: null,
+        quotation_no: await nextQuotationNo(),
+        date: localDate(),
+        ...header,
         is_return: 0,
         is_memorized: 0,
         is_quotation: 1,
@@ -199,8 +249,10 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
   }
 
   return (
-    <Modal title="Add Quotation" onClose={onClose} width="max-w-6xl">
+    <Modal title={viewOnly ? `Quotation #${quotationNo ?? ""}` : quotationId ? `Edit Quotation #${quotationNo ?? ""}` : "Add Quotation"} onClose={onClose} width="max-w-6xl">
+      {loading ? <p className="py-10 text-center text-sm text-neutral-400">Loading quotation...</p> : (
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <fieldset disabled={viewOnly} className="contents">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Field label="Invoice Type">
             <Select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)}>
@@ -247,9 +299,11 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
           </Field>
         </div>
 
-        <Field label="Barcode/Product Name">
-          <ProductPicker onSelect={(p) => void onProductSelected(p)} autoFocus />
-        </Field>
+        {!viewOnly && (
+          <Field label="Barcode/Product Name">
+            <ProductPicker onSelect={(p) => void onProductSelected(p)} autoFocus />
+          </Field>
+        )}
 
         <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
           <table className="w-full min-w-max text-sm">
@@ -330,9 +384,11 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
                     </td>
                     <td className="px-2 py-1.5">{lineTotal(l).toFixed(2)}</td>
                     <td className="px-2 py-1.5">
-                      <button type="button" onClick={() => removeLine(idx)} className="text-rose-600 hover:underline">
-                        Remove
-                      </button>
+                      {!viewOnly && (
+                        <button type="button" onClick={() => removeLine(idx)} className="text-rose-600 hover:underline">
+                          Remove
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -361,6 +417,7 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
           </Field>
         </div>
 
+        </fieldset>
         {error && <p className="text-sm text-rose-600">{error}</p>}
 
         <p className="text-xs text-neutral-400">
@@ -368,14 +425,21 @@ export function QuotationFormModal({ onClose, onSaved }: { onClose: () => void; 
         </p>
 
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
-          <Button type="button" onClick={onClose}>
-            Reset
-          </Button>
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
-            {saving ? "Saving..." : "Save"}
-          </Button>
+          {viewOnly ? (
+            <Button type="button" onClick={onClose}>Close</Button>
+          ) : (
+            <>
+              <Button type="button" onClick={onClose}>
+                {quotationId ? "Cancel" : "Reset"}
+              </Button>
+              <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
+                {saving ? "Saving..." : quotationId ? "Save Changes" : "Save"}
+              </Button>
+            </>
+          )}
         </div>
       </form>
+      )}
 
       {quickAddCustomer && (
         <QuickAddDialog

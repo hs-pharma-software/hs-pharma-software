@@ -5,12 +5,15 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { QuotationFormModal } from "@/components/invoices/QuotationFormModal";
-import { listQuotations, convertQuotationToInvoice, type QuotationListRow } from "@/lib/repo/invoices";
+import { listQuotations, convertQuotationToInvoice, deleteQuotation, type QuotationListRow } from "@/lib/repo/invoices";
 import { isTauri, useIsTauri } from "@/lib/platform";
 
 export default function QuotationsPage() {
   const [rows, setRows] = useState<QuotationListRow[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  /** An existing quotation opened to view or edit. */
+  const [opened, setOpened] = useState<{ id: string; viewOnly: boolean } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +43,22 @@ export default function QuotationsPage() {
     }
   }
 
+  async function handleDelete(row: QuotationListRow) {
+    if (row.converted_invoice_id) return;
+    const reason = window.prompt(`Delete Quotation #${row.quotation_no ?? ""}? It does not affect stock or sales.\n\nReason (kept in the delete history):`);
+    if (reason === null) return;
+    setDeletingId(row.id);
+    setError(null);
+    try {
+      await deleteQuotation(row.id, reason.trim());
+      void reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const columns: Column<QuotationListRow>[] = [
     { header: "Quotation #", render: (r) => r.quotation_no ?? "\u2014" },
     { header: "Date", render: (r) => r.date },
@@ -59,22 +78,34 @@ export default function QuotationsPage() {
     },
     {
       header: "Action",
-      render: (r) =>
-        r.converted_invoice_id ? (
-          <span className="text-neutral-400">{"\u2014"}</span>
-        ) : (
-          <button
-            type="button"
-            disabled={acceptingId === r.id}
-            className="text-emerald-700 hover:underline disabled:opacity-40"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleAccept(r);
-            }}
-          >
-            {acceptingId === r.id ? "Accepting..." : "Accept → Generate Invoice"}
+      render: (r) => (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap">
+          <button type="button" className="text-[var(--accent)] hover:underline" onClick={(e) => { e.stopPropagation(); setOpened({ id: r.id, viewOnly: true }); }}>
+            View
           </button>
-        ),
+          {!r.converted_invoice_id && (
+            <>
+              <button type="button" className="text-neutral-800 hover:underline" onClick={(e) => { e.stopPropagation(); setOpened({ id: r.id, viewOnly: false }); }}>
+                Edit
+              </button>
+              <button type="button" disabled={deletingId === r.id} className="text-rose-600 hover:underline disabled:opacity-40" onClick={(e) => { e.stopPropagation(); void handleDelete(r); }}>
+                {deletingId === r.id ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                disabled={acceptingId === r.id}
+                className="text-emerald-700 hover:underline disabled:opacity-40"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleAccept(r);
+                }}
+              >
+                {acceptingId === r.id ? "Accepting..." : "Accept → Generate Invoice"}
+              </button>
+            </>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -107,6 +138,19 @@ export default function QuotationsPage() {
           columns={columns}
           rows={rows}
           emptyMessage="No content in table \u2014 use Add to create a quotation. Quotations don't count toward sales/invoices until accepted."
+        />
+      )}
+
+      {opened && (
+        <QuotationFormModal
+          key={`${opened.id}-${opened.viewOnly}`}
+          quotationId={opened.id}
+          viewOnly={opened.viewOnly}
+          onClose={() => setOpened(null)}
+          onSaved={() => {
+            setOpened(null);
+            void reload();
+          }}
         />
       )}
 

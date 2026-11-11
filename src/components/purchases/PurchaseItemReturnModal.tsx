@@ -17,6 +17,7 @@ import { deductStock, listAvailableBatches } from "@/lib/repo/stock";
 import { imeisOfPurchase, returnImeisToSupplier } from "@/lib/repo/imei";
 import type { Purchase } from "@/lib/types2";
 import { localDate } from "@/lib/localDate";
+import { purchaseReturnRate } from "@/lib/purchaseMath";
 
 interface ReturnLine {
   item: PurchaseItemWithProduct;
@@ -90,7 +91,7 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
   }
 
   const activeLines = lines.filter((l) => l.returnQty > 0);
-  const total = activeLines.reduce((s, l) => s + l.item.purchase_price * l.returnQty, 0);
+  const total = activeLines.reduce((s, l) => s + purchaseReturnRate(l.item) * l.returnQty, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -140,10 +141,11 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
           booked_qty: l.returnQty,
           received_qty: l.returnQty,
           avail_qty: match.qty - l.returnQty,
-          amount: l.item.purchase_price * l.returnQty,
+          amount: purchaseReturnRate(l.item) * l.returnQty,
           st_pct: l.item.st_pct,
           wht_pct: l.item.wht_pct,
-          total: l.item.purchase_price * l.returnQty,
+          disc_pct: l.item.disc_pct ?? 0,
+          total: purchaseReturnRate(l.item) * l.returnQty,
         });
       }
       const backImeis = activeLines.flatMap((l) => l.returnImeis ?? []);
@@ -234,8 +236,8 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
                             className="w-20 rounded border border-neutral-300 px-1.5 py-1 disabled:bg-neutral-100"
                           />
                         </td>
-                        <td className="px-2 py-1.5">{l.item.purchase_price.toFixed(2)}</td>
-                        <td className="px-2 py-1.5">{(l.item.purchase_price * l.returnQty).toFixed(2)}</td>
+                        <td className="px-2 py-1.5">{purchaseReturnRate(l.item).toFixed(2)}</td>
+                        <td className="px-2 py-1.5">{(purchaseReturnRate(l.item) * l.returnQty).toFixed(2)}</td>
                       </tr>
                     ))
                   )}

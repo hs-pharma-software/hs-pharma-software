@@ -46,3 +46,24 @@ test("a purchase with bonus: stock gets qty + bonus at the net rate; deleting ta
   await deletePurchaseWithStockReversal(pu.id, "test");
   assert.equal((await productBatchesRepo.get(batch.id))!.qty, 0);
 });
+
+test("extra discount % per purchase line: off the supplier's amount, then taxes; stock cost and returns use the discounted rate", async () => {
+  const { purchaseReturnRate } = await import("@/lib/purchaseMath");
+  // 10 x 100 = 1000, 5% off = 950; 17% ST and 1% WHT on 950.
+  const m = purchaseLineMath(100, 10, 0, 17, 1, 5);
+  assert.equal(m.discount, 50);
+  assert.equal(m.amount, 950);
+  assert.equal(m.st.toFixed(2), "161.50");
+  assert.equal(m.wht.toFixed(2), "9.50");
+  assert.equal(m.total.toFixed(2), "1121.00");
+  assert.equal(m.netRate, 95);
+  // With bonus: 950 over 12 units.
+  assert.equal(purchaseLineMath(100, 10, 2, 0, 0, 5).netRate.toFixed(4), (950 / 12).toFixed(4));
+  // No discount: unchanged from before.
+  assert.equal(purchaseLineMath(100, 10, 2, 17, 1).total, purchaseLineMath(100, 10, 2, 17, 1, 0).total);
+  // Out-of-range input is clamped.
+  assert.equal(purchaseLineMath(100, 1, 0, 0, 0, 150).amount, 0);
+  assert.equal(purchaseLineMath(100, 1, 0, 0, 0, -5).amount, 100);
+  assert.equal(purchaseReturnRate({ purchase_price: 100, disc_pct: 5 }), 95);
+  assert.equal(purchaseReturnRate({ purchase_price: 100, disc_pct: null }), 100);
+});

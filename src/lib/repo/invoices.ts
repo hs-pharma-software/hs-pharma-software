@@ -202,6 +202,17 @@ export async function listQuotations(): Promise<QuotationListRow[]> {
   );
 }
 
+/** Deletes a quotation and its lines (soft delete, kept in the delete
+ * history). A quotation already turned into an invoice is kept: its invoice
+ * refers to it. Quotations never touched stock, so nothing goes back. */
+export async function deleteQuotation(quotationId: string, reason: string): Promise<void> {
+  const q = await invoicesRepo.get(quotationId);
+  if (!q || !q.is_quotation) throw new Error("Quotation not found.");
+  if (q.converted_invoice_id) throw new Error("This quotation was already turned into an invoice; it is kept for that invoice's record.");
+  for (const item of await listItemsForInvoice(quotationId)) await invoiceItemsRepo.remove(item.id);
+  await invoicesRepo.remove(quotationId, reason || "Quotation deleted", "Quotation");
+}
+
 /** Accepting a quotation creates a brand-new real invoice (fresh invoice_no,
  * today's date, actual stock deduction against currently available batches \u2014
  * a quotation never reserved stock, so it re-resolves FEFO batches at accept

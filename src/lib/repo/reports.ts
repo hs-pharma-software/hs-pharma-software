@@ -264,7 +264,7 @@ export async function getTaxReport(fromDate: string, toDate: string): Promise<Ta
   );
   const wht = await dbSelect<{ month: string; n: number }>(
     `
-    SELECT substr(pu.date,1,7) AS month, COALESCE(SUM(COALESCE(pi.purchase_price, 0) * COALESCE(pi.received_qty, 0) * COALESCE(pi.wht_pct, 0) / 100), 0) AS n
+    SELECT substr(pu.date,1,7) AS month, COALESCE(SUM(COALESCE(pi.purchase_price, 0) * COALESCE(pi.received_qty, 0) * (1 - COALESCE(pi.disc_pct, 0) / 100) * COALESCE(pi.wht_pct, 0) / 100), 0) AS n
     FROM purchase_items pi JOIN purchases pu ON pu.id = pi.purchase_id
     WHERE pu.deleted_at IS NULL AND pi.deleted_at IS NULL AND pu.tenant_id = ? AND pu.is_return = 0 ${pur.clause}
     GROUP BY month

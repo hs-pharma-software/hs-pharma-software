@@ -6,6 +6,7 @@ import { imeisOfPurchase, removePurchaseImeis, returnImeisToSupplier } from "./i
 import type { Purchase, PurchaseItem } from "../types2";
 import { PURCHASE_NUMBERS, nextDocNo, settleDocNo } from "./docNumbers";
 import { localDate } from "../localDate";
+import { purchaseReturnRate } from "../purchaseMath";
 
 const basePurchasesRepo = createTenantRepo<Purchase>("purchases");
 /** Purchases; a saved purchase keeps a number no other purchase has. */
@@ -230,7 +231,7 @@ export async function returnWholePurchase(purchaseId: string, paidAmount = 0): P
     goingBack.push(...inStock.slice(0, need));
   }
 
-  const payable = lines.reduce((s, l) => s + l.item.purchase_price * l.returnQty, 0);
+  const payable = lines.reduce((s, l) => s + purchaseReturnRate(l.item) * l.returnQty, 0);
 
   const ret = await purchasesRepo.create({
     purchase_no: null,
@@ -271,10 +272,11 @@ export async function returnWholePurchase(purchaseId: string, paidAmount = 0): P
       booked_qty: returnQty,
       received_qty: returnQty,
       avail_qty: match.qty - returnQty,
-      amount: item.purchase_price * returnQty,
+      amount: purchaseReturnRate(item) * returnQty,
       st_pct: item.st_pct,
       wht_pct: item.wht_pct,
-      total: item.purchase_price * returnQty,
+      disc_pct: item.disc_pct ?? 0,
+      total: purchaseReturnRate(item) * returnQty,
     });
   }
 

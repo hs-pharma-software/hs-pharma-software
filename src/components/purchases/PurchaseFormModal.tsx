@@ -51,6 +51,8 @@ interface Line {
   bonusQty: number;
   stPct: number;
   whtPct: number;
+  /** Extra discount % on this product (off the supplier's amount, before taxes). */
+  discPct: number;
   /** Retail (sale) price - prefilled from the current price list so the
    * cashier can see it and only has to touch it when it actually needs to
    * change on this purchase. */
@@ -79,6 +81,7 @@ function linesKey(lines: Line[]): string {
         sec ? l.purchasePrice * packing : l.purchasePrice,
         l.stPct,
         l.whtPct,
+        l.discPct,
         sec ? l.salePrice * packing : l.salePrice,
         parseImeis(l.imeis ?? "").join(","),
       ];
@@ -104,11 +107,13 @@ function linesProblems(lines: Line[]): (LineProblem | null)[] {
     ["bonusQty", "bonus", "Bonus"],
     ["stPct", "st", "S.T %"],
     ["whtPct", "wht", "W.T %"],
+    ["discPct", "disc", "Extra discount %"],
   ];
   return lines.map((l) => {
     for (const [key, field, label] of numbers) {
       if (Number(l[key]) < 0) return { field, message: `${l.product.name}: ${label} can't be negative.` };
     }
+    if (Number(l.discPct) > 100) return { field: "disc", message: `${l.product.name}: Extra discount can't be more than 100%.` };
     if (!l.product.track_imei) return null;
     const sec = l.unit === "secondary";
     const units = toBaseUnitQty(l.qty, sec, l.product.packing || 1) + toBaseUnitQty(l.bonusQty, sec, l.product.packing || 1);
@@ -140,6 +145,7 @@ function makeLine(p: Product): Line {
     bonusQty: 0,
     stPct: 0,
     whtPct: 0,
+    discPct: 0,
     salePrice: 0,
     initialSalePrice: 0,
     unit: "base",
@@ -228,6 +234,7 @@ export function PurchaseFormModal({
           bonusQty: Number(item.bonus_qty ?? 0),
           stPct: item.st_pct,
           whtPct: item.wht_pct,
+          discPct: Number(item.disc_pct ?? 0),
           salePrice,
           initialSalePrice: salePrice,
           unit: "base",
@@ -315,7 +322,7 @@ export function PurchaseFormModal({
         const rebuilt: Line[] = [];
         for (const l of d.lines) {
           const product = await productsRepo.get(l.productId);
-          if (product) rebuilt.push({ bonusQty: 0, ...l, product });
+          if (product) rebuilt.push({ bonusQty: 0, discPct: 0, ...l, product });
         }
         setLines(rebuilt);
       }
@@ -474,12 +481,12 @@ export function PurchaseFormModal({
 
   /** Paid on the quantity bought; sales tax and withholding tax are both added. */
   function lineTotal(l: Line) {
-    return purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, l.stPct, l.whtPct).total;
+    return purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, l.stPct, l.whtPct, l.discPct).total;
   }
 
   const subtotal = lines.reduce((s, l) => s + lineTotal(l), 0);
   const tax = lines.reduce((s, l) => {
-    const m = purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, l.stPct, l.whtPct);
+    const m = purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, l.stPct, l.whtPct, l.discPct);
     return s + m.st + m.wht;
   }, 0);
   const payable = subtotal - (Number(discountRs) || 0);
@@ -565,7 +572,9 @@ export function PurchaseFormModal({
         const finalBonus = toBaseUnitQty(l.bonusQty, isSecondary, packing);
         const finalPurchasePrice = isSecondary ? l.purchasePrice * packing : l.purchasePrice;
         // Cost of one unit in stock: bonus units came free (85 for 1 + 1 bonus = 42.50).
-        const netRate = purchaseLineMath(finalPurchasePrice, finalQty, finalBonus, 0, 0).netRate;
+        // After the line's extra discount.
+        const lineMath = purchaseLineMath(finalPurchasePrice, finalQty, finalBonus, 0, 0, l.discPct);
+        const netRate = lineMath.netRate;
         const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
         const lineTotalValue = lineTotal(l);
 
@@ -589,9 +598,10 @@ export function PurchaseFormModal({
           booked_qty: finalQty,
           received_qty: finalQty,
           avail_qty: batch.qty,
-          amount: finalPurchasePrice * finalQty,
+          amount: lineMath.amount,
           st_pct: l.stPct,
           wht_pct: l.whtPct,
+          disc_pct: Math.min(100, Math.max(0, Number(l.discPct) || 0)),
           total: lineTotalValue,
         };
         if (finalBonus > 0) {
@@ -745,6 +755,9 @@ export function PurchaseFormModal({
                         <RowField label="W.T %">
                           <input type="number" inputMode="decimal" min="0" step="any" data-cell="wht" data-field="wht" value={l.whtPct} onChange={(e) => updateLine(idx, { whtPct: Number(e.target.value) })} className={rowInput} />
                         </RowField>
+                        <RowField label="Extra Disc %">
+                          <input type="number" inputMode="decimal" min="0" max="100" step="any" data-cell="disc" data-field="disc" value={l.discPct} onChange={(e) => updateLine(idx, { discPct: Number(e.target.value) })} title="Extra discount % on this product, before taxes" className={rowInput} />
+                        </RowField>
                       </div>
                       {Boolean(l.product.track_imei) && (
                         <RowField label="IMEIs" wide>
@@ -765,7 +778,7 @@ export function PurchaseFormModal({
                           className={`text-xs tabular-nums ${l.bonusQty > 0 ? "font-semibold text-emerald-700" : "text-neutral-500"}`}
                           title="Cost of one unit with the bonus counted (rate x qty / (qty + bonus))"
                         >
-                          Net rate {purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, 0, 0).netRate.toFixed(2)}
+                          Net rate {purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, 0, 0, l.discPct).netRate.toFixed(2)}
                         </span>
                         <button
                           type="button"
@@ -796,7 +809,8 @@ export function PurchaseFormModal({
                 <th className="px-2 py-2">Retail</th>
                 <th className="px-2 py-2">Rec Qty</th>
                 <th className="px-2 py-2">Bonus</th>
-                <th className="px-2 py-2" title="Cost of one unit with the bonus counted (rate x qty / (qty + bonus))">Net Rate</th>
+                <th className="px-2 py-2" title="Extra discount % on this product (off the supplier's rate, before taxes)">Extra Disc %</th>
+                <th className="px-2 py-2" title="Cost of one unit after the extra discount, with the bonus counted">Net Rate</th>
                 <th className="px-2 py-2">ST %</th>
                 <th className="px-2 py-2">WHT %</th>
                 <th className="px-2 py-2">Total</th>
@@ -915,8 +929,21 @@ export function PurchaseFormModal({
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className={`px-2 py-1.5 tabular-nums ${l.bonusQty > 0 ? "font-semibold text-emerald-700" : "text-neutral-500"}`}>
-                      {purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, 0, 0).netRate.toFixed(2)}
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="any"
+                        data-cell="disc"
+                        value={l.discPct}
+                        onChange={(e) => updateLine(idx, { discPct: Number(e.target.value) })}
+                        title="Extra discount % on this product, before taxes"
+                        className="w-16 rounded border border-neutral-300 px-1.5 py-1"
+                      />
+                    </td>
+                    <td className={`px-2 py-1.5 tabular-nums ${l.bonusQty > 0 || l.discPct > 0 ? "font-semibold text-emerald-700" : "text-neutral-500"}`}>
+                      {purchaseLineMath(l.purchasePrice, l.qty, l.bonusQty, 0, 0, l.discPct).netRate.toFixed(2)}
                     </td>
                     <td className="px-2 py-1.5">
                       <input

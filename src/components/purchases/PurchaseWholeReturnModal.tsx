@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { PurchasePicker } from "@/components/purchases/PurchasePicker";
+import { purchaseReturnRate } from "@/lib/purchaseMath";
 import {
   listItemsForPurchase,
   getReturnedQtyByProduct,
@@ -57,7 +58,7 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
   }
 
   const returnableLines = lines.filter((l) => l.returnQty > 0);
-  const total = returnableLines.reduce((s, l) => s + l.item.purchase_price * l.returnQty, 0);
+  const total = returnableLines.reduce((s, l) => s + purchaseReturnRate(l.item) * l.returnQty, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -138,8 +139,8 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
                         <td className="px-2 py-1.5 font-medium text-neutral-800">
                           {l.returnQty === 0 ? "Fully returned" : l.returnQty}
                         </td>
-                        <td className="px-2 py-1.5">{l.item.purchase_price.toFixed(2)}</td>
-                        <td className="px-2 py-1.5">{(l.item.purchase_price * l.returnQty).toFixed(2)}</td>
+                        <td className="px-2 py-1.5">{purchaseReturnRate(l.item).toFixed(2)}</td>
+                        <td className="px-2 py-1.5">{(purchaseReturnRate(l.item) * l.returnQty).toFixed(2)}</td>
                       </tr>
                     ))
                   )}

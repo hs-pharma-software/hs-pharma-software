@@ -10,6 +10,8 @@ export interface PurchaseDraftLine {
   bonusQty?: number;
   stPct: number;
   whtPct: number;
+  /** Extra discount % (older drafts: none). */
+  discPct?: number;
   salePrice: number;
   initialSalePrice: number;
   unit: "base" | "secondary";
