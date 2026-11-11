@@ -14,7 +14,10 @@ import { OfflineDevice, TransportError, type SaleInput, type SecretStore, type T
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
 
-if (!app.requestSingleInstanceLock()) app.quit(); // one process per Windows user: one writer of the database
+/** One process per Windows user: one writer of the database. A second copy
+ * hands over to the first (which shows its window) and exits at once. */
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.exit(0);
 
 const dataRoot = app.getPath("userData");
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
@@ -57,12 +60,24 @@ const transport: Transport = {
 let device: OfflineDevice;
 let win: BrowserWindow | null = null;
 
+let quitting = false;
+
+/** The window, created again if it was closed or destroyed. */
+function showWindow() {
+  if (quitting) return;
+  if (!win || win.isDestroyed()) { createWindow(); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1200, height: 800, minWidth: 900, minHeight: 600, title: "MAVIN Offline",
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
   });
   win.removeMenu();
+  win.on("closed", () => { win = null; });
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\/(app|www)\.mavin\.pk\//.test(url)) void shell.openExternal(url);
@@ -146,15 +161,34 @@ ${text}`); return true; }
   return true;
 }
 
-app.whenReady().then(() => {
-  device = new OfflineDevice({
-    dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets,
-  });
-  createWindow();
-  // Background sync; repeated failures wait longer (see OfflineDevice.backoff).
-  setInterval(() => { if (device.provisioned) void device.sync(); }, SYNC_EVERY_MS);
-  if (device.provisioned) void device.sync();
-});
+let syncTimer: ReturnType<typeof setInterval> | null = null;
+const backgroundSync = () => { if (!quitting && device?.provisioned) void device.sync().catch(() => undefined); };
 
-app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
-app.on("window-all-closed", () => { device?.close(); app.quit(); });
+if (primary) {
+  app.whenReady().then(() => {
+    device = new OfflineDevice({
+      dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets,
+    });
+    createWindow();
+    // Background sync; repeated failures wait longer (see OfflineDevice.backoff).
+    syncTimer = setInterval(backgroundSync, SYNC_EVERY_MS);
+    backgroundSync();
+  });
+
+  // Opened again (shortcut, restart of Windows): bring up the window, a new one if needed.
+  app.on("second-instance", () => { if (app.isReady()) showWindow(); });
+
+  // Closing the window ends the app; the database is closed once, and a problem closing it never keeps the app running.
+  const shutdown = () => {
+    if (quitting) return;
+    quitting = true;
+    if (syncTimer) clearInterval(syncTimer);
+    try { device?.close(); } catch { /* the saved data is already on disk (WAL) */ }
+  };
+  app.on("window-all-closed", () => { shutdown(); app.quit(); });
+  app.on("before-quit", shutdown);
+}
+
+// Never a dead window: an unexpected error is written to the log and the app carries on or quits cleanly.
+process.on("uncaughtException", (e) => { console.error("[main] uncaught", e); });
+process.on("unhandledRejection", (e) => { console.error("[main] unhandled", e); });
