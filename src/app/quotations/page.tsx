@@ -111,6 +111,13 @@ export default function QuotationsPage() {
 
   const tauriReady = useIsTauri();
 
+  // Phones: "8 Nov" (year only when it isn't this year), as on the invoice list.
+  const shortDate = (d: string) => {
+    const x = new Date(`${d.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(x.getTime())) return d;
+    return x.toLocaleDateString("en-PK", { day: "numeric", month: "short", ...(x.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }) });
+  };
+
   return (
     <div>
       <PageHeader
@@ -137,6 +144,31 @@ export default function QuotationsPage() {
         <DataTable
           columns={columns}
           rows={rows}
+          onRowClick={(r) => setOpened({ id: r.id, viewOnly: true })}
+          mobile={(r) => ({
+            title: <>#{r.quotation_no ?? "—"} <span className="font-normal text-neutral-600">· {r.customer_name}</span></>,
+            meta: (
+              <>
+                <span>{shortDate(r.date)}</span>
+                {r.salesman_name && <span className="min-w-0 truncate">{r.salesman_name}</span>}
+                {r.converted_invoice_id ? (
+                  <span className="rounded-full bg-emerald-100 px-1.5 text-[11px] font-medium text-emerald-800">Invoice #{r.converted_invoice_no ?? "—"}</span>
+                ) : (
+                  <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">Pending</span>
+                )}
+              </>
+            ),
+            value: `Rs ${r.payable.toFixed(2)}`,
+            sub: "Est.",
+            actions: [
+              { label: "View", onClick: () => setOpened({ id: r.id, viewOnly: true }) },
+              ...(!r.converted_invoice_id ? [
+                { label: "Edit", onClick: () => setOpened({ id: r.id, viewOnly: false }) },
+                { label: acceptingId === r.id ? "Accepting..." : "Accept → Generate Invoice", onClick: () => void handleAccept(r), disabled: acceptingId === r.id },
+                { label: deletingId === r.id ? "Deleting..." : "Delete", onClick: () => void handleDelete(r), danger: true, disabled: deletingId === r.id },
+              ] : []),
+            ],
+          })}
           emptyMessage="No content in table \u2014 use Add to create a quotation. Quotations don't count toward sales/invoices until accepted."
         />
       )}
