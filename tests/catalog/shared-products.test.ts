@@ -87,3 +87,27 @@ test("editing a shared product is saved (it used to be silently lost)", async ()
   // And a general store cannot reach a pharma-only product at all.
   await assert.rejects(productsRepo.update(med.id, { name: "x" }), /Product not found/);
 });
+
+test("units on a shared product are shared, so another business never re-enters them", async () => {
+  const one = (q: string, ...a: unknown[]) => sql.prepare(q).get(...(a as never[])) as Record<string, unknown>;
+  loginAs("ph-1");
+  const pack = await uomsRepo.create({ name: "Pack", description: null });
+  const tab = await uomsRepo.create({ name: " Tab ", description: "Tablet" });
+  const own = await productsRepo.create({ name: "Own item", base_unit_id: pack.id, packing: 1 } as Partial<Product>);
+  const p = await createSharedProduct({ name: "Panadol 500mg", base_unit_id: pack.id, secondary_unit_id: tab.id, packing: 10, catalog_group: "pharma", product_classification: "pharma" } as Partial<Product>);
+  const unitOf = (id: string | null) => one(`SELECT name, tenant_id FROM uoms WHERE id = ?`, id);
+  assert.deepEqual({ ...unitOf(p.base_unit_id) }, { name: "Pack", tenant_id: null });
+  assert.deepEqual({ ...unitOf(p.secondary_unit_id) }, { name: "Tab", tenant_id: null });
+  assert.equal((own as Product).base_unit_id, pack.id, "the business's own products keep its own unit");
+  assert.equal(unitOf(pack.id).tenant_id, "ph-1", "the business keeps its unit");
+
+  // A second shared product with a unit of the same name reuses the shared one (no duplicates).
+  const pack2 = await uomsRepo.create({ name: "PACK", description: null });
+  const q = await createSharedProduct({ name: "Brufen", base_unit_id: pack2.id, packing: 1, catalog_group: "pharma", product_classification: "pharma" } as Partial<Product>);
+  assert.equal(q.base_unit_id, p.base_unit_id);
+
+  // Editing a shared product with a private unit: shared again.
+  const drop = await uomsRepo.create({ name: "Drop", description: null });
+  await productsRepo.update(p.id, { secondary_unit_id: drop.id });
+  assert.equal(unitOf(String(one(`SELECT secondary_unit_id AS u FROM products WHERE id = ?`, p.id).u)).tenant_id, null);
+});

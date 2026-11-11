@@ -45,4 +45,25 @@ function toArg(v) {
   return { type: 'text', value: String(v) };
 }
 
-module.exports = { tursoQuery, tursoHost };
+/** Runs statements in ONE transaction on one connection (BEGIN ... COMMIT in a
+ * single pipeline); any error rolls everything back. Returns rows affected per statement. */
+async function tursoTransaction(statements) {
+  requireConfig();
+  const requests = [
+    { type: 'execute', stmt: { sql: 'BEGIN' } },
+    ...statements.map((s) => ({ type: 'execute', stmt: { sql: s.sql, args: (s.args ?? []).map(toArg) } })),
+    { type: 'execute', stmt: { sql: 'COMMIT' } },
+    { type: 'close' },
+  ];
+  const res = await fetch(`${URL_}/v2/pipeline`, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ requests }) });
+  if (!res.ok) throw new Error(`Turso HTTP ${res.status}`);
+  const data = await res.json();
+  const failed = (data.results ?? []).findIndex((r) => r.type === 'error');
+  if (failed >= 0) {
+    // The pipeline stops at the error; the open transaction ends with the stream (rolled back).
+    throw new Error(`Statement ${failed} failed, nothing was saved: ${data.results[failed].error?.message ?? 'error'}`);
+  }
+  return data.results.slice(1, 1 + statements.length).map((r) => Number(r.response?.result?.affected_row_count ?? 0));
+}
+
+module.exports = { tursoQuery, tursoHost, tursoTransaction };

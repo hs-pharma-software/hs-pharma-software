@@ -4,6 +4,7 @@ import { useAuthStore } from "../../store/authStore";
 import { sharedCatalogGroupsFor, sharedCatalogWhereClause, type SharedCatalogGroup } from "../catalogAccess";
 import { newId, nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
+import { sharedUnitFor } from "./uoms";
 import type { Product, ProductBatch, PriceListEntry } from "../types";
 
 /** Products belong to one tenant (v29; before that the catalog was shared by
@@ -79,7 +80,7 @@ export const productsRepo = {
  * cannot: its UPDATE also matches tenant_id = <this tenant>, so the edit was
  * silently lost. Ownership never changes and the row stays in its group. */
 async function updateSharedProduct(id: string, data: Partial<Product>, groups: SharedCatalogGroup[]): Promise<Product | null> {
-  const patch: Record<string, unknown> = { ...data, updated_at: nowIso() };
+  const patch: Record<string, unknown> = { ...(await withSharedUnits(data)), updated_at: nowIso() };
   delete patch.id;
   delete patch.tenant_id;
   delete patch.created_at;
@@ -93,6 +94,14 @@ async function updateSharedProduct(id: string, data: Partial<Product>, groups: S
   const full = (await dbSelect<Product>(`SELECT * FROM products WHERE id = ?`, [id]))[0] ?? null;
   if (full) await recordOutbox("products", id, "update", full as unknown as Record<string, unknown>);
   return full;
+}
+
+/** The product's units swapped for shared ones of the same name (see sharedUnitFor). */
+async function withSharedUnits(data: Partial<Product>): Promise<Partial<Product>> {
+  const out = { ...data };
+  if ("base_unit_id" in data) out.base_unit_id = (await sharedUnitFor(data.base_unit_id)) as Product["base_unit_id"];
+  if ("secondary_unit_id" in data) out.secondary_unit_id = (await sharedUnitFor(data.secondary_unit_id)) as Product["secondary_unit_id"];
+  return out;
 }
 
 /**
@@ -112,6 +121,8 @@ export async function createSharedProduct(data: Partial<Product>): Promise<Produ
   }
   // Category / sub_category / unit refs are allowed to be shared or tenant-owned.
   await productRefs(data);
+  // Units on a shared product must be shared too, or other businesses see them empty.
+  data = await withSharedUnits(data);
   const id = (data.id as string) ?? newId();
   const ts = nowIso();
   // tenant_id = NULL marks this as a shared catalog row (not quarantined

@@ -1,5 +1,7 @@
 ﻿import { createTenantRepo, requireCurrentTenantId } from "./base";
-import { dbSelect } from "../db";
+import { dbExecute, dbSelect } from "../db";
+import { newId, nowIso } from "../id";
+import { recordOutbox } from "../sync/outbox";
 import { sharedCatalogGroupsFor } from "../catalogAccess";
 import { useAuthStore } from "../../store/authStore";
 import type { Uom } from "../types";
@@ -25,6 +27,30 @@ export async function listUomsWithShared(): Promise<Uom[]> {
     );
   }
   return uomsRepo.list({ orderBy: "name ASC" });
+}
+
+/** The shared unit (tenant_id NULL) to use on a shared catalogue product.
+ * A business's own unit is private: on a shared product every other business
+ * would see it empty and have to enter it again. So a business unit is
+ * replaced by the shared unit of the same name (the oldest one), created if
+ * there is none. The business keeps its own unit for its own products. */
+export async function sharedUnitFor(uomId: string | null | undefined): Promise<string | null> {
+  if (!uomId) return null;
+  const u = (await dbSelect<{ id: string; name: string; description: string | null; tenant_id: string | null }>(
+    `SELECT id, name, description, tenant_id FROM uoms WHERE id = ? AND deleted_at IS NULL`, [uomId],
+  ))[0];
+  if (!u || u.tenant_id === null) return uomId;
+  const name = u.name.trim();
+  const same = (await dbSelect<{ id: string }>(
+    `SELECT id FROM uoms WHERE tenant_id IS NULL AND deleted_at IS NULL AND UPPER(TRIM(name)) = UPPER(?) ORDER BY created_at, id LIMIT 1`, [name],
+  ))[0];
+  if (same) return same.id;
+  const ts = nowIso();
+  const record = { id: newId(), name, description: u.description, tenant_id: null, created_at: ts, updated_at: ts, deleted_at: null };
+  await dbExecute(`INSERT INTO uoms (id, name, description, tenant_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [record.id, record.name, record.description, null, ts, ts, null]);
+  await recordOutbox("uoms", record.id, "insert", record);
+  return record.id;
 }
 
 /** Common units for a tenant whose list is empty (explicit, per tenant). */
