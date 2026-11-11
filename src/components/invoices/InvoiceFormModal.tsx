@@ -51,6 +51,7 @@ import { businessType } from "@/config/businessTypes";
 import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
 import { localDate } from "@/lib/localDate";
 import { serverJson } from "@/lib/serverMode";
+import { desktopCall, useDesktopStatus, NeedsInternetError } from "@/lib/desktopBridge";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -110,12 +111,17 @@ export function InvoiceFormModal({
   cloneFrom?: Invoice | null;
   onClose: () => void;
   /** The saved invoice (not for a draft). */
-  onSaved: (saved?: { id: string; no: number | null }) => void;
+  onSaved: (saved?: { id: string; no: number | null; offlineReceipt?: string; offlineRef?: string }) => void;
   /** False while another invoice tab is in front: keyboard shortcuts are
    * ignored so only the visible form reacts. */
   active?: boolean;
 }) {
   const isEdit = Boolean(invoice);
+  // MAVIN desktop app without internet: this same form saves cash sales on the computer.
+  const desktop = useDesktopStatus();
+  const offline = desktop?.online === false;
+  /** A save that lost its connection half way: it may have reached the server, so no second save until checked. */
+  const [uncertainSave, setUncertainSave] = useState(false);
   // A memorized draft holds no stock: editing it neither puts stock back nor takes any.
   const isDraft = Boolean(invoice?.is_memorized);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -701,6 +707,10 @@ export function InvoiceFormModal({
         }
       }
     }
+    if (offline) {
+      await saveOffline();
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -742,6 +752,43 @@ export function InvoiceFormModal({
       // Billed from a website order: link it once, so it is not billed twice and its stock hold ends.
       if (webOrderId && !invoice && !isDraft) await serverJson("/api/web/manage/", { action: "linkInvoice", id: webOrderId, invoiceId }).catch(() => undefined);
       onSaved(isDraft ? undefined : { id: invoiceId, no: savedNo });
+    } catch (err) {
+      // Desktop app: the connection dropped during the save. Part of it may be on the server already.
+      if (err instanceof NeedsInternetError) {
+        setUncertainSave(true);
+        setError("The internet dropped while this invoice was being saved, so it may be partly saved on MAVIN.pk. The bill is kept here. When the connection is back, check Sales before saving it again.");
+      } else setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Offline (desktop app): a cash sale saved on this computer in one step, sent to MAVIN.pk once when the internet returns. */
+  async function saveOffline() {
+    const block = uncertainSave
+      ? "The last save may already be on MAVIN.pk. Reconnect and check Sales before saving this bill offline."
+      : isEdit || isDraft ? "Editing a saved invoice needs an internet connection."
+      : invOn.toLowerCase() !== "cash" ? "Offline sales are cash only. Set Inv On to Cash."
+      : lines.some((l) => l.bonusQty > 0) ? "Bonus quantities need an internet connection."
+      : lines.some((l) => extraOf(l) > 0) ? "Extra discount needs an internet connection."
+      : lines.some((l) => l.product.track_imei) ? "Handsets with IMEI numbers need an internet connection."
+      : (Number(charges) || 0) !== 0 || (Number(discountRs) || 0) !== 0 ? "Charges and bill discount need an internet connection."
+      : (Number(paid) || 0) + 0.005 < payable ? "Offline sales are cash only: Paid must cover the total."
+      : desktop?.sellBlock ?? null;
+    if (block) {
+      setError(block);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await desktopCall((b) => b.createSale({
+        lines: lines.map((l) => ({ productId: l.product.id, unit: l.unit === "secondary" ? "loose" : "pack", qty: l.qty, discountPct: l.discountPct })),
+        customerName: customerName.trim() || null,
+        customerPhone: customerPhone.trim() || null,
+        tendered: Number(paid) || 0,
+      }));
+      onSaved({ id: r.saleId, no: null, offlineReceipt: r.receipt, offlineRef: r.offlineRef });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -793,6 +840,13 @@ export function InvoiceFormModal({
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
       <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {offline && (
+          <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <b>Offline.</b> Cash sales are saved on this computer and sent to MAVIN.pk once when the internet returns.
+            Prices, tax and stock are this computer&apos;s copy{desktop?.copyRefreshedAt ? ` as of ${new Date(desktop.copyRefreshedAt).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" })}` : ""};
+            sales made on other counters or online since then are not included. Credit, bonus, charges, bill discount, editing invoices and FBR submission need internet.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           {canPickDate && (
             <Field label="Invoice Date" required>
@@ -1101,6 +1155,8 @@ export function InvoiceFormModal({
                         min="0"
                         step="any"
                         value={l.bonusQty}
+                        disabled={offline}
+                        title={offline ? "Bonus needs internet" : undefined}
                         onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_BONUS)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -1113,6 +1169,8 @@ export function InvoiceFormModal({
                         min="0"
                         step="any"
                         value={l.salePrice}
+                        disabled={offline}
+                        title={offline ? "Offline, the price list price is used" : undefined}
                         onChange={(e) => updateLine(idx, { salePrice: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_PRICE)}
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
@@ -1125,6 +1183,8 @@ export function InvoiceFormModal({
                         min="0"
                         step="any"
                         value={l.taxPct}
+                        disabled={offline}
+                        title={offline ? "Offline, the product's tax rate is used" : undefined}
                         onChange={(e) => updateLine(idx, { taxPct: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_TAX)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -1204,10 +1264,10 @@ export function InvoiceFormModal({
             <Input value={total.toFixed(2)} disabled />
           </Field>
           <Field label={isClothStore && measurement ? "Charges (incl. custom)" : "Charges"}>
-            <Input type="number" min="0" step="any" value={charges} onChange={(e) => setCharges(e.target.value)} />
+            <Input type="number" min="0" step="any" value={charges} disabled={offline} title={offline ? "Needs internet" : undefined} onChange={(e) => setCharges(e.target.value)} />
           </Field>
           <Field label="Discount Rs (F12)">
-            <Input type="number" min="0" step="any" value={discountRs} onChange={(e) => setDiscountRs(e.target.value)} />
+            <Input type="number" min="0" step="any" value={discountRs} disabled={offline} title={offline ? "Needs internet" : undefined} onChange={(e) => setDiscountRs(e.target.value)} />
           </Field>
           <Field label="Tax">
             <Input value={taxTotal.toFixed(2)} disabled />
@@ -1249,7 +1309,7 @@ export function InvoiceFormModal({
               Draft
             </Button>
           )}
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S" className="max-sm:flex-1">
+          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title={offline ? "Save on this computer (Ctrl+S); sent when the internet returns" : "Ctrl+S"} className="max-sm:flex-1">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>

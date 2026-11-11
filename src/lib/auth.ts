@@ -8,6 +8,7 @@ import { isTursoConfigured, pullAuthData } from "./sync/engine";
 import type { SubscriptionPlan, Tenant, UserAccount, UserRole } from "./types2";
 import { SERVER_DB, desktopViaServer, serverJson, ServerRequestError, setDesktopSession } from "./serverMode";
 import { dbExecute } from "./db";
+import { desktopBridge } from "./desktopBridge";
 import { getGlobalSetting } from "./repo/settings";
 import { DEFAULT_GRACE_DAYS, ENFORCE_EXPIRY_SETTING } from "./subscription";
 
@@ -109,9 +110,16 @@ export function tenantAllowedModules(tenant: Pick<Tenant, "allowed_modules">, pl
 export async function login(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
   if (SERVER_DB) {
     // The server checks the password and sets the session cookie; the page never sees the hash.
+    const desktop = desktopBridge();
     try {
       await serverJson("/api/auth/login/", { username, password });
     } catch (e) {
+      // MAVIN desktop app without a connection: its own check, within its offline allowance.
+      if (desktop && e instanceof ServerRequestError && e.status === 0) {
+        const r = await desktop.offlineSignIn({ username, password });
+        if (!r.ok) throw new AuthError(r.error);
+        return r.value as { user: SessionUser; tenant: SessionTenant | null };
+      }
       throw new AuthError(e instanceof ServerRequestError ? e.message : "Could not reach the server. Check the connection.");
     }
     // A Sub Super has no business: their session comes from the server, not from business tables.
@@ -119,7 +127,10 @@ export async function login(username: string, password: string): Promise<{ user:
     if (me.platformRole === "distributor") return distributorSession(me.userId, username.trim());
     const record = await findUserByUsername(username.trim());
     if (!record) throw new AuthError("Incorrect username or password.");
-    return buildSession(record);
+    const session = await buildSession(record);
+    // Desktop app: this login can also sign in here offline later (password checked on this computer only).
+    if (desktop) await desktop.rememberSession({ username, password, session }).catch(() => undefined);
+    return session;
   }
   if (desktopViaServer()) return desktopLogin(username, password);
   let record = await checkCredentials(username, password);

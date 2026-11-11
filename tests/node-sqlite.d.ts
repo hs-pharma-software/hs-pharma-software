@@ -2,7 +2,7 @@
 // project's @types/node (v20) predates. Only what the tests use.
 declare module "node:sqlite" {
   export class DatabaseSync {
-    constructor(path: string);
+    constructor(path: string, options?: { readOnly?: boolean; open?: boolean; enableForeignKeyConstraints?: boolean });
     exec(sql: string): void;
     close(): void;
     prepare(sql: string): {

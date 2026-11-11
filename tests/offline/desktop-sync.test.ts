@@ -18,6 +18,7 @@ import { HttpError } from "@/server/db";
 import * as off from "@/server/offline/service";
 import { signGrant, verifyGrant, type SignedGrant } from "@/offline/protocol";
 import { OfflineDevice, TransportError, type Transport } from "../../desktop/src/core/device.ts";
+import { Mirror, readOnlySql } from "../../desktop/src/core/mirror.ts";
 
 const keys = generateKeyPairSync("ed25519");
 const PUB = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
@@ -65,6 +66,7 @@ const transport: Transport = {
           break;
         }
         case "push": result = { results: await off.push(sql, await device(), b.ops, b.status as never) }; break;
+        case "mirror": result = await off.mirrorPage(sql, await device(), b.table, b.offset); break;
         default: throw new HttpError(400, "Unknown action.");
       }
       // The server did the work, but the reply never arrives.
@@ -80,6 +82,7 @@ const transport: Transport = {
 
 const secrets = new Map<string, string>();
 const opened: OfflineDevice[] = [];
+const mirrors: Mirror[] = [];
 const newDevice = () => { const d = new OfflineDevice({ dataRoot: root, publicKeyPem: PUB, appVersion: "0.1.0-test", transport, secrets: { get: (k) => secrets.get(k) ?? null, set: (k, v) => void secrets.set(k, v) }, now: () => clock }); opened.push(d); return d; };
 
 function tenant(id: string, type = "retail_pharmacy", flags = ["+desktop.offline"]) {
@@ -135,6 +138,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const d of opened.splice(0)) d.close();
+  for (const m of mirrors.splice(0)) m.close();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -447,4 +451,88 @@ test("a device behind the trimmed change log downloads everything again", async 
   assert.equal(r.error, null);
   assert.equal(d.search("panadol")[0].available, 27);
   assert.equal(d.status().provisioned && d.status().catalogReady, true);
+});
+
+// ── The screens' read-only copy (desktop/src/core/mirror.ts) ──
+
+/** The server database's structure, built the way desktop/scripts/schema.cjs builds resources/schema.sql. */
+const SCHEMA_SQL = (() => {
+  const rs = readFileSync(join(import.meta.dirname, "..", "..", "src-tauri", "src", "lib.rs"), "utf8");
+  const parts: string[] = [];
+  for (let v = 1; ; v++) {
+    const m = new RegExp(String.raw`fn ${v === 1 ? "schema_sql" : `schema_sql_v${v}`}\(\)[^{]*\{\s*r#"([\s\S]*?)"#`).exec(rs);
+    if (!m) break;
+    parts.push(`${m[1]}\n;`);
+  }
+  return parts.join("\n");
+})();
+const COPY_TABLES = off.MIRROR_TABLES;
+async function copyOf(d: OfflineDevice) {
+  const id = d.identity!;
+  const m = new Mirror(join(root, "mirror", "copy.db"), SCHEMA_SQL);
+  mirrors.push(m);
+  await m.refresh(COPY_TABLES, (t, o) => d.mirrorPage(t, o));
+  m.overlay(d.localSales(30), d.stockNow(), id.tenantId, id.branchId);
+  return m;
+}
+const copyQty = (m: Mirror, id: string) => Number(m.query(`SELECT qty FROM product_batches WHERE id = ?`, [id])[0]?.qty);
+
+test("the read-only copy holds only this business's data, never passwords or credentials", async () => {
+  // Another business whose id differs only where this one's has "_" (a LIKE wildcard).
+  tenant("t_x");
+  tenant("tAx");
+  run(`INSERT INTO settings (key, value, updated_at) VALUES ('t1::invoice_footer', 'Thank you', ?), ('t1::fbr_production_token', 'SECRET-FBR', ?), ('t1::openai_api_key', 'sk-SECRET', ?), ('t2::invoice_footer', 'Other shop', ?), ('global_thing', 'x', ?)`, T, T, T, T, T);
+  const d = await provisioned();
+  const m = await copyOf(d);
+  assert.deepEqual(m.query(`SELECT id FROM tenants`, []).map((r) => r.id), ["t1"]);
+  assert.deepEqual(m.query(`SELECT key, value FROM settings`, []), [{ key: "t1::invoice_footer", value: "Thank you" }]);
+  const users = m.query(`SELECT id, password_hash, password_salt FROM users ORDER BY id`, []);
+  assert.deepEqual(users.map((u) => u.id), ["s1", "u1"]);
+  assert.ok(users.every((u) => !u.password_hash && !u.password_salt), "no password checks in the copy");
+  assert.deepEqual(m.query(`SELECT id FROM products ORDER BY id`, []).map((r) => r.id), ["p1", "p2", "pi", "pn"]);
+  assert.deepEqual(m.query(`SELECT id FROM product_batches ORDER BY id`, []).map((r) => r.id), ["b1a", "b1b", "b2", "bn"]);
+  // A device for t1 cannot ask for a table outside the list.
+  await assert.rejects(d.mirrorPage("offline_devices", 0), /Unknown table/);
+  await assert.rejects(d.mirrorPage("users; DROP TABLE users", 0), /Unknown table/);
+});
+
+test("the page can only read the copy", async () => {
+  for (const ok of [`SELECT * FROM products`, ` with x as (select 1) select * from x;`, `SELECT 'DELETE; DROP' AS t FROM products -- UPDATE`]) assert.ok(readOnlySql(ok), ok);
+  for (const bad of [`DELETE FROM products`, `SELECT 1; DELETE FROM products`, `UPDATE products SET name = 'x'`, `PRAGMA writable_schema = 1`, `ATTACH 'x.db' AS y`, `WITH x AS (SELECT 1) DELETE FROM products`, `INSERT INTO products SELECT * FROM products`])
+    assert.equal(readOnlySql(bad), false, bad);
+  const d = await provisioned();
+  const m = await copyOf(d);
+  assert.throws(() => m.query(`DELETE FROM products`, []), /Only reading/);
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM products`, [])[0].n, 4);
+});
+
+test("offline sales show in the copy at once; after sync its stock stays right even before the copy refreshes", async () => {
+  const d = await provisioned();
+  const m = await copyOf(d);
+  assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [5, 20]);
+
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 7 }], tendered: 700 });
+  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+  assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [0, 18], "the sale's stock is taken in the copy");
+  const listed = m.query(`SELECT id, invoice_no, offline_ref, payable, description FROM invoices`, []);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, sale.saleId);
+  assert.equal(listed[0].invoice_no, null);
+  assert.equal(listed[0].offline_ref, sale.offlineRef);
+  assert.match(String(listed[0].description), /Pending sync/);
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?`, [sale.saleId])[0].n, 2);
+
+  // Online again: sent and downloaded, but the copy's own tables not refreshed yet (they refresh every few minutes).
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).applied, 1);
+  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+  assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [0, 18], "not the old figure back, not taken twice");
+  assert.equal(m.query(`SELECT invoice_no FROM invoices`, [])[0].invoice_no, 1);
+
+  // A full refresh, then the overlay: still the same.
+  await m.refresh(COPY_TABLES, (t, o) => d.mirrorPage(t, o));
+  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+  assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [0, 18]);
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoices`, [])[0].n, 1, "one invoice listed, not two");
 });

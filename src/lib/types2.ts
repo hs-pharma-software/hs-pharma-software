@@ -178,6 +178,8 @@ export interface PurchaseItem extends TenantRow {
 
 export interface Invoice extends TenantRow {
   invoice_no: number | null;
+  /** A sale made offline on the desktop app: its reference (the number comes when it is sent). */
+  offline_ref?: string | null;
   date: string;
   inv_on: string;
   invoice_type: string;

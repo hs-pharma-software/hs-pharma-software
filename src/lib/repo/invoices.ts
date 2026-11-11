@@ -34,6 +34,8 @@ function currentTenantId(): string | null {
 export interface InvoiceListRow {
   id: string;
   invoice_no: number | null;
+  /** Desktop app: the offline sale's reference (no number until sent). Not in every list. */
+  offline_ref?: string | null;
   date: string;
   customer_name: string;
   salesman_name: string | null;
@@ -51,7 +53,7 @@ export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorize
   const { isReturn = false, isMemorized = false } = opts;
   return dbSelect<InvoiceListRow>(
     `
-    SELECT i.id, i.invoice_no, i.date,
+    SELECT i.id, i.invoice_no, i.offline_ref, i.date,
            COALESCE(NULLIF(i.customer_name, ''), c.name, 'Walk-in') AS customer_name,
            sm.name AS salesman_name,
            i.total, i.payable, i.paid, i.balance,

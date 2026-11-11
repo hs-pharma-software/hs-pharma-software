@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import { invoiceLabel } from "@/lib/invoiceLabel";
 import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck, Copy, FileDown, MessageCircle } from "lucide-react";
 import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
@@ -182,7 +183,7 @@ export default function InvoicesPage() {
   };
 
   const columns: Column<InvoiceListRow>[] = [
-    { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
+    { header: "Bill #", render: (r) => r.invoice_no ?? r.offline_ref ?? "—" },
     { header: "Date", render: (r) => r.date },
     { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
     { header: "Customer", render: (r) => isServiceBill(r) ? <span>{r.customer_name} <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">{isSurgery(r) ? "Surgery" : "Clinic visit"}</span></span> : r.customer_name },
@@ -321,7 +322,7 @@ export default function InvoicesPage() {
           rows={rows}
           onRowClick={(r) => void openView(r)}
           mobile={(r) => ({
-            title: <>#{r.invoice_no ?? "—"} <span className="font-normal text-neutral-600">· {r.customer_name}</span></>,
+            title: <>{invoiceLabel(r)} <span className="font-normal text-neutral-600">· {r.customer_name}</span></>,
             meta: (
               <>
                 <span>{shortDate(r.date)}</span>

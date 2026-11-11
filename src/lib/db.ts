@@ -1,7 +1,16 @@
 ﻿import { isTauriShell as isTauri } from "./platform";
 import { createClient, type Client } from "@libsql/client/web";
 import { explainMissingTable } from "./dbErrors";
-import { SERVER_DB, serverJson } from "./serverMode";
+import { SERVER_DB, serverJson, ServerRequestError } from "./serverMode";
+import { desktopBridge, desktopOffline, NeedsInternetError } from "./desktopBridge";
+
+/** MAVIN desktop app, offline: reads from its read-only copy of this business's data. */
+async function desktopCopy(sql: string, params: unknown[]): Promise<Record<string, unknown>[]> {
+  const r = await desktopBridge()!.query({ sql, params });
+  if (!r.ok) throw new Error(r.error);
+  return r.value;
+}
+const noConnection = (e: unknown) => e instanceof ServerRequestError && e.status === 0;
 
 type ServerResult = { columns: string[]; rows: unknown[][]; rowsAffected: number; lastInsertRowid: number | null };
 
@@ -61,8 +70,15 @@ export async function dbSelect<T = Record<string, unknown>>(sql: string, params:
     return db.select<T[]>(sql, params).catch(explain);
   }
   if (SERVER_DB) {
-    const [r] = await viaServer([{ sql, args: params }], false);
-    return r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, row[i]])) as T);
+    // Desktop app without a connection: the same query on its read-only copy.
+    if (desktopBridge() && desktopOffline()) return (await desktopCopy(sql, params)) as T[];
+    try {
+      const [r] = await viaServer([{ sql, args: params }], false);
+      return r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, row[i]])) as T);
+    } catch (e) {
+      if (desktopBridge() && noConnection(e)) return (await desktopCopy(sql, params)) as T[];
+      throw e;
+    }
   }
   // Browser / Vercel: query Turso directly
   const result = await getTursoClient().execute({ sql, args: params as never[] }).catch(explain);
@@ -81,8 +97,14 @@ export async function dbExecute(sql: string, params: unknown[] = []): Promise<{ 
     return db.execute(sql, params).catch(explain);
   }
   if (SERVER_DB) {
-    const [r] = await viaServer([{ sql, args: params }], false);
-    return { rowsAffected: r.rowsAffected, lastInsertId: r.lastInsertRowid ?? undefined };
+    if (desktopBridge() && desktopOffline()) throw new NeedsInternetError("Saving this change");
+    try {
+      const [r] = await viaServer([{ sql, args: params }], false);
+      return { rowsAffected: r.rowsAffected, lastInsertId: r.lastInsertRowid ?? undefined };
+    } catch (e) {
+      if (desktopBridge() && noConnection(e)) throw new NeedsInternetError("Saving this change");
+      throw e;
+    }
   }
   // Browser / Vercel: write to Turso directly
   const result = await getTursoClient().execute({ sql, args: params as never[] }).catch(explain);
@@ -102,7 +124,13 @@ export async function dbBatch(statements: { sql: string; params?: unknown[] }[])
     return;
   }
   if (SERVER_DB) {
-    await viaServer(statements.map((s) => ({ sql: s.sql, args: s.params ?? [] })), true);
+    if (desktopBridge() && desktopOffline()) throw new NeedsInternetError("Saving this change");
+    try {
+      await viaServer(statements.map((s) => ({ sql: s.sql, args: s.params ?? [] })), true);
+    } catch (e) {
+      if (desktopBridge() && noConnection(e)) throw new NeedsInternetError("Saving this change");
+      throw e;
+    }
     return;
   }
   await getTursoClient().batch(statements.map((s) => ({ sql: s.sql, args: (s.params ?? []) as never[] })), "write").catch(explain);

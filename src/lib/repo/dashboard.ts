@@ -83,6 +83,8 @@ export async function getExpiringSoonBatches(days = 180, limit = 12): Promise<Ex
 export interface RecentInvoiceRow {
   id: string;
   invoice_no: number | null;
+  /** Desktop app: the offline sale's reference (no number until sent). */
+  offline_ref: string | null;
   date: string;
   customer_name: string;
   total: number;
@@ -92,7 +94,7 @@ export interface RecentInvoiceRow {
 export async function getRecentInvoices(limit = 6): Promise<RecentInvoiceRow[]> {
   return dbSelect<RecentInvoiceRow>(
     `
-    SELECT i.id, i.invoice_no, i.date, COALESCE(c.name, 'Walk-in') AS customer_name, i.total, i.balance
+    SELECT i.id, i.invoice_no, i.offline_ref, i.date, COALESCE(c.name, 'Walk-in') AS customer_name, i.total, i.balance
     FROM invoices i
     LEFT JOIN customers c ON c.id = i.customer_id
     WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0

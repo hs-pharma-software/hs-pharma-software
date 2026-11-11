@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import React, { useEffect, useState } from "react";
+import { invoiceLabel } from "@/lib/invoiceLabel";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { dbSelect } from "@/lib/db";
@@ -445,7 +446,7 @@ function GeneralStoreDashboard() {
                 className="flex items-center justify-between rounded-xl border border-neutral-100 px-3 py-2.5"
               >
                 <div>
-                  <p className="text-xs font-semibold text-neutral-800">#{inv.invoice_no} · {inv.customer_name}</p>
+                  <p className="text-xs font-semibold text-neutral-800">{invoiceLabel(inv)} · {inv.customer_name}</p>
                   <p className="text-[10px] text-neutral-400">{inv.date}</p>
                 </div>
                 <div className="text-right">
@@ -650,7 +651,7 @@ function GeneralDashboard() {
               {recentInvoices.map((inv) => (
                 <div key={inv.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                   <div>
-                    <p className="text-xs font-semibold text-neutral-800">#{inv.invoice_no} · {inv.customer_name}</p>
+                    <p className="text-xs font-semibold text-neutral-800">{invoiceLabel(inv)} · {inv.customer_name}</p>
                     <p className="text-[10px] text-neutral-400">{inv.date}</p>
                   </div>
                   <div className="text-right">

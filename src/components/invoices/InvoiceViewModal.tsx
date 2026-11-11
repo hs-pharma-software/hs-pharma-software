@@ -27,6 +27,7 @@ import { fillWarranty, loadCompanyProfile, printedBusinessName, type CompanyProf
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 import { InvoiceShareButtons } from "./InvoiceShare";
+import { invoiceLabel } from "@/lib/invoiceLabel";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -163,7 +164,7 @@ export function InvoiceViewModal({
     },
     logo,
     title: inv.is_return ? "RETURN" : template?.paper === "thermal" ? "RECEIPT" : "INVOICE",
-    number: `#${inv.invoice_no ?? "-"}`,
+    number: inv.invoice_no == null && inv.offline_ref ? inv.offline_ref : `#${inv.invoice_no ?? "-"}`,
     returnOf: inv.is_return && originalInvoiceNo ? `#${originalInvoiceNo}` : null,
     date: inv.date,
     payment: inv.inv_on === "credit" ? "Credit" : "Cash",
@@ -230,7 +231,7 @@ export function InvoiceViewModal({
 
   return (
     <Modal
-      title={`${inv.is_return ? "Return" : "Invoice"} #${inv.invoice_no ?? "—"}`}
+      title={`${inv.is_return ? "Return" : "Invoice"} ${invoiceLabel(inv)}`}
       onClose={onClose}
       width="max-w-3xl"
     >

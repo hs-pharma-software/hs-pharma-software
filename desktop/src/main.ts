@@ -1,68 +1,202 @@
-/** MAVIN Offline (pilot): Electron main process.
+/** MAVIN desktop: Electron main process.
  *
- * - The window is locked down: context isolation, no Node in the page, sandbox,
- *   a strict Content-Security-Policy, no navigation and no new windows.
- * - The page reaches the device only through the validated calls below; it
- *   never sees SQL, files, the device key or the session token.
- * - Data lives in the user's app-data folder (survives updates and uninstall);
- *   the device key is protected by Windows (DPAPI, via safeStorage). */
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from "electron";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+ * The window shows the MAVIN web app itself (bundled, served from
+ * mavin://app/), so screens, menus and shortcuts are the same as on the web.
+ * - Online: the page's server calls go through here to MAVIN.pk; the session
+ *   cookie stays here (Windows-protected), never in the page.
+ * - Offline: the page reads a read-only copy of this business's data (same
+ *   structure as the server's database) and saves cash sales through the
+ *   offline engine (core/device.ts): one local transaction each, sent to the
+ *   server exactly once when the connection returns.
+ * The window is locked down: context isolation, no Node in the page, sandbox,
+ * no navigation away from the app, a fixed list of validated calls. */
+import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from "electron";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { join, normalize } from "node:path";
+import { pathToFileURL } from "node:url";
 import { OfflineDevice, TransportError, type SaleInput, type SecretStore, type Transport } from "./core/device";
+import { Mirror } from "./core/mirror";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
+const PROBE_EVERY_MS = 15_000;
+const MIRROR_EVERY_MS = 5 * 60_000;
+const MIRROR_TABLES = ["tenants", "branches", "settings", "users", "categories", "sub_categories", "uoms", "products", "price_list", "product_batches", "customers", "salesmen"];
+const APP_ORIGIN = "mavin://app";
+
+protocol.registerSchemesAsPrivileged([{ scheme: "mavin", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
+
+/** Development only (never in the installed app): a separate data folder for
+ * test runs (set before the instance lock, which belongs to the folder). */
+if (!app.isPackaged && process.env.MAVIN_DATA_DIR) app.setPath("userData", process.env.MAVIN_DATA_DIR);
+const dataRoot = app.getPath("userData");
 
 /** One process per Windows user: one writer of the database. A second copy
  * hands over to the first (which shows its window) and exits at once. */
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.exit(0);
-
-const dataRoot = app.getPath("userData");
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
+const webRoot = app.isPackaged ? join(process.resourcesPath, "web") : join(__dirname, "..", "..", "out");
 /** Development only (never in the installed app): a test server's public key. */
 const publicKeyFile = !app.isPackaged && process.env.MAVIN_PUBLIC_KEY_FILE ? process.env.MAVIN_PUBLIC_KEY_FILE : join(resources, "offline-public.pem");
 
 /** Secrets encrypted by Windows for this user account (safeStorage = DPAPI). */
-const secrets: SecretStore = {
+const secrets: SecretStore & { del(name: string): void } = {
   get(name) {
     const f = join(dataRoot, "secrets", `${name}.bin`);
     if (!existsSync(f) || !safeStorage.isEncryptionAvailable()) return null;
     try { return safeStorage.decryptString(readFileSync(f)); } catch { return null; }
   },
   set(name, value) {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows secure storage is not available for this account; the device cannot be set up.");
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows secure storage is not available for this account.");
     mkdirSync(join(dataRoot, "secrets"), { recursive: true });
     writeFileSync(join(dataRoot, "secrets", `${name}.bin`), safeStorage.encryptString(value));
   },
+  del(name) { try { writeFileSync(join(dataRoot, "secrets", `${name}.bin`), Buffer.alloc(0)); } catch { /* none */ } },
 };
 
+// ── Connection state ──────────────────────────────────────────────────────
+
+let online: boolean | null = null;
+function setOnline(v: boolean) {
+  if (online === v) return;
+  const was = online;
+  online = v;
+  pushStatus();
+  // Back online: send what was saved here, then refresh the copy (never reloads the page).
+  if (v && was === false) void syncAll(true);
+}
+
+/** A kept-alive connection the server had already closed: the request never
+ * arrived, so it can be sent again at once. */
+const droppedConnection = (e: unknown) => /ECONNRESET|EPIPE|UND_ERR_SOCKET|other side closed|socket hang up/i.test(`${e instanceof Error ? e.message : ""} ${String((e as { cause?: { code?: string; message?: string } })?.cause?.code ?? "")} ${String((e as { cause?: { message?: string } })?.cause?.message ?? "")}`);
+
+/** Device calls (offline engine) to the server. One immediate retry on a
+ * dropped connection: every engine call is safe to repeat (the server answers
+ * a repeated push with its stored result) except setting up a device, which
+ * is never repeated. */
 const transport: Transport = {
   async post<T>(path: string, body: unknown, headers: Record<string, string>): Promise<T> {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 30_000);
-    let res: Response;
-    try {
-      res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
-    } catch {
-      throw new TransportError("No connection", null);
-    } finally {
-      clearTimeout(timer);
+    const action = (body as { action?: string })?.action;
+    let res: Response | null = null;
+    for (let attempt = 0; !res; attempt++) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 30_000);
+      try {
+        res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
+      } catch (e) {
+        if (attempt === 0 && action !== "provision" && droppedConnection(e)) continue;
+        console.error("[transport]", path, action, e instanceof Error ? `${e.message} ${String((e as { cause?: unknown }).cause ?? "")}` : e);
+        setOnline(false);
+        throw new TransportError("No connection", null);
+      } finally {
+        clearTimeout(timer);
+      }
     }
-    const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+    setOnline(true);
+    const data = (await res.json().catch((e) => { console.error("[transport] unreadable answer", path, res.status, e instanceof Error ? e.message : e); return null; })) as (T & { error?: string }) | null;
     if (!res.ok) throw new TransportError(data?.error ?? `MAVIN.pk answered ${res.status}`, res.status);
     if (data === null) throw new TransportError("No connection", null);
     return data;
   },
 };
 
+// ── The page's own server calls (the web app's /api/...), with the session cookie kept here ──
+
+const cookies = new Map<string, string>(Object.entries(JSON.parse(secrets.get("web-cookies") || "{}") as Record<string, string>));
+function keepCookies(res: Response) {
+  const list = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+  if (!list.length) return;
+  for (const c of list) {
+    const [pair, ...attrs] = c.split(";");
+    const i = pair.indexOf("=");
+    const name = pair.slice(0, i).trim();
+    const value = pair.slice(i + 1).trim();
+    const gone = !value || attrs.some((a) => /^\s*max-age\s*=\s*0\s*$/i.test(a) || (/^\s*expires=/i.test(a) && Date.parse(a.split("=")[1]) < Date.now()));
+    if (gone) cookies.delete(name); else cookies.set(name, value);
+  }
+  try { secrets.set("web-cookies", JSON.stringify(Object.fromEntries(cookies))); } catch { /* storage unavailable: kept for this run */ }
+}
+
+async function pageRequest(a: unknown) {
+  const o = a as { path?: unknown; method?: unknown; body?: unknown; headers?: unknown };
+  const path = typeof o?.path === "string" ? o.path : "";
+  if (!/^\/api\/[A-Za-z0-9/_\-.?=&%]*$/.test(path) || path.startsWith("/api/offline")) throw new Error("Not allowed.");
+  const method = o.method === "GET" ? "GET" : "POST";
+  const headers: Record<string, string> = {};
+  const h = (o.headers ?? {}) as Record<string, unknown>;
+  for (const k of ["Content-Type", "X-Branch"]) if (typeof h[k] === "string") headers[k] = h[k] as string;
+  if (cookies.size) headers.Cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { method, headers, body: method === "GET" ? undefined : typeof o.body === "string" ? o.body : undefined, signal: ctrl.signal });
+    keepCookies(res);
+    setOnline(true);
+    return { status: res.status, body: await res.text() };
+  } catch {
+    setOnline(false);
+    return { status: 0, body: "" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Offline engine and the read-only copy ────────────────────────────────
+
 let device: OfflineDevice;
+let mirror: Mirror | null = null;
 let win: BrowserWindow | null = null;
-
 let quitting = false;
+let lastMirror = 0;
 
-/** The window, created again if it was closed or destroyed. */
+function openMirror() {
+  const id = device.identity;
+  if (!id || mirror) return;
+  const schemaFile = join(resources, "schema.sql");
+  if (!existsSync(schemaFile)) return;
+  mirror = new Mirror(join(dataRoot, "data", id.tenantId.replace(/[^\w-]/g, "_"), id.branchId.replace(/[^\w-]/g, "_"), "mirror.db"), readFileSync(schemaFile, "utf8"));
+  overlay();
+}
+
+function overlay() {
+  const id = device.identity;
+  if (!mirror || !id) return;
+  try { mirror.overlay(device.localSales(30), device.stockNow(), id.tenantId, id.branchId); } catch (e) { console.error("[mirror] overlay", e); }
+}
+
+let syncing: Promise<void> | null = null;
+/** Sends pending sales, downloads changes, and refreshes the copy (at most every few minutes unless forced). */
+function syncAll(force = false): Promise<void> {
+  if (!syncing) {
+    syncing = (async () => {
+      if (!device?.provisioned || quitting) return;
+      const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
+      if (r?.error) console.error("[sync]", r.error);
+      if (r && !r.error && mirror && (force || Date.now() - lastMirror > MIRROR_EVERY_MS)) {
+        try {
+          await mirror.refresh(MIRROR_TABLES, (t, off) => device.mirrorPage(t, off));
+          lastMirror = Date.now();
+        } catch (e) { console.error("[mirror] refresh", e instanceof Error ? e.message : e); }
+      }
+      overlay();
+      pushStatus();
+    })().finally(() => { syncing = null; });
+  }
+  return syncing;
+}
+
+function statusNow() {
+  const s = device ? device.status() : { provisioned: false as const };
+  return {
+    ...s, online, server: API_BASE, appVersion: app.getVersion(),
+    copyRefreshedAt: mirror?.meta("refreshed_at") ?? null,
+  };
+}
+function pushStatus() { if (win && !win.isDestroyed()) win.webContents.send("mavin:status", statusNow()); }
+
+// ── Window ────────────────────────────────────────────────────────────────
+
 function showWindow() {
   if (quitting) return;
   if (!win || win.isDestroyed()) { createWindow(); return; }
@@ -73,28 +207,40 @@ function showWindow() {
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1200, height: 800, minWidth: 900, minHeight: 600, title: "MAVIN Offline",
+    width: 1366, height: 860, minWidth: 900, minHeight: 600, title: "MAVIN",
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
   });
   win.removeMenu();
   win.on("closed", () => { win = null; });
-  win.webContents.on("will-navigate", (e) => e.preventDefault());
+  // Inside the app only; MAVIN.pk links open in the browser.
+  win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith(`${APP_ORIGIN}/`)) { e.preventDefault(); if (/^https:\/\//.test(url)) void shell.openExternal(url); } });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\/(app|www)\.mavin\.pk\//.test(url)) void shell.openExternal(url);
+    if (/^https:\/\//.test(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
-  // MAVIN_DEBUG=1: page errors and console to the terminal (support / smoke tests).
   if (process.env.MAVIN_DEBUG === "1") {
     win.webContents.on("console-message", (e) => console.log(`[page] ${e.message}`));
-    win.webContents.on("did-fail-load", (_e, code, desc) => console.log(`[page] load failed ${code} ${desc}`));
-    win.webContents.on("did-finish-load", () => {
-      console.log("[page] loaded");
-      const shot = process.env.MAVIN_SHOT;
-      if (shot) setTimeout(() => void win?.webContents.capturePage().then((img) => { writeFileSync(shot, img.toPNG()); console.log(`[page] screenshot ${shot}`); }), 2500);
-    });
+    win.webContents.on("did-fail-load", (_e, code, desc, url) => console.log(`[page] load failed ${code} ${desc} ${url}`));
+    win.webContents.on("did-finish-load", () => console.log(`[page] loaded ${win?.webContents.getURL()}`));
     win.webContents.on("render-process-gone", (_e, d) => console.log(`[page] crashed ${d.reason}`));
   }
-  void win.loadFile(join(__dirname, "..", "renderer", "index.html"));
+  win.webContents.on("did-finish-load", () => pushStatus());
+  void win.loadURL(`${APP_ORIGIN}/dashboard/`);
+}
+
+/** mavin://app/<path>: the bundled web app (static files; folders serve index.html). */
+function serveApp(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  let rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
+  let file = normalize(join(webRoot, rel));
+  if (!file.startsWith(normalize(webRoot))) return Promise.resolve(new Response("Not found", { status: 404 }));
+  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
+  else if (!existsSync(file) && existsSync(`${file}.html`)) file = `${file}.html`;
+  if (!existsSync(file)) {
+    rel = "404.html";
+    file = join(webRoot, rel);
+  }
+  return net.fetch(pathToFileURL(file).toString());
 }
 
 // ── Validated calls from the page ─────────────────────────────────────────
@@ -117,29 +263,62 @@ function saleInput(v: unknown): SaleInput {
   };
 }
 
+/** Sessions of logins that signed in online here (so they can sign in offline). */
+const sessionKey = (userId: string) => `session-${userId.replace(/[^\w-]/g, "_")}`;
+
 type Handler = (arg: unknown) => unknown;
 const handlers: Record<string, Handler> = {
-  status: () => ({ ...device.status(), server: API_BASE, appVersion: app.getVersion() }),
-  provision: (a) => {
-    const o = a as Record<string, unknown>;
-    return device.provision(str(o?.username, 80, "username"), str(o?.password, 200, "password"), { name: optStr(o?.name, 60) ?? undefined });
+  status: () => statusNow(),
+  request: (a) => pageRequest(a),
+  /** The page signed in online: keep its session for offline sign-in and enrol the login on this device. */
+  rememberSession: async (a) => {
+    const o = a as { username?: unknown; password?: unknown; session?: { user?: { id?: unknown } } };
+    const username = str(o?.username, 80, "username");
+    const password = str(o?.password, 200, "password");
+    const userId = String(o?.session?.user?.id ?? "");
+    if (!userId) throw new Error("No session.");
+    secrets.set(sessionKey(userId), JSON.stringify({ username: username.trim().toLowerCase(), session: o.session }));
+    if (device.provisioned) {
+      await device.signIn(username, password).catch((e) => console.error("[enrol]", e instanceof Error ? e.message : e));
+      void syncAll(true);
+    }
+    return { provisioned: device.provisioned };
   },
-  signIn: (a) => { const o = a as Record<string, unknown>; return device.signIn(str(o?.username, 80, "username"), str(o?.password, 200, "password")); },
-  signOut: () => device.signOut(),
-  search: (a) => device.search(str(a, 80, "search"), 30),
-  createSale: (a) => device.createSale(saleInput(a)),
-  sync: () => device.sync({ manual: true }),
-  recentSales: () => device.recentSales(50),
-  receipt: (a) => device.receipt(str(a, 64, "sale")),
-  print: (a) => printReceipt(device.receipt(str(a, 64, "sale"))),
-  diagnostics: () => device.diagnostics(),
-  backup: () => device.backupNow(),
-  online: () => device.sync({ manual: true }),
+  /** Sign in without internet: the device checks the password against its saved check, within its offline allowance. */
+  offlineSignIn: async (a) => {
+    const o = a as Record<string, unknown>;
+    if (!device.provisioned) throw new Error("This computer is not set up for offline use yet. Connect to the internet and sign in.");
+    const user = await device.signIn(str(o?.username, 80, "username"), str(o?.password, 200, "password"));
+    const saved = secrets.get(sessionKey(user.id));
+    if (!saved) throw new Error("Sign in once while online on this computer, then you can sign in offline.");
+    return (JSON.parse(saved) as { session: unknown }).session;
+  },
+  provision: async (a) => {
+    const o = a as Record<string, unknown>;
+    const r = await device.provision(str(o?.username, 80, "username"), str(o?.password, 200, "password"), { name: optStr(o?.name, 60) ?? undefined });
+    openMirror();
+    await syncAll(true);
+    return r;
+  },
+  query: (a) => {
+    const o = a as { sql?: unknown; params?: unknown };
+    if (!mirror) throw new Error("This computer has no offline copy yet. Connect to the internet.");
+    return mirror.query(str(o?.sql, 20000, "query"), Array.isArray(o?.params) ? o.params : []);
+  },
+  createSale: (a) => {
+    const r = device.createSale(saleInput(a));
+    overlay();
+    pushStatus();
+    if (online) void syncAll(false);
+    return { saleId: r.sale.saleId, offlineRef: r.sale.offlineRef, totals: r.sale.totals, receipt: r.receipt };
+  },
+  syncNow: async () => { await syncAll(true); return statusNow(); },
+  printText: (a) => printReceipt(str(a, 20000, "receipt")),
 };
 
 for (const [name, fn] of Object.entries(handlers)) {
   ipcMain.handle(`mavin:${name}`, async (e, arg) => {
-    if (e.senderFrame?.url && !e.senderFrame.url.startsWith("file://")) throw new Error("Not allowed.");
+    if (!e.senderFrame?.url?.startsWith(`${APP_ORIGIN}/`)) return { ok: false, error: "Not allowed." };
     try {
       return { ok: true, value: await fn(arg) };
     } catch (err) {
@@ -148,11 +327,9 @@ for (const [name, fn] of Object.entries(handlers)) {
   });
 }
 
-/** Prints the receipt text through a hidden window (the Windows print dialog). */
+/** Prints a receipt text through a hidden window (the Windows print dialog). */
 async function printReceipt(text: string) {
-  // Development smoke tests: no print dialog.
-  if (!app.isPackaged && process.env.MAVIN_NO_PRINT === "1") { console.log(`[print]
-${text}`); return true; }
+  if (!app.isPackaged && process.env.MAVIN_NO_PRINT === "1") { console.log(`[print]\n${text}`); return true; }
   const p = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false } });
   const esc = text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   await p.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><meta charset="utf-8"><style>@page{margin:4mm}body{margin:0;font:12px/1.35 Consolas,monospace;white-space:pre}</style><body>${esc}</body>`)}`);
@@ -161,34 +338,44 @@ ${text}`); return true; }
   return true;
 }
 
-let syncTimer: ReturnType<typeof setInterval> | null = null;
-const backgroundSync = () => { if (!quitting && device?.provisioned) void device.sync().catch(() => undefined); };
+/** Is MAVIN.pk reachable? (any answer counts; no data is sent) */
+async function probe() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    await fetch(`${API_BASE}/api/offline/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal: ctrl.signal });
+    setOnline(true);
+  } catch {
+    setOnline(false);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let timers: ReturnType<typeof setInterval>[] = [];
 
 if (primary) {
   app.whenReady().then(() => {
-    device = new OfflineDevice({
-      dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets,
-    });
+    protocol.handle("mavin", serveApp);
+    device = new OfflineDevice({ dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets });
+    openMirror();
     createWindow();
-    // Background sync; repeated failures wait longer (see OfflineDevice.backoff).
-    syncTimer = setInterval(backgroundSync, SYNC_EVERY_MS);
-    backgroundSync();
+    timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(() => void probe(), PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
+    void probe().then(() => syncAll(false));
   });
 
-  // Opened again (shortcut, restart of Windows): bring up the window, a new one if needed.
   app.on("second-instance", () => { if (app.isReady()) showWindow(); });
 
-  // Closing the window ends the app; the database is closed once, and a problem closing it never keeps the app running.
   const shutdown = () => {
     if (quitting) return;
     quitting = true;
-    if (syncTimer) clearInterval(syncTimer);
+    for (const t of timers) clearInterval(t);
+    try { mirror?.close(); } catch { /* closed */ }
     try { device?.close(); } catch { /* the saved data is already on disk (WAL) */ }
   };
   app.on("window-all-closed", () => { shutdown(); app.quit(); });
   app.on("before-quit", shutdown);
 }
 
-// Never a dead window: an unexpected error is written to the log and the app carries on or quits cleanly.
 process.on("uncaughtException", (e) => { console.error("[main] uncaught", e); });
 process.on("unhandledRejection", (e) => { console.error("[main] unhandled", e); });

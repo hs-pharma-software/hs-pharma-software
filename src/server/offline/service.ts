@@ -177,7 +177,7 @@ export function checkProtocol(v: unknown) {
 
 const mapProduct = (r: Row) => ({
   id: String(r.id), name: String(r.name), barcode: (r.barcode as string | null) ?? null, packing: Number(r.packing) > 0 ? Number(r.packing) : 1,
-  taxPct: Number(r.gst_rate_pct ?? r.tax_rate_pct ?? 0) || 0, isNarcotic: Number(r.is_narcotic) === 1, trackImei: Number(r.track_imei) === 1, deleted: r.deleted_at != null,
+  taxPct: Number(r.gst_rate_pct ?? 0) || 0, isNarcotic: Number(r.is_narcotic) === 1, trackImei: Number(r.track_imei) === 1, deleted: r.deleted_at != null,
 });
 const mapPrice = (r: Row) => ({ id: String(r.id), productId: String(r.product_id), salePrice: Number(r.sale_price) || 0, createdAt: String(r.created_at), deleted: r.deleted_at != null });
 const mapBatch = (r: Row) => ({
@@ -540,4 +540,50 @@ export async function pruneChanges(sql: Sql, days = 45) {
   const cut = new Date(Date.now() - days * 86_400_000).toISOString();
   const r = await sql.execute(`DELETE FROM offline_changes WHERE seq < (SELECT COALESCE(MIN(seq), 0) FROM offline_changes WHERE changed_at >= ?)`, [cut]);
   return { removed: r.rowsAffected };
+}
+
+// ── Read-only copy for the desktop screens (shown offline) ────────────────
+
+/** Tables the desktop keeps a read-only copy of, each limited to the
+ * device's business (and its branch for stock). Secrets never leave. */
+const MIRROR: Record<string, (T: string, B: string, groups: string[]) => { where: string; args: unknown[] }> = {
+  tenants: (T) => ({ where: `id = ?`, args: [T] }),
+  branches: (T) => ({ where: `tenant_id = ?`, args: [T] }),
+  // An exact prefix (LIKE would treat "_" in an id as a wildcard).
+  settings: (T) => ({ where: `substr(key, 1, ?) = ?`, args: [T.length + 2, `${T}::`] }),
+  users: (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] }),
+  categories: (T) => ({ where: `(tenant_id = ? OR tenant_id IS NULL) AND deleted_at IS NULL`, args: [T] }),
+  sub_categories: (T) => ({ where: `(tenant_id = ? OR tenant_id IS NULL) AND deleted_at IS NULL`, args: [T] }),
+  uoms: (T) => ({ where: `(tenant_id = ? OR tenant_id IS NULL) AND deleted_at IS NULL`, args: [T] }),
+  products: (T, B, groups) => ({
+    where: `deleted_at IS NULL AND (tenant_id = ?${groups.length ? ` OR (tenant_id IS NULL AND catalog_group IN (${groups.map(() => "?").join(",")}))` : ""} OR id IN (SELECT product_id FROM product_batches WHERE tenant_id = ? AND branch_id = ?))`,
+    args: [T, ...groups, T, B],
+  }),
+  price_list: (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] }),
+  product_batches: (T, B) => ({ where: `tenant_id = ? AND branch_id = ? AND deleted_at IS NULL`, args: [T, B] }),
+  customers: (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] }),
+  salesmen: (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] }),
+};
+export const MIRROR_TABLES = Object.keys(MIRROR);
+const SECRET_COLUMN = /pass(word)?|secret|token|hash|salt|api_?key|private/i;
+/** Settings holding credentials (FBR tokens, AI keys ...) never leave either. */
+const SECRET_SETTING = /token|secret|api_?key|pass(word)?|private|pin\b|credential/i;
+const MIRROR_PAGE = 2000;
+
+/** One page of one table for the device's read-only copy. */
+export async function mirrorPage(sql: Sql, d: Device, table: unknown, offset: unknown) {
+  if (!(await deviceUsable(sql, d))) throw new HttpError(403, "This offline device has been turned off.");
+  const name = String(table);
+  const def = MIRROR[name];
+  if (!def) throw new HttpError(400, "Unknown table.");
+  const t = await tenantRow(sql, d.tenant_id);
+  const { sharedCatalogGroupsFor } = await import("@/lib/catalogAccess");
+  const { where, args } = def(d.tenant_id, d.branch_id, sharedCatalogGroupsFor(String(t.business_type)));
+  const from = Math.max(0, Math.floor(Number(offset) || 0));
+  const rows = (await sql.execute(`SELECT * FROM ${name} WHERE ${where} ORDER BY rowid LIMIT ? OFFSET ?`, [...args, MIRROR_PAGE + 1, from])).rows;
+  const more = rows.length > MIRROR_PAGE;
+  const clean = rows.slice(0, MIRROR_PAGE)
+    .filter((r) => name !== "settings" || !SECRET_SETTING.test(String(r.key).slice(d.tenant_id.length + 2)))
+    .map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !SECRET_COLUMN.test(k))));
+  return { table: name, rows: clean, next: more ? from + MIRROR_PAGE : null };
 }

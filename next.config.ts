@@ -12,6 +12,8 @@ const nextConfig: NextConfig = {
     ? {
         output: "export",
         distDir: "out",
+        // Its own type check: the web dev server's route types (.next/dev) describe other routes.
+        typescript: { tsconfigPath: "tsconfig.desktop.json" },
         images: { unoptimized: true },
         trailingSlash: true,
       }

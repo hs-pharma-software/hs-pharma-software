@@ -1,4 +1,5 @@
 import { BRANCH_TAB_KEY, BRANCH_UNAVAILABLE } from "@/config/branchTables";
+import { desktopBridge } from "./desktopBridge";
 /** The web version reaches the database through the server (/api/db) instead
  * of holding a database token in the page. Set NEXT_PUBLIC_DB_MODE=server in
  * Vercel to switch it on (see docs/server-layer.md). The desktop app keeps its
@@ -72,10 +73,21 @@ export async function serverJson<T>(path: string, body?: unknown, method = body 
   const token = desktop ? desktopToken() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
   const init: RequestInit = { method, headers, body: body === undefined ? undefined : JSON.stringify(body) };
-  // The desktop calls the server through the HTTP plugin (outside the webview, so no CORS).
-  const res = desktop
-    ? await (await import("@tauri-apps/plugin-http")).fetch(`${API_BASE}${path}`, init)
-    : await fetch(path, { ...init, credentials: "same-origin" });
+  // The MAVIN desktop app (Electron): through the desktop, which keeps the session.
+  const bridge = desktopBridge();
+  let res: { ok: boolean; status: number; json(): Promise<unknown> };
+  if (bridge) {
+    const r = await bridge.request({ path, method, body: init.body as string | undefined, headers });
+    if (!r.ok) throw new ServerRequestError(0, r.error);
+    if (r.value.status === 0) throw new ServerRequestError(0, "No connection to MAVIN.pk.");
+    const text = r.value.body;
+    res = { ok: r.value.status >= 200 && r.value.status < 300, status: r.value.status, json: async () => JSON.parse(text) };
+  } else {
+    // The desktop calls the server through the HTTP plugin (outside the webview, so no CORS).
+    res = desktop
+      ? await (await import("@tauri-apps/plugin-http")).fetch(`${API_BASE}${path}`, init)
+      : await fetch(path, { ...init, credentials: "same-origin" });
+  }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
     // The tab's branch was closed or unassigned: back to the login's default branch, with fresh data.

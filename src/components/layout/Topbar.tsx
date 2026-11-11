@@ -12,6 +12,8 @@ import { UpdateChecker } from "./UpdateChecker";
 import { ProfilePanel } from "./ProfilePanel";
 import { InstallAppButton } from "./InstallAppButton";
 import { BranchSwitcher } from "@/components/branches/BranchSwitcher";
+import { DesktopSyncPill } from "./DesktopSyncPill";
+import { useDesktopStatus } from "@/lib/desktopBridge";
 
 export function Topbar() {
   const online = useAppStore((s) => s.online);
@@ -23,6 +25,8 @@ export function Topbar() {
   const [showStatus, setShowStatus] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const logout = useAuthStore((s) => s.logout);
+  // MAVIN desktop app: its own connection and sync state in this spot.
+  const desktop = useDesktopStatus();
 
   return (
     <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] bg-white/80 px-2 backdrop-blur-xl sm:px-4 print:hidden" style={{ paddingLeft: "max(0.5rem, env(safe-area-inset-left))", paddingRight: "max(0.5rem, env(safe-area-inset-right))" }}>
@@ -52,7 +56,7 @@ export function Topbar() {
       <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         <BranchSwitcher />
         <LanguageToggle />
-        <div className="relative">
+        {desktop ? <DesktopSyncPill status={desktop} /> : <div className="relative">
           <motion.button
             type="button"
             whileHover={{ scale: 1.04 }}
@@ -122,7 +126,7 @@ export function Topbar() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </div>}
 
         <UpdateChecker />
         <motion.button

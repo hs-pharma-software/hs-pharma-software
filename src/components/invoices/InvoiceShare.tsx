@@ -7,6 +7,8 @@ import { Modal } from "@/components/ui/Modal";
 import { useCan } from "@/lib/actionPermissions";
 import { SERVER_DB } from "@/lib/serverMode";
 import { canShareFiles, fetchInvoicePdf, normalizePhone, saveBlob, whatsappInfo, type WhatsAppInfo } from "@/lib/invoiceShare";
+import { desktopCall, useDesktopStatus } from "@/lib/desktopBridge";
+import { invoicesRepo } from "@/lib/repo/invoices";
 
 /** Which sharing actions this login has (Super Admin switch + owner's staff setting). */
 export function useInvoiceShare() {
@@ -181,8 +183,39 @@ export function WhatsAppShareDialog({ invoiceId, onClose }: { invoiceId: string;
 }
 
 /** After saving an invoice: a small notice with PDF / WhatsApp (only when allowed). */
-export function InvoiceSavedNotice({ invoiceId, invoiceNo, onClose }: { invoiceId: string; invoiceNo: number | null; onClose: () => void }) {
+export function InvoiceSavedNotice({ invoiceId, invoiceNo, onClose, offlineReceipt, offlineRef }: { invoiceId: string; invoiceNo: number | null; onClose: () => void; offlineReceipt?: string; offlineRef?: string }) {
   const { pdf, whatsapp } = useInvoiceShare();
+  // Desktop app, offline sale: its number once MAVIN.pk has it. Checked again on every
+  // status change (a sync); the sale's id is the invoice's id on the server too.
+  const desktop = useDesktopStatus();
+  const [sentNo, setSentNo] = useState<number | null>(null);
+  useEffect(() => {
+    if (!offlineReceipt || sentNo != null) return;
+    let live = true;
+    invoicesRepo.get(invoiceId).then((inv) => { if (live && inv?.invoice_no != null) setSentNo(inv.invoice_no); }, () => undefined);
+    return () => { live = false; };
+  }, [offlineReceipt, invoiceId, sentNo, desktop?.lastSyncOk, desktop?.pending]);
+  // Desktop app, offline: saved on this computer, not yet on MAVIN.pk (no invoice number, no FBR, no sharing yet).
+  if (offlineReceipt) {
+    return (
+      <div role="status" className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md flex-wrap items-center gap-2 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-black/10 md:bottom-6 print:hidden">
+        <CheckCircle2 size={18} className={sentNo != null ? "text-emerald-600" : "text-amber-600"} />
+        {sentNo != null ? (
+          <span className="mr-auto text-sm font-medium text-neutral-900">
+            {offlineRef} sent · Invoice #{sentNo}
+            <span className="block text-xs font-normal text-neutral-500">MAVIN.pk has received this sale.</span>
+          </span>
+        ) : (
+          <span className="mr-auto text-sm font-medium text-neutral-900">
+            {offlineRef} saved on this device · Pending sync
+            <span className="block text-xs font-normal text-neutral-500">Invoice number and FBR status come when MAVIN.pk receives it.</span>
+          </span>
+        )}
+        <button type="button" onClick={() => void desktopCall((b) => b.printText(offlineReceipt)).catch(() => undefined)} className="rounded-full bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white">Print receipt</button>
+        <button type="button" aria-label="Close" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100"><X size={16} /></button>
+      </div>
+    );
+  }
   if (!pdf && !whatsapp) return null;
   return (
     <div role="status" className="fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md flex-wrap items-center gap-2 rounded-2xl bg-white p-3 shadow-xl ring-1 ring-black/10 md:bottom-6 print:hidden">

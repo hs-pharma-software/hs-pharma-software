@@ -480,6 +480,40 @@ export class OfflineDevice {
     );
   }
 
+  /** This computer's sales of the last `days` days (and any still unsent) with
+   * their sync state (for the screens' read-only copy). */
+  localSales(days = 30) {
+    const { db } = this.need();
+    const since = new Date(this.now().getTime() - days * 86_400_000).toISOString();
+    return db.all<{ id: string; payload: string; sync_status: string; server_invoice_no: number | null }>(
+      `SELECT id, payload, sync_status, server_invoice_no FROM sales WHERE occurred_at >= ? OR sync_status = 'pending' ORDER BY occurred_at`, since,
+    ).map((s) => ({
+      payload: JSON.parse(s.payload) as SalePayload,
+      status: s.sync_status,
+      serverInvoiceNo: s.server_invoice_no,
+    }));
+  }
+
+  /** Stock per batch as this computer sells it: the server's last figure minus
+   * sales not yet included in it (the same figure offline sales check). */
+  stockNow(): Map<string, number> {
+    const { db } = this.need();
+    return new Map(db.all<{ id: string; qty: number }>(
+      `SELECT b.id, b.server_qty + COALESCE((SELECT SUM(m.qty) FROM stock_moves m WHERE m.batch_id = b.id AND m.reflected = 0), 0) AS qty FROM batches b`,
+    ).map((r) => [r.id, Number(r.qty)]));
+  }
+
+  /** One page of one table for the screens' read-only copy (device credentials). */
+  async mirrorPage(table: string, offset: number) {
+    const r = await this.cfg.transport.post<{ result: { rows: Record<string, unknown>[]; next: number | null } }>(
+      "/api/offline/", { action: "mirror", protocol: PROTOCOL_VERSION, table, offset }, this.deviceHeader(),
+    );
+    return r.result;
+  }
+
+  /** The binding (business, branch, device) once set up. */
+  get identity() { return this.binding ? { ...this.binding } : null; }
+
   /** Operations needing attention, without customer details (for support). */
   diagnostics() {
     const { db, b } = this.need();
