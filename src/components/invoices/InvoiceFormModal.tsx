@@ -5,6 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
+import { QuickCustomerDialog } from "@/components/customers/QuickCustomerDialog";
+import { saleLineMath } from "@/lib/saleLineMath";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { PurchaseRateBubble, useShowsPurchaseRate } from "@/components/invoices/PurchaseRateBubble";
 import { ImeiPicker } from "@/components/mobile/ImeiPicker";
@@ -69,6 +71,8 @@ interface Line {
   salePrice: number;
   taxPct: number;
   discountPct: number;
+  /** Customer's extra discount %, after the line discount (only for customers allowed it). */
+  extraPct: number;
   /** Which unit qty/bonusQty/salePrice above are currently expressed in -
    * everything is normalized back to base units (packs) on save, matching
    * how invoice_items/product_batches always store it. */
@@ -343,7 +347,7 @@ export function InvoiceFormModal({
       // A line sold from several batches was saved as one item per batch: show it as one line again.
       for (const item of items) {
         const same = reconstructed.find((l) => l.product.id === item.product_id && l.salePrice === item.sale_price
-          && l.taxPct === item.tax_pct && l.discountPct === item.discount_pct);
+          && l.taxPct === item.tax_pct && l.discountPct === item.discount_pct && l.extraPct === Number(item.extra_disc_pct ?? 0));
         const held = draft ? 0 : Number(item.qty) + Number(item.bonus_qty);
         if (same) {
           same.qty += Number(item.qty);
@@ -371,6 +375,7 @@ export function InvoiceFormModal({
           salePrice: item.sale_price,
           taxPct: item.tax_pct,
           discountPct: item.discount_pct,
+          extraPct: Number(item.extra_disc_pct ?? 0),
           printBatch: item.line_batch ?? undefined,
           // Stored items are already normalized to base units.
           unit: "base",
@@ -438,6 +443,7 @@ export function InvoiceFormModal({
           salePrice,
           taxPct: product.tax_rate_pct,
           discountPct: discPct,
+          extraPct: 0,
           unit: "base",
         });
       }
@@ -464,7 +470,7 @@ export function InvoiceFormModal({
         const batches = product ? await listAvailableBatches(product.id).catch(() => []) : [];
         if (!product || !batches[0]) { missing.push(item.name); continue; }
         const discPct = await getEffectiveDiscountPct(product).catch(() => 0);
-        newLines.push({ product, batch: batches[0], batches, extraAvail: 0, qty: item.qty, bonusQty: 0, salePrice: item.price, taxPct: product.tax_rate_pct, discountPct: discPct, unit: "base" });
+        newLines.push({ product, batch: batches[0], batches, extraAvail: 0, qty: item.qty, bonusQty: 0, salePrice: item.price, taxPct: product.tax_rate_pct, discountPct: discPct, extraPct: 0, unit: "base" });
       }
       if (newLines.length) setLines(newLines);
       setCustomerName(o.customerName);
@@ -510,6 +516,7 @@ export function InvoiceFormModal({
         bonusQty: 0,
         taxPct: p.gst_rate_pct ?? 0,
         discountPct,
+        extraPct: 0,
         ...(() => {
           const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
           const pk = p.packing || 1;
@@ -533,24 +540,21 @@ export function InvoiceFormModal({
     setLines((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  // Extra discount: only for a customer the owner allowed it (never walk-in).
+  const extraOn = Boolean(customerId) && Number(customers.find((c) => c.id === customerId)?.extra_discount ?? 0) === 1;
+  const extraOf = (l: Line) => (extraOn ? l.extraPct : 0);
+  const lineMath = (l: Line) => saleLineMath(l.salePrice, l.qty, l.discountPct, extraOf(l), l.taxPct);
+
   function lineTotal(l: Line) {
-    const gross = l.salePrice * l.qty;
-    const discount = gross * (l.discountPct / 100);
-    const taxable = gross - discount;
-    const tax = taxable * (l.taxPct / 100);
-    return taxable + tax;
+    return lineMath(l).total;
   }
 
   const narcoticNames = lines.filter((l) => l.product.is_narcotic).map((l) => l.product.name);
   // Opened by the person, or when it matters: narcotics (name and mobile needed), a registered buyer, or an error to fix.
   const buyerShown = buyerOpen || narcoticNames.length > 0 || buyerRegType === "Registered" || Boolean(error);
   const total = lines.reduce((s, l) => s + l.salePrice * l.qty, 0);
-  const lineDiscountTotal = lines.reduce((s, l) => s + l.salePrice * l.qty * (l.discountPct / 100), 0);
-  const taxTotal = lines.reduce((s, l) => {
-    const gross = l.salePrice * l.qty;
-    const discount = gross * (l.discountPct / 100);
-    return s + (gross - discount) * (l.taxPct / 100);
-  }, 0);
+  const lineDiscountTotal = lines.reduce((s, l) => s + lineMath(l).discountRs, 0);
+  const taxTotal = lines.reduce((s, l) => s + lineMath(l).tax, 0);
   const payable = total - lineDiscountTotal - (Number(discountRs) || 0) + (Number(charges) || 0) + taxTotal;
   const balance = payable - (Number(paid) || 0);
 
@@ -580,8 +584,7 @@ export function InvoiceFormModal({
       }
       for (const part of parts) {
         if (!skipStockDeduct) await deductStock(part.batch.id, part.qty + part.bonus);
-        const gross = finalSalePrice * part.qty;
-        const disc = gross * (l.discountPct / 100);
+        const m = saleLineMath(finalSalePrice, part.qty, l.discountPct, extraOf(l), l.taxPct);
         await invoiceItemsRepo.create({
           invoice_id: invoiceId,
           product_id: l.product.id,
@@ -596,10 +599,11 @@ export function InvoiceFormModal({
           sale_price: finalSalePrice,
           tax_pct: l.taxPct,
           further_tax_pct: 0,
-          tax_rs: (gross - disc) * (l.taxPct / 100),
+          tax_rs: m.tax,
           discount_pct: l.discountPct,
-          discount_rs: disc,
-          total: (gross - disc) * (1 + l.taxPct / 100),
+          discount_rs: m.discountRs,
+          extra_disc_pct: extraOf(l),
+          total: m.total,
         });
       }
     }
@@ -1008,6 +1012,7 @@ export function InvoiceFormModal({
                 <th className="px-2 py-2">Sale Price</th>
                 <th className="px-2 py-2">Tax %</th>
                 <th className="px-2 py-2">Disc %</th>
+                {extraOn && <th className="px-2 py-2" title="Customer's extra discount, on the price after Disc %">Extra Disc %</th>}
                 <th className="px-2 py-2">Total</th>
                 <th className="px-2 py-2"></th>
               </tr>
@@ -1015,7 +1020,7 @@ export function InvoiceFormModal({
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={isClothStore || contractorKind === "general" ? 10 : 11} className="px-2 py-6 text-center text-neutral-400">
+                  <td colSpan={(isClothStore || contractorKind === "general" ? 10 : 11) + (extraOn ? 1 : 0)} className="px-2 py-6 text-center text-neutral-400">
                     No content in table
                   </td>
                 </tr>
@@ -1137,6 +1142,21 @@ export function InvoiceFormModal({
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
+                    {extraOn && (
+                      <td data-label="Extra Disc %" className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="any"
+                          value={l.extraPct}
+                          onChange={(e) => updateLine(idx, { extraPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                          title="Extra discount % on the price after Disc %"
+                          aria-label={`Extra discount of ${l.product.name}`}
+                          className="w-16 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-1"
+                        />
+                      </td>
+                    )}
                     <td data-label="Total" className="px-2 py-1.5 font-semibold">{lineTotal(l).toFixed(2)}</td>
                     <td data-label="" className="px-2 py-1.5">
                       <button type="button" onClick={() => removeLine(idx)} className="min-h-9 px-1 text-rose-600 hover:underline">
@@ -1237,14 +1257,13 @@ export function InvoiceFormModal({
       )}
 
       {quickAddCustomer && (
-        <QuickAddDialog
-          title="Add Customer"
+        <QuickCustomerDialog
           onClose={() => setQuickAddCustomer(false)}
-          onSubmit={async ({ name }) => {
-            const created = await customersRepo.create({ name, opening_balance: 0, balance_type: "receivable" });
+          onCreated={(created) => {
             setCustomers((prev) => [...prev, created]);
             setCustomerId(created.id);
             setCustomerName(created.name);
+            setCustomerPhone(created.phone ?? "");
             setQuickAddCustomer(false);
           }}
         />

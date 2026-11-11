@@ -275,6 +275,7 @@ export async function convertQuotationToInvoice(quotationId: string): Promise<st
       tax_rs: item.tax_rs,
       discount_pct: item.discount_pct,
       discount_rs: item.discount_rs,
+      extra_disc_pct: item.extra_disc_pct ?? 0,
       total: item.total,
     });
   }

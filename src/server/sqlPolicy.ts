@@ -15,6 +15,8 @@ export interface Analysis {
   multiple: boolean;
   /** Mentions a password column. */
   touchesPassword: boolean;
+  /** Writes a customer's extra-discount switch. */
+  touchesExtraDiscount?: boolean;
 }
 
 /** Removes string literals, quoted identifiers' quotes and comments, so
@@ -56,7 +58,10 @@ export function analyzeSql(sql: string): Analysis {
     if (["select", "values", "set", "where", "only"].includes(name)) continue;
     tables.add(name);
   }
-  return { verb, tables: [...tables], multiple, touchesPassword: /\bpassword_(hash|salt)\b/i.test(body) };
+  return {
+    verb, tables: [...tables], multiple, touchesPassword: /\bpassword_(hash|salt)\b/i.test(body),
+    touchesExtraDiscount: verb !== "select" && tables.has("customers") && /\bextra_discount\b/i.test(body),
+  };
 }
 
 export interface Caller {
@@ -79,7 +84,7 @@ export interface Caller {
 /** Writes to these tables are an action that needs its permission. */
 export const TABLE_ACTIONS: Record<string, string> = { financial_closings: "finance.close" };
 /** Opt-in actions: staff have them only when ticked ("+key"). Same list as lib/actionPermissions.ts. */
-const OPT_IN_ACTIONS = new Set(["invoice.fbr_submit", "invoice.refund", "invoice.purchase_rate", "data.export", "data.restore", "finance.close", "memorized.edit", "memorized.delete", "memorized.convert", "payments.refund"]);
+const OPT_IN_ACTIONS = new Set(["invoice.fbr_submit", "invoice.refund", "invoice.purchase_rate", "data.export", "data.restore", "finance.close", "memorized.edit", "memorized.delete", "memorized.convert", "payments.refund", "customer.extra_discount"]);
 
 /** Whether the caller may perform an action (same rule as lib/actionPermissions.ts can()). */
 export function callerCan(caller: Caller, action: string): boolean {
@@ -148,6 +153,8 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
       if (a.verb === "update" && OWN_RECORD_COLUMNS[t]) continue;
       return { ok: false, reason: "Staff HR records are changed by HR." };
     }
+    // A customer's extra discount is switched by the owner, or staff given that permission.
+    if (a.touchesExtraDiscount && !callerCan(caller, "customer.extra_discount")) return { ok: false, reason: "Only the owner (or staff allowed to) can turn a customer's extra discount on or off." };
     for (const t of a.tables) {
       if (TABLE_ACTIONS[t] && !callerCan(caller, TABLE_ACTIONS[t])) return { ok: false, reason: "You don't have permission for this action. Ask the owner (or the administrator) to allow it." };
       if (SUPER_ADMIN_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "Only the Super Admin changes tenants and plans." };

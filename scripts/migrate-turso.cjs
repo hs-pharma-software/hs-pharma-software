@@ -376,6 +376,7 @@ const MIGRATIONS = [
   { version: 80, label: 'Online payments: merchants (encrypted secrets), attempts, events, refunds, requests, audit', statements: rustSchemaStatements(80) },
   { version: 81, label: 'Offline desktop pilot: devices, operations, stock exceptions, change sequence (triggers), invoices.offline_ref', statements: rustSchemaStatementsWithTriggers(81) },
   { version: 82, label: 'purchase_items.disc_pct (extra discount % per purchase line)', statements: rustSchemaStatements(82) },
+  { version: 83, label: 'customers.extra_discount, invoice_items.extra_disc_pct (extra discount on invoices and quotations)', statements: rustSchemaStatements(83) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

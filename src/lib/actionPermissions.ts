@@ -21,6 +21,7 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
   { key: "payments.card", label: "Visa / Mastercard cards", group: "Payments", tenantOptIn: true },
   { key: "payments.custom_merchant", label: "Own merchant account", group: "Payments", tenantOptIn: true },
   { key: "payments.refund", label: "Refund online payments", group: "Payments", tenantOptIn: true, optIn: true },
+  { key: "customer.extra_discount", label: "Turn customers' extra discount on or off", group: "Invoices", optIn: true },
   { key: "desktop.offline", label: "Offline desktop (pilot: one checkout per branch)", group: "Offline Desktop", tenantOptIn: true },
   { key: "memorized.edit", label: "Edit memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.delete", label: "Delete memorized invoices", group: "Memorized Invoices", optIn: true },
@@ -40,7 +41,7 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
 
 export type ActionKey =
   | "invoice.edit" | "invoice.delete" | "invoice.fbr_submit" | "invoice.purchase_rate" | "invoice.refund" | "invoice.pdf" | "invoice.whatsapp"
-  | "payments.online" | "payments.jazzcash" | "payments.easypaisa" | "payments.card" | "payments.custom_merchant" | "payments.refund" | "desktop.offline"
+  | "payments.online" | "payments.jazzcash" | "payments.easypaisa" | "payments.card" | "payments.custom_merchant" | "payments.refund" | "desktop.offline" | "customer.extra_discount"
   | "data.export" | "data.restore" | "finance.close"
   | "memorized.edit" | "memorized.delete" | "memorized.convert"
   | "purchase.edit" | "purchase.delete"

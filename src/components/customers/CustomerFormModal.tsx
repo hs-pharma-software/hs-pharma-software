@@ -6,6 +6,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { customersRepo } from "@/lib/repo/customers";
 import type { Customer } from "@/lib/types";
+import { can } from "@/lib/actionPermissions";
 
 const PAKISTAN_PROVINCES = [
   "AZAD JAMMU AND KASHMIR",
@@ -41,6 +42,8 @@ export function CustomerFormModal({
   const [licenseNo, setLicenseNo] = useState(customer?.license_no ?? "");
   const [licenseExpiry, setLicenseExpiry] = useState(customer?.license_expiry ?? "");
   const [discountPct, setDiscountPct] = useState(String(customer?.discount_pct ?? 0));
+  const [extraDiscount, setExtraDiscount] = useState(Number(customer?.extra_discount ?? 0) === 1);
+  const mayExtra = can("customer.extra_discount");
   const [openingBalance, setOpeningBalance] = useState(String(customer?.opening_balance ?? 0));
   const [balanceType, setBalanceType] = useState<string>(customer?.balance_type ?? "receivable");
   const [creditLimit, setCreditLimit] = useState(String(customer?.credit_limit ?? ""));
@@ -79,6 +82,8 @@ export function CustomerFormModal({
         sales_tax_status: salesTaxStatus || null,
         fbr_active_status: fbrActiveStatus || null,
         description: description || null,
+        // Only sent by those allowed to set it (the server refuses it from anyone else).
+        ...(mayExtra ? { extra_discount: extraDiscount ? 1 : 0 } : {}),
       };
       if (isEdit && customer) {
         await customersRepo.update(customer.id, payload);
@@ -229,6 +234,12 @@ export function CustomerFormModal({
         </div>
 
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          <Field label="Extra Discount">
+            <label className={`flex min-h-9 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm ${extraDiscount ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-neutral-200 text-neutral-700"}`} title={mayExtra ? "Shows an Extra Disc % on this customer's invoices and quotations, after the normal discount" : "Only the owner (or staff allowed to) can change this"}>
+              <input id="cust-extra-discount" type="checkbox" checked={extraDiscount} disabled={!mayExtra} onChange={(e) => setExtraDiscount(e.target.checked)} />
+              {extraDiscount ? "Allowed on bills" : "Not allowed"}
+            </label>
+          </Field>
           <Field label="Discount %">
             <Input type="number" min="0" step="any" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
           </Field>

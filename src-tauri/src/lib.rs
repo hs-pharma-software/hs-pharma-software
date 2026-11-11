@@ -1867,6 +1867,16 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v83() -> &'static str {
+    r#"
+    -- Extra discount: switched on per customer by the owner (or staff allowed
+    -- to); on the customer's invoice and quotation lines it comes off the
+    -- already discounted price. Existing rows: off / 0.
+    ALTER TABLE customers ADD COLUMN extra_discount INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE invoice_items ADD COLUMN extra_disc_pct REAL NOT NULL DEFAULT 0;
+    "#
+}
+
 fn schema_sql_v82() -> &'static str {
     r#"
     -- Purchases: extra discount % per product line (on the supplier's rate,
@@ -4488,6 +4498,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 82,
             description: "purchase_line_discount",
             sql: schema_sql_v82(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 83,
+            description: "customer_extra_discount",
+            sql: schema_sql_v83(),
             kind: MigrationKind::Up,
         },
     ]

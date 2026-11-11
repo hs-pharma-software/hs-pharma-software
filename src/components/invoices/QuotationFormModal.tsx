@@ -5,6 +5,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
+import { QuickCustomerDialog } from "@/components/customers/QuickCustomerDialog";
+import { saleLineMath } from "@/lib/saleLineMath";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { customersRepo } from "@/lib/repo/customers";
@@ -25,6 +27,8 @@ interface Line {
   salePrice: number;
   taxPct: number;
   discountPct: number;
+  /** Customer's extra discount %, after the line discount. */
+  extraPct: number;
   unit: "base" | "secondary";
 }
 
@@ -82,7 +86,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
         for (const item of await listItemsForInvoice(quotationId)) {
           const product = await productsRepo.get(item.product_id);
           if (!product) continue;
-          rebuilt.push({ product, batch: null, qty: item.qty, salePrice: item.sale_price ?? 0, taxPct: item.tax_pct ?? 0, discountPct: item.discount_pct ?? 0, unit: "base" });
+          rebuilt.push({ product, batch: null, qty: item.qty, salePrice: item.sale_price ?? 0, taxPct: item.tax_pct ?? 0, discountPct: item.discount_pct ?? 0, extraPct: Number(item.extra_disc_pct ?? 0), unit: "base" });
         }
         setLines(rebuilt);
       } catch (err) {
@@ -132,6 +136,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
         qty: 1,
         taxPct: p.gst_rate_pct ?? 0,
         discountPct: 0,
+        extraPct: 0,
         ...(() => {
           const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
           const pk = p.packing || 1;
@@ -150,21 +155,18 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
     setLines((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  // Extra discount: only for a customer the owner allowed it (never walk-in).
+  const extraOn = Boolean(customerId) && Number(customers.find((c) => c.id === customerId)?.extra_discount ?? 0) === 1;
+  const extraOf = (l: Line) => (extraOn ? l.extraPct : 0);
+  const lineMath = (l: Line) => saleLineMath(l.salePrice, l.qty, l.discountPct, extraOf(l), l.taxPct);
+
   function lineTotal(l: Line) {
-    const gross = l.salePrice * l.qty;
-    const discount = gross * (l.discountPct / 100);
-    const taxable = gross - discount;
-    const tax = taxable * (l.taxPct / 100);
-    return taxable + tax;
+    return lineMath(l).total;
   }
 
   const total = lines.reduce((s, l) => s + l.salePrice * l.qty, 0);
-  const lineDiscountTotal = lines.reduce((s, l) => s + l.salePrice * l.qty * (l.discountPct / 100), 0);
-  const taxTotal = lines.reduce((s, l) => {
-    const gross = l.salePrice * l.qty;
-    const discount = gross * (l.discountPct / 100);
-    return s + (gross - discount) * (l.taxPct / 100);
-  }, 0);
+  const lineDiscountTotal = lines.reduce((s, l) => s + lineMath(l).discountRs, 0);
+  const taxTotal = lines.reduce((s, l) => s + lineMath(l).tax, 0);
   const payable = total - lineDiscountTotal - (Number(discountRs) || 0) + (Number(charges) || 0) + taxTotal;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -221,6 +223,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
         const packing = l.product.packing || 1;
         const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
         const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
+        const m = saleLineMath(finalSalePrice, finalQty, l.discountPct, extraOf(l), l.taxPct);
         await invoiceItemsRepo.create({
           invoice_id: quotation.id,
           product_id: l.product.id,
@@ -234,10 +237,11 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
           sale_price: finalSalePrice,
           tax_pct: l.taxPct,
           further_tax_pct: 0,
-          tax_rs: (finalSalePrice * finalQty - finalSalePrice * finalQty * (l.discountPct / 100)) * (l.taxPct / 100),
+          tax_rs: m.tax,
           discount_pct: l.discountPct,
-          discount_rs: finalSalePrice * finalQty * (l.discountPct / 100),
-          total: lineTotal(l),
+          discount_rs: m.discountRs,
+          extra_disc_pct: extraOf(l),
+          total: m.total,
         });
       }
       onSaved();
@@ -253,7 +257,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
       {loading ? <p className="py-10 text-center text-sm text-neutral-400">Loading quotation...</p> : (
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <fieldset disabled={viewOnly} className="contents">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <Field label="Invoice Type">
             <Select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)}>
               <option value="Retail">Retail</option>
@@ -261,7 +265,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
             </Select>
           </Field>
           <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1">
               <Field label="Salesman (Optional)">
                 <Select value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}>
                   <option value="">{"\u2014"}</option>
@@ -277,8 +281,8 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
               +
             </Button>
           </div>
-          <div className="flex items-end gap-1.5">
-            <div className="flex-1">
+          <div className="col-span-2 flex items-end gap-1.5 sm:col-span-1">
+            <div className="min-w-0 flex-1">
               <Field label="Customer Name">
                 <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                   <option value="">Walk-in</option>
@@ -294,9 +298,11 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
               +
             </Button>
           </div>
-          <Field label="Description">
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-          </Field>
+          <div className="col-span-2 sm:col-span-1">
+            <Field label="Description">
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+          </div>
         </div>
 
         {!viewOnly && (
@@ -306,7 +312,8 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
         )}
 
         <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
-          <table className="w-full min-w-max text-sm">
+          {/* rt: on a phone each line is a card of "label: value" rows, as on invoices. */}
+          <table className="rt w-full min-w-max text-sm">
             <thead>
               <tr className="bg-neutral-900 text-left text-white">
                 <th className="px-2 py-2">Product</th>
@@ -315,6 +322,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
                 <th className="px-2 py-2">Sale Price</th>
                 <th className="px-2 py-2">Tax %</th>
                 <th className="px-2 py-2">Disc %</th>
+                {extraOn && <th className="px-2 py-2" title="Customer's extra discount, on the price after Disc %">Extra Disc %</th>}
                 <th className="px-2 py-2">Total</th>
                 <th className="px-2 py-2"></th>
               </tr>
@@ -322,15 +330,15 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
             <tbody>
               {lines.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-2 py-6 text-center text-neutral-400">
+                  <td colSpan={extraOn ? 9 : 8} className="px-2 py-6 text-center text-neutral-400">
                     No content in table
                   </td>
                 </tr>
               ) : (
                 lines.map((l, idx) => (
                   <tr key={idx} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-2 py-1.5">{l.product.name}</td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Product" className="rt-title px-2 py-1.5">{l.product.name}</td>
+                    <td data-label="Unit" className="px-2 py-1.5">
                       {hasSecondaryUnit(l.product) ? (
                         <UnitToggle
                           baseLabel={unitName(l.product.base_unit_id)}
@@ -342,7 +350,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
                         <span className="text-neutral-500">{unitName(l.product.base_unit_id)}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Qty" className="px-2 py-1.5">
                       <input
                         type="number"
                         min="1"
@@ -352,7 +360,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Sale Price" className="px-2 py-1.5">
                       <input
                         type="number"
                         min="0"
@@ -362,7 +370,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Tax %" className="px-2 py-1.5">
                       <input
                         type="number"
                         min="0"
@@ -372,7 +380,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td data-label="Disc %" className="px-2 py-1.5">
                       <input
                         type="number"
                         min="0"
@@ -382,10 +390,25 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
-                    <td className="px-2 py-1.5">{lineTotal(l).toFixed(2)}</td>
-                    <td className="px-2 py-1.5">
+                    {extraOn && (
+                      <td data-label="Extra Disc %" className="px-2 py-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="any"
+                          value={l.extraPct}
+                          onChange={(e) => updateLine(idx, { extraPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                          title="Extra discount % on the price after Disc %"
+                          aria-label={`Extra discount of ${l.product.name}`}
+                          className="w-16 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-1"
+                        />
+                      </td>
+                    )}
+                    <td data-label="Total" className="px-2 py-1.5 font-semibold">{lineTotal(l).toFixed(2)}</td>
+                    <td data-label="" className="px-2 py-1.5">
                       {!viewOnly && (
-                        <button type="button" onClick={() => removeLine(idx)} className="text-rose-600 hover:underline">
+                        <button type="button" onClick={() => removeLine(idx)} className="min-h-9 px-1 text-rose-600 hover:underline">
                           Remove
                         </button>
                       )}
@@ -397,7 +420,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
           </table>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <Field label="Total">
             <Input value={total.toFixed(2)} disabled />
           </Field>
@@ -411,7 +434,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
             <Input value={taxTotal.toFixed(2)} disabled />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <Field label="Payable (Estimated)">
             <Input value={payable.toFixed(2)} disabled />
           </Field>
@@ -424,15 +447,20 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
           Quotations don&apos;t affect stock or sales figures. Accept the quotation from the list to generate a real invoice.
         </p>
 
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        {/* Phones: pinned to the bottom of the sheet with the estimated payable, as on invoices. */}
+        <div className="sticky -bottom-3 z-10 -mx-3 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-3 py-2.5 shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.15)] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-3 sm:shadow-none">
+          <span className="flex w-full items-baseline justify-between text-sm font-semibold tabular-nums text-neutral-900 sm:hidden">
+            <span className="text-neutral-500">Payable (Est.)</span>
+            <span className="text-base">Rs {payable.toFixed(2)}</span>
+          </span>
           {viewOnly ? (
-            <Button type="button" onClick={onClose}>Close</Button>
+            <Button type="button" onClick={onClose} className="max-sm:flex-1">Close</Button>
           ) : (
             <>
-              <Button type="button" onClick={onClose}>
+              <Button type="button" onClick={onClose} className="max-sm:px-3">
                 {quotationId ? "Cancel" : "Reset"}
               </Button>
-              <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
+              <Button type="submit" variant="primary" disabled={saving || lines.length === 0} className="max-sm:flex-1">
                 {saving ? "Saving..." : quotationId ? "Save Changes" : "Save"}
               </Button>
             </>
@@ -442,11 +470,9 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
       )}
 
       {quickAddCustomer && (
-        <QuickAddDialog
-          title="Add Customer"
+        <QuickCustomerDialog
           onClose={() => setQuickAddCustomer(false)}
-          onSubmit={async ({ name }) => {
-            const created = await customersRepo.create({ name, opening_balance: 0, balance_type: "receivable" });
+          onCreated={(created) => {
             setCustomers((prev) => [...prev, created]);
             setCustomerId(created.id);
             setQuickAddCustomer(false);

@@ -119,6 +119,8 @@ export interface Customer extends TenantRow {
   sales_tax_status: string | null;
   fbr_active_status: string | null;
   description: string | null;
+  /** 1 = this customer's bills can have an extra discount % (v83). Set by the owner or allowed staff. */
+  extra_discount?: number | null;
 }
 
 export interface Supplier extends TenantRow {

@@ -232,7 +232,10 @@ export interface InvoiceItem extends TenantRow {
   further_tax_pct: number;
   tax_rs: number;
   discount_pct: number;
+  /** Line discount plus the extra discount, in rupees. */
   discount_rs: number;
+  /** Customer's extra discount % on this line, after the line discount (v83). */
+  extra_disc_pct?: number | null;
   total: number;
 }
 
