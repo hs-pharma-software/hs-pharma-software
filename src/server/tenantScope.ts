@@ -32,6 +32,37 @@ export interface Scope {
   personal?: { userId: string; readOwnOnly: string[]; writeOwnOnly: Record<string, string[]> };
   /** The request's branch (absent before migration v79 or for logins without a business). */
   branch?: { active: string | null; accessible: string[]; mainId: string; writable: boolean };
+  /** Purchase prices are hidden from this login (sqlPolicy.costHidden): a sale
+   * line's cost is filled in here from its batch instead of from the page. */
+  fillLineCost?: boolean;
+}
+
+/** Columns a business login may change on its own logins (users). Role,
+ * username, platform role, business, passwords and ids are changed only by
+ * the server's own flows (src/server/users.ts, the Super Admin). */
+export const USER_WRITABLE_COLUMNS = new Set(["display_name", "is_active", "permissions", "denied_actions", "email", "mobile", "updated_at", "deleted_at"]);
+
+/** True when the SQL names something with quotes or brackets ("x", `x`, [x]).
+ * The app never does; the rewrite below only understands plain names, so
+ * these are refused rather than guessed at (fail closed). */
+export function hasQuotedNames(sql: string): boolean {
+  for (let i = 0; i < sql.length; ) {
+    const c = sql[i];
+    if (c === "'") {
+      let j = i + 1;
+      while (j < sql.length && !(sql[j] === "'" && sql[j + 1] !== "'")) j += sql[j] === "'" ? 2 : 1;
+      i = j + 1;
+    } else if (c === "-" && sql[i + 1] === "-") {
+      const j = sql.indexOf("\n", i);
+      i = j < 0 ? sql.length : j;
+    } else if (c === "/" && sql[i + 1] === "*") {
+      const j = sql.indexOf("*/", i + 2);
+      i = j < 0 ? sql.length : j + 2;
+    } else if (c === '"' || c === "`" || c === "[" || c === "]") {
+      return true;
+    } else i++;
+  }
+  return false;
 }
 
 /** table -> its columns (lower case). */
@@ -212,8 +243,98 @@ function closingParen(mask: string, open: number): number {
   throw new ScopeError("Unbalanced parentheses.");
 }
 
+const CLAUSE_WORDS = new Set(["select", "from", "where", "group", "order", "having", "limit", "offset", "on", "using", "set", "values", "into",
+  "returning", "join", "union", "except", "intersect", "window", "update", "by", "case", "when", "then", "else", "in", "and", "or", "not", "exists"]);
+
+/** The nearest clause keyword before `pos` at the same parenthesis depth
+ * ("(" when the position is directly inside a parenthesis). */
+function clauseBefore(mask: string, pos: number): string {
+  let depth = 0;
+  for (let i = pos - 1; i >= 0; i--) {
+    const ch = mask[i];
+    if (ch === ")") depth++;
+    else if (ch === "(") {
+      if (depth === 0) return "(";
+      depth--;
+    } else if (depth === 0 && /[A-Za-z_]/.test(ch) && (i === 0 || !/[A-Za-z0-9_]/.test(mask[i - 1]))) {
+      const w = /^[A-Za-z_][A-Za-z0-9_]*/.exec(mask.slice(i))![0].toLowerCase();
+      if (CLAUSE_WORDS.has(w)) return w;
+    }
+  }
+  return "";
+}
+const wordBefore = (mask: string, pos: number) => (/([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(mask.slice(0, pos))?.[1] ?? "").toLowerCase();
+
+/** Every mention of a real table that is a table reference (in a FROM or JOIN
+ * clause: after FROM, JOIN, a comma of the FROM list, or "FROM (") must be one
+ * the rewrite scoped. Anything else is refused: comma joins, parenthesized
+ * tables and any form the rewrite does not understand (fail closed). */
+function assertTablesScoped(mask: string, schema: Schema, scoped: Set<number>, ctes: Set<string>) {
+  for (const m of mask.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+    const at = m.index!;
+    if (at > 0 && /[A-Za-z0-9_]/.test(mask[at - 1])) continue;
+    const lower = m[0].toLowerCase();
+    if (!schema.has(lower) || ctes.has(lower) || scoped.has(at)) continue;
+    const before = mask.slice(0, at).replace(/\s+$/, "");
+    const prev = before.slice(-1);
+    const next = mask.slice(at + m[0].length).replace(/^\s+/, "")[0];
+    if (prev === "." || next === ".") continue; // alias.column or table.column
+    const w = /[A-Za-z0-9_]$/.test(before) ? wordBefore(mask, at) : "";
+    let tableRef = w === "from" || w === "join";
+    if (prev === "(") tableRef = ["from", "join"].includes(wordBefore(mask, before.length - 1));
+    if (prev === ",") {
+      const c = clauseBefore(mask, at);
+      tableRef = c === "from" || c === "join" || (c === "(" && ["from", "join"].includes(wordBefore(mask, mask.lastIndexOf("(", at))));
+    }
+    if (tableRef) throw new ScopeError(`This form of query is not accepted (table ${lower}). Name each table after FROM or JOIN.`);
+  }
+}
+
+/** The columns an UPDATE's SET assigns, including (a, b) = (...) forms. */
+function assignedColumns(mask: string, start: number, end: number): string[] {
+  const out: string[] = [];
+  for (const [a, b] of splitTop(mask, start, end)) {
+    const part = mask.slice(a, b).trim();
+    if (!part) continue;
+    if (part.startsWith("(")) {
+      const close = closingParen(part, 0);
+      for (const name of part.slice(1, close).split(",")) {
+        const n = name.trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) throw new ScopeError("Unrecognised assignment.");
+        out.push(n.toLowerCase());
+      }
+      continue;
+    }
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(part);
+    if (!m) throw new ScopeError("Unrecognised assignment.");
+    out.push(m[1].toLowerCase());
+  }
+  return out;
+}
+
+/** An UPDATE's target, assigned columns and WHERE (with its own parameters). */
+export function updateParts(sql: string, args: unknown[]): { table: string; assigned: string[]; where: string | null; whereArgs: unknown[] } | null {
+  const mask = maskSql(sql);
+  const target = /^\s*UPDATE\s+(?:OR\s+\w+\s+)?([A-Za-z_][A-Za-z0-9_]*)/i.exec(mask);
+  if (!target) return null;
+  const bodyStart = target.index + target[0].length;
+  const setAt = topLevel(mask, bodyStart, /^SET\b/i);
+  if (!setAt) return null;
+  const whereAt = topLevel(mask, setAt.index, /^WHERE\b/i);
+  const fromAt = topLevel(mask, setAt.index, /^FROM\b/i);
+  const tail = topLevel(mask, whereAt ? whereAt.index : setAt.index, /^(ORDER\s+BY|LIMIT|RETURNING)\b/i);
+  const ends = [fromAt, whereAt, tail].filter((x): x is { index: number; length: number } => !!x).map((x) => x.index);
+  const assigned = assignedColumns(mask, setAt.index + setAt.length, ends.length ? Math.min(...ends) : mask.replace(/[\s;]+$/, "").length);
+  if (!whereAt || fromAt) return { table: target[1].toLowerCase(), assigned, where: null, whereArgs: [] };
+  const end = tail ? tail.index : mask.replace(/[\s;]+$/, "").length;
+  const before = (mask.slice(0, whereAt.index).match(/\?/g) ?? []).length;
+  const inWhere = (mask.slice(whereAt.index, end).match(/\?/g) ?? []).length;
+  return { table: target[1].toLowerCase(), assigned, where: sql.slice(whereAt.index + whereAt.length, end), whereArgs: args.slice(before, before + inWhere) };
+}
+
 /** Rewrites one statement so it stays inside the caller's business. */
 export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: Schema): string {
+  if (hasQuotedNames(sql)) throw new ScopeError("Quoted or bracketed names are not accepted. Use plain table and column names.");
   const mask = maskSql(sql);
   if (/\?\d|[:@$][A-Za-z_]/.test(mask.replace(/'[^']*'/g, ""))) throw new ScopeError("Use plain ? parameters.");
   const head = (/^\s*([A-Za-z]+)/.exec(mask)?.[1] ?? "").toLowerCase();
@@ -223,6 +344,10 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
 
   const ctes = new Set<string>();
   for (const m of mask.matchAll(/(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s+AS\s*\(/gi)) ctes.add(m[1].toLowerCase());
+  // A CTE named like a real table would hide that table from the rewrite.
+  for (const c of ctes) if (schema.has(c)) throw new ScopeError(`A WITH name cannot be a table name (${c}).`);
+  /** Positions of table names the rewrite handled (or skipped on purpose). */
+  const scoped = new Set<number>();
 
   // 1. Every table read, at any depth.
   for (const m of mask.matchAll(/\b(FROM|JOIN)(\s+)([A-Za-z_][A-Za-z0-9_]*)/gi)) {
@@ -237,7 +362,16 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
     const alias = /^\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)/i.exec(after);
     const hasAlias = alias && !RESERVED.has(alias[1].toLowerCase());
     edits.push({ at: nameAt, end: nameAt + name.length, text: `(SELECT * FROM ${name} WHERE ${cond})${hasAlias ? "" : ` AS ${name}`}` });
+    scoped.add(nameAt);
   }
+  // FROM/JOIN names the rewrite skipped on purpose (unfiltered tables, the DELETE target).
+  for (const m of mask.matchAll(/\b(FROM|JOIN)(\s+)([A-Za-z_][A-Za-z0-9_]*)/gi)) {
+    const at = m.index! + m[1].length + m[2].length;
+    const lower = m[3].toLowerCase();
+    if (scoped.has(at) || !schema.has(lower) || /^\s*\(/.test(mask.slice(at + m[3].length))) continue;
+    if (/\bDELETE\s*$/i.test(mask.slice(0, m.index!)) || readCondition(lower, s, schema) === null) scoped.add(at);
+  }
+  assertTablesScoped(mask, schema, scoped, ctes);
 
   // 2. The statement's own target.
   if (head === "update" || head === "delete") {
@@ -251,17 +385,20 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
     const bodyStart = target.index + target[0].length;
     if (head === "update") {
       const setAt = topLevel(mask, bodyStart, /^SET\b/i);
-      const whereAt = topLevel(mask, bodyStart, /^WHERE\b/i);
-      const assignments = mask.slice(setAt ? setAt.index + 3 : bodyStart, whereAt ? whereAt.index : mask.length);
-      if (/\btenant_id\s*=/i.test(assignments)) throw new ScopeError("Records cannot be moved to another business.");
-      if (/\bbranch_id\s*=/i.test(assignments)) throw new ScopeError("Records cannot be moved to another branch here; use a stock transfer.");
-      if (table === "users" && /\b(role|username)\s*=/i.test(assignments)) throw new ScopeError("A login's role and username are changed by the Super Admin.");
-      if (MAILBOX_OWNERS[table] && MAILBOX_OWNERS[table].some((c) => new RegExp(`\\b${c}\\s*=`, "i").test(assignments))) throw new ScopeError("The businesses of a shared record cannot be changed.");
-      const own = s.personal?.writeOwnOnly[table];
-      if (own) {
-        const changed = [...assignments.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*=/g)].map((m) => m[1].toLowerCase());
-        if (changed.some((c) => !own.includes(c))) throw new ScopeError("On your own HR record you can only acknowledge an appraisal.");
+      if (!setAt) throw new ScopeError("Unrecognised statement.");
+      const ends = [topLevel(mask, setAt.index, /^FROM\b/i), topLevel(mask, setAt.index, /^WHERE\b/i), topLevel(mask, setAt.index, /^(ORDER\s+BY|LIMIT|RETURNING)\b/i)]
+        .filter((x): x is { index: number; length: number } => !!x).map((x) => x.index);
+      const changed = assignedColumns(mask, setAt.index + setAt.length, ends.length ? Math.min(...ends) : mask.replace(/[\s;]+$/, "").length);
+      if (changed.includes("tenant_id")) throw new ScopeError("Records cannot be moved to another business.");
+      if (changed.includes("branch_id")) throw new ScopeError("Records cannot be moved to another branch here; use a stock transfer.");
+      if (table === "users") {
+        const bad = changed.filter((c) => !USER_WRITABLE_COLUMNS.has(c));
+        if (bad.length) throw new ScopeError(`A login's ${bad.join(", ")} is changed by the Super Admin or the server, not here.`);
       }
+      if (MAILBOX_OWNERS[table] && MAILBOX_OWNERS[table].some((c) => changed.includes(c))) throw new ScopeError("The businesses of a shared record cannot be changed.");
+      if (s.fillLineCost && changed.includes("purchase_price")) throw new ScopeError("Purchase prices are not available to your login.");
+      const own = s.personal?.writeOwnOnly[table];
+      if (own && changed.some((c) => !own.includes(c))) throw new ScopeError("On your own HR record you can only acknowledge an appraisal.");
     }
     const whereAt = topLevel(mask, bodyStart, /^WHERE\b/i);
     const tail = topLevel(mask, whereAt ? whereAt.index : bodyStart, /^(ORDER\s+BY|LIMIT|RETURNING)\b/i);
@@ -290,6 +427,10 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
     if (branchOwned) branchWritable(table, s, schema);
     const addBranch = branchOwned && !cols.includes("branch_id");
     if (addBranch) edits.push({ at: close, end: close, text: ", branch_id" });
+    // A sale line's cost comes from its batch when the login may not see purchase prices.
+    const fillCost = Boolean(s.fillLineCost && table === "invoice_items");
+    const addCost = fillCost && !cols.includes("purchase_price");
+    if (addCost) edits.push({ at: close, end: close, text: ", purchase_price" });
 
     // Which column(s) must hold the caller's business, and what NULL may mean there.
     const owners = MAILBOX_OWNERS[table];
@@ -325,6 +466,22 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
         else {
           const b = get("branch_id");
           if (!b.ok || b.value !== s.branch!.active) throw new ScopeError("A record can only be added to the branch you are working in.");
+        }
+      }
+      // After the branch value: the same order as the added columns.
+      if (fillCost) {
+        const lit = (col: string) => {
+          const v = get(col);
+          if (!v.ok) throw new ScopeError("A sale line's product and batch must be plain values.");
+          return v.value === undefined || v.value === null ? "NULL" : q(String(v.value));
+        };
+        const cost = `(SELECT pb.purchase_price FROM product_batches pb WHERE pb.tenant_id = ${q(s.tenantId)} AND pb.product_id = ${lit("product_id")} AND pb.batch_no IS ${lit("batch_no")} AND pb.deleted_at IS NULL ORDER BY pb.created_at DESC LIMIT 1)`;
+        const i = cols.indexOf("purchase_price");
+        if (i < 0) edits.push({ at: close2, end: close2, text: `, ${cost}` });
+        else {
+          // The page's value (if any) is still bound as a parameter, then ignored.
+          const [a, b] = vals[i];
+          edits.push({ at: a, end: b, text: ` COALESCE(${cost}, CASE WHEN ${sql.slice(a, b).trim()} IS NULL THEN NULL ELSE NULL END)` });
         }
       }
       if (tenantCol) {

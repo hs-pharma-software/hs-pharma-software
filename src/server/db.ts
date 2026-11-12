@@ -4,8 +4,8 @@ import { createClient, type Client, type InStatement, type ResultSet } from "@li
 import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
 import { verifySession, requestToken, SESSION_HOURS } from "./session";
-import { analyzeSql, authorize, personalScope, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
-import { scopeStatement, ScopeError, type Schema, type Scope } from "./tenantScope";
+import { analyzeSql, authorize, callerCan, costHidden, personalScope, HIDDEN_COLUMNS, type Analysis, type Caller } from "./sqlPolicy";
+import { scopeStatement, ScopeError, updateParts, type Schema, type Scope } from "./tenantScope";
 import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
@@ -103,24 +103,32 @@ export interface ClientStatement { sql: string; args?: unknown[] }
 
 const MAX_STATEMENTS = 200;
 
-/** Checks every statement, then runs them (several together as one atomic batch). */
-export async function runForCaller(caller: Caller, statements: ClientStatement[], batch: boolean, ip: string | null, branch?: Scope["branch"]) {
+/** The business scope the rewrite keeps a login's statements in. */
+export function scopeFor(caller: Caller, branch?: Scope["branch"]): Scope {
+  return {
+    tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [],
+    personal: personalScope(caller), branch, fillLineCost: costHidden(caller),
+  };
+}
+
+export interface CheckedStatement { s: ClientStatement; a: Analysis; sql: string }
+
+/** Policy check and business rewrite of every statement (no database access). */
+export function checkStatements(caller: Caller, statements: ClientStatement[], known: Set<string>, schema: Schema, branch?: Scope["branch"]): CheckedStatement[] {
   if (!Array.isArray(statements) || statements.length === 0) throw new HttpError(400, "No statement.");
   if (statements.length > MAX_STATEMENTS) throw new HttpError(400, "Too many statements in one request.");
-  const { names: known, schema } = await schemaInfo();
   if (caller.role !== "super_admin" && !caller.tenantId) throw new HttpError(403, "This login is not attached to a business.");
-  const checked = statements.map((s) => {
+  const scope = caller.role !== "super_admin" ? scopeFor(caller, branch) : null;
+  return statements.map((s) => {
     if (typeof s?.sql !== "string" || (s.args != null && !Array.isArray(s.args))) throw new HttpError(400, "Malformed statement.");
     const a = analyzeSql(s.sql);
     const d = authorize(a, caller, known);
     if (!d.ok) throw new HttpError(403, d.reason);
     // Every statement of a business login is rewritten to stay inside that business (tenantScope.ts).
     let sql = s.sql;
-    if (caller.role !== "super_admin") {
+    if (scope) {
       try {
-        sql = scopeStatement(s.sql, s.args ?? [], {
-          tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: caller.linkedPharmacies ?? [], personal: personalScope(caller), branch,
-        }, schema);
+        sql = scopeStatement(s.sql, s.args ?? [], scope, schema);
       } catch (e) {
         if (e instanceof ScopeError) throw new HttpError(403, e.message);
         throw e;
@@ -128,6 +136,36 @@ export async function runForCaller(caller: Caller, statements: ClientStatement[]
     }
     return { s, a, sql };
   });
+}
+
+/** Deleting a sale invoice needs "Delete invoices" (quotations and memorized
+ * drafts keep their own screens' rules). Invoices are deleted by marking them
+ * deleted, so the rows a staff login's UPDATE ... SET deleted_at would reach
+ * are checked first; any real invoice among them refuses the whole request. */
+export async function guardInvoiceDeletes(caller: Caller, checked: CheckedStatement[], schema: Schema, branch: Scope["branch"] | undefined,
+  count: (sql: string, args: unknown[]) => Promise<number>): Promise<void> {
+  if (caller.role !== "staff" || callerCan(caller, "invoice.delete")) return;
+  for (const { s, a } of checked) {
+    if (a.verb !== "update" || !a.tables.includes("invoices")) continue;
+    const p = updateParts(s.sql, s.args ?? []);
+    if (!p || p.table !== "invoices" || !p.assigned.includes("deleted_at")) continue;
+    const probe = `SELECT COUNT(*) AS n FROM invoices WHERE COALESCE(is_quotation, 0) = 0 AND COALESCE(is_memorized, 0) = 0${p.where ? ` AND (${p.where})` : ""}`;
+    let sql: string;
+    try { sql = scopeStatement(probe, p.whereArgs, scopeFor(caller, branch), schema); } catch (e) {
+      if (e instanceof ScopeError) throw new HttpError(403, e.message);
+      throw e;
+    }
+    if ((await count(sql, p.whereArgs.map(toArg))) > 0) {
+      throw new HttpError(403, "You don't have permission to delete invoices. Ask the owner (or the administrator) to allow it.");
+    }
+  }
+}
+
+/** Checks every statement, then runs them (several together as one atomic batch). */
+export async function runForCaller(caller: Caller, statements: ClientStatement[], batch: boolean, ip: string | null, branch?: Scope["branch"]) {
+  const { names: known, schema } = await schemaInfo();
+  const checked = checkStatements(caller, statements, known, schema, branch);
+  await guardInvoiceDeletes(caller, checked, schema, branch, async (sql, args) => Number((await serverDb().execute({ sql, args: args as never[] })).rows[0]?.n ?? 0));
   const stmts: InStatement[] = checked.map(({ s, sql }) => ({ sql, args: (s.args ?? []).map(toArg) }));
   const results: ResultSet[] = batch || stmts.length > 1 ? await serverDb().batch(stmts, "write") : [await serverDb().execute(stmts[0])];
 
@@ -139,8 +177,12 @@ export async function runForCaller(caller: Caller, statements: ClientStatement[]
       args: [randomUUID(), caller.userId, caller.tenantId, caller.role, a.verb, a.tables.join(","), s.sql.slice(0, 500), ip, now],
     })), "write").catch(() => undefined); // never fail the user's write because the log row could not be added
   }
-  return results.map(shape);
+  const hide = costHidden(caller) ? COST_COLUMNS : null;
+  return results.map((r) => shape(r, hide));
 }
+
+/** Removed from answers to logins without purchase prices (sqlPolicy.costHidden). */
+export const COST_COLUMNS = new Set(["purchase_price"]);
 
 /** Values the browser may send: JSON has no bigint / blob, so numbers, strings, booleans and null. */
 function toArg(v: unknown): string | number | null {
@@ -150,8 +192,8 @@ function toArg(v: unknown): string | number | null {
   throw new HttpError(400, "Unsupported value type in a statement.");
 }
 
-function shape(r: ResultSet) {
-  const keep = r.columns.map((c) => !HIDDEN_COLUMNS.has(c.toLowerCase()));
+export function shape(r: Pick<ResultSet, "columns" | "rows" | "rowsAffected" | "lastInsertRowid">, extraHidden: Set<string> | null = null) {
+  const keep = r.columns.map((c) => !HIDDEN_COLUMNS.has(c.toLowerCase()) && !extraHidden?.has(c.toLowerCase()));
   return {
     columns: r.columns.filter((_, i) => keep[i]),
     rows: r.rows.map((row) => r.columns.map((_, i) => row[i]).filter((_, i) => keep[i]).map((v) => (typeof v === "bigint" ? Number(v) : v))),

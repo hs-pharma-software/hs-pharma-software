@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { STANDALONE } from "@/lib/edition";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -447,7 +448,8 @@ export function InvoiceFormModal({
           getLatestPrice(product.id).catch(() => null),
           getEffectiveDiscountPct(product).catch(() => 0),
         ]);
-        const salePrice = priceObj?.salePrice ?? batch.purchase_price;
+        // The server leaves purchase_price out for logins without purchase prices: no price then (typed by hand).
+        const salePrice = priceObj?.salePrice ?? batch.purchase_price ?? 0;
         newLines.push({
           product,
           batch,
@@ -535,7 +537,7 @@ export function InvoiceFormModal({
         ...(() => {
           const defaultUnit: "base" | "secondary" = hasSecondaryUnit(p) ? "secondary" : "base";
           const pk = p.packing || 1;
-          const rawPrice = price?.salePrice ?? batch.purchase_price;
+          const rawPrice = price?.salePrice ?? batch.purchase_price ?? 0;
           return { salePrice: defaultUnit === "secondary" ? roundPrice(rawPrice / pk) : rawPrice, unit: defaultUnit };
         })(),
       },
@@ -959,8 +961,8 @@ export function InvoiceFormModal({
             aria-expanded={buyerShown}
             className="flex w-full items-center gap-2 text-left sm:pointer-events-none sm:mb-2"
           >
-            <div className="flex h-5 w-7 shrink-0 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
-            <span className="text-xs font-semibold text-neutral-700">Customer &amp; Buyer Details</span>
+            {!STANDALONE && <div className="flex h-5 w-7 shrink-0 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>}
+            <span className="text-xs font-semibold text-neutral-700">{STANDALONE ? "Customer Details" : "Customer & Buyer Details"}</span>
             {fbrEnabled && <span className="hidden text-[11px] text-neutral-400 sm:inline">Sent to FBR with this invoice</span>}
             <span className="ml-auto min-w-0 truncate text-[11px] text-neutral-500 sm:hidden">
               {buyerShown ? "Hide" : `${customerName.trim() || "Walk-in"} · ${buyerRegType}${buyerProvince ? ` · ${buyerProvince}` : ""}`}
@@ -1026,6 +1028,8 @@ export function InvoiceFormModal({
                 placeholder="03XXXXXXXXX"
               />
             </Field>
+            {/* FBR buyer fields: not in Mavin Pharmacy Offline. */}
+            {!STANDALONE && <>
             <Field label="Buyer Registration Type" required={fbrEnabled}>
               <Select value={buyerRegType} onChange={(e) => setBuyerRegType(e.target.value)}>
                 <option value="Unregistered">Unregistered</option>
@@ -1054,6 +1058,7 @@ export function InvoiceFormModal({
             <Field label="Buyer Address">
               <Input value={buyerAddress} onChange={(e) => setBuyerAddress(e.target.value)} />
             </Field>
+            </>}
           </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { tenantAllows } from "../lib/tenantFeatures";
+import { hasQuotedNames, maskSql } from "./tenantScope";
 /** What the browser may ask the database to do through /api/db. The app
  * sends parameterized statements; the server refuses anything that is not
  * plain data access by a logged-in user: schema changes, several statements
@@ -17,6 +18,10 @@ export interface Analysis {
   touchesPassword: boolean;
   /** Writes a customer's extra-discount switch. */
   touchesExtraDiscount?: boolean;
+  /** Names a table or column with quotes or brackets (refused: the scoping cannot read it safely). */
+  quotedNames?: boolean;
+  /** The SQL text (comments and string contents blanked) for the column-level checks. */
+  masked?: string;
 }
 
 /** Removes string literals, quoted identifiers' quotes and comments, so
@@ -59,6 +64,7 @@ export function analyzeSql(sql: string): Analysis {
     tables.add(name);
   }
   return {
+    quotedNames: hasQuotedNames(sql), masked: maskSql(sql),
     verb, tables: [...tables], multiple, touchesPassword: /\bpassword_(hash|salt)\b/i.test(body),
     touchesExtraDiscount: verb !== "select" && tables.has("customers") && /\bextra_discount\b/i.test(body),
   };
@@ -127,9 +133,71 @@ export function personalScope(caller: Caller): { userId: string; readOwnOnly: st
 
 export type Decision = { ok: true } | { ok: false; reason: string };
 
+// ── Pharmacy staff permissions, enforced here as well as in the screens ──
+
+/** Purchase records: read by staff with Purchase, Suppliers or Reports; written with Purchase. */
+const PURCHASE_TABLES = new Set(["purchases", "purchase_items"]);
+const PURCHASE_READ_MODULES = ["purchase", "suppliers", "reports"];
+/** Tables carrying a cost (purchase price) the billing screens also read. */
+const COST_TABLES = new Set(["product_batches", "invoice_items"]);
+const staffWith = (c: Caller) => c.role === "staff" && Array.isArray(c.permissions);
+const hasModule = (c: Caller, keys: string[]) => !staffWith(c) || keys.some((k) => c.permissions!.includes(k));
+
+/** Purchase prices are hidden from this login: staff without the Purchase or
+ * Reports section and without "See purchase rate while billing". The server
+ * removes purchase_price from its answers and fills a sale line's cost itself. */
+export function costHidden(c: Caller): boolean {
+  if (!staffWith(c)) return false;
+  if (hasModule(c, ["purchase", "reports"])) return false;
+  return !callerCan(c, "invoice.purchase_rate");
+}
+
+/** For a login without purchase prices: purchase_price may only be a plain top-level
+ * output column (removed from the answer), never used in an expression, filter,
+ * subquery, union, renamed CTE or ordinal sort, so it cannot be read back another way. */
+function costReadable(a: Analysis): Decision {
+  const m = a.masked ?? "";
+  const readsCost = a.tables.some((t) => COST_TABLES.has(t));
+  const mentions = [...m.matchAll(/\bpurchase_price\b/gi)];
+  if (!readsCost && !mentions.length) return { ok: true };
+  const deny = { ok: false as const, reason: "Purchase prices are not available to your login. Ask the owner for \"See purchase rate while billing\"." };
+  if (a.verb !== "select") {
+    // Inserting a sale line or a batch may name the column (the server sets the sale line's cost).
+    return a.verb === "insert" || !mentions.length ? { ok: true } : deny;
+  }
+  if (readsCost && (/\b(UNION|INTERSECT|EXCEPT)\b/i.test(m) || /\bWITH\s+(?:RECURSIVE\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\(/i.test(m) || /\bBY\s+\d/i.test(m))) return deny;
+  for (const x of mentions) {
+    const at = x.index!;
+    let depth = 0;
+    for (let i = 0; i < at; i++) depth += m[i] === "(" ? 1 : m[i] === ")" ? -1 : 0;
+    const before = m.slice(0, at);
+    const after = m.slice(at + x[0].length);
+    const plainItem = depth === 0 && /(?:\bSELECT(?:\s+DISTINCT)?|,)\s*(?:[A-Za-z_][A-Za-z0-9_]*\.)?$/i.test(before) && /^\s*(?:,|FROM\b)/i.test(after);
+    if (!plainItem) return deny;
+  }
+  return { ok: true };
+}
+
+/** Pharmacy rules for staff: purchases, purchase prices, deleting invoices. */
+function pharmacyStaffRules(a: Analysis, caller: Caller): Decision {
+  if (!staffWith(caller)) return { ok: true };
+  if (a.tables.some((t) => PURCHASE_TABLES.has(t))) {
+    if (a.verb === "select" ? !hasModule(caller, PURCHASE_READ_MODULES) : !hasModule(caller, ["purchase"])) {
+      return { ok: false, reason: "Your login has no access to purchases. Ask the owner." };
+    }
+  }
+  // Invoices are deleted by marking them deleted (checked with their rows in db.ts); a hard delete is never a staff action.
+  if (a.verb === "delete" && a.tables.some((t) => t === "invoices" || t === "invoice_items")) {
+    return { ok: false, reason: "You don't have permission for this action. Ask the owner (or the administrator) to allow it." };
+  }
+  if (costHidden(caller)) return costReadable(a);
+  return { ok: true };
+}
+
 /** Whether a caller may run this statement. `knownTables` is the database's own table list. */
 export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>): Decision {
   if (a.multiple) return { ok: false, reason: "Send one statement at a time." };
+  if (a.quotedNames && caller.role !== "super_admin") return { ok: false, reason: "Quoted or bracketed names are not accepted. Use plain table and column names." };
   if (a.verb === "other") return { ok: false, reason: "Schema changes run only from the migration script." };
   if (a.touchesPassword) return { ok: false, reason: "Passwords are checked and changed by the server only." };
   for (const t of a.tables) {
@@ -148,6 +216,8 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
       && !caller.permissions.some((p) => p.startsWith("hospital_"))) {
     return { ok: false, reason: "Your login has no access to hospital records." };
   }
+  const pharmacy = pharmacyStaffRules(a, caller);
+  if (!pharmacy.ok) return pharmacy;
   if (a.verb !== "select") {
     const access = hrAccess(caller);
     for (const t of a.tables) {
