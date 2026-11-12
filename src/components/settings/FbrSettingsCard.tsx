@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { FBR_PROVINCES } from "@/lib/fbrData";
-import { testFbrToken } from "@/lib/fbr";
+import { testFbrToken, type FbrServerConfig } from "@/lib/fbr";
+import { SERVER_DB, serverJson } from "@/lib/serverMode";
+import { FbrSubmissionsPanel } from "./FbrSubmissionsPanel";
 
 const PROVINCES = FBR_PROVINCES.map((p) => p.label);
 
@@ -27,11 +29,17 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
   const [showProdToken, setShowProdToken] = useState(false);
   const [testing, setTesting] = useState<"sandbox" | "production" | null>(null);
   const [tests, setTests] = useState<Partial<Record<"sandbox" | "production", { ok: boolean; message: string }>>>({});
+  // Web / desktop through MAVIN's server: tokens are kept there, encrypted; this page sees only a hint.
+  const [server, setServer] = useState<FbrServerConfig | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const loadServer = () =>
+    serverJson<FbrServerConfig>("/api/fbr/", { action: "config", tenantId }).then((c) => { setServer(c); setServerError(null); }, (e) => setServerError(e instanceof Error ? e.message : String(e)));
+  const savedHint = (environment: "sandbox" | "production") => (environment === "sandbox" ? server?.sandboxHint : server?.productionHint) ?? null;
 
   async function test(environment: "sandbox" | "production") {
     setTesting(environment);
     try {
-      const r = await testFbrToken(environment === "sandbox" ? sbToken : prodToken, environment);
+      const r = await testFbrToken(environment === "sandbox" ? sbToken : prodToken, environment, tenantId);
       setTests((t) => ({ ...t, [environment]: r }));
     } finally {
       setTesting(null);
@@ -44,6 +52,7 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
 
   useEffect(() => {
     if (!isTauri()) return;
+    if (SERVER_DB) void loadServer();
     void Promise.all([
       getSetting("fbr_enabled", tenantId),
       getSetting("fbr_environment", tenantId),
@@ -58,8 +67,9 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
       setRetailer(ret === "true");
       if (en) setEnabled(en);
       if (ev) setEnv(ev);
-      if (sb) setSbToken(sb);
-      if (prod) setProdToken(prod);
+      // Server mode never sends tokens to the page (these come back empty there).
+      if (sb && !SERVER_DB) setSbToken(sb);
+      if (prod && !SERVER_DB) setProdToken(prod);
       if (n) setNtn(n);
       if (nm) setName(nm);
       if (prov) setProvince(prov);
@@ -68,11 +78,24 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
   }, [tenantId]);
 
   async function save() {
+    if (SERVER_DB) {
+      // Typed tokens go to MAVIN's server (encrypted); an empty box keeps the saved one.
+      if (sbToken.trim() || prodToken.trim()) {
+        try {
+          setServer(await serverJson<FbrServerConfig>("/api/fbr/", { action: "tokens", tenantId, sandbox: sbToken.trim() || undefined, production: prodToken.trim() || undefined }));
+          setSbToken("");
+          setProdToken("");
+          setServerError(null);
+        } catch (e) {
+          setServerError(e instanceof Error ? e.message : String(e));
+          return;
+        }
+      }
+    }
     await Promise.all([
       setSetting("fbr_enabled", enabled, tenantId),
       setSetting("fbr_environment", env, tenantId),
-      setSetting("fbr_sandbox_token", sbToken, tenantId),
-      setSetting("fbr_production_token", prodToken, tenantId),
+      ...(SERVER_DB ? [] : [setSetting("fbr_sandbox_token", sbToken, tenantId), setSetting("fbr_production_token", prodToken, tenantId)]),
       setSetting("fbr_seller_ntn", ntn, tenantId),
       setSetting("fbr_seller_name", name, tenantId),
       setSetting("fbr_seller_province", province, tenantId),
@@ -103,6 +126,21 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
         </div>
       </div>
 
+      {SERVER_DB && (server || serverError) && (
+        <div className="mb-3 space-y-1.5">
+          {server && (
+            <p className={`rounded-lg px-3 py-2 text-xs ${server.route === "gateway" ? "bg-emerald-50 text-emerald-900" : "bg-sky-50 text-sky-900"}`}>
+              {server.route === "gateway"
+                ? <>Invoices go to FBR through <b>MAVIN&apos;s FBR gateway</b> (one fixed IP that PRAL whitelists for MAVIN). They can be submitted from any computer or phone.</>
+                : <>Invoices go to FBR from <b>this computer&apos;s internet connection</b>: PRAL must whitelist its public IP. Submit from the connection PRAL whitelisted.</>}
+              {" "}Tokens are kept encrypted on MAVIN&apos;s server and never shown again.
+            </p>
+          )}
+          {server && !server.storageReady && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">Token storage is not set up on MAVIN&apos;s server yet, so new tokens cannot be saved. Ask MAVIN support.</p>}
+          {serverError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{serverError}</p>}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* Enable / Environment row */}
         <Field label="Integration">
@@ -125,7 +163,7 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
               type={showSbToken ? "text" : "password"}
               value={sbToken}
               onChange={(e) => setSbToken(e.target.value)}
-              placeholder="Paste PRAL sandbox token…"
+              placeholder={savedHint("sandbox") ? `Saved (${savedHint("sandbox")}). Paste a new one to replace it` : "Paste PRAL sandbox token…"}
               className="pr-8"
             />
             <button
@@ -137,7 +175,7 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
             </button>
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            <Button onClick={() => void test("sandbox")} disabled={testing !== null || !sbToken.trim()}>{testing === "sandbox" ? "Testing…" : "Test sandbox token"}</Button>
+            <Button onClick={() => void test("sandbox")} disabled={testing !== null || !(sbToken.trim() || savedHint("sandbox"))}>{testing === "sandbox" ? "Testing…" : "Test sandbox token"}</Button>
           </div>
           {testResult("sandbox")}
         </Field>
@@ -147,7 +185,7 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
               type={showProdToken ? "text" : "password"}
               value={prodToken}
               onChange={(e) => setProdToken(e.target.value)}
-              placeholder="Paste PRAL production token…"
+              placeholder={savedHint("production") ? `Saved (${savedHint("production")}). Paste a new one to replace it` : "Paste PRAL production token…"}
               className="pr-8"
             />
             <button
@@ -159,7 +197,7 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
             </button>
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            <Button onClick={() => void test("production")} disabled={testing !== null || !prodToken.trim()}>{testing === "production" ? "Testing…" : "Test production token"}</Button>
+            <Button onClick={() => void test("production")} disabled={testing !== null || !(prodToken.trim() || savedHint("production"))}>{testing === "production" ? "Testing…" : "Test production token"}</Button>
           </div>
           {testResult("production")}
         </Field>
@@ -214,6 +252,9 @@ export function FbrSettingsCard({ tauriReady, tenantId, embedded = false }: { ta
           Save Changes
         </Button>
       </div>
+
+      {/* Attempts that need a person (server mode, the business's own settings). */}
+      {SERVER_DB && !tenantId && server && (server.canSubmit || server.canManage) && <FbrSubmissionsPanel />}
     </div>
   );
 }

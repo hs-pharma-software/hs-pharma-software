@@ -1,0 +1,32 @@
+[Unit]
+Description=MAVIN FBR gateway (forwards signed requests from MAVIN to FBR Digital Invoicing)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fbrgw
+Group=fbrgw
+WorkingDirectory=/opt/mavin-fbr-gateway
+EnvironmentFile=/etc/mavin-fbr-gateway.env
+ExecStart=/usr/bin/node /opt/mavin-fbr-gateway/dist/main.js
+# Restart on any exit; let in-flight FBR calls finish on stop (up to ~50 s).
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=60
+# Hardening: no new privileges, read-only system, private /tmp, no home.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

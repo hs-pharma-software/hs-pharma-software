@@ -137,6 +137,10 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     // Website and online store data (entitlements, orders, prescriptions) go through /api/web only.
     if (t.startsWith("web_")) return { ok: false, reason: "Website data is managed from Settings > Website." };
     if (t.startsWith("mail_")) return { ok: false, reason: "Mail is managed from Super Admin > Mail." };
+    // Server-only records (device secrets, payment and FBR credentials, FBR submissions): only their own APIs reach them.
+    if (t.startsWith("offline_")) return { ok: false, reason: "Offline devices are managed from Settings > Offline desktop." };
+    if (t.startsWith("payment_")) return { ok: false, reason: "Online payments are managed from Settings > Online payments." };
+    if (t.startsWith("fbr_")) return { ok: false, reason: "FBR records are managed through MAVIN's FBR service." };
     if (!knownTables.has(t)) return { ok: false, reason: `Unknown table ${t}.` };
   }
   // Hospital records are for logins with a hospital section (a pharmacy cashier's login has none).

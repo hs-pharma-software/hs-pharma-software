@@ -378,6 +378,7 @@ const MIGRATIONS = [
   { version: 82, label: 'purchase_items.disc_pct (extra discount % per purchase line)', statements: rustSchemaStatements(82) },
   { version: 83, label: 'customers.extra_discount, invoice_items.extra_disc_pct (extra discount on invoices and quotations)', statements: rustSchemaStatements(83) },
   { version: 84, label: 'Offline desktop: updated_at indexes for its copy of recent sales, purchases and cash', statements: rustSchemaStatements(84) },
+  { version: 85, label: 'FBR gateway: fbr_credentials (encrypted tokens), fbr_submissions (one row per attempt, one live per document)', statements: rustSchemaStatements(85) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

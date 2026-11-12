@@ -87,7 +87,7 @@ export async function submitServiceInvoiceToFbr(invoiceId: string, lines: Servic
     allowed
   );
   if ("error" in built) return fail(built.error.replace(/product FBR data/, "FBR details for service bills"));
-  const result = await submitInvoiceToFbr(built.payload, settings);
+  const result = await submitInvoiceToFbr(built.payload, settings, { docType: "invoice", docId: invoiceId });
   if (result.success && result.fbrInvoiceNo) await invoicesRepo.update(invoiceId, { fbr_invoice_no: result.fbrInvoiceNo });
   return result;
 }

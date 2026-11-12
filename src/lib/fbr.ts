@@ -7,6 +7,9 @@ import { getSetting } from "./repo/settings";
 import { useAuthStore } from "../store/authStore";
 import { normalizeNtn } from "./fbrData";
 import { localDate } from "./localDate";
+import { SERVER_DB, serverJson } from "./serverMode";
+import { interpretFbrSubmit, parseFbrJson, UNCERTAIN_MESSAGE, type FbrOutcome } from "./fbrResponse";
+export { interpretFbrSubmit, parseFbrJson, UNCERTAIN_MESSAGE, type FbrOutcome };
 
 const GW = "https://gw.fbr.gov.pk";
 const POST_URL = { sandbox: `${GW}/di_data/v1/di/postinvoicedata_sb`, production: `${GW}/di_data/v1/di/postinvoicedata` };
@@ -25,7 +28,24 @@ export interface FbrSettings {
   sellerAddress: string;
   /** Sales-tax profile is "retailer": sandbox uses SN026-SN028 for end consumers. */
   retailer: boolean;
+  /** Server mode: tokens stay on MAVIN's server (the fields above hold SERVER_TOKEN). */
+  serverManaged?: boolean;
+  /** Server mode: "gateway" (MAVIN's static IP) or "direct" (this browser calls FBR). */
+  route?: "gateway" | "direct";
 }
+
+/** What MAVIN's server says about this business's FBR set-up (server mode). */
+export interface FbrServerConfig {
+  route: "gateway" | "direct";
+  hasSandbox: boolean;
+  hasProduction: boolean;
+  sandboxHint: string | null;
+  productionHint: string | null;
+  canManage: boolean;
+  canSubmit: boolean;
+  storageReady: boolean;
+}
+export const fbrServerConfig = () => serverJson<FbrServerConfig>("/api/fbr/", { action: "config" });
 
 export async function loadFbrSettings(): Promise<FbrSettings> {
   const [enabled, env, sbToken, prodToken, ntn, name, province, address, retailer] = await Promise.all([
@@ -39,12 +59,15 @@ export async function loadFbrSettings(): Promise<FbrSettings> {
     getSetting("fbr_seller_address"),
     getSetting("fbr_retailer"),
   ]);
+  // Server mode: the tokens are on MAVIN's server; this page only learns which exist.
+  const server = SERVER_DB ? await fbrServerConfig().catch(() => null) : null;
   return {
+    ...(SERVER_DB ? { serverManaged: true, route: server?.route ?? "direct" } : {}),
     // The Super Admin can switch FBR off for a pharmacy (tenant detail).
     enabled: enabled === "true" && useAuthStore.getState().currentTenant?.fbrAllowed !== false,
     environment: env === "production" ? "production" : "sandbox",
-    sandboxToken: (sbToken ?? "").trim(),
-    productionToken: (prodToken ?? "").trim(),
+    sandboxToken: SERVER_DB ? (server?.hasSandbox ? SERVER_TOKEN : "") : (sbToken ?? "").trim(),
+    productionToken: SERVER_DB ? (server?.hasProduction ? SERVER_TOKEN : "") : (prodToken ?? "").trim(),
     sellerNtn: normalizeNtn(ntn),
     sellerName: name ?? "",
     sellerProvince: province || "Punjab",
@@ -102,28 +125,22 @@ export interface FbrSubmitResult {
   fbrInvoiceNo: string | null;
   error: string | null;
   rawResponse: unknown;
+  outcome?: FbrOutcome;
+  /** The server's record of this attempt (server mode). */
+  submissionId?: string;
 }
 
-interface FbrResponse {
-  invoiceNumber?: string;
-  validationResponse?: {
-    statusCode?: string;
-    errorCode?: string | null;
-    error?: string;
-    invoiceStatuses?: { itemSNo?: string; statusCode?: string; errorCode?: string | null; error?: string }[] | null;
-  };
+/** The document a submission is for (server mode keeps one live attempt per document). */
+export interface FbrDocRef {
+  docType: "invoice" | "es_doc";
+  docId: string;
 }
 
-/** FBR sometimes returns JSON with trailing commas (`"x":"",\n}`). */
-export function parseFbrJson<T>(text: string): T {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return JSON.parse(text.replace(/,\s*([}\]])/g, "$1")) as T;
-  }
-}
+/** Stands in for a token kept on MAVIN's server: never sent to FBR from the browser. */
+export const SERVER_TOKEN = "@server";
 
 async function fbrFetch(url: string, token: string, init: RequestInit = {}): Promise<Response> {
+  if (token === SERVER_TOKEN) throw new Error("This FBR token is kept on MAVIN's server.");
   return fetch(url, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
@@ -131,64 +148,70 @@ async function fbrFetch(url: string, token: string, init: RequestInit = {}): Pro
   });
 }
 
-export async function submitInvoiceToFbr(payload: FbrInvoicePayload, settings: FbrSettings): Promise<FbrSubmitResult> {
-  const token = activeToken(settings);
-  const fail = (error: string, rawResponse: unknown = null): FbrSubmitResult => ({
-    success: false,
-    fbrInvoiceNo: null,
-    error,
-    rawResponse,
-  });
-  if (!token) return fail(`No FBR ${settings.environment} token configured in Settings > FBR.`);
+const asResult = (r: ReturnType<typeof interpretFbrSubmit>): FbrSubmitResult =>
+  ({ success: r.outcome === "accepted", fbrInvoiceNo: r.fbrInvoiceNo, error: r.error, rawResponse: r.json, outcome: r.outcome });
 
-  let text: string;
-  let status: number;
+/** The browser's own call to FBR (desktop, or server mode without the gateway). */
+async function postFromBrowser(payload: FbrInvoicePayload, environment: "sandbox" | "production", token: string): Promise<
+  { kind: "response"; status: number; text: string } | { kind: "uncertain"; error: string }
+> {
   try {
-    const res = await fbrFetch(POST_URL[settings.environment], token, { method: "POST", body: JSON.stringify(payload) });
-    status = res.status;
-    text = await res.text();
+    const res = await fbrFetch(POST_URL[environment], token, { method: "POST", body: JSON.stringify(payload) });
+    return { kind: "response", status: res.status, text: await res.text() };
   } catch (e) {
     const err = e as Error;
-    if (err.name === "TimeoutError") return fail("FBR did not respond within 45 seconds. Check the internet connection and try again.");
-    return fail(`Could not reach FBR: ${err.message}`);
+    // A browser cannot tell "never sent" from "sent, answer lost": both are treated as unclear.
+    return { kind: "uncertain", error: err.name === "TimeoutError" ? "FBR did not answer within 45 seconds." : `The connection to FBR failed (${err.message}).` };
   }
+}
 
-  if (status === 401) return fail("FBR rejected the token (401 Unauthorized). Check the token in Settings > FBR.");
-  if (status >= 500) return fail(`FBR server error (HTTP ${status}). Try again later.`);
-
-  let json: FbrResponse;
-  try {
-    json = parseFbrJson<FbrResponse>(text);
-  } catch {
-    return fail(`Unexpected response from FBR (HTTP ${status}): ${text.slice(0, 200)}`, text);
+/** Sends an invoice to FBR.
+ * Server mode (web / desktop through MAVIN): the server records the attempt
+ * first (one live attempt per document), then sends it through MAVIN's FBR
+ * gateway, or hands it back for this browser to send ("direct") and records
+ * the answer. A previous attempt with an unclear outcome blocks a new one. */
+export async function submitInvoiceToFbr(payload: FbrInvoicePayload, settings: FbrSettings, ref?: FbrDocRef): Promise<FbrSubmitResult> {
+  const fail = (error: string): FbrSubmitResult => ({ success: false, fbrInvoiceNo: null, error, rawResponse: null });
+  if (SERVER_DB) {
+    if (!ref) return fail("Internal: the document to submit is missing.");
+    try {
+      const r = await serverJson<FbrSubmitResult & { direct?: boolean; token?: string; environment?: "sandbox" | "production" }>(
+        "/api/fbr/", { action: "submit", ...ref, environment: settings.environment, payload },
+      );
+      if (!r.direct) return r;
+      const sent = await postFromBrowser(payload, r.environment ?? settings.environment, r.token ?? "");
+      return await serverJson<FbrSubmitResult>("/api/fbr/", { action: "finish", submissionId: r.submissionId, report: sent });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : String(e));
+    }
   }
-
-  const vr = json.validationResponse;
-  const itemErrors = (vr?.invoiceStatuses ?? [])
-    .filter((s) => s.statusCode && s.statusCode !== "00")
-    .map((s) => `Item ${s.itemSNo}: ${s.error || "invalid"}${s.errorCode ? ` [${s.errorCode}]` : ""}`);
-
-  if (vr?.statusCode === "00" && json.invoiceNumber && itemErrors.length === 0) {
-    return { success: true, fbrInvoiceNo: json.invoiceNumber, error: null, rawResponse: json };
-  }
-  if (itemErrors.length > 0) return fail(itemErrors.join("\n"), json);
-  if (vr?.errorCode === "500") {
-    // FBR returns this generic "expected time" text for server-side crashes,
-    // not real timeouts, so retrying the same data never helps.
-    return fail(
-      "FBR could not process this invoice (FBR error 500). This is usually caused by invalid data such as special characters in a product name.",
-      json
-    );
-  }
-  return fail(`${vr?.error || "FBR validation failed"}${vr?.errorCode ? ` [${vr.errorCode}]` : ""}`, json);
+  const token = activeToken(settings);
+  if (!token) return fail(`No FBR ${settings.environment} token configured in Settings > FBR.`);
+  const sent = await postFromBrowser(payload, settings.environment, token);
+  if (sent.kind === "uncertain") return { ...fail(`${sent.error} ${UNCERTAIN_MESSAGE}`), outcome: "uncertain" };
+  return asResult(interpretFbrSubmit(sent.status, sent.text));
 }
 
 /** Tests a token on FBR's validate endpoint of that environment with an
  * empty invoice: nothing is recorded. FBR answers 401 to a token it does not
  * accept there; any other answer (it reports the invoice as invalid) means the
  * token works. */
-export async function testFbrToken(token: string, environment: "sandbox" | "production"): Promise<{ ok: boolean; message: string }> {
+export async function testFbrToken(token: string, environment: "sandbox" | "production", tenantId?: string): Promise<{ ok: boolean; message: string }> {
   const t = token.trim();
+  // Server mode: MAVIN's server tests it (the typed token, or the saved one when none is typed).
+  if (SERVER_DB) {
+    try {
+      const r = await serverJson<{ ok: boolean; message: string; direct?: boolean; token?: string }>("/api/fbr/", { action: "test", environment, token: t || undefined, tenantId });
+      if (!r.direct) return r;
+      return await testFromBrowser(r.token ?? "", environment);
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return testFromBrowser(t, environment);
+}
+
+async function testFromBrowser(t: string, environment: "sandbox" | "production"): Promise<{ ok: boolean; message: string }> {
   if (!t) return { ok: false, message: `Enter the ${environment} token first.` };
   let res: Response;
   try {
@@ -215,10 +238,18 @@ const cache = new Map<string, Promise<unknown>>();
 function fbrGet<T>(path: string, token: string): Promise<T> {
   const key = path;
   if (!cache.has(key)) {
-    const p = fbrFetch(`${GW}${path}`, token)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`FBR reference API HTTP ${r.status}`);
-        return parseFbrJson<T>(await r.text());
+    // Server mode: MAVIN's server looks it up (through its gateway, or hands back the token for this browser).
+    const fetched: Promise<{ status: number; text: string }> = SERVER_DB
+      ? serverJson<{ status?: number; body?: string; direct?: boolean; token?: string }>("/api/fbr/", { action: "reference", path }).then(async (r) => {
+          if (!r.direct) return { status: r.status ?? 0, text: r.body ?? "" };
+          const res = await fbrFetch(`${GW}${path}`, r.token ?? "");
+          return { status: res.status, text: await res.text() };
+        })
+      : fbrFetch(`${GW}${path}`, token).then(async (r) => ({ status: r.status, text: await r.text() }));
+    const p = fetched
+      .then(({ status, text }) => {
+        if (status < 200 || status >= 300) throw new Error(`FBR reference API HTTP ${status}`);
+        return parseFbrJson<T>(text);
       })
       .catch((e) => {
         cache.delete(key);

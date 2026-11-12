@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Building2, Layers, Users, Pill, Shapes, Sparkles, Handshake, Inbox, TrendingUp, Mail, CreditCard } from "lucide-react";
+import { LayoutDashboard, Building2, Layers, Users, Pill, Shapes, Sparkles, Handshake, Inbox, TrendingUp, Mail, CreditCard, Receipt } from "lucide-react";
 
 export interface AdminNavItem {
   label: string;
@@ -17,6 +17,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "Billori", href: "/admin/billori", icon: Sparkles },
   { label: "Sub Supers", href: "/admin/sub-supers", icon: Handshake },
   { label: "Payments", href: "/admin/payments", icon: CreditCard },
+  { label: "FBR Integration", href: "/admin/fbr", icon: Receipt },
   { label: "Queries", href: "/admin/queries", icon: Inbox },
   { label: "Mail", href: "/admin/mail", icon: Mail },
   { label: "SEO", href: "/admin/seo", icon: TrendingUp },

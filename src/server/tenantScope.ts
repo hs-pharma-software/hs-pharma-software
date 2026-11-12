@@ -49,8 +49,10 @@ export const MAILBOX_OWNERS: Record<string, string[]> = {
 /** Global settings the app reads for every business. The AI keys are not among
  * them: the server calls the AI service itself (src/server/ai.ts). */
 export const GLOBAL_READABLE_SETTINGS = ["billori_model", "platform.enforce_expiry"];
-/** The business's own settings that stay on the server. */
-export const SERVER_ONLY_SETTINGS = ["ai_gemini_api_key"];
+/** The business's own settings that stay on the server. The FBR tokens of
+ * older versions (plain text) are read only by src/server/fbr, which moves
+ * them into encrypted storage. */
+export const SERVER_ONLY_SETTINGS = ["ai_gemini_api_key", "fbr_sandbox_token", "fbr_production_token"];
 /** Readable by everyone, unfiltered. */
 const OPEN_READ = new Set(["subscription_plans", "schema_migrations", "plan_addons"]);
 /** Local-only bookkeeping of the desktop app. */

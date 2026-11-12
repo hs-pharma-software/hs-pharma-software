@@ -40,7 +40,8 @@ export async function submitSaleToFbr(docId: string): Promise<{ ok: boolean; fbr
   }
   const built = buildFbrPayload(doc.date, { name: doc.party_name, ntnCnic: null, province: null, address: doc.party_address, registered: false }, rows, settings, allowed);
   if ("error" in built) return { ok: false, fbrNo: null, error: built.error };
-  const res = await submitInvoiceToFbr(built.payload, settings);
-  await electric.setFbrResult(docId, res.success, res.fbrInvoiceNo, res.error);
+  const res = await submitInvoiceToFbr(built.payload, settings, { docType: "es_doc", docId });
+  // Unclear outcome: not marked rejected (FBR may have it); the server's record shows it as uncertain.
+  if (res.outcome !== "uncertain") await electric.setFbrResult(docId, res.success, res.fbrInvoiceNo, res.error);
   return { ok: res.success, fbrNo: res.fbrInvoiceNo, error: res.error };
 }

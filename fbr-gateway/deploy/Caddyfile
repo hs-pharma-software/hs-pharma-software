@@ -1,0 +1,29 @@
+# /etc/caddy/Caddyfile: HTTPS for the gateway (Let's Encrypt certificate, renewed automatically).
+# Needs the DNS record fbr-api.mavin.pk -> this server's IP, and ports 80 and 443 open.
+fbr-api.mavin.pk {
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy 127.0.0.1:8787 {
+		transport http {
+			# FBR can take ~40 s; the gateway gives up at FBR_TIMEOUT_MS.
+			response_header_timeout 70s
+			# Close idle connections to the gateway before the gateway does (it waits 75 s),
+			# so a request is never sent on a connection that is being closed.
+			keepalive 30s
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	log {
+		output file /var/log/caddy/fbr-api.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		# Request lines only; bodies are never logged.
+		format json
+	}
+}

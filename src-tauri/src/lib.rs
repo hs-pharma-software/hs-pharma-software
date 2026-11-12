@@ -1867,6 +1867,53 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v85() -> &'static str {
+    r#"
+    -- FBR Digital Invoicing through MAVIN's server (and its FBR gateway).
+    -- Tokens per business, encrypted by the server (never readable by browsers).
+    CREATE TABLE IF NOT EXISTS fbr_credentials (
+        tenant_id TEXT PRIMARY KEY,
+        sandbox_token_enc TEXT,
+        production_token_enc TEXT,
+        sandbox_hint TEXT,
+        production_hint TEXT,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    -- One row per attempt to send a document to FBR, recorded BEFORE sending.
+    -- status: pending (being sent), accepted, rejected (FBR said no: may be
+    -- sent again), uncertain (no clear answer: FBR may have it; never sent
+    -- again until a person resolves it), not_received (resolved: FBR does not
+    -- have it, may be sent again).
+    CREATE TABLE IF NOT EXISTS fbr_submissions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT,
+        doc_type TEXT NOT NULL,
+        doc_id TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        route TEXT NOT NULL,
+        status TEXT NOT NULL,
+        payload_hash TEXT,
+        fbr_invoice_no TEXT,
+        http_status INTEGER,
+        error TEXT,
+        response_excerpt TEXT,
+        resolution TEXT,
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    -- At most one live attempt (being sent, unclear, or accepted) per document and environment.
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fbr_submissions_live ON fbr_submissions (tenant_id, doc_type, doc_id, environment) WHERE status IN ('pending', 'uncertain', 'accepted');
+    CREATE INDEX IF NOT EXISTS idx_fbr_submissions_tenant ON fbr_submissions (tenant_id, status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_fbr_submissions_doc ON fbr_submissions (tenant_id, doc_type, doc_id);
+    "#
+}
+
 fn schema_sql_v84() -> &'static str {
     r#"
     -- Offline desktop: its copy of recent sales, purchases and cash asks
@@ -4525,6 +4572,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 84,
             description: "offline_history_indexes",
             sql: schema_sql_v84(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 85,
+            description: "fbr_gateway_credentials_submissions",
+            sql: schema_sql_v85(),
             kind: MigrationKind::Up,
         },
     ]

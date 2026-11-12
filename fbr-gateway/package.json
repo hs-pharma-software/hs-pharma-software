@@ -1,0 +1,19 @@
+{
+  "name": "mavin-fbr-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MAVIN FBR gateway: forwards signed requests from MAVIN's server to FBR Digital Invoicing from one static IP.",
+  "type": "module",
+  "main": "dist/main.js",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3"
+  }
+}
