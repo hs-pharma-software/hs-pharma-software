@@ -504,9 +504,9 @@ export class OfflineDevice {
   }
 
   /** One page of one table for the screens' read-only copy (device credentials). */
-  async mirrorPage(table: string, offset: number) {
-    const r = await this.cfg.transport.post<{ result: { rows: Record<string, unknown>[]; next: number | null } }>(
-      "/api/offline/", { action: "mirror", protocol: PROTOCOL_VERSION, table, offset }, this.deviceHeader(),
+  async mirrorPage(table: string, offset: number, since?: string | null) {
+    const r = await this.cfg.transport.post<{ result: { rows: Record<string, unknown>[]; next: number | null; cutoff?: string | null } }>(
+      "/api/offline/", { action: "mirror", protocol: PROTOCOL_VERSION, table, offset, ...(since ? { since } : {}) }, this.deviceHeader(),
     );
     return r.result;
   }

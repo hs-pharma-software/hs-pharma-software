@@ -3624,3 +3624,17 @@
     ALTER TABLE invoice_items ADD COLUMN extra_disc_pct REAL NOT NULL DEFAULT 0;
     
 ;
+-- schema_sql_v84
+
+    -- Offline desktop: its copy of recent sales, purchases and cash asks
+    -- "what changed since ...?" every few minutes. These indexes answer that
+    -- from the changed rows only, not by reading the whole branch.
+    CREATE INDEX IF NOT EXISTS idx_invoices_branch_updated ON invoices (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_tenant_updated ON invoice_items (tenant_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_purchases_branch_updated ON purchases (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_tenant_updated ON purchase_items (tenant_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_expenses_branch_updated ON expenses (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_cash_register_entries_branch_updated ON cash_register_entries (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_ledger_adjustments_branch_updated ON ledger_adjustments (tenant_id, branch_id, updated_at);
+    
+;

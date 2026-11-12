@@ -15,13 +15,16 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 import { OfflineDevice, TransportError, type SaleInput, type SecretStore, type Transport } from "./core/device";
-import { Mirror } from "./core/mirror";
+import { Mirror, readOnlySql } from "./core/mirror";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
 const PROBE_EVERY_MS = 15_000;
 const MIRROR_EVERY_MS = 5 * 60_000;
-const MIRROR_TABLES = ["tenants", "branches", "settings", "users", "categories", "sub_categories", "uoms", "products", "price_list", "product_batches", "customers", "salesmen"];
+/** Copied in full each time (small: catalogue, people, settings). */
+const MIRROR_TABLES = ["tenants", "branches", "settings", "users", "categories", "sub_categories", "uoms", "products", "price_list", "product_batches", "customers", "salesmen", "suppliers"];
+/** Recent history of this branch (the server's window), only what changed. Documents before their items. */
+const HISTORY_TABLES = ["invoices", "invoice_items", "purchases", "purchase_items", "expenses", "cash_register_entries", "ledger_adjustments"];
 const APP_ORIGIN = "mavin://app";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "mavin", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
@@ -127,19 +130,36 @@ async function pageRequest(a: unknown) {
   const h = (o.headers ?? {}) as Record<string, unknown>;
   for (const k of ["Content-Type", "X-Branch"]) if (typeof h[k] === "string") headers[k] = h[k] as string;
   if (cookies.size) headers.Cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30_000);
-  try {
-    const res = await fetch(`${API_BASE}${path}`, { method, headers, body: method === "GET" ? undefined : typeof o.body === "string" ? o.body : undefined, signal: ctrl.signal });
-    keepCookies(res);
-    setOnline(true);
-    return { status: res.status, body: await res.text() };
-  } catch {
-    setOnline(false);
-    return { status: 0, body: "" };
-  } finally {
-    clearTimeout(timer);
+  const body = method === "GET" ? undefined : typeof o.body === "string" ? o.body : undefined;
+  for (let attempt = 0; ; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30_000);
+    try {
+      const res = await fetch(`${API_BASE}${path}`, { method, headers, body, signal: ctrl.signal });
+      keepCookies(res);
+      setOnline(true);
+      return { status: res.status, body: await res.text() };
+    } catch (e) {
+      // A kept-alive connection the server had closed: sent again once, only if repeating is harmless.
+      if (attempt === 0 && droppedConnection(e) && safeToRepeat(method, path, body)) continue;
+      console.error("[page]", method, path.split("?")[0], e instanceof Error ? `${e.message} ${String((e as { cause?: unknown }).cause ?? "")}` : e);
+      setOnline(false);
+      return { status: 0, body: "" };
+    } finally {
+      clearTimeout(timer);
+    }
   }
+}
+
+/** Repeating this page call cannot change anything twice: a GET, signing in,
+ * or database statements that only read. Saves are never repeated. */
+function safeToRepeat(method: string, path: string, body: string | undefined) {
+  if (method === "GET" || path.startsWith("/api/auth/login")) return true;
+  if (!path.startsWith("/api/db") || !body) return false;
+  try {
+    const b = JSON.parse(body) as { statements?: { sql?: unknown }[] };
+    return Array.isArray(b.statements) && b.statements.length > 0 && b.statements.every((s) => typeof s?.sql === "string" && readOnlySql(s.sql));
+  } catch { return false; }
 }
 
 // ── Offline engine and the read-only copy ────────────────────────────────
@@ -149,6 +169,7 @@ let mirror: Mirror | null = null;
 let win: BrowserWindow | null = null;
 let quitting = false;
 let lastMirror = 0;
+let lastHistory = 0;
 
 function openMirror() {
   const id = device.identity;
@@ -173,11 +194,20 @@ function syncAll(force = false): Promise<void> {
       if (!device?.provisioned || quitting) return;
       const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
       if (r?.error) console.error("[sync]", r.error);
-      if (r && !r.error && mirror && (force || Date.now() - lastMirror > MIRROR_EVERY_MS)) {
+      const due = force || Date.now() - lastMirror > MIRROR_EVERY_MS;
+      if (r && !r.error && mirror && due) {
         try {
           await mirror.refresh(MIRROR_TABLES, (t, off) => device.mirrorPage(t, off));
           lastMirror = Date.now();
         } catch (e) { console.error("[mirror] refresh", e instanceof Error ? e.message : e); }
+      }
+      // Recent sales, purchases and cash: on the same rhythm, and at once after
+      // sales were sent (they then show from the server's own rows).
+      if (r && !r.error && mirror && (due || r.pushed > 0 || Date.now() - lastHistory > MIRROR_EVERY_MS)) {
+        try {
+          await mirror.refreshHistory(HISTORY_TABLES, (t, off, since) => device.mirrorPage(t, off, since));
+          lastHistory = Date.now();
+        } catch (e) { console.error("[mirror] history", e instanceof Error ? e.message : e); }
       }
       overlay();
       pushStatus();

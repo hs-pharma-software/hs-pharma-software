@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { enterToNextField, useFieldHotkeys } from "@/lib/formKeys";
+import type { ProductPickerHandle } from "@/components/products/ProductPicker";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -45,6 +47,9 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
   viewOnly?: boolean;
 }) {
   const [loading, setLoading] = useState(Boolean(quotationId));
+  const formRef = useRef<HTMLFormElement>(null);
+  const pickerRef = useRef<ProductPickerHandle>(null);
+  useFieldHotkeys(formRef, !viewOnly);
   const [quotationNo, setQuotationNo] = useState<number | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
@@ -255,7 +260,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
   return (
     <Modal title={viewOnly ? `Quotation #${quotationNo ?? ""}` : quotationId ? `Edit Quotation #${quotationNo ?? ""}` : "Add Quotation"} onClose={onClose} width="max-w-6xl">
       {loading ? <p className="py-10 text-center text-sm text-neutral-400">Loading quotation...</p> : (
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form ref={formRef} onSubmit={handleSubmit} onKeyDown={(e) => enterToNextField(e, () => pickerRef.current?.focus())} className="flex flex-col gap-3">
         <fieldset disabled={viewOnly} className="contents">
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <Field label="Invoice Type">
@@ -307,7 +312,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
 
         {!viewOnly && (
           <Field label="Barcode/Product Name">
-            <ProductPicker onSelect={(p) => void onProductSelected(p)} autoFocus />
+            <ProductPicker ref={pickerRef} onSelect={(p) => void onProductSelected(p)} autoFocus />
           </Field>
         )}
 

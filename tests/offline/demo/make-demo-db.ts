@@ -46,5 +46,23 @@ for (const [id, name, barcode, packing, sec, price, disc] of products) {
 }
 run(`INSERT INTO customers (id, tenant_id, name, phone, opening_balance, balance_type, discount_pct, created_at, updated_at) VALUES ('cu-1', 'demo-t', 'Ali Raza', '0301-1112223', 0, 'receivable', 0, ?, ?)`, T, T);
 run(`INSERT INTO salesmen (id, tenant_id, name, created_at, updated_at) VALUES (?, 'demo-t', 'Counter', ?, ?)`, randomUUID(), T, T);
+
+// History made elsewhere (web, phone app): a supplier, a purchase, two earlier invoices.
+/** A row with the given values; other required columns get a plain default. */
+function row(table: string, values: Record<string, unknown>) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; type: string; notnull: number; dflt_value: unknown }[];
+  const v: Record<string, unknown> = { tenant_id: "demo-t", created_at: T, updated_at: T, ...values };
+  for (const c of cols) if (c.notnull && c.dflt_value == null && v[c.name] === undefined) v[c.name] = /INT|REAL|NUM/i.test(c.type) ? 0 : "";
+  const keys = Object.keys(v).filter((k) => cols.some((c) => c.name === k));
+  run(`INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`, ...keys.map((k) => v[k]));
+}
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+row("suppliers", { id: "s-medi", name: "Medi Distributors", phone: "042-1234567" });
+row("purchases", { id: "pu-1", branch_id: "main-demo-t", supplier_id: "s-medi", purchase_no: 1, date: daysAgo(3), total: 2400, payable: 2400, paid: 2400 });
+row("purchase_items", { id: "pu-1-a", purchase_id: "pu-1", branch_id: "main-demo-t", product_id: "p-panadol", qty: 10, purchase_price: 24 });
+row("invoices", { id: "inv-web-1", branch_id: "main-demo-t", invoice_no: 1, date: daysAgo(2), inv_on: "cash", invoice_type: "retail", customer_name: "Walk-in (web)", total: 300, payable: 300, paid: 300 });
+row("invoice_items", { id: "inv-web-1-a", invoice_id: "inv-web-1", branch_id: "main-demo-t", product_id: "p-panadol", qty: 1, sale_price: 30, total: 300 });
+row("invoices", { id: "inv-app-1", branch_id: "main-demo-t", invoice_no: 2, date: daysAgo(1), inv_on: "cash", invoice_type: "retail", customer_name: "Ali Raza (phone app)", total: 145, payable: 145, paid: 145 });
+row("invoice_items", { id: "inv-app-1-a", invoice_id: "inv-app-1", branch_id: "main-demo-t", product_id: "p-hydryllin", qty: 1, sale_price: 145, total: 145 });
 db.close();
 console.log(`demo database: ${file} (schema up to v${v - 1}; login demo / demo-pass)`);

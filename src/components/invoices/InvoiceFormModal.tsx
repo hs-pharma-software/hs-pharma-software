@@ -52,6 +52,7 @@ import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
 import { localDate } from "@/lib/localDate";
 import { serverJson } from "@/lib/serverMode";
 import { desktopCall, useDesktopStatus, NeedsInternetError } from "@/lib/desktopBridge";
+import { enterToNextField, useFieldHotkeys } from "@/lib/formKeys";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -232,16 +233,24 @@ export function InvoiceFormModal({
     lineInputRefs.current[rowIdx][colIdx] = el;
   }
 
-  /** Enter on a line input: advance to next column; last column returns focus to the product search bar. */
+  /** Enter on a line input: the next column that can be typed in (locked ones,
+   * e.g. bonus and price offline, are skipped); after the last, back to the
+   * product search bar. */
   function handleLineEnter(e: React.KeyboardEvent, rowIdx: number, colIdx: number) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (colIdx < LAST_COL) {
-      lineInputRefs.current[rowIdx]?.[colIdx + 1]?.focus();
-    } else {
-      pickerRef.current?.focus();
+    for (let c = colIdx + 1; c <= LAST_COL; c++) {
+      const el = lineInputRefs.current[rowIdx]?.[c];
+      if (el && !el.disabled && !el.readOnly) {
+        el.focus();
+        el.select();
+        return;
+      }
     }
+    pickerRef.current?.focus();
   }
+
+  useFieldHotkeys(formRef, active);
 
   useEffect(() => {
     void customersRepo.list().then(setCustomers);
@@ -839,7 +848,7 @@ export function InvoiceFormModal({
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading invoice...</p>
       ) : (
-      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form ref={formRef} onSubmit={handleSubmit} onKeyDown={(e) => enterToNextField(e, () => pickerRef.current?.focus())} className="flex flex-col gap-3">
         {offline && (
           <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <b>Offline.</b> Cash sales are saved on this computer and sent to MAVIN.pk once when the internet returns.

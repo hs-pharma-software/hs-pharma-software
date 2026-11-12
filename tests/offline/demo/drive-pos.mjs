@@ -43,6 +43,19 @@ for (const step of steps) {
     await js(`[...document.querySelectorAll("header button")].find((b) => /Sync now/.test(b.innerText))?.click()`);
     await sleep(8000);
     console.log("panel:", await js(`document.querySelector("header .w-72")?.innerText?.replace(/\\s+/g, " ") ?? null`));
+  } else if (name === "press") {
+    // A real key press (e.g. press:Enter, press:F8) on whatever has the cursor.
+    const vk = arg === "Enter" ? 13 : /^F\d+$/.test(arg) ? 111 + Number(arg.slice(1)) : 0;
+    await cdp("Input.dispatchKeyEvent", { type: "rawKeyDown", key: arg, code: arg, windowsVirtualKeyCode: vk });
+    if (arg === "Enter") await cdp("Input.dispatchKeyEvent", { type: "char", key: "Enter", text: "\r", windowsVirtualKeyCode: 13 });
+    await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: arg, code: arg, windowsVirtualKeyCode: vk });
+    await sleep(400);
+  } else if (name === "focused") {
+    // Which field has the cursor: its label, or its column in an item line.
+    console.log(`focused (${arg}):`, await js(`(() => { const e = document.activeElement; if (!e || e === document.body) return "nothing";
+      const label = e.closest("label")?.querySelector("span")?.textContent?.trim();
+      const td = e.closest("td"); const th = td ? td.closest("table")?.querySelectorAll("thead th")[td.cellIndex]?.textContent?.trim() : null;
+      return label ? "field: " + label : th ? "line column: " + th : (e.getAttribute("placeholder") ? "box: " + e.getAttribute("placeholder") : e.tagName); })()`));
   } else if (name === "load") {
     // A full page load of an app path (the sign-in is kept).
     await js(`location.assign(${JSON.stringify(arg)})`);

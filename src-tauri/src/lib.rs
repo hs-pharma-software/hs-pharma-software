@@ -1867,6 +1867,21 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v84() -> &'static str {
+    r#"
+    -- Offline desktop: its copy of recent sales, purchases and cash asks
+    -- "what changed since ...?" every few minutes. These indexes answer that
+    -- from the changed rows only, not by reading the whole branch.
+    CREATE INDEX IF NOT EXISTS idx_invoices_branch_updated ON invoices (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_invoice_items_tenant_updated ON invoice_items (tenant_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_purchases_branch_updated ON purchases (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_tenant_updated ON purchase_items (tenant_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_expenses_branch_updated ON expenses (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_cash_register_entries_branch_updated ON cash_register_entries (tenant_id, branch_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_ledger_adjustments_branch_updated ON ledger_adjustments (tenant_id, branch_id, updated_at);
+    "#
+}
+
 fn schema_sql_v83() -> &'static str {
     r#"
     -- Extra discount: switched on per customer by the owner (or staff allowed
@@ -4504,6 +4519,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 83,
             description: "customer_extra_discount",
             sql: schema_sql_v83(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 84,
+            description: "offline_history_indexes",
+            sql: schema_sql_v84(),
             kind: MigrationKind::Up,
         },
     ]

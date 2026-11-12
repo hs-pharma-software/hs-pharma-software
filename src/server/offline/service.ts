@@ -564,26 +564,55 @@ const MIRROR: Record<string, (T: string, B: string, groups: string[]) => { where
   customers: (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] }),
   salesmen: (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] }),
 };
+MIRROR.suppliers = (T) => ({ where: `tenant_id = ? AND deleted_at IS NULL`, args: [T] });
 export const MIRROR_TABLES = Object.keys(MIRROR);
+
+/** History the desktop keeps for its branch: the last HISTORY_DAYS days (by
+ * the document's date), so the screens show recent sales, purchases and cash
+ * offline, including those made online, on other counters or on phones.
+ * Fetched in full, or only rows changed since a time (deleted ones included,
+ * so the copy drops them). Items follow their document's date. */
+export const HISTORY_DAYS = 60;
+const inWindow = (parent: string) => `SELECT id FROM ${parent} WHERE tenant_id = ? AND branch_id = ? AND date >= ?`;
+const HISTORY: Record<string, (T: string, B: string, cutoff: string) => { where: string; args: unknown[] }> = {
+  invoices: (T, B, c) => ({ where: `tenant_id = ? AND branch_id = ? AND date >= ?`, args: [T, B, c] }),
+  invoice_items: (T, B, c) => ({ where: `tenant_id = ? AND invoice_id IN (${inWindow("invoices")})`, args: [T, T, B, c] }),
+  purchases: (T, B, c) => ({ where: `tenant_id = ? AND branch_id = ? AND date >= ?`, args: [T, B, c] }),
+  purchase_items: (T, B, c) => ({ where: `tenant_id = ? AND purchase_id IN (${inWindow("purchases")})`, args: [T, T, B, c] }),
+  expenses: (T, B, c) => ({ where: `tenant_id = ? AND branch_id = ? AND date >= ?`, args: [T, B, c] }),
+  cash_register_entries: (T, B, c) => ({ where: `tenant_id = ? AND branch_id = ? AND date >= ?`, args: [T, B, c] }),
+  ledger_adjustments: (T, B, c) => ({ where: `tenant_id = ? AND branch_id = ? AND date >= ?`, args: [T, B, c] }),
+};
+export const HISTORY_TABLES = Object.keys(HISTORY);
+
 const SECRET_COLUMN = /pass(word)?|secret|token|hash|salt|api_?key|private/i;
 /** Settings holding credentials (FBR tokens, AI keys ...) never leave either. */
 const SECRET_SETTING = /token|secret|api_?key|pass(word)?|private|pin\b|credential/i;
 const MIRROR_PAGE = 2000;
 
-/** One page of one table for the device's read-only copy. */
-export async function mirrorPage(sql: Sql, d: Device, table: unknown, offset: unknown) {
+/** One page of one table for the device's read-only copy. History tables
+ * take `since` (an updated_at) to send only what changed after it. */
+export async function mirrorPage(sql: Sql, d: Device, table: unknown, offset: unknown, since?: unknown, now = new Date()) {
   if (!(await deviceUsable(sql, d))) throw new HttpError(403, "This offline device has been turned off.");
   const name = String(table);
-  const def = MIRROR[name];
-  if (!def) throw new HttpError(400, "Unknown table.");
-  const t = await tenantRow(sql, d.tenant_id);
-  const { sharedCatalogGroupsFor } = await import("@/lib/catalogAccess");
-  const { where, args } = def(d.tenant_id, d.branch_id, sharedCatalogGroupsFor(String(t.business_type)));
   const from = Math.max(0, Math.floor(Number(offset) || 0));
+  let where: string;
+  let args: unknown[];
+  let cutoff: string | null = null;
+  if (HISTORY[name]) {
+    cutoff = new Date(now.getTime() - HISTORY_DAYS * 86_400_000).toISOString().slice(0, 10);
+    ({ where, args } = HISTORY[name](d.tenant_id, d.branch_id, cutoff));
+    if (typeof since === "string" && since) { where += ` AND updated_at > ?`; args.push(since); }
+    else where += ` AND deleted_at IS NULL`;
+  } else if (MIRROR[name]) {
+    const t = await tenantRow(sql, d.tenant_id);
+    const { sharedCatalogGroupsFor } = await import("@/lib/catalogAccess");
+    ({ where, args } = MIRROR[name](d.tenant_id, d.branch_id, sharedCatalogGroupsFor(String(t.business_type))));
+  } else throw new HttpError(400, "Unknown table.");
   const rows = (await sql.execute(`SELECT * FROM ${name} WHERE ${where} ORDER BY rowid LIMIT ? OFFSET ?`, [...args, MIRROR_PAGE + 1, from])).rows;
   const more = rows.length > MIRROR_PAGE;
   const clean = rows.slice(0, MIRROR_PAGE)
     .filter((r) => name !== "settings" || !SECRET_SETTING.test(String(r.key).slice(d.tenant_id.length + 2)))
     .map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !SECRET_COLUMN.test(k))));
-  return { table: name, rows: clean, next: more ? from + MIRROR_PAGE : null };
+  return { table: name, rows: clean, next: more ? from + MIRROR_PAGE : null, cutoff };
 }

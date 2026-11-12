@@ -13,7 +13,13 @@ import { dirname } from "node:path";
 import type { SalePayload } from "../../../src/offline/protocol";
 
 export interface LocalSale { payload: SalePayload; status: string; serverInvoiceNo: number | null }
-export type FetchPage = (table: string, offset: number) => Promise<{ rows: Record<string, unknown>[]; next: number | null }>;
+export type FetchPage = (table: string, offset: number, since?: string | null) => Promise<{ rows: Record<string, unknown>[]; next: number | null; cutoff?: string | null }>;
+
+/** History items and the document they belong to (items leave with it). */
+const HISTORY_PARENT: Record<string, { table: string; column: string }> = {
+  invoice_items: { table: "invoices", column: "invoice_id" },
+  purchase_items: { table: "purchases", column: "purchase_id" },
+};
 
 const WRITE = /\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|ANALYZE|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i;
 
@@ -51,6 +57,8 @@ export class Mirror {
       this.rw.exec(`CREATE TABLE IF NOT EXISTS mirror_meta (key TEXT PRIMARY KEY, value TEXT)`);
       this.rw.prepare(`INSERT OR REPLACE INTO mirror_meta (key, value) VALUES ('schema', ?)`).run(version);
     }
+    // Rows this computer laid over the copy (its own unsent sales), so only those are ever replaced.
+    this.rw.exec(`CREATE TABLE IF NOT EXISTS mirror_overlay (tbl TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (tbl, id))`);
     this.ro = new DatabaseSync(path, { readOnly: true });
   }
 
@@ -68,54 +76,126 @@ export class Mirror {
     return (this.ro.prepare(sql).all(...(args as never[])) as Record<string, unknown>[]).map((r) => ({ ...r }));
   }
 
-  /** Replaces the cached tables with the server's current rows (each table in one go). */
-  async refresh(tables: string[], fetchPage: FetchPage, now = new Date()) {
-    const info = (t: string) => this.rw.prepare(`PRAGMA table_info(${t})`).all() as { name: string; type: string; notnull: number; dflt_value: unknown }[];
-    const cols = (t: string) => new Set(info(t).map((c) => c.name));
-    // Required columns the server never sends (password hashes and other secrets): an empty placeholder.
-    const placeholders = (t: string) => info(t).filter((c) => c.notnull && c.dflt_value == null).map((c) => [c.name, /INT|REAL|NUM/i.test(c.type) ? 0 : ""] as const);
-    for (const table of tables) {
-      const rows: Record<string, unknown>[] = [];
-      for (let offset: number | null = 0; offset !== null;) {
-        const page = await fetchPage(table, offset);
-        rows.push(...page.rows);
-        offset = page.next;
-      }
-      const known = cols(table);
-      const fill = placeholders(table);
-      this.rw.exec("BEGIN IMMEDIATE");
-      try {
-        this.rw.prepare(`DELETE FROM ${table}`).run();
-        for (const raw of rows) {
-          const r: Record<string, unknown> = { ...raw };
-          for (const [k, v] of fill) if (r[k] == null) r[k] = v;
-          const keys = Object.keys(r).filter((k) => known.has(k));
-          if (!keys.length) continue;
-          this.rw.prepare(`INSERT OR REPLACE INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`).run(...(keys.map((k) => r[k] ?? null) as never[]));
-        }
-        this.rw.exec("COMMIT");
-      } catch (e) {
-        this.rw.exec("ROLLBACK");
+  private info(t: string) { return this.rw.prepare(`PRAGMA table_info(${t})`).all() as { name: string; type: string; notnull: number; dflt_value: unknown }[]; }
+
+  /** Writes server rows into a table (columns this copy does not have are
+   * dropped; required ones the server never sends, such as secrets, get an
+   * empty placeholder). Rows taken from the server stop being overlay rows. */
+  private upsert(table: string, rows: Record<string, unknown>[]) {
+    const info = this.info(table);
+    const known = new Set(info.map((c) => c.name));
+    const fill = info.filter((c) => c.notnull && c.dflt_value == null).map((c) => [c.name, /INT|REAL|NUM/i.test(c.type) ? 0 : ""] as const);
+    const untrack = this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ? AND id = ?`);
+    for (const raw of rows) {
+      const r: Record<string, unknown> = { ...raw };
+      for (const [k, v] of fill) if (r[k] == null) r[k] = v;
+      const keys = Object.keys(r).filter((k) => known.has(k));
+      if (!keys.length) continue;
+      this.rw.prepare(`INSERT OR REPLACE INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`).run(...(keys.map((k) => r[k] ?? null) as never[]));
+      if (r.id != null) untrack.run(table, String(r.id));
+    }
+  }
+
+  /** Every page of one table (null: the server does not know this table yet, e.g. an older server). */
+  private async fetchAll(table: string, fetchPage: FetchPage, since?: string | null) {
+    const rows: Record<string, unknown>[] = [];
+    let cutoff: string | null = null;
+    for (let offset: number | null = 0; offset !== null;) {
+      let page;
+      try { page = await fetchPage(table, offset, since); } catch (e) {
+        if (/Unknown table/i.test(e instanceof Error ? e.message : String(e))) return null;
         throw e;
       }
+      rows.push(...page.rows);
+      cutoff = page.cutoff ?? cutoff;
+      offset = page.next;
+    }
+    return { rows, cutoff };
+  }
+
+  /** Replaces the cached tables with the server's current rows (each table in one go). */
+  async refresh(tables: string[], fetchPage: FetchPage, now = new Date()) {
+    for (const table of tables) {
+      const got = await this.fetchAll(table, fetchPage);
+      if (!got) continue;
+      this.tx(() => {
+        this.rw.prepare(`DELETE FROM ${table}`).run();
+        this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ?`).run(table);
+        this.upsert(table, got.rows);
+      });
     }
     this.setMeta("refreshed_at", now.toISOString());
   }
 
-  /** Sales made on this computer, laid over the copy: their invoices listed
-   * (marked as this device's), and each batch's stock set to what the offline
-   * engine sells from (its server figure minus sales the server has not
-   * included yet), so the screens and offline sales never disagree, however
-   * old this copy's own figures are. Batches the engine does not know keep
-   * the copy's figure. */
+  /** Recent history (sales, purchases, cash ...): only rows changed since the
+   * last check (a few minutes' margin for other devices' clocks), once a day
+   * everything again. Rows deleted on the server leave; rows older than the
+   * server's window are dropped, and items whose document left go too. */
+  async refreshHistory(tables: string[], fetchPage: FetchPage, now = new Date(), o: { fullEveryMs?: number; marginMs?: number } = {}) {
+    const fullEvery = o.fullEveryMs ?? 24 * 3_600_000;
+    const margin = o.marginMs ?? 10 * 60_000;
+    for (const table of tables) {
+      const lastFull = this.meta(`hist_full:${table}`);
+      const seen = this.meta(`hist_since:${table}`);
+      const full = !lastFull || !seen || now.getTime() - Date.parse(lastFull) >= fullEvery;
+      const since = full ? null : new Date(Date.parse(seen!) - margin).toISOString();
+      const got = await this.fetchAll(table, fetchPage, since);
+      if (!got) continue;
+      const cols = new Set(this.info(table).map((c) => c.name));
+      this.tx(() => {
+        if (full) {
+          this.rw.prepare(`DELETE FROM ${table}`).run();
+          this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ?`).run(table);
+        }
+        const gone = got.rows.filter((r) => r.deleted_at != null);
+        const del = this.rw.prepare(`DELETE FROM ${table} WHERE id = ?`);
+        for (const r of gone) del.run(String(r.id));
+        this.upsert(table, got.rows.filter((r) => r.deleted_at == null));
+        if (got.cutoff && cols.has("date")) this.rw.prepare(`DELETE FROM ${table} WHERE date < ?`).run(got.cutoff);
+        const parent = HISTORY_PARENT[table];
+        if (parent) this.rw.prepare(`DELETE FROM ${table} WHERE ${parent.column} NOT IN (SELECT id FROM ${parent.table})`).run();
+        const newest = got.rows.reduce<string | null>((m, r) => (typeof r.updated_at === "string" && (!m || r.updated_at > m) ? r.updated_at : m), null);
+        const keep = [seen, newest].filter((x): x is string => !!x).sort().pop();
+        this.setMeta(`hist_since:${table}`, keep ?? new Date(0).toISOString());
+        if (full) this.setMeta(`hist_full:${table}`, now.toISOString());
+      });
+    }
+    this.setMeta("history_at", now.toISOString());
+  }
+
+  private tx(fn: () => void) {
+    this.rw.exec("BEGIN IMMEDIATE");
+    try {
+      fn();
+      this.rw.exec("COMMIT");
+    } catch (e) {
+      this.rw.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
+  /** Sales made on this computer that MAVIN.pk does not have as invoices yet
+   * (not sent, or held / refused), laid over the copy and marked as this
+   * device's; sales the server has come from its own rows. Each batch's stock
+   * is set to what the offline engine sells from (its server figure minus
+   * sales the server has not included yet), so the screens and offline sales
+   * never disagree, however old this copy's own figures are. Batches the
+   * engine does not know keep the copy's figure. */
   overlay(sales: LocalSale[], stock: Map<string, number>, tenantId: string, branchId: string) {
     this.rw.exec("BEGIN IMMEDIATE");
     try {
-      this.rw.prepare(`DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE offline_ref IS NOT NULL)`).run();
-      this.rw.prepare(`DELETE FROM invoices WHERE offline_ref IS NOT NULL`).run();
+      // Last time's overlay rows out (only those: never the server's own).
+      for (const t of ["invoice_items", "invoices"]) this.rw.prepare(`DELETE FROM ${t} WHERE id IN (SELECT id FROM mirror_overlay WHERE tbl = ?)`).run(t);
+      this.rw.prepare(`DELETE FROM mirror_overlay`).run();
+      const track = this.rw.prepare(`INSERT OR IGNORE INTO mirror_overlay (tbl, id) VALUES (?, ?)`);
+      const onServer = this.rw.prepare(`SELECT 1 AS x FROM invoices WHERE id = ?`);
       for (const s of sales) {
+        if (s.status === "applied" || s.status === "conflict") continue;
         const p = s.payload;
+        if (onServer.get(p.saleId)) continue;
         const t = p.totals;
+        track.run("invoices", p.saleId);
+        for (const l of p.lines) track.run("invoice_items", l.lineId);
         this.rw.prepare(
           `INSERT OR REPLACE INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, created_at, updated_at)

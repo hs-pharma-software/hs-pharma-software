@@ -66,7 +66,7 @@ const transport: Transport = {
           break;
         }
         case "push": result = { results: await off.push(sql, await device(), b.ops, b.status as never) }; break;
-        case "mirror": result = await off.mirrorPage(sql, await device(), b.table, b.offset); break;
+        case "mirror": result = await off.mirrorPage(sql, await device(), b.table, b.offset, b.since, clock); break;
         default: throw new HttpError(400, "Unknown action.");
       }
       // The server did the work, but the reply never arrives.
@@ -467,13 +467,26 @@ const SCHEMA_SQL = (() => {
   return parts.join("\n");
 })();
 const COPY_TABLES = off.MIRROR_TABLES;
+const HIST = off.HISTORY_TABLES;
+/** What the desktop does after a sync: recent history, then its own sales on top. */
+async function history(m: Mirror, d: OfflineDevice, o?: { fullEveryMs?: number }) {
+  await m.refreshHistory(HIST, (t, off2, since) => d.mirrorPage(t, off2, since), clock, o);
+  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+}
 async function copyOf(d: OfflineDevice) {
-  const id = d.identity!;
   const m = new Mirror(join(root, "mirror", "copy.db"), SCHEMA_SQL);
   mirrors.push(m);
   await m.refresh(COPY_TABLES, (t, o) => d.mirrorPage(t, o));
-  m.overlay(d.localSales(30), d.stockNow(), id.tenantId, id.branchId);
+  await history(m, d);
   return m;
+}
+/** A row on the server with only the given values (required columns get a plain default). */
+function serverRow(table: string, values: Record<string, unknown>) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; type: string; notnull: number; dflt_value: unknown }[];
+  const v: Record<string, unknown> = { created_at: T, updated_at: T, ...values };
+  for (const c of cols) if (c.notnull && c.dflt_value == null && v[c.name] === undefined) v[c.name] = /INT|REAL|NUM/i.test(c.type) ? 0 : "";
+  const keys = Object.keys(v).filter((k) => cols.some((c) => c.name === k));
+  run(`INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`, ...keys.map((k) => v[k]));
 }
 const copyQty = (m: Mirror, id: string) => Number(m.query(`SELECT qty FROM product_batches WHERE id = ?`, [id])[0]?.qty);
 
@@ -523,16 +536,93 @@ test("offline sales show in the copy at once; after sync its stock stays right e
   assert.match(String(listed[0].description), /Pending sync/);
   assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?`, [sale.saleId])[0].n, 2);
 
-  // Online again: sent and downloaded, but the copy's own tables not refreshed yet (they refresh every few minutes).
+  // Online again: sent and downloaded; the catalogue part of the copy not refreshed yet (it refreshes every few minutes).
   net.down = false;
   assert.equal((await d.sync({ manual: true })).applied, 1);
-  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+  await history(m, d);
   assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [0, 18], "not the old figure back, not taken twice");
-  assert.equal(m.query(`SELECT invoice_no FROM invoices`, [])[0].invoice_no, 1);
+  const now = m.query(`SELECT id, invoice_no, offline_ref FROM invoices`, []);
+  assert.deepEqual(now.map((r) => [r.id, r.invoice_no, r.offline_ref]), [[sale.saleId, 1, sale.offlineRef]], "the server's own invoice, numbered");
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?`, [sale.saleId])[0].n, 2);
 
-  // A full refresh, then the overlay: still the same.
+  // A full refresh, then history and the overlay: still the same.
   await m.refresh(COPY_TABLES, (t, o) => d.mirrorPage(t, o));
-  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+  await history(m, d);
   assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [0, 18]);
   assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoices`, [])[0].n, 1, "one invoice listed, not two");
+});
+
+test("recent sales and purchases made online, on other counters or phones are in the copy; changes and deletions follow", async () => {
+  const day = (n: number) => new Date(clock.getTime() - n * 86_400_000).toISOString().slice(0, 10);
+  serverRow("suppliers", { id: "sup1", tenant_id: "t1", name: "Medi Distributors" });
+  serverRow("suppliers", { id: "supX", tenant_id: "t2", name: "Other shop's supplier" });
+  serverRow("invoices", { id: "web1", tenant_id: "t1", branch_id: "main-t1", invoice_no: 101, date: day(1), payable: 500 });
+  serverRow("invoice_items", { id: "web1-a", invoice_id: "web1", tenant_id: "t1", branch_id: "main-t1", product_id: "p1", qty: 2 });
+  serverRow("invoices", { id: "phone1", tenant_id: "t1", branch_id: "main-t1", invoice_no: 102, date: day(0), payable: 80 });
+  serverRow("invoices", { id: "old1", tenant_id: "t1", branch_id: "main-t1", invoice_no: 5, date: day(90), payable: 10 });
+  serverRow("invoices", { id: "branch2", tenant_id: "t1", branch_id: "b2-t1", invoice_no: 7, date: day(1), payable: 10 });
+  serverRow("invoices", { id: "other", tenant_id: "t2", branch_id: "main-t2", invoice_no: 1, date: day(1), payable: 10 });
+  serverRow("purchases", { id: "pu1", tenant_id: "t1", branch_id: "main-t1", supplier_id: "sup1", date: day(3), total: 900 });
+  serverRow("purchase_items", { id: "pu1-a", purchase_id: "pu1", tenant_id: "t1", branch_id: "main-t1", product_id: "p2", qty: 10 });
+
+  const d = await provisioned();
+  const m = await copyOf(d);
+  const ids = (t: string) => m.query(`SELECT id FROM ${t} ORDER BY id`, []).map((r) => r.id);
+  assert.deepEqual(ids("invoices"), ["phone1", "web1"], "this branch's last 60 days only");
+  assert.deepEqual(ids("invoice_items"), ["web1-a"]);
+  assert.deepEqual(ids("purchases"), ["pu1"]);
+  assert.deepEqual(ids("purchase_items"), ["pu1-a"]);
+  assert.deepEqual(ids("suppliers"), ["sup1"]);
+
+  // Later: one edited, one deleted, one new, all online; then only the changes are asked for.
+  clock = new Date(clock.getTime() + 3_600_000);
+  const later = clock.toISOString();
+  run(`UPDATE invoices SET payable = 550, updated_at = ? WHERE id = 'web1'`, later);
+  run(`UPDATE invoices SET deleted_at = ?, updated_at = ? WHERE id = 'phone1'`, later, later);
+  serverRow("invoices", { id: "web2", tenant_id: "t1", branch_id: "main-t1", invoice_no: 103, date: day(0), payable: 70, created_at: later, updated_at: later });
+  const asked: (string | null | undefined)[] = [];
+  await m.refreshHistory(HIST, (t, o, since) => { if (t === "invoices") asked.push(since); return d.mirrorPage(t, o, since); }, clock);
+  assert.ok(asked[0] && asked[0] < later && asked[0] > T.slice(0, 10), "only changes since the last check (with a margin)");
+  assert.deepEqual(ids("invoices"), ["web1", "web2"]);
+  assert.equal(m.query(`SELECT payable FROM invoices WHERE id = 'web1'`, [])[0].payable, 550);
+
+  // An offline sale sits beside them, and leaves the overlay once the server has it.
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 1 }], tendered: 100 });
+  await history(m, d).catch(() => m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1"));
+  assert.deepEqual(ids("invoices"), [sale.saleId, "web1", "web2"].sort());
+  net.down = false;
+  await d.sync({ manual: true });
+  await history(m, d);
+  assert.deepEqual(ids("invoices"), [sale.saleId, "web1", "web2"].sort(), "no duplicate, nothing hidden");
+  assert.equal(m.query(`SELECT invoice_no FROM invoices WHERE id = ?`, [sale.saleId])[0].invoice_no, 104);
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM mirror_overlay`, [])[0].n, 0, "nothing of this computer's left on top");
+
+  // Deleted online later: gone from the copy too (not brought back by this computer's record of it).
+  // (The server stamped the sale with its own clock, so the deletion comes after that.)
+  const stamped = Date.parse(String(one(`SELECT updated_at FROM invoices WHERE id = ?`, sale.saleId).updated_at));
+  clock = new Date(Math.max(clock.getTime(), stamped) + 3_600_000);
+  run(`UPDATE invoices SET deleted_at = ?, updated_at = ? WHERE id = ?`, clock.toISOString(), clock.toISOString(), sale.saleId);
+  await history(m, d);
+  assert.deepEqual(ids("invoices"), ["web1", "web2"]);
+
+  // An edit stamped by a device whose clock is behind is missed by "changed since", but not by the daily full check.
+  run(`UPDATE invoices SET payable = 600, updated_at = ? WHERE id = 'web1'`, T);
+  await history(m, d);
+  assert.equal(m.query(`SELECT payable FROM invoices WHERE id = 'web1'`, [])[0].payable, 550, "missed for now");
+
+  // The daily full check: the missed edit arrives; nothing else changes.
+  clock = new Date(clock.getTime() + 25 * 3_600_000);
+  await history(m, d);
+  assert.deepEqual(ids("invoices"), ["web1", "web2"]);
+  assert.deepEqual(ids("invoice_items"), ["web1-a"]);
+  assert.equal(m.query(`SELECT payable FROM invoices WHERE id = 'web1'`, [])[0].payable, 600);
+});
+
+test("a server without some copy table yet is skipped, not fatal", async () => {
+  const d = await provisioned();
+  const m = new Mirror(join(root, "mirror", "copy.db"), SCHEMA_SQL);
+  mirrors.push(m);
+  await m.refresh(["products", "not_on_this_server", "customers"], (t, o) => d.mirrorPage(t, o));
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM products`, [])[0].n, 4);
 });

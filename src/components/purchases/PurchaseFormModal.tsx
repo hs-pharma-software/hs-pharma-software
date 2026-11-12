@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { enterToNextField, useFieldHotkeys } from "@/lib/formKeys";
 import { AlertCircle, ChevronDown, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
@@ -198,6 +199,7 @@ export function PurchaseFormModal({
   const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(draftId) || Boolean(fromOrder));
   const [uoms, setUoms] = useState<Uom[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
+  useFieldHotkeys(formRef, active);
   // Phones: products are compact rows; one opens at a time to enter its details.
   const isPhone = useMediaQuery(PHONE_QUERY);
   const [openRow, setOpenRow] = useState<number | null>(null);
@@ -647,7 +649,7 @@ export function PurchaseFormModal({
       {loadingExisting ? (
         <p className="py-10 text-center text-sm text-neutral-400">Loading purchase...</p>
       ) : (
-      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form ref={formRef} onSubmit={handleSubmit} onKeyDown={(e) => enterToNextField(e, () => pickerRef.current?.focus())} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex items-end gap-1.5">
             <div className="flex-1">

@@ -24,7 +24,7 @@ export async function POST(req: Request): Promise<Response> {
       case "grant": off.checkProtocol(b.protocol); result = { grant: await off.grantFor(sql, await device()) }; break;
       case "pull": off.checkProtocol(b.protocol); result = await off.pull(sql, await device(), b.cursor, status); break;
       case "push": off.checkProtocol(b.protocol); result = { results: await off.push(sql, await device(), b.ops, status) }; break;
-      case "mirror": off.checkProtocol(b.protocol); result = await off.mirrorPage(sql, await device(), b.table, b.offset); break;
+      case "mirror": off.checkProtocol(b.protocol); result = await off.mirrorPage(sql, await device(), b.table, b.offset, b.since); break;
       // Management
       case "devices": result = await off.listDevices(sql, await callerOf(req), await tenantOf(req, b)); break;
       case "revoke": result = await off.revokeDevice(sql, await callerOf(req), str(b.id), b.reason); break;
