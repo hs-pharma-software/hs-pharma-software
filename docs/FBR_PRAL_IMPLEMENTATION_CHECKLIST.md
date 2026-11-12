@@ -23,13 +23,17 @@ Last updated: 12 November 2026 (end of Phase 2 development).
 | 16 | Full regression suite | Completed (see Phase 2 report §6) | all | `npm test` |
 | 17 | VPS guide, systemd unit, Caddyfile, env template | Completed | 13 | `docs/FBR_GATEWAY_DEPLOYMENT.md`, `fbr-gateway/deploy/` |
 | 18 | Phase 2 implementation report | Completed | all | `docs/FBR_PRAL_PHASE_2_IMPLEMENTATION_REPORT.md` |
-| 19 | Run v85 (and v84) on the live database | Requires approval | 3 | backup, then `npm run migrate:turso` |
+| 19 | Run v85 (and v84) on the live database | Completed (live database on v85, 12 Nov 2026) | 3 | backup, then `npm run migrate:turso` |
 | 20 | Vercel env: `FBR_TOKEN_KEY` (step 1), then `FBR_GATEWAY_URL`, `FBR_GATEWAY_SECRET` | Requires approval | 17, 21–23 | deployment guide §7 |
 | 21 | Buy VPS with static IPv4 | Requires approval | — | deployment guide §1 |
 | 22 | DNS `A` record `fbr-api.mavin.pk` | Requires approval | 21 | deployment guide §4 |
 | 23 | PRAL whitelisting of the gateway IP; per-taxpayer model confirmed | Blocked (external: PRAL) | 21 | deployment guide §6 |
 | 24 | Sandbox end-to-end through the gateway with a real token | Blocked (needs 19–23) | 19–23 | deployment guide §8 |
-| 25 | Production deploy (commit + push to `main`) | Requires approval | 16 | — |
+| 25 | Production deploy (commit + push to `main`) | Completed (`ad2866e`) | 16 | — |
 | 26 | Server-built FBR payload (not trusted from the browser) | Not started (later) | 9 | audit §6.3 |
 | 27 | Automatic reconciliation of unclear submissions | Blocked (external: needs a PRAL lookup API) | — | audit §9.4 |
 | 28 | Android app FBR submission | Not started | 8 | — |
+| 29 | Sandbox Scenario Testing (Super Admin wizard, migration v86, 9 verified scenarios, tests 18 / 18) | Completed (code) | 8, 13 | `docs/FBR_SANDBOX_SCENARIO_TESTING.md` |
+| 30 | Run v86 on the live database | Requires approval | 29 | backup, then `npm run migrate:turso` (before pushing 29) |
+| 31 | First real sandbox scenario run with a business's sandbox token | Requires approval | 20–23 or a whitelisted PC, 30 | Scenario Testing |
+| 32 | Invoice set-ups for track-only scenarios (SN003, SN004, SN009–SN025) | Not started (needs PRAL's verified sample data) | 29 | scenario doc §8 |

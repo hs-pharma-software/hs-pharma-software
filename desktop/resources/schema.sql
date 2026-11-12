@@ -3684,3 +3684,76 @@
     CREATE INDEX IF NOT EXISTS idx_fbr_submissions_doc ON fbr_submissions (tenant_id, doc_type, doc_id);
     
 ;
+-- schema_sql_v86
+
+    -- FBR sandbox scenario testing (Super Admin > FBR Integration > Scenario Testing).
+    -- Sandbox only, kept apart from real invoices, stock and accounts.
+    -- A session: one round of testing for a business, with the Business Nature
+    -- and Sector chosen as on the FBR portal (JSON arrays).
+    CREATE TABLE IF NOT EXISTS fbr_test_sessions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        initiated_by TEXT,
+        business_natures TEXT NOT NULL,
+        sectors TEXT NOT NULL,
+        environment TEXT NOT NULL DEFAULT 'sandbox' CHECK (environment = 'sandbox'),
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_fbr_test_sessions_tenant ON fbr_test_sessions (tenant_id, started_at);
+    -- One row per scenario in a session (SN001 ...), with its latest state.
+    CREATE TABLE IF NOT EXISTS fbr_scenario_tests (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        scenario_code TEXT NOT NULL,
+        verified INTEGER NOT NULL DEFAULT 0,
+        product_id TEXT,
+        buyer_json TEXT,
+        status TEXT NOT NULL,
+        validation_status TEXT,
+        submission_status TEXT,
+        fbr_invoice_no TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        last_attempt_at TEXT,
+        portal_confirmed_at TEXT,
+        portal_confirmed_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fbr_scenario_tests_code ON fbr_scenario_tests (session_id, scenario_code);
+    -- Every attempt, kept: the invoice JSON sent (never a token) and FBR's answers.
+    -- state: running, local_failed, fbr_invalid, passed, rejected, uncertain,
+    -- not_received (resolved: FBR does not have it), error (nothing was posted).
+    CREATE TABLE IF NOT EXISTS fbr_scenario_attempts (
+        id TEXT PRIMARY KEY,
+        scenario_test_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL,
+        attempt_no INTEGER NOT NULL,
+        route TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        state TEXT NOT NULL,
+        payload_json TEXT,
+        payload_hash TEXT,
+        validation_http INTEGER,
+        validation_excerpt TEXT,
+        submission_http INTEGER,
+        response_excerpt TEXT,
+        fbr_invoice_no TEXT,
+        error TEXT,
+        resolved_by TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    -- One attempt in flight (or unclear) per scenario: a second click cannot post it twice.
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fbr_scenario_attempts_live ON fbr_scenario_attempts (scenario_test_id) WHERE state IN ('running', 'uncertain');
+    -- One scenario of a business sent at a time (they run one after the other).
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fbr_scenario_attempts_tenant_running ON fbr_scenario_attempts (tenant_id) WHERE state = 'running';
+    CREATE INDEX IF NOT EXISTS idx_fbr_scenario_attempts_test ON fbr_scenario_attempts (scenario_test_id, attempt_no);
+    
+;

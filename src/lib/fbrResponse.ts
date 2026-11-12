@@ -4,7 +4,7 @@
 
 /** accepted: FBR recorded it. rejected: FBR refused it (may be sent again
  * after fixing). uncertain: no clear answer, FBR may have recorded it, so it
- * is NOT sent again until someone checks (Invoices > FBR, resolve). */
+ * is NOT sent again until someone checks (Settings > FBR, resolve). */
 export type FbrOutcome = "accepted" | "rejected" | "uncertain";
 
 export interface FbrResponse {
@@ -27,7 +27,7 @@ export function parseFbrJson<T>(text: string): T {
 }
 
 export const UNCERTAIN_MESSAGE =
-  "No clear answer came from FBR, so it may already have recorded this invoice. It will not be sent again automatically: check it in IRIS / the PRAL portal, then use Resolve (Invoices > FBR).";
+  "No clear answer came from FBR, so it may already have recorded this invoice. It will not be sent again automatically: check it in IRIS / the PRAL portal, then resolve it in Settings > FBR.";
 
 /** What FBR's answer to a submitted invoice means. */
 export function interpretFbrSubmit(status: number, text: string): { outcome: FbrOutcome; fbrInvoiceNo: string | null; error: string | null; json: unknown } {

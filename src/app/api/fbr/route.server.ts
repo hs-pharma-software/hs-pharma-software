@@ -1,10 +1,12 @@
 /** FBR Digital Invoicing through MAVIN's server (src/server/fbr/service.ts).
  * Business logins: config, tokens, test, reference, submit, finish, resolve, list.
- * Super Admin: overview, egress (the gateway's outbound IP). */
+ * Super Admin: overview, egress (the gateway's outbound IP), and sandbox scenario
+ * testing (scn_*, src/server/fbr/scenarios.ts). */
 import { callerOf, jsonError, HttpError } from "@/server/db";
 import { sqlForServer } from "@/server/subSupersApi";
 import { branchScopeFor } from "@/server/branches";
 import * as fbr from "@/server/fbr/service";
+import * as scn from "@/server/fbr/scenarios";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +30,17 @@ export async function POST(req: Request): Promise<Response> {
       case "list": result = await fbr.list(sql, caller, b); break;
       case "overview": result = await fbr.adminOverview(sql, caller); break;
       case "egress": result = await fbr.adminEgressIp(caller); break;
+      case "scn_catalog": result = scn.catalog(caller); break;
+      case "scn_prepare": result = await scn.prepare(sql, caller, b); break;
+      case "scn_start": result = await scn.startSession(sql, caller, b); break;
+      case "scn_session": result = await scn.session(sql, caller, b); break;
+      case "scn_update": result = await scn.updateScenario(sql, caller, b); break;
+      case "scn_add": result = await scn.addScenario(sql, caller, b); break;
+      case "scn_run": result = await scn.run(sql, caller, b); break;
+      case "scn_report": result = await scn.report(sql, caller, b); break;
+      case "scn_resolve": result = await scn.resolve(sql, caller, b); break;
+      case "scn_confirm": result = await scn.confirmPortal(sql, caller, b); break;
+      case "scn_finish": result = await scn.finishSession(sql, caller, b); break;
       default: throw new HttpError(400, "Unknown action.");
     }
     return Response.json(result);

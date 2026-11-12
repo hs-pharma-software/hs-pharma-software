@@ -12,6 +12,7 @@ import { PAPERS, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/li
 import { NAV } from "@/config/nav";
 import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
+import { FbrScenarioWizard } from "@/components/admin/FbrScenarioWizard";
 import { linkOfTenant, unlinkPharmacy } from "@/lib/repo/pharmacyLink";
 import { WebsiteAdminCard } from "@/components/web/manage/WebsiteAdminCard";
 import { BranchLimitsCard } from "@/components/admin/BranchLimitsCard";
@@ -85,6 +86,7 @@ export function TenantDetailPanel({
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [editorOpen, setEditorOpen] = useState(false);
   const [fbrSetupOpen, setFbrSetupOpen] = useState(false);
+  const [scenarioOpen, setScenarioOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -260,9 +262,13 @@ export function TenantDetailPanel({
             <div className="mt-3 border-t border-neutral-200 pt-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[11px] text-neutral-500">Set up FBR for this business: environment, sandbox and production tokens (with a test), seller details.</p>
-                <Button onClick={() => setFbrSetupOpen((v) => !v)}>{fbrSetupOpen ? "Hide FBR setup" : "FBR setup"}</Button>
+                <div className="flex flex-wrap gap-2">
+                  {SERVER_DB && <Button onClick={() => setScenarioOpen(true)}>Scenario Testing</Button>}
+                  <Button onClick={() => setFbrSetupOpen((v) => !v)}>{fbrSetupOpen ? "Hide FBR setup" : "FBR setup"}</Button>
+                </div>
               </div>
               {fbrSetupOpen && <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-neutral-200"><FbrSettingsCard tauriReady tenantId={tenant.id} embedded /></div>}
+              {scenarioOpen && <FbrScenarioWizard tenantId={tenant.id} onClose={() => setScenarioOpen(false)} />}
             </div>
           )}
         </Section>

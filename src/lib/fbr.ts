@@ -165,6 +165,22 @@ async function postFromBrowser(payload: FbrInvoicePayload, environment: "sandbox
   }
 }
 
+/** Sandbox scenario testing in direct mode (no gateway yet): this browser
+ * validates or posts the test invoice MAVIN's server built, and the server
+ * records the answer. Sandbox addresses only. */
+export async function sandboxCallFromBrowser(step: "validate" | "post", payload: FbrInvoicePayload, token: string): Promise<
+  { kind: "response"; status: number; text: string } | { kind: "uncertain"; error: string }
+> {
+  if (step === "post") return postFromBrowser(payload, "sandbox", token);
+  try {
+    const res = await fbrFetch(VALIDATE_URL.sandbox, token, { method: "POST", body: JSON.stringify(payload) });
+    return { kind: "response", status: res.status, text: await res.text() };
+  } catch (e) {
+    const err = e as Error;
+    return { kind: "uncertain", error: err.name === "TimeoutError" ? "FBR did not answer within 45 seconds." : `The connection to FBR failed (${err.message}).` };
+  }
+}
+
 /** Sends an invoice to FBR.
  * Server mode (web / desktop through MAVIN): the server records the attempt
  * first (one live attempt per document), then sends it through MAVIN's FBR

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { serverJson } from "@/lib/serverMode";
+import { FbrScenarioWizard } from "@/components/admin/FbrScenarioWizard";
 
 interface Overview {
   route: "gateway" | "direct";
@@ -20,12 +21,14 @@ const STATUS: Record<string, string> = { uncertain: "Unclear", pending: "Sending
 
 /** Super Admin > FBR Integration: the gateway's health, each business's FBR
  * set-up and recent submissions needing attention. Tokens are never shown.
- * Switching FBR off for a business: Tenants > (business) > FBR. */
+ * Switching FBR off for a business: Tenants > (business) > FBR.
+ * Scenario Testing: FBR sandbox scenarios for one business (FbrScenarioWizard). */
 export default function AdminFbrPage() {
   const [o, setO] = useState<Overview | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [ip, setIp] = useState<string | null>(null);
   const [checkingIp, setCheckingIp] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
   const load = useCallback(async () => {
     try { setO(await serverJson<Overview>("/api/fbr/", { action: "overview" })); setMsg(null); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }, []);
@@ -40,6 +43,7 @@ export default function AdminFbrPage() {
     <div className="space-y-4">
       <PageHeader title="FBR Integration" />
       {msg && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{msg}</p>}
+      {testing && <FbrScenarioWizard tenantId={testing} onClose={() => { setTesting(null); void load(); }} />}
       {o && (
         <>
           <div className="grid gap-3 md:grid-cols-3">
@@ -79,7 +83,7 @@ export default function AdminFbrPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="text-neutral-400">
-                  <tr><th className="py-1.5 pr-3">Business</th><th className="pr-3">FBR</th><th className="pr-3">Environment</th><th className="pr-3">Tokens</th><th className="pr-3">Accepted (30 d)</th><th className="pr-3">Rejected (30 d)</th><th className="pr-3">Unclear now</th><th>Last accepted</th></tr>
+                  <tr><th className="py-1.5 pr-3">Business</th><th className="pr-3">FBR</th><th className="pr-3">Environment</th><th className="pr-3">Tokens</th><th className="pr-3">Accepted (30 d)</th><th className="pr-3">Rejected (30 d)</th><th className="pr-3">Unclear now</th><th className="pr-3">Last accepted</th><th /></tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {o.tenants.map((t) => (
@@ -91,10 +95,11 @@ export default function AdminFbrPage() {
                       <td className="pr-3">{t.accepted_30d}</td>
                       <td className="pr-3">{t.rejected_30d}</td>
                       <td className={`pr-3 ${t.open_uncertain ? "font-semibold text-amber-700" : ""}`}>{t.open_uncertain}</td>
-                      <td>{when(t.last_accepted)}</td>
+                      <td className="pr-3">{when(t.last_accepted)}</td>
+                      <td className="py-1 text-right"><Button onClick={() => setTesting(t.id)}>Scenario Testing</Button></td>
                     </tr>
                   ))}
-                  {o.tenants.length === 0 && <tr><td colSpan={8} className="py-3 text-neutral-400">No business has FBR on yet.</td></tr>}
+                  {o.tenants.length === 0 && <tr><td colSpan={9} className="py-3 text-neutral-400">No business has FBR on yet.</td></tr>}
                 </tbody>
               </table>
             </div>
