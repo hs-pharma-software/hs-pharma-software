@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { useIsTauri } from "@/lib/platform";
 import { createLocalBackup } from "@/lib/backup";
+import { STANDALONE } from "@/lib/edition";
 
 export default function BackupPage() {
   const [status, setStatus] = useState<string | null>(null);
@@ -42,12 +43,12 @@ export default function BackupPage() {
         </p>
       ) : (
         <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] text-sm text-neutral-600">
-          <p>
+          {STANDALONE ? <p>A complete, consistent copy of this pharmacy&apos;s data, saved where you choose (a USB drive or another computer is safest). A copy is also made automatically every day. Restore one from Settings › Mavin Pharmacy Offline.</p> : <p>
             This copies the local SQLite file (<code>pharmacy.db</code>) to a location you choose -
             independent of Turso sync, so it works even if you&apos;ve never connected to the
             internet. A cloud backup (uploading this copy somewhere automatically) isn&apos;t wired
             up yet; for now, treat Turso sync itself as the &quot;online backup&quot;.
-          </p>
+          </p>}
           {status && <p className="mt-3 rounded-md bg-neutral-100 px-3 py-2 text-neutral-800">{status}</p>}
         </div>
       )}

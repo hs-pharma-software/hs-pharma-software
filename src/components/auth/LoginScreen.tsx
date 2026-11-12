@@ -5,6 +5,8 @@ import Image from "next/image";
 import { Eye, EyeOff } from "lucide-react";
 import { login, AuthError } from "@/lib/auth";
 import { ForgotPassword } from "./ForgotPassword";
+import { StandaloneRecovery } from "@/components/standalone/StandaloneRecovery";
+import { STANDALONE } from "@/lib/edition";
 import { useAuthStore } from "@/store/authStore";
 import { MuawinTagline } from "@/components/brand/MuawinTagline";
 import { AppManifestLinks } from "@/components/layout/AppManifestLinks";
@@ -70,7 +72,12 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
           <Image src="/mavin-logo-tagline.png" alt="MAVIN.pk - Aap Key Business Ka معاون" width={487} height={132} priority className="h-auto w-full max-w-[320px] object-contain" />
         </div>
 
-        {forgot ? (
+        {forgot && STANDALONE ? (
+          <StandaloneRecovery
+            onDone={(username) => { setForgot(false); setUsername(username); setPassword(""); setError(null); setInfo("Password reset. Sign in with your new password."); }}
+            onCancel={() => setForgot(false)}
+          />
+        ) : forgot ? (
           <ForgotPassword
             onDone={(username) => { setForgot(false); setUsername(username); setPassword(""); setError(null); setInfo("Password changed. Sign in with your new password."); }}
             onCancel={() => setForgot(false)}

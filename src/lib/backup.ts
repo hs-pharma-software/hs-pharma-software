@@ -1,6 +1,7 @@
 ﻿import { appDataDir, join } from "@tauri-apps/api/path";
 import { readFile, writeFile, exists } from "@tauri-apps/plugin-fs";
 import { save, open } from "@tauri-apps/plugin-dialog";
+import { localBridge, localSession, unwrap } from "./edition";
 
 async function getDbPath(): Promise<string> {
   const dir = await appDataDir();
@@ -11,6 +12,9 @@ async function getDbPath(): Promise<string> {
  * exactly what's on this machine, independent of whether Turso sync has run
  * \u2014 useful as a last-resort recovery path if sync/Turso is unavailable. */
 export async function createLocalBackup(): Promise<string | null> {
+  // Mavin Pharmacy Offline: a consistent copy made by the desktop.
+  const local = localBridge();
+  if (local) return (await unwrap(local.backup({ session: localSession() })))?.path ?? null;
   const dbPath = await getDbPath();
   if (!(await exists(dbPath))) {
     throw new Error("No local database file found yet \u2014 add some data first.");
@@ -29,6 +33,9 @@ export async function createLocalBackup(): Promise<string | null> {
  * running app already has the old file open, so this takes effect after the
  * app is restarted (the SQL plugin connection isn't torn down mid-session). */
 export async function restoreLocalBackup(): Promise<string | null> {
+  // Standalone: checked, then swapped in by the desktop (a safety copy of the current data is kept).
+  const local = localBridge();
+  if (local) return (await unwrap(local.restore({ session: localSession() })))?.path ?? null;
   const selected = await open({
     multiple: false,
     filters: [{ name: "SQLite Database", extensions: ["db", "gz"] }],

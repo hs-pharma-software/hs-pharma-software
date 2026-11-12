@@ -1,0 +1,42 @@
+{
+  "name": "mavin-pharmacy-offline",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Mavin Pharmacy Offline: standalone Windows edition of MAVIN Pharmacy with its own local database",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/schema.cjs && esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=dist",
+    "start": "npm run build && electron .",
+    "catalogue": "node ../scripts/standalone/export-catalogue.cjs",
+    "build:web": "node scripts/build-web.cjs",
+    "dist": "npm run build:web && npm run build && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25.12"
+  },
+  "productName": "Mavin Pharmacy Offline",
+  "author": "MAVIN.pk",
+  "build": {
+    "appId": "pk.mavin.pharmacy.offline",
+    "productName": "Mavin Pharmacy Offline",
+    "directories": { "output": "release" },
+    "files": ["dist/**", "package.json"],
+    "extraResources": [
+      { "from": "resources/license-public.pem", "to": "license-public.pem" },
+      { "from": "resources/schema.sql", "to": "schema.sql" },
+      { "from": "resources/catalogue.json", "to": "catalogue.json" },
+      { "from": "web", "to": "web" }
+    ],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Mavin Pharmacy Offline",
+      "artifactName": "Mavin-Pharmacy-Offline-Setup-${version}.exe"
+    }
+  }
+}

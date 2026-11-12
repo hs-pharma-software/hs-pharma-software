@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { PAPERS, type PaperSize } from "./printTemplates";
 import { isTauri } from "./platform";
+import { localBridge } from "./edition";
 
 const PX_PER_MM = 96 / 25.4;
 
@@ -22,12 +23,19 @@ export async function printDirect(paper: PaperSize, area?: HTMLElement | null): 
         }))
     );
   }
+  const heightMm =
+    paper === "a4" ? 297 : paper === "a5" ? 210 : Math.ceil((area?.scrollHeight ?? 600) / PX_PER_MM) + p.marginMm * 2 + 5;
+  // Mavin Pharmacy Offline: Windows printing through the desktop (default printer, no dialog).
+  const local = localBridge();
+  if (local) {
+    const r = await local.print({ widthMm: p.widthMm, heightMm, marginMm: p.marginMm, silent: true });
+    if (!r.ok) { console.warn("silent print failed, falling back to the print dialog", r.error); window.print(); }
+    return;
+  }
   if (!isTauri()) {
     window.print();
     return;
   }
-  const heightMm =
-    paper === "a4" ? 297 : paper === "a5" ? 210 : Math.ceil((area?.scrollHeight ?? 600) / PX_PER_MM) + p.marginMm * 2 + 5;
   try {
     await invoke("print_silent", { widthMm: p.widthMm, heightMm, marginMm: p.marginMm });
   } catch (e) {

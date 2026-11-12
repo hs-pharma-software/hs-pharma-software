@@ -3,6 +3,7 @@ import { createClient, type Client } from "@libsql/client/web";
 import { explainMissingTable } from "./dbErrors";
 import { SERVER_DB, serverJson, ServerRequestError } from "./serverMode";
 import { desktopBridge, desktopOffline, NeedsInternetError } from "./desktopBridge";
+import { localBridge, unwrap } from "./edition";
 
 /** MAVIN desktop app, offline: reads from its read-only copy of this business's data. */
 async function desktopCopy(sql: string, params: unknown[]): Promise<Record<string, unknown>[]> {
@@ -65,6 +66,9 @@ function explain(err: unknown): never {
 // ── Public API ────────────────────────────────────────────────────────
 
 export async function dbSelect<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+  // Mavin Pharmacy Offline: its own local database, through the desktop.
+  const local = localBridge();
+  if (local) return (await unwrap(local.select({ sql, params })).catch(explain)) as T[];
   if (isTauri()) {
     const db = await getTauriDb();
     return db.select<T[]>(sql, params).catch(explain);
@@ -92,6 +96,8 @@ export async function dbSelect<T = Record<string, unknown>>(sql: string, params:
 }
 
 export async function dbExecute(sql: string, params: unknown[] = []): Promise<{ rowsAffected: number; lastInsertId?: number }> {
+  const local = localBridge();
+  if (local) return unwrap(local.execute({ sql, params })).catch(explain);
   if (isTauri()) {
     const db = await getTauriDb();
     return db.execute(sql, params).catch(explain);
@@ -118,6 +124,9 @@ export async function dbExecute(sql: string, params: unknown[] = []): Promise<{ 
  * all or nothing on Turso (one write batch). On the desktop the SQL plugin
  * cannot hold one transaction across calls, so they run in order there. */
 export async function dbBatch(statements: { sql: string; params?: unknown[] }[]): Promise<void> {
+  // Standalone: one local transaction (all or nothing).
+  const local = localBridge();
+  if (local) { await unwrap(local.batch({ statements })).catch(explain); return; }
   if (isTauri()) {
     const db = await getTauriDb();
     for (const s of statements) await db.execute(s.sql, s.params ?? []).catch(explain);

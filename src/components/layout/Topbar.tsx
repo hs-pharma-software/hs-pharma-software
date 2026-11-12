@@ -13,6 +13,7 @@ import { ProfilePanel } from "./ProfilePanel";
 import { InstallAppButton } from "./InstallAppButton";
 import { BranchSwitcher } from "@/components/branches/BranchSwitcher";
 import { DesktopSyncPill } from "./DesktopSyncPill";
+import { STANDALONE } from "@/lib/edition";
 import { useDesktopStatus } from "@/lib/desktopBridge";
 
 export function Topbar() {
@@ -56,7 +57,8 @@ export function Topbar() {
       <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         <BranchSwitcher />
         <LanguageToggle />
-        {desktop ? <DesktopSyncPill status={desktop} /> : <div className="relative">
+        {/* Mavin Pharmacy Offline has nothing to sync. */}
+        {STANDALONE ? null : desktop ? <DesktopSyncPill status={desktop} /> : <div className="relative">
           <motion.button
             type="button"
             whileHover={{ scale: 1.04 }}

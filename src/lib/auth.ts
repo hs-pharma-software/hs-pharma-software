@@ -11,6 +11,23 @@ import { dbExecute } from "./db";
 import { desktopBridge } from "./desktopBridge";
 import { getGlobalSetting } from "./repo/settings";
 import { DEFAULT_GRACE_DAYS, ENFORCE_EXPIRY_SETTING } from "./subscription";
+import { localBridge, localSession, setLocalSession, unwrap } from "./edition";
+
+/** Mavin Pharmacy Offline: passwords are checked and stored by the desktop
+ * (scrypt, in its main process); the page never sees a hash. */
+async function standaloneLogin(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
+  const local = localBridge()!;
+  let r: { userId: string; session: string };
+  try {
+    r = await unwrap(local.login({ username: username.trim(), password }));
+  } catch (e) {
+    throw new AuthError(e instanceof Error ? e.message : String(e));
+  }
+  const record = await usersRepo.get(r.userId);
+  if (!record) throw new AuthError("Incorrect username or password.");
+  setLocalSession(r.session);
+  return buildSession(record);
+}
 
 /** Salted SHA-256, the scheme the server also uses (src/server/db.ts). On the
  * web and on a desktop that syncs through the server, the server checks
@@ -108,6 +125,7 @@ export function tenantAllowedModules(tenant: Pick<Tenant, "allowed_modules">, pl
 /** Verifies credentials and returns the session to store. Throws
  * `AuthError` with a user-facing message on any failure. */
 export async function login(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {
+  if (localBridge()) return standaloneLogin(username, password);
   if (SERVER_DB) {
     // The server checks the password and sets the session cookie; the page never sees the hash.
     const desktop = desktopBridge();
@@ -233,6 +251,7 @@ export async function createUser(params: {
   }
   const existing = await findUserByUsername(params.username.trim());
   if (existing) throw new AuthError(`Username "${params.username}" is already taken.`);
+  const local = localBridge();
 
   if (params.role === "staff" && params.tenantId) {
     const tenant = await tenantsRepo.get(params.tenantId);
@@ -245,8 +264,9 @@ export async function createUser(params: {
   }
 
   const salt = randomSalt();
-  const hash = await hashPassword(params.password, salt);
-  return usersRepo.create({
+  // Standalone: no usable hash here; the desktop stores the real one just after.
+  const hash = local ? "!" : await hashPassword(params.password, salt);
+  const created = await usersRepo.create({
     tenant_id: params.tenantId,
     username: params.username.trim(),
     password_hash: hash,
@@ -257,9 +277,27 @@ export async function createUser(params: {
     permissions: params.permissions != null ? JSON.stringify(params.permissions) : null,
     denied_actions: params.role === "staff" && params.deniedActions?.length ? JSON.stringify(params.deniedActions) : null,
   });
+  if (local) {
+    try {
+      await unwrap(local.setPassword({ session: localSession(), userId: created.id, password: params.password }));
+    } catch (e) {
+      await usersRepo.remove(created.id).catch(() => undefined);
+      throw new AuthError(e instanceof Error ? e.message : String(e));
+    }
+  }
+  return created;
 }
 
 export async function changePassword(userId: string, newPassword: string): Promise<void> {
+  const local = localBridge();
+  if (local) {
+    try {
+      await unwrap(local.setPassword({ session: localSession(), userId, password: newPassword }));
+    } catch (e) {
+      throw new AuthError(e instanceof Error ? e.message : String(e));
+    }
+    return;
+  }
   if (SERVER_DB || desktopViaServer()) {
     try {
       await serverJson("/api/auth/password/", { userId, newPassword });
@@ -333,6 +371,12 @@ export async function setupFirstLogins(
 
 /** Ends the server session too (web version, or the desktop through the server). */
 export async function serverLogout(): Promise<void> {
+  const local = localBridge();
+  if (local) {
+    await local.logout({ session: localSession() }).catch(() => undefined);
+    setLocalSession(null);
+    return;
+  }
   if (desktopViaServer()) {
     setDesktopSession(null);
     return;

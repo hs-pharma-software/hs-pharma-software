@@ -18,6 +18,8 @@ import { LabReportTemplatesCard } from "@/components/clinic/LabReportTemplatesCa
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
 import { LinkedClinicsCard } from "@/components/settings/LinkedClinicsCard";
 import { ServiceFbrCard } from "@/components/settings/ServiceFbrCard";
+import { StandaloneSettingsCard } from "@/components/standalone/StandaloneSettingsCard";
+import { STANDALONE } from "@/lib/edition";
 import { useBillori } from "@/lib/billoriState";
 import {
   PAPERS,
@@ -579,7 +581,7 @@ export default function GeneralSettingsPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2 rounded-2xl bg-white px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+      {!STANDALONE && <div className="flex flex-wrap gap-2 rounded-2xl bg-white px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         {SERVER_DB ? (
           // Web version: the database is reached through the server (its keys never reach the browser).
           <StatusPill ok={dbOnline} label="Online database" okText="Connected" badText="Not reachable, check your internet" />
@@ -589,7 +591,7 @@ export default function GeneralSettingsPage() {
             <StatusPill ok={tauriReady} label="Desktop shell" />
           </>
         )}
-      </div>
+      </div>}
 
       <CompanyProfileCard tauriReady={tauriReady} />
 
@@ -598,8 +600,10 @@ export default function GeneralSettingsPage() {
 
       {printsLabReports && <LabReportTemplatesCard editable={templatesEditable} />}
 
+      {/* Mavin Pharmacy Offline: license, backups, catalogue, recovery key. This edition has no FBR. */}
+      {STANDALONE && <StandaloneSettingsCard />}
       {/* FBR Digital Invoicing */}
-      {fbrAllowed ? (
+      {STANDALONE ? null : fbrAllowed ? (
         <FbrSettingsCard tauriReady={tauriReady} />
       ) : (
         <div className="rounded-2xl bg-white p-5 text-sm text-neutral-500 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
@@ -613,7 +617,7 @@ export default function GeneralSettingsPage() {
         <ServiceFbrCard hint={isLab ? "Lab bills are sent to FBR with these details on every test line." : "Booking bills are sent to FBR with these details on every line (menu, hall, extras)."} />
       )}
 
-      <BilloriCard tauriReady={tauriReady} />
+      {!STANDALONE && <BilloriCard tauriReady={tauriReady} />}
 
       {templatesOpen && <PrintTemplatesModal onClose={() => setTemplatesOpen(false)} />}
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { STANDALONE } from "@/lib/edition";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -94,7 +95,7 @@ export default function ProductsPage() {
     return `${r.avail_qty} ${r.base_unit_name ?? ""}`.trim();
   };
 
-  const columns: Column<ProductListRow>[] = [
+  const allColumns: Column<ProductListRow>[] = [
     {
       header: "FBR",
       render: (r) => {
@@ -141,6 +142,8 @@ export default function ProductsPage() {
       ),
     }] : []),
   ];
+  // Mavin Pharmacy Offline has no FBR: no FBR status or HS code columns.
+  const columns = STANDALONE ? allColumns.filter((c) => c.header !== "FBR" && c.header !== "HS Code") : allColumns;
 
   const tauriReady = useIsTauri();
 

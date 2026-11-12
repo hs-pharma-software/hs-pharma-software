@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { STANDALONE } from "@/lib/edition";
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Textarea } from "@/components/ui/Field";
@@ -708,7 +709,8 @@ export function ProductFormModal({
           </div>
         </div>
 
-        {/* FBR / Tax Details */}
+        {/* FBR / Tax Details (not in Mavin Pharmacy Offline) */}
+        {!STANDALONE && (<>
         <div className="flex items-center rounded-md bg-[#006633]/[0.06] px-3 py-1.5">
           <div className="mr-2 flex h-5 w-5 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>
           <span className="text-sm font-medium text-neutral-700">FBR / Tax Details</span>
@@ -784,6 +786,7 @@ export function ProductFormModal({
           setQtyFactor={setFbrQtyFactor}
           baseUnitName={baseUnitName}
         />
+        </>)}
 
         {isEdit && (
           <>

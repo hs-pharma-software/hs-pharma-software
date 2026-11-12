@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import { SERVER_DB } from "./serverMode";
+import { STANDALONE } from "./edition";
 
 /** True ONLY when running inside the Tauri desktop shell.
  * Used internally by db.ts (pick SQLite vs Turso) and outbox.ts.
@@ -17,6 +18,8 @@ export function isTauriShell(): boolean {
 export function isTauri(): boolean {
   if (typeof window === "undefined") return false;
   if (isTauriShell()) return true;
+  // Mavin Pharmacy Offline: its own local database.
+  if (STANDALONE) return true;
   // Web version through the server: no token in the page, the database is still available.
   if (SERVER_DB) return true;
   return Boolean(

@@ -24,6 +24,8 @@ import { LanguageSync } from "@/components/electric/LanguageSync";
 import { subscriptionPhase, trialState } from "@/lib/subscription";
 import { TrialNotice } from "./TrialNotice";
 import { BranchModeNotice } from "@/components/branches/BranchSwitcher";
+import { STANDALONE } from "@/lib/edition";
+import { StandaloneLicenseBanner } from "@/components/standalone/StandaloneLicenseBanner";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -65,9 +67,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-h flex flex-col bg-[#f5f5f7]">
       <GlobalShortcuts />
       <Calculator />
-      {currentTenant && !subscriptionLocked && <AssistantChat />}
+      {/* Mavin Pharmacy Offline: no online assistant, no PRA. */}
+      {currentTenant && !subscriptionLocked && !STANDALONE && <AssistantChat />}
       {currentTenant && !subscriptionLocked && <FormTabsHost />}
-      {currentTenant && !subscriptionLocked && <PraBackground />}
+      {currentTenant && !subscriptionLocked && !STANDALONE && <PraBackground />}
       <LanguageSync />
       <Topbar />
       <SchemaBanner />
@@ -82,6 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
         {/* Phones: room under the content for the bottom bar (and the home indicator). */}
         <main className="min-w-0 flex-1 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(5rem+env(safe-area-inset-bottom))] md:p-5">
+          {STANDALONE && <StandaloneLicenseBanner />}
           {!subscriptionLocked && trial.trial && <TrialNotice state={trial} />}
           {!subscriptionLocked && <BranchModeNotice />}
           {!subscriptionLocked && !trial.trial && (phase.phase === "grace" || phase.phase === "ended") && (

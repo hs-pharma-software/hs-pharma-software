@@ -7,6 +7,8 @@ import { isTauriShell } from "@/lib/platform";
 import { isTursoConfigured, pullAuthData } from "@/lib/sync/engine";
 import { Button } from "@/components/ui/Button";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
+import { StandaloneSetup } from "@/components/standalone/StandaloneSetup";
+import { localBridge, localSession, unwrap } from "@/lib/edition";
 import { LoginScreen } from "./LoginScreen";
 import { usePublicPage } from "./usePublicPage";
 import { SERVER_DB, SESSION_EXPIRED_EVENT, desktopViaServer, serverJson } from "@/lib/serverMode";
@@ -31,6 +33,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const check = useCallback(async () => {
     setState("checking");
     setError(null);
+    // Mavin Pharmacy Offline: its own first setup, then its own sign-in.
+    const local = localBridge();
+    if (local) {
+      try {
+        const info = await unwrap(local.info());
+        setState(info.setupDone ? "login" : "setup");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setState("login");
+      }
+      return;
+    }
     // Desktop through the server: the server checks the login, then the app
     // downloads that business's accounts (lib/auth.ts login).
     if (desktopViaServer()) {
@@ -70,6 +84,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [logout]);
+  // Standalone: a session ended on this computer (logout elsewhere, Super Admin recovery) signs out here.
+  useEffect(() => {
+    const local = localBridge();
+    if (!local || !currentUser) return;
+    void local.checkSession({ session: localSession() }).then((r) => { if (r.ok && !r.value.valid) logout(); });
+  }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!SERVER_DB || !currentUser) return;
     serverJson<{ userId: string }>("/api/auth/me/")
@@ -120,6 +140,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   // No users anywhere (no cloud database configured) — first-run setup
   if (state === "setup") {
+    if (localBridge()) return <StandaloneSetup onDone={() => setState("login")} />;
     return <SetupSuperAdmin onDone={() => setState("login")} />;
   }
 

@@ -1,6 +1,7 @@
 ﻿import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SERVER_DB } from "../lib/serverMode";
+import { localBridge, localSession, setLocalSession } from "@/lib/edition";
 
 export type UserRole = "super_admin" | "owner" | "staff";
 
@@ -76,6 +77,9 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         // Web version through the server: end the server session (httpOnly cookie) too.
         if (SERVER_DB && typeof window !== "undefined") void fetch("/api/auth/logout/", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+        // Mavin Pharmacy Offline: end the local session in the desktop too.
+        const local = localBridge();
+        if (local) { void local.logout({ session: localSession() }).catch(() => undefined); setLocalSession(null); }
         set({ currentUser: null, currentTenant: null });
       },
     }),

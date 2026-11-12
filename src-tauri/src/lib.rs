@@ -1867,6 +1867,45 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v87() -> &'static str {
+    r#"
+    -- Offline Tenants (Super Admin): installations of the standalone desktop
+    -- editions (Mavin Pharmacy Offline) and every license issued to them.
+    -- Server only (the browser's SQL never reaches offline_* tables).
+    CREATE TABLE IF NOT EXISTS offline_tenants (
+        id TEXT PRIMARY KEY,
+        installation_id TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL,
+        name TEXT NOT NULL,
+        owner_name TEXT,
+        phone TEXT,
+        email TEXT,
+        city TEXT,
+        address TEXT,
+        notes TEXT,
+        app_version TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS offline_licenses (
+        id TEXT PRIMARY KEY,
+        offline_tenant_id TEXT NOT NULL,
+        installation_id TEXT NOT NULL,
+        license_id TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL,
+        licensee TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        license_text TEXT NOT NULL,
+        request_code TEXT,
+        issued_by TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_offline_licenses_tenant ON offline_licenses (offline_tenant_id, issued_at);
+    "#
+}
+
 fn schema_sql_v86() -> &'static str {
     r#"
     -- FBR sandbox scenario testing (Super Admin > FBR Integration > Scenario Testing).
@@ -4658,6 +4697,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 86,
             description: "fbr_sandbox_scenario_testing",
             sql: schema_sql_v86(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 87,
+            description: "offline_tenants_licenses",
+            sql: schema_sql_v87(),
             kind: MigrationKind::Up,
         },
     ]
