@@ -23,7 +23,7 @@ import { interpretFbrSubmit, parseFbrJson, UNCERTAIN_MESSAGE } from "@/lib/fbrRe
 import { isValidNtnOrCnic, normalizeNtn } from "@/lib/fbrData";
 import {
   checkScenarioPayload, findScenario, FBR_BUSINESS_NATURES, FBR_SCENARIOS, FBR_SECTORS, interpretFbrValidate, maskId,
-  SCENARIO_CATALOG_VERSION, SCENARIO_CODE_RE, type FbrScenario, type ScenarioStatus,
+  SCENARIO_CATALOG_VERSION, SCENARIO_CODE_RE, SCENARIO_TEST_ITEMS, type FbrScenario, type ScenarioStatus, type ScenarioTestItem,
 } from "@/lib/fbrScenarios";
 import { gatewaySettings, tenantRef, viaGateway, type GatewayOutcome, type GatewaySettings } from "./gatewayClient";
 import { STALE_PENDING_MS, tokensOf } from "./service";
@@ -54,6 +54,38 @@ async function sellerOf(sql: Sql, T: string): Promise<FbrSettings> {
     enabled: true, environment: "sandbox", sandboxToken: "", productionToken: "",
     sellerNtn: normalizeNtn(ntn), sellerName: name ?? "", sellerProvince: province || "Punjab", sellerAddress: address ?? "", retailer: retailer === "true",
   };
+}
+
+// ── Demo registered buyer (one for all businesses, set by the Super Admin) ──
+
+/** "Registered buyer" scenarios need a real registered NTN; MAVIN cannot
+ * invent one. Kept outside every business's settings. */
+const DEMO_BUYER_KEY = "platform::fbr_demo_buyer";
+interface DemoBuyer { name: string; ntnCnic: string; province: string; address: string }
+
+async function demoBuyerOf(sql: Sql): Promise<DemoBuyer | null> {
+  const r = await sql.execute(`SELECT value FROM settings WHERE key = ?`, [DEMO_BUYER_KEY]);
+  try {
+    const b = JSON.parse(String(r.rows[0]?.value ?? "")) as DemoBuyer;
+    return b && b.ntnCnic ? b : null;
+  } catch { return null; }
+}
+const demoBuyerView = (b: DemoBuyer | null) => (b ? { name: b.name, ntnMasked: maskId(b.ntnCnic), province: b.province, address: b.address } : null);
+
+export async function getDemoBuyer(sql: Sql, caller: Caller) {
+  superAdmin(caller);
+  return demoBuyerView(await demoBuyerOf(sql));
+}
+
+export async function setDemoBuyer(sql: Sql, caller: Caller, input: { name?: unknown; ntnCnic?: unknown; province?: unknown; address?: unknown }, deps: ScenarioDeps = {}) {
+  superAdmin(caller);
+  const b: DemoBuyer = { name: str(input.name).trim().slice(0, 120), ntnCnic: normalizeNtn(str(input.ntnCnic)), province: str(input.province).trim().slice(0, 60), address: str(input.address).trim().slice(0, 200) };
+  if (!b.name) throw new HttpError(400, "Enter the buyer's business name.");
+  if (!isValidNtnOrCnic(b.ntnCnic)) throw new HttpError(400, "Enter a valid NTN (7 characters) or CNIC (13 digits).");
+  if (!b.province) throw new HttpError(400, "Enter the buyer's province.");
+  if (!b.address) throw new HttpError(400, "Enter the buyer's address.");
+  await sql.execute(`INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)`, [DEMO_BUYER_KEY, JSON.stringify(b), iso(nowOf(deps))]);
+  return demoBuyerView(b);
 }
 
 // ── Catalog and preparation ──────────────────────────────────────────────
@@ -117,7 +149,8 @@ export async function prepare(sql: Sql, caller: Caller, input: { tenantId?: unkn
     environment: (await setting(sql, T, "fbr_environment")) === "production" ? "production" : "sandbox",
     route: gw(deps) ? "gateway" : "direct",
     seller: { ntnMasked: maskId(seller.sellerNtn), name: seller.sellerName, province: seller.sellerProvince, address: seller.sellerAddress, retailer: seller.retailer },
-    hasSandboxToken: !!tokens.sandbox, sandboxHint: tokens.sandboxHint,
+    hasSandboxToken: !!tokens.sandbox, sandboxHint: tokens.sandboxHint, hasProductionToken: !!tokens.production,
+    demoBuyer: demoBuyerView(await demoBuyerOf(sql)), testItems: SCENARIO_TEST_ITEMS,
     problems, products, buyers,
     sessions: await sessionsOf(sql, T),
   };
@@ -134,7 +167,35 @@ async function sessionsOf(sql: Sql, T: string) {
 
 // ── Sessions ─────────────────────────────────────────────────────────────
 
-interface BuyerInput { registered?: boolean; customerId?: string; name?: string; ntnCnic?: string; province?: string; address?: string }
+/** A scenario's inputs (stored in fbr_scenario_tests.buyer_json): the buyer,
+ * and changes to its hidden test item. */
+interface BuyerInput { registered?: boolean; customerId?: string; name?: string; ntnCnic?: string; province?: string; address?: string; item?: Partial<ScenarioTestItem> }
+
+/** The hidden test item of a sale type with this scenario's changes. */
+function testItemFor(saleType: string, b: BuyerInput | null): ScenarioTestItem | null {
+  const base = SCENARIO_TEST_ITEMS[saleType];
+  return base ? { ...base, ...(b?.item ?? {}) } : null;
+}
+
+function cleanItem(x: unknown): Partial<ScenarioTestItem> | undefined {
+  if (!x || typeof x !== "object") return undefined;
+  const o = x as Record<string, unknown>;
+  const out: Partial<ScenarioTestItem> = {};
+  const text = (k: "name" | "hs_code" | "fbr_uom" | "sro_no" | "sro_item_serial_no", n: number) => { if (typeof o[k] === "string") out[k] = (o[k] as string).trim().slice(0, n); };
+  text("name", 80); text("hs_code", 12); text("fbr_uom", 40); text("sro_no", 80); text("sro_item_serial_no", 20);
+  if (o.hs_code !== undefined && !/^\d{4}\.\d{4}$/.test(out.hs_code ?? "")) throw new HttpError(400, "HS code must look like 0000.0000.");
+  if (o.fbr_sale_rate !== undefined) {
+    const r = Number(o.fbr_sale_rate);
+    if (!Number.isFinite(r) || r < 0 || r > 100) throw new HttpError(400, "Rate must be a percentage from 0 to 100.");
+    out.fbr_sale_rate = r;
+  }
+  if (o.price !== undefined) {
+    const p = Number(o.price);
+    if (!Number.isFinite(p) || p <= 0 || p > 100_000_000) throw new HttpError(400, "Price must be more than 0.");
+    out.price = p;
+  }
+  return out;
+}
 
 function pickList<T extends string>(raw: unknown, allowed: readonly T[], what: string): T[] {
   if (!Array.isArray(raw) || raw.length === 0) throw new HttpError(400, `Choose at least one ${what}.`);
@@ -184,7 +245,7 @@ export async function startSession(
 
 function cleanBuyer(b: BuyerInput): BuyerInput {
   const s = (x: unknown, n: number) => (typeof x === "string" ? x.trim().slice(0, n) : undefined);
-  return { registered: b.registered === true, customerId: s(b.customerId, 80), name: s(b.name, 120), ntnCnic: s(b.ntnCnic, 20), province: s(b.province, 60), address: s(b.address, 200) };
+  return { registered: b.registered === true, customerId: s(b.customerId, 80), name: s(b.name, 120), ntnCnic: s(b.ntnCnic, 20), province: s(b.province, 60), address: s(b.address, 200), item: cleanItem(b.item) };
 }
 
 async function sessionRow(sql: Sql, sessionId: string) {
@@ -209,7 +270,8 @@ export async function session(sql: Sql, caller: Caller, input: { sessionId?: unk
         ...t, buyer_json: undefined,
         title: sc?.title ?? "Added for verification (not in MAVIN's catalog)",
         saleType: sc?.saleType ?? null, buyerKind: sc?.buyer ?? null,
-        buyer: buyer ? { ...buyer, ntnCnic: maskId(buyer.ntnCnic) } : null,
+        buyer: buyer ? { ...buyer, item: undefined, ntnCnic: maskId(buyer.ntnCnic) } : null,
+        testItem: !t.product_id && sc?.saleType ? testItemFor(sc.saleType, buyer) : null,
         attempts: attempts.filter((a) => a.scenario_test_id === t.id).map((a) => ({ ...a, payload_json: sanitize(a.payload_json as string | null) })),
       };
     }),
@@ -225,7 +287,7 @@ function sanitize(json: string | null): unknown {
 }
 
 /** Choose the product or buyer of a scenario, skip it, or take it back. */
-export async function updateScenario(sql: Sql, caller: Caller, input: { scenarioTestId?: unknown; productId?: unknown; buyer?: unknown; skip?: unknown }, deps: ScenarioDeps = {}) {
+export async function updateScenario(sql: Sql, caller: Caller, input: { scenarioTestId?: unknown; productId?: unknown; buyer?: unknown; item?: unknown; skip?: unknown }, deps: ScenarioDeps = {}) {
   superAdmin(caller);
   const t = await testRow(sql, str(input.scenarioTestId));
   if (passed(String(t.status))) throw new HttpError(409, "This scenario already passed.");
@@ -241,8 +303,12 @@ export async function updateScenario(sql: Sql, caller: Caller, input: { scenario
     }
     await sql.execute(`UPDATE fbr_scenario_tests SET product_id = ?, updated_at = ? WHERE id = ?`, [pid, now, t.id]);
   }
-  if (input.buyer !== undefined) {
-    await sql.execute(`UPDATE fbr_scenario_tests SET buyer_json = ?, updated_at = ? WHERE id = ?`, [input.buyer ? JSON.stringify(cleanBuyer(input.buyer as BuyerInput)) : null, now, t.id]);
+  if (input.buyer !== undefined || input.item !== undefined) {
+    const cur = t.buyer_json ? (JSON.parse(String(t.buyer_json)) as BuyerInput) : {};
+    const buyer = input.buyer !== undefined ? cleanBuyer((input.buyer ?? {}) as BuyerInput) : cur;
+    // Changes to the test item are kept per scenario; null goes back to the starting values.
+    const item = input.item !== undefined ? (input.item === null ? undefined : { ...(cur.item ?? {}), ...cleanItem(input.item) }) : cur.item;
+    await sql.execute(`UPDATE fbr_scenario_tests SET buyer_json = ?, updated_at = ? WHERE id = ?`, [JSON.stringify({ ...buyer, item }), now, t.id]);
   }
   return session(sql, caller, { sessionId: t.session_id }, deps);
 }
@@ -337,17 +403,22 @@ async function hsUoms(T: string, token: string, hs: string, g: GatewaySettings |
   return m;
 }
 
-/** Builds the scenario's test invoice, or says what is missing. */
+/** Builds the scenario's test invoice, or says what is missing.
+ * Item: the scenario's hidden test item, or a product of the business when one was chosen.
+ * Registered buyer: the one chosen for the scenario, else the Super Admin's demo buyer. */
 async function buildFor(sql: Sql, T: string, t: Record<string, unknown>, sc: FbrScenario, token: string, g: GatewaySettings | null, deps: ScenarioDeps, now: Date):
   Promise<{ missing: string } | { payload: FbrInvoicePayload; problems: string[]; registered: boolean }> {
-  const products = await productsFor(sql, T, sc.saleType!, t.product_id ? String(t.product_id) : undefined);
-  const p = products[0];
-  if (!p) {
-    return { missing: t.product_id
-      ? `The chosen product no longer has complete FBR data ("${sc.saleType}", HS code, UOM) and a sale price. Choose another.`
-      : `No product of this business has sale type "${sc.saleType}" with an HS code, FBR UOM and a sale price. Set one up in Products, then retry.` };
-  }
   const b = t.buyer_json ? (JSON.parse(String(t.buyer_json)) as BuyerInput) : {};
+  let line: Omit<FbrItemRow, "qty" | "further_tax_pct" | "discount_rs" | "tax_pct">;
+  if (t.product_id) {
+    const p = (await productsFor(sql, T, sc.saleType!, String(t.product_id)))[0];
+    if (!p) return { missing: `The chosen product no longer has complete FBR data ("${sc.saleType}", HS code, UOM) and a sale price. Choose another, or use the test item.` };
+    line = { product_name: p.name, hs_code: p.hs_code, fbr_sale_type: p.fbr_sale_type, fbr_sale_rate: p.fbr_sale_rate, fbr_uom: p.fbr_uom, sro_no: p.sro_no, sro_item_serial_no: p.sro_item_serial_no, fbr_qty_factor: p.fbr_qty_factor, sale_price: p.price };
+  } else {
+    const it = testItemFor(sc.saleType!, b);
+    if (!it) return { missing: `MAVIN has no test item for "${sc.saleType}".` };
+    line = { product_name: it.name, hs_code: it.hs_code, fbr_sale_type: sc.saleType!, fbr_sale_rate: it.fbr_sale_rate, fbr_uom: it.fbr_uom, sro_no: it.sro_no || null, sro_item_serial_no: it.sro_item_serial_no || null, fbr_qty_factor: 1, sale_price: it.price };
+  }
   const registered = sc.buyer === "registered" ? true : sc.buyer === "unregistered" ? false : b.registered === true;
   let buyer = { name: null as string | null, ntnCnic: null as string | null, province: null as string | null, address: null as string | null, registered };
   if (registered) {
@@ -358,19 +429,19 @@ async function buildFor(sql: Sql, T: string, t: Record<string, unknown>, sc: Fbr
       )).rows[0];
       if (!c) return { missing: "The chosen buyer is not a customer of this business." };
       buyer = { name: (c.name as string) ?? null, ntnCnic: (c.ntn as string) ?? null, province: (c.province as string) ?? null, address: (c.address as string) ?? null, registered };
-    } else {
+    } else if (b.ntnCnic) {
       buyer = { name: b.name ?? null, ntnCnic: b.ntnCnic ?? null, province: b.province ?? null, address: b.address ?? null, registered };
+    } else {
+      const d = await demoBuyerOf(sql);
+      if (!d) return { missing: `${sc.code} needs a registered buyer: set the demo registered buyer (a real registered NTN) in Scenario Testing, or choose one for this scenario.` };
+      buyer = { name: d.name, ntnCnic: d.ntnCnic, province: d.province, address: d.address, registered };
     }
-    if (!buyer.ntnCnic || !isValidNtnOrCnic(normalizeNtn(buyer.ntnCnic))) return { missing: `${sc.code} needs a registered buyer with a valid NTN/CNIC: choose a customer or enter one.` };
+    if (!buyer.ntnCnic || !isValidNtnOrCnic(normalizeNtn(buyer.ntnCnic))) return { missing: `${sc.code} needs a registered buyer with a valid NTN/CNIC.` };
     if (!buyer.name?.trim()) return { missing: `${sc.code} needs the registered buyer's business name.` };
   }
   const seller = { ...(await sellerOf(sql, T)), retailer: sc.retailer === true };
-  const item: FbrItemRow = {
-    qty: 1, sale_price: p.price, tax_pct: p.fbr_sale_rate ?? 0, further_tax_pct: 0, discount_rs: 0, product_name: p.name,
-    hs_code: p.hs_code, fbr_sale_type: p.fbr_sale_type, fbr_sale_rate: p.fbr_sale_rate, fbr_uom: p.fbr_uom,
-    sro_no: p.sro_no, sro_item_serial_no: p.sro_item_serial_no, fbr_qty_factor: p.fbr_qty_factor,
-  };
-  const built = buildFbrPayload(today(now), buyer, [item], seller, await hsUoms(T, token, p.hs_code, g, deps));
+  const item: FbrItemRow = { ...line, qty: 1, tax_pct: line.fbr_sale_rate ?? 0, further_tax_pct: 0, discount_rs: 0 };
+  const built = buildFbrPayload(today(now), buyer, [item], seller, await hsUoms(T, token, line.hs_code!, g, deps));
   if ("error" in built) return { payload: null as unknown as FbrInvoicePayload, problems: built.error.split("\n").filter(Boolean), registered };
   return { payload: built.payload, problems: checkScenarioPayload(built.payload, sc, registered), registered };
 }

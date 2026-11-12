@@ -14,6 +14,7 @@ import type { Sql } from "@/server/subSupers";
 import type { Caller } from "@/server/sqlPolicy";
 import * as fbr from "@/server/fbr/service";
 import * as scn from "@/server/fbr/scenarios";
+import { clearPreview, clearSales } from "@/server/fbr/goLive";
 import { FBR_BUSINESS_NATURES, FBR_SECTORS, checkScenarioPayload, findScenario, interpretFbrValidate } from "@/lib/fbrScenarios";
 import type { FbrInvoicePayload } from "@/lib/fbr";
 import { createGateway } from "../../fbr-gateway/src/server.ts";
@@ -41,7 +42,7 @@ before(async () => {
       calls.push({ method: req.method!, url: req.url!, auth: req.headers.authorization, body });
       const json = (o: unknown) => { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(o)); };
       const url = req.url!;
-      if (url.startsWith("/pdi/v2/HS_UOM")) return json(url.includes("3004") ? [{ uoM_ID: 13, description: "Packs" }, { uoM_ID: 3, description: "KG" }] : [{ uoM_ID: 69, description: "Numbers, pieces, units" }]);
+      if (url.startsWith("/pdi/v2/HS_UOM")) return json(url.includes("3004") ? [{ uoM_ID: 13, description: "Packs" }, { uoM_ID: 3, description: "KG" }] : url.includes("3401") ? [{ uoM_ID: 3, description: "KG" }] : [{ uoM_ID: 69, description: "Numbers, pieces, units" }]);
       if (url.includes("validateinvoicedata")) {
         if (validateMode === "hang") return;
         if (validateMode === "invalid") return json({ validationResponse: { statusCode: "01", status: "Invalid", error: "", invoiceStatuses: [{ itemSNo: "1", statusCode: "01", errorCode: "0099", error: "UOM is not valid for this HS code" }] } });
@@ -58,7 +59,7 @@ before(async () => {
     });
   });
   await new Promise<void>((r) => fbrServer.listen(0, "127.0.0.1", r));
-  gateway = createGateway(loadConfig({ GATEWAY_SECRETS: SECRET, FBR_BASE_URL: `http://127.0.0.1:${(fbrServer.address() as AddressInfo).port}`, FBR_TIMEOUT_MS: "3000" }), { logLine: () => undefined });
+  gateway = createGateway(loadConfig({ GATEWAY_SECRETS: SECRET, FBR_BASE_URL: `http://127.0.0.1:${(fbrServer.address() as AddressInfo).port}`, FBR_TIMEOUT_MS: "3000", RATE_PER_TENANT_PER_MIN: "10000", RATE_TOTAL_PER_MIN: "10000" }), { logLine: () => undefined });
   await new Promise<void>((r) => gateway.listen(0, "127.0.0.1", r));
   gatewayUrl = `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`;
 });
@@ -195,7 +196,7 @@ test("FBR's validate answer is read as valid, invalid (with FBR's reasons) or un
 
 // ── Running ──
 
-test("all nine verified scenarios: validated then posted to the sandbox, numbers saved, real data untouched", async () => {
+test("all nine verified scenarios with hidden test items: validated then posted to the sandbox, numbers saved, real data untouched", async () => {
   const before = ["invoices", "fbr_submissions", "product_batches", "price_list"].map((t) => Number(one(`SELECT COUNT(*) AS n FROM ${t}`).n));
   const s = await startT1();
   for (const code of ALL9) {
@@ -212,9 +213,11 @@ test("all nine verified scenarios: validated then posted to the sandbox, numbers
   assert.deepEqual(sent.map((p) => p.scenarioId), ALL9);
   const by = (code: string) => sent.find((p) => p.scenarioId === code)!;
   assert.deepEqual([by("SN001").buyerRegistrationType, by("SN001").buyerNTNCNIC, by("SN001").buyerBusinessName], ["Registered", "7654321", "City Medical Store"]);
-  assert.deepEqual([by("SN002").items[0].salesTaxApplicable, by("SN002").items[0].totalValues, by("SN002").buyerRegistrationType], [18, 118, "Unregistered"]);
-  assert.deepEqual([by("SN008").items[0].fixedNotifiedValueOrRetailPrice, by("SN008").items[0].salesTaxApplicable], [300, 54], "3rd Schedule: tax on the retail price");
-  assert.deepEqual([by("SN005").items[0].rate, by("SN005").items[0].salesTaxApplicable, by("SN005").items[0].extraTax, by("SN005").items[0].sroItemSerialNo], ["1%", 2, "", "82"]);
+  assert.deepEqual([by("SN002").items[0].hsCode, by("SN002").items[0].uoM, by("SN002").items[0].salesTaxApplicable, by("SN002").items[0].totalValues, by("SN002").buyerRegistrationType], ["9608.1000", "Numbers, pieces, units", 18, 118, "Unregistered"]);
+  assert.deepEqual([by("SN008").items[0].hsCode, by("SN008").items[0].uoM, by("SN008").items[0].fixedNotifiedValueOrRetailPrice, by("SN008").items[0].salesTaxApplicable], ["3401.1100", "KG", 250, 45], "3rd Schedule: tax on the retail price");
+  assert.deepEqual([by("SN005").items[0].rate, by("SN005").items[0].salesTaxApplicable, by("SN005").items[0].extraTax, by("SN005").items[0].sroScheduleNo, by("SN005").items[0].sroItemSerialNo], ["1%", 10, "", "EIGHTH SCHEDULE Table 1", "71"]);
+  assert.deepEqual([by("SN007").items[0].rate, by("SN007").items[0].sroScheduleNo], ["0%", "327(I)/2008"]);
+  assert.ok(sent.every((p) => p.items[0].productDescription.startsWith("Test item")), "hidden test items, not the business's products");
   assert.equal(by("SN006").items[0].rate, "Exempt");
   assert.equal(by("SN028").items[0].saleType, "Goods at Reduced Rate");
   assert.ok(sent.every((p) => p.sellerNTNCNIC === "1234567" && p.invoiceDate === "2026-11-12"));
@@ -231,20 +234,20 @@ test("all nine verified scenarios: validated then posted to the sandbox, numbers
 });
 
 test("missing information is asked for, not invented", async () => {
-  const s = await startT1(["SN001", "SN002"], { SN001: { buyer: { registered: true } } });
+  const s = await startT1(["SN001", "SN002"], { SN001: { buyer: { registered: true } }, SN002: { productId: "std" } });
   const r = await scn.run(sql, admin, { scenarioTestId: testId(s, "SN001") }, deps());
   assert.equal(r.status, "needs_input");
-  assert.match(r.message ?? "", /registered buyer with a valid NTN/);
+  assert.match(r.message ?? "", /set the demo registered buyer/);
   run(`UPDATE products SET deleted_at = ? WHERE id = 'std'`, T);
   const r2 = await scn.run(sql, admin, { scenarioTestId: testId(s, "SN002") }, deps());
   assert.equal(r2.status, "needs_input");
-  assert.match(r2.message ?? "", /No product of this business has sale type "Goods at standard rate \(default\)"/);
+  assert.match(r2.message ?? "", /chosen product no longer has complete FBR data/);
   assert.equal(calls.length, 0, "nothing sent");
 });
 
 test("local validation failure: nothing reaches FBR", async () => {
   run(`UPDATE products SET sro_no = NULL WHERE id = 'red'`);
-  const s = await startT1(["SN005"]);
+  const s = await startT1(["SN005"], { SN005: { productId: "red" } });
   const r = await scn.run(sql, admin, { scenarioTestId: testId(s, "SN005") }, deps());
   assert.equal(r.status, "local_failed");
   assert.match(r.message ?? "", /SRO schedule and item serial are required/);
@@ -264,7 +267,7 @@ test("FBR validation fails: not posted; the same invoice is not retried; after a
   await assert.rejects(scn.run(sql, admin, { scenarioTestId: id }, deps()), /same invoice FBR refused/);
   clock = new Date(Date.parse(T) + 86_400_000); // a new day alone does not make it a new invoice
   await assert.rejects(scn.run(sql, admin, { scenarioTestId: id }, deps()), /same invoice FBR refused/);
-  run(`UPDATE products SET fbr_uom = 'KG' WHERE id = 'std'`); // the fix
+  await scn.updateScenario(sql, admin, { scenarioTestId: id, item: { name: "Test item corrected" } }, deps()); // the fix
   const ok = await scn.run(sql, admin, { scenarioTestId: id }, deps());
   assert.equal(ok.status, "submitted");
   const attempts = db.prepare(`SELECT attempt_no, state FROM fbr_scenario_attempts WHERE scenario_test_id = ? ORDER BY attempt_no`).all(id) as { attempt_no: number; state: string }[];
@@ -272,11 +275,13 @@ test("FBR validation fails: not posted; the same invoice is not retried; after a
 });
 
 test("FBR's own HS/UOM list is checked before sending", async () => {
-  run(`UPDATE products SET fbr_uom = 'Liter' WHERE id = 'std'`);
   const s = await startT1(["SN002"]);
+  await scn.updateScenario(sql, admin, { scenarioTestId: testId(s, "SN002"), item: { fbr_uom: "Liter" } }, deps());
   const r = await scn.run(sql, admin, { scenarioTestId: testId(s, "SN002") }, deps());
   assert.equal(r.status, "local_failed");
-  assert.match(r.message ?? "", /UOM "Liter" not allowed for HS 3004.9099 \(use Packs or KG\)/);
+  assert.match(r.message ?? "", /UOM "Liter" not allowed for HS 9608.1000 \(use Numbers, pieces, units\)/);
+  await assert.rejects(scn.updateScenario(sql, admin, { scenarioTestId: testId(s, "SN002"), item: { hs_code: "30049099" } }, deps()), /0000.0000/);
+  await assert.rejects(scn.updateScenario(sql, admin, { scenarioTestId: testId(s, "SN002"), item: { price: 0 } }, deps()), /more than 0/);
   assert.equal(validated().length, 0);
 });
 
@@ -366,11 +371,95 @@ test("scenarios MAVIN cannot build are tracked only; portal confirmation and fin
 });
 
 test("businesses stay apart: another business's product cannot be used", async () => {
-  const s = await startT1(["SN002"]);
+  const s = await startT1(["SN002"], { SN002: { productId: "std" } });
   await assert.rejects(scn.updateScenario(sql, admin, { scenarioTestId: testId(s, "SN002"), productId: "t2std" }, deps()), /not this business's/);
   const r = await scn.run(sql, admin, { scenarioTestId: testId(s, "SN002") }, deps());
   assert.equal(r.status, "submitted");
   const p = JSON.parse(posted()[0].body) as FbrInvoicePayload;
   assert.equal(p.items[0].productDescription, "std");
   assert.equal(p.sellerNTNCNIC, "1234567");
+});
+
+// ── Demo registered buyer ──
+
+test("the Super Admin's demo registered buyer is used when a scenario names none; shown masked", async () => {
+  await assert.rejects(scn.setDemoBuyer(sql, owner("t1"), { name: "X", ntnCnic: "1234567", province: "Punjab", address: "Y" }, deps()), /Super Admin/);
+  await assert.rejects(scn.setDemoBuyer(sql, admin, { name: "X", ntnCnic: "12", province: "Punjab", address: "Y" }, deps()), /valid NTN/);
+  const saved = await scn.setDemoBuyer(sql, admin, { name: "Active Traders", ntnCnic: "8889991", province: "Punjab", address: "Mall Road" }, deps());
+  assert.equal(saved?.ntnMasked, "••••991");
+  assert.equal((await scn.prepare(sql, admin, { tenantId: "t2" }, deps())).demoBuyer?.name, "Active Traders", "one buyer for every business");
+  const s = await startT1(["SN001"], { SN001: { buyer: { registered: true } } });
+  const r = await scn.run(sql, admin, { scenarioTestId: testId(s, "SN001") }, deps());
+  assert.equal(r.status, "submitted", r.message ?? "");
+  const p = JSON.parse(posted()[0].body) as FbrInvoicePayload;
+  assert.deepEqual([p.buyerRegistrationType, p.buyerNTNCNIC, p.buyerBusinessName], ["Registered", "8889991", "Active Traders"]);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM settings WHERE key LIKE 't1::%fbr_demo%'`).n, 0, "not stored in any business's settings");
+});
+
+// ── Go-live Clear ──
+
+function sale(id: string, no: number, f: Record<string, unknown>, lines: [product: string, batch: string | null, qty: number][]) {
+  row("invoices", { id, tenant_id: "t1", branch_id: "main-t1", invoice_no: no, date: "2026-11-10", payable: 100, ...f });
+  lines.forEach(([product, batch, qty], i) => row("invoice_items", { id: `${id}-${i}`, invoice_id: id, tenant_id: "t1", branch_id: "main-t1", product_id: product, batch_no: batch, qty, bonus_qty: 0, purchase_price: 50 }));
+}
+function clearData() {
+  row("product_batches", { id: "b-std", product_id: "std", batch_no: "B1", qty: 7, tenant_id: "t1", branch_id: "main-t1" });
+  row("product_batches", { id: "b-t2", product_id: "t2std", batch_no: "B1", qty: 5, tenant_id: "t2", branch_id: "main-t2" });
+  sale("s1", 1, {}, [["std", "B1", 3]]);
+  sale("s2", 2, { fbr_invoice_no: "SB000099" }, [["std", "B1", 2], ["red", null, 4]]);
+  sale("r1", 3, { is_return: 1, original_invoice_id: "s1" }, [["std", "B1", 1]]);
+  sale("q1", 0, { is_quotation: 1, quotation_no: 1, invoice_no: null }, [["std", "B1", 50]]);
+  sale("d1", 4, { is_memorized: 1 }, [["std", "B1", 60]]);
+  sale("x1", 5, { deleted_at: T }, [["std", "B1", 70]]);
+  row("ledger_adjustments", { id: "pay1", tenant_id: "t1", party_type: "customer", party_id: "buyer1", date: "2026-11-10", paid_amount: 100 });
+  row("ledger_adjustments", { id: "sup1", tenant_id: "t1", party_type: "supplier", party_id: "s", date: "2026-11-10", paid_amount: 100 });
+  row("fbr_submissions", { id: "fs1", tenant_id: "t1", doc_type: "invoice", doc_id: "s2", environment: "sandbox", route: "direct", status: "accepted", fbr_invoice_no: "SB000099" });
+  row("invoices", { id: "t2inv", tenant_id: "t2", branch_id: "main-t2", invoice_no: 1, date: "2026-11-10", payable: 1 });
+}
+
+test("Clear: preview, then sales removed, stock put back (sold minus returned), a copy returned, everything else kept", async () => {
+  clearData();
+  const p = await clearPreview(sql, admin, { tenantId: "t1" }, deps());
+  assert.deepEqual(p.blockers, []);
+  assert.deepEqual([p.counts.invoices, p.counts.sales, p.counts.returns, p.counts.quotations, p.counts.drafts, p.counts.deleted, p.counts.customerPayments, p.counts.fbrRecords], [6, 2, 1, 1, 1, 1, 1, 1]);
+  assert.match(p.warnings.join(), /1 invoice\(s\) carry an FBR number/);
+  await assert.rejects(clearSales(sql, admin, { tenantId: "t1", confirmName: "Shop t" }, deps()), /Type the business's name/);
+  await assert.rejects(clearSales(sql, owner("t1"), { tenantId: "t1", confirmName: "Shop t1" }, deps()), /Super Admin/);
+
+  const r = await clearSales(sql, admin, { tenantId: "t1", confirmName: "shop T1" }, deps());
+  // B1: 7 + 3 + 2 - 1 returned = 11; quotation, draft and the deleted bill never took stock (or already gave it back).
+  assert.equal(one(`SELECT qty FROM product_batches WHERE id = 'b-std'`).qty, 11);
+  // A line without a batch number comes back as a new batch, as when one invoice is deleted.
+  assert.equal(one(`SELECT SUM(qty) AS q FROM product_batches WHERE product_id = 'red' AND tenant_id = 't1'`).q, 4);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM invoices WHERE tenant_id = 't1'`).n, 0);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM invoice_items WHERE tenant_id = 't1'`).n, 0);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM ledger_adjustments WHERE tenant_id = 't1' AND party_type = 'customer'`).n, 0);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM ledger_adjustments WHERE id = 'sup1'`).n, 1, "supplier payments stay");
+  assert.equal(one(`SELECT COUNT(*) AS n FROM fbr_submissions WHERE tenant_id = 't1'`).n, 0);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM products WHERE tenant_id = 't1'`).n, 5, "products stay");
+  assert.equal(one(`SELECT COUNT(*) AS n FROM customers WHERE id = 'buyer1'`).n, 1, "customers stay");
+  assert.ok(one(`SELECT value FROM settings WHERE key = 't1::fbr_seller_ntn'`).value, "settings stay");
+  assert.equal(one(`SELECT COUNT(*) AS n FROM invoices WHERE tenant_id = 't2'`).n, 1, "another business untouched");
+  assert.equal(one(`SELECT qty FROM product_batches WHERE id = 'b-t2'`).qty, 5);
+  assert.equal(r.archive.invoices.length, 6);
+  assert.equal(r.archive.invoice_items.length, 7);
+  assert.equal(r.archive.customer_payments.length, 1);
+  assert.match(String(one(`SELECT reason FROM delete_history WHERE tenant_id = 't1'`).reason), /FBR go-live: test sales cleared/);
+  assert.equal(one(`SELECT verb FROM server_audit_log WHERE tenant_id = 't1'`).verb, "CLEAR");
+  const again = await clearPreview(sql, admin, { tenantId: "t1" }, deps());
+  assert.equal(again.counts.invoices, 0);
+});
+
+test("Clear refuses: no production token, production invoices accepted by FBR, other modules linked", async () => {
+  clearData();
+  await fbr.saveTokens(sql, owner("t1"), { production: "" }, deps());
+  assert.match((await clearPreview(sql, admin, { tenantId: "t1" }, deps())).blockers.join(), /production token/);
+  await fbr.saveTokens(sql, owner("t1"), { production: "production-token-t1" }, deps());
+  row("fbr_submissions", { id: "fs2", tenant_id: "t1", doc_type: "invoice", doc_id: "s1", environment: "production", status: "accepted", route: "gateway", fbr_invoice_no: "REAL1" });
+  row("hospital_charges", { id: "hc1", tenant_id: "t1", episode_id: "e", description: "x", amount: 1, invoice_id: "s1" });
+  const p = await clearPreview(sql, admin, { tenantId: "t1" }, deps());
+  assert.match(p.blockers.join("\n"), /accepted by FBR in production/);
+  assert.match(p.blockers.join("\n"), /1 hospital charges/);
+  await assert.rejects(clearSales(sql, admin, { tenantId: "t1", confirmName: "Shop t1" }, deps()), /accepted by FBR in production/);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM invoices WHERE tenant_id = 't1'`).n, 6, "nothing removed");
 });

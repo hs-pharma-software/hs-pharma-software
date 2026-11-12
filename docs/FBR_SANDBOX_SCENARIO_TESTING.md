@@ -162,3 +162,85 @@ uses the existing `Modal`, which opens as a bottom sheet on phones, and its tabl
 5. **Sector multi-select:** allowed, as the portal's checkboxes suggest. If the portal allows only one, tick only one.
 6. **3rd Schedule retail price** uses the product's sale price, as real invoices do. If a product's printed retail price
    differs from its sale price, real invoices have the same issue.
+
+---
+
+## 9. Update (12 Nov 2026): first live sandbox run, test items, demo buyer, go-live Clear
+
+### Live sandbox runs (direct mode, one business, 12 Nov 2026)
+
+| Scenario | Result |
+|---|---|
+| SN001, SN002, SN026 | **Passed** with HS 9608.1000, Numbers, pieces, units, 18 %. SN001's registered buyer: NTN 7308865. |
+| SN008, SN027 | **Passed** with HS 3401.1100, KG, 18 % on the retail price |
+| SN028 | **Passed** with HS 8471.3010, Numbers, pieces, units, 1 %, EIGHTH SCHEDULE Table 1 / serial 71 |
+| SN001 (first try) | Refused with **0077** ("SRO mandatory where rate is not 18%") with HS **3926.1000** at 18 %, although FBR's validate step said *Valid*. The same item passed SN002 and SN026, and the same buyer later passed with HS 9608.1000. **The HS code matters** for a registered buyer; the buyer was not the problem. |
+
+Lesson: FBR's validate step can say *Valid* and the post can still refuse. Only the post result counts.
+
+### Hidden test items (default)
+
+Each verified scenario now uses a **hidden test item** by default: it exists only inside Scenario Testing and never appears
+in Products, stock or reports, so nothing needs cleaning afterwards. Starting values per sale type are in
+`SCENARIO_TEST_ITEMS` (`src/lib/fbrScenarios.ts`):
+
+| Sale type | HS code | Unit | Rate | SRO / serial |
+|---|---|---|---|---|
+| Sale type | HS code | Unit | Rate | SRO / serial | Price | Confirmed live |
+|---|---|---|---|---|---|---|
+| Standard | 9608.1000 | Numbers, pieces, units | 18 % | | 100 | yes (SN001, SN002, SN026) |
+| Reduced rate | 8471.3010 | Numbers, pieces, units | 1 % | EIGHTH SCHEDULE Table 1 / 71 | 1,000 | yes (SN028) |
+| 3rd Schedule | 3401.1100 | KG | 18 % of retail price | | 250 | yes (SN008, SN027) |
+| Exempt | 0102.2930 | Numbers, pieces, units | Exempt | 6th Schd Table I / 100 | 1,000 | no: FBR DI sample values |
+| Zero rate | 0101.2100 | Numbers, pieces, units | 0 % | 327(I)/2008 / 1 | 1,000 | no: FBR DI sample values |
+
+Quantity 1.
+
+Each scenario's item can be edited in its *Details* (description, HS code, unit, rate, SRO, serial, price), or reset to the
+starting values. A product of the business can still be chosen instead. Changing the item makes it a new invoice, so a refused
+scenario can be retried.
+
+### Demo registered buyer
+
+One real registered NTN (the one used live: 7308865) is set once in *Scenario Testing → Demo registered buyer*. Every business's
+registered-buyer scenarios use it unless a scenario names another buyer. It is kept outside every business's settings
+(`platform::fbr_demo_buyer`) and shown masked.
+
+### Go-live Clear
+
+*Scenario Testing → Go live: clear test sales*. It also appears under the results once every scenario has passed.
+
+**Order:**
+1. Sandbox tests pass.
+2. The production token is saved.
+3. **Clear…** shows what will happen.
+4. Type the business's name, then **Clear sales now**.
+
+| Removed | Put back | Kept |
+|---|---|---|
+| all invoices, sale returns, quotations, drafts (also ones deleted earlier) and their lines; customer payments; the business's FBR submission records | the stock those sales took, batch by batch (sold minus returned; lines without a batch become a new batch, as when one invoice is deleted); handsets sold on them | products, customers, suppliers, purchases, supplier payments, settings, FBR tokens, other businesses |
+
+- **Bill numbers start again at 1,** because the rows are removed rather than hidden.
+- **A copy of everything removed downloads automatically** as a JSON file.
+- **It is recorded** in the business's delete history and the server audit log.
+- **It runs as one transaction:** all of it happens or nothing does.
+
+**Refused when:**
+- no production token is saved;
+- any invoice was accepted by FBR in **production** (a real tax record);
+- other modules hang on these invoices: hospital charges, surgery bookings, clinic orders, online orders, distribution
+  bookings, banquet bookings (Clear handles shop sales only);
+- there are more than 5,000 invoices;
+- the typed name is wrong.
+
+**Note:** an offline desktop already holding a copy of these sales may keep showing them until its copy is refreshed.
+
+### Tests
+
+`tests/server/fbr-scenarios.test.ts`: **21 / 21 pass**. New since the first version:
+- the nine scenarios with hidden test items;
+- the demo buyer is used, shown masked, and not stored in any business's settings;
+- item edits are validated;
+- Clear: exact stock arithmetic, everything listed above removed or kept, another business untouched, the copy and the
+  history records;
+- Clear's refusals.

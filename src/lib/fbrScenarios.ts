@@ -99,6 +99,33 @@ export const FBR_SCENARIOS: FbrScenario[] = [
   v("SN028", "Sale to end consumer by retailers (reduced rate)", "Goods at Reduced Rate", "unregistered", true),
 ];
 
+/** A hidden test item: used only to build scenario test invoices; never a
+ * product of the business (no catalog, stock or report sees it). */
+export interface ScenarioTestItem {
+  name: string;
+  hs_code: string;
+  fbr_uom: string;
+  fbr_sale_rate: number;
+  sro_no: string;
+  sro_item_serial_no: string;
+  price: number;
+}
+
+/** Starting values per sale type. Standard rate, 3rd Schedule and reduced
+ * rate: items FBR's sandbox accepted (12 Nov 2026: SN001, SN002, SN026 with
+ * HS 9608.1000; SN008, SN027 with 3401.1100; SN028 with 8471.3010 under
+ * EIGHTH SCHEDULE Table 1 serial 71). FBR refused SN001 (error 0077) with HS
+ * 3926.1000 and the same buyer, so the item matters. Exempt and zero rate
+ * follow FBR's DI sample scenarios and are not yet confirmed. Each can be
+ * edited per scenario. */
+export const SCENARIO_TEST_ITEMS: Record<string, ScenarioTestItem> = {
+  "Goods at standard rate (default)": { name: "Test item (standard rate)", hs_code: "9608.1000", fbr_uom: "Numbers, pieces, units", fbr_sale_rate: 18, sro_no: "", sro_item_serial_no: "", price: 100 },
+  "Goods at Reduced Rate": { name: "Test item (reduced rate)", hs_code: "8471.3010", fbr_uom: "Numbers, pieces, units", fbr_sale_rate: 1, sro_no: "EIGHTH SCHEDULE Table 1", sro_item_serial_no: "71", price: 1000 },
+  "Exempt goods": { name: "Test item (exempt)", hs_code: "0102.2930", fbr_uom: "Numbers, pieces, units", fbr_sale_rate: 0, sro_no: "6th Schd Table I", sro_item_serial_no: "100", price: 1000 },
+  "Goods at zero-rate": { name: "Test item (zero rate)", hs_code: "0101.2100", fbr_uom: "Numbers, pieces, units", fbr_sale_rate: 0, sro_no: "327(I)/2008", sro_item_serial_no: "1", price: 1000 },
+  "3rd Schedule Goods": { name: "Test item (3rd Schedule)", hs_code: "3401.1100", fbr_uom: "KG", fbr_sale_rate: 18, sro_no: "", sro_item_serial_no: "", price: 250 },
+};
+
 export const SCENARIO_CODE_RE = /^SN\d{3}$/;
 export const findScenario = (code: string) => FBR_SCENARIOS.find((s) => s.code === code);
 

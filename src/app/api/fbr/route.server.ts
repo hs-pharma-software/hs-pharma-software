@@ -1,12 +1,13 @@
 /** FBR Digital Invoicing through MAVIN's server (src/server/fbr/service.ts).
  * Business logins: config, tokens, test, reference, submit, finish, resolve, list.
  * Super Admin: overview, egress (the gateway's outbound IP), and sandbox scenario
- * testing (scn_*, src/server/fbr/scenarios.ts). */
+ * testing (scn_*, src/server/fbr/scenarios.ts), go-live Clear (clear_*, goLive.ts). */
 import { callerOf, jsonError, HttpError } from "@/server/db";
 import { sqlForServer } from "@/server/subSupersApi";
 import { branchScopeFor } from "@/server/branches";
 import * as fbr from "@/server/fbr/service";
 import * as scn from "@/server/fbr/scenarios";
+import { clearPreview, clearSales } from "@/server/fbr/goLive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,10 @@ export async function POST(req: Request): Promise<Response> {
       case "scn_resolve": result = await scn.resolve(sql, caller, b); break;
       case "scn_confirm": result = await scn.confirmPortal(sql, caller, b); break;
       case "scn_finish": result = await scn.finishSession(sql, caller, b); break;
+      case "scn_demo_buyer": result = await scn.getDemoBuyer(sql, caller); break;
+      case "scn_demo_buyer_set": result = await scn.setDemoBuyer(sql, caller, b); break;
+      case "clear_preview": result = await clearPreview(sql, caller, b); break;
+      case "clear_sales": result = await clearSales(sql, caller, b); break;
       default: throw new HttpError(400, "Unknown action.");
     }
     return Response.json(result);

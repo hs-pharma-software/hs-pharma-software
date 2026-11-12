@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { serverJson } from "@/lib/serverMode";
 import { sandboxCallFromBrowser, type FbrInvoicePayload } from "@/lib/fbr";
-import { FBR_BUSINESS_NATURES, FBR_SECTORS, isIncomplete, scenarioGroup, SCENARIO_STATUS_LABEL, type FbrScenario, type ScenarioStatus } from "@/lib/fbrScenarios";
+import { FBR_BUSINESS_NATURES, FBR_SECTORS, isIncomplete, scenarioGroup, SCENARIO_STATUS_LABEL, type FbrScenario, type ScenarioStatus, type ScenarioTestItem } from "@/lib/fbrScenarios";
 
 interface ProductOption { id: string; name: string; hs_code: string; fbr_uom: string; fbr_sale_rate: number | null; sro_no: string | null; sro_item_serial_no: string | null; price: number }
 interface Prep {
@@ -18,11 +18,15 @@ interface Prep {
   seller: { ntnMasked: string; name: string; province: string; address: string; retailer: boolean };
   hasSandboxToken: boolean;
   sandboxHint: string | null;
+  hasProductionToken: boolean;
+  demoBuyer: DemoBuyer | null;
+  testItems: Record<string, ScenarioTestItem>;
   problems: string[];
   products: Record<string, ProductOption[]>;
   buyers: { id: string; name: string; ntnMasked: string; province: string | null }[];
   sessions: { id: string; status: string; business_natures: string[]; sectors: string[]; started_at: string; completed_at: string | null; total: number; passed: number }[];
 }
+interface DemoBuyer { name: string; ntnMasked: string; province: string; address: string }
 interface Attempt {
   id: string; attempt_no: number; route: string; stage: string; state: string; payload_json: unknown; validation_http: number | null; validation_excerpt: string | null;
   submission_http: number | null; response_excerpt: string | null; fbr_invoice_no: string | null; error: string | null; created_at: string;
@@ -30,11 +34,13 @@ interface Attempt {
 interface TestRow {
   id: string; scenario_code: string; title: string; verified: number; saleType: string | null; buyerKind: "registered" | "unregistered" | "either" | null;
   product_id: string | null; buyer: { registered?: boolean; customerId?: string; name?: string; ntnCnic?: string } | null;
+  testItem: ScenarioTestItem | null;
   status: ScenarioStatus; validation_status: string | null; submission_status: string | null; fbr_invoice_no: string | null; attempts: Attempt[];
   last_error: string | null; last_attempt_at: string | null; portal_confirmed_at: string | null;
 }
-interface SessionView { session: { id: string; status: string; business_natures: string[]; sectors: string[]; started_at: string; completed_at: string | null }; tests: TestRow[] }
+interface SessionView { session: { id: string; tenant_id: string; status: string; business_natures: string[]; sectors: string[]; started_at: string; completed_at: string | null }; tests: TestRow[] }
 interface RunResult { scenarioTestId: string; status: ScenarioStatus; message: string | null; fbrInvoiceNo?: string | null; attemptId?: string; direct?: { step: "validate" | "post"; token: string; payload: FbrInvoicePayload; attemptId: string } }
+/** customerId: "" = the demo registered buyer, "type" = typed below, else a customer id. */
 interface Pick { on: boolean; productId: string; registered: boolean; customerId: string; name: string; ntn: string; province: string; address: string }
 
 const API = "/api/fbr/";
@@ -101,7 +107,7 @@ export function FbrScenarioWizard({ tenantId, onClose }: { tenantId: string; onC
         const registered = s.buyer === "registered" || (s.buyer === "either" && p.registered);
         return {
           code: s.code, productId: p.productId || undefined,
-          buyer: s.verified ? { registered, ...(registered ? (p.customerId ? { customerId: p.customerId } : { name: p.name, ntnCnic: p.ntn, province: p.province, address: p.address }) : {}) } : undefined,
+          buyer: s.verified ? { registered, ...(registered ? (p.customerId === "type" ? { name: p.name, ntnCnic: p.ntn, province: p.province, address: p.address } : p.customerId ? { customerId: p.customerId } : {}) : {}) } : undefined,
         };
       });
       const v = await call<SessionView>("scn_start", { tenantId, natures, sectors, scenarios });
@@ -185,6 +191,8 @@ export function FbrScenarioWizard({ tenantId, onClose }: { tenantId: string; onC
                 <p className="text-neutral-600">Business now uses: {prep.environment === "production" ? "Production" : "Sandbox"} (testing never changes this)</p>
               </div>
             </div>
+            <DemoBuyerCard buyer={prep.demoBuyer} onSaved={() => void loadPrep()} />
+            <ClearCard tenantId={tenantId} hasProductionToken={prep.hasProductionToken} />
             {prep.problems.length > 0 && (
               <ul className="list-disc rounded-lg bg-amber-50 py-2 pl-6 pr-3 text-amber-900">{prep.problems.map((p) => <li key={p}>{p}</li>)}</ul>
             )}
@@ -249,9 +257,9 @@ export function FbrScenarioWizard({ tenantId, onClose }: { tenantId: string; onC
                     </label>
                     {p.on && s.verified && (
                       <div className="mt-2 grid gap-2 pl-6 sm:grid-cols-2">
-                        <label className="text-xs text-neutral-500">Product ({s.saleType})
+                        <label className="text-xs text-neutral-500">Item ({s.saleType})
                           <select className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm text-neutral-900 ring-1 ring-neutral-200" value={p.productId} onChange={(e) => setPick(s.code, { productId: e.target.value })}>
-                            <option value="">{options.length ? "First suitable product" : "None set up: add one in Products first"}</option>
+                            <option value="">{itemLabel(prep.testItems[s.saleType!])}</option>
                             {options.map((o) => <option key={o.id} value={o.id}>{o.name} · HS {o.hs_code} · {o.fbr_uom} · Rs {o.price}{o.sro_no ? ` · SRO ${o.sro_no}/${o.sro_item_serial_no ?? ""}` : ""}</option>)}
                           </select>
                         </label>
@@ -266,10 +274,11 @@ export function FbrScenarioWizard({ tenantId, onClose }: { tenantId: string; onC
                         {registered && (
                           <div className="space-y-1 sm:col-span-2">
                             <select className="w-full rounded-lg px-2 py-1.5 text-sm ring-1 ring-neutral-200" value={p.customerId} onChange={(e) => setPick(s.code, { customerId: e.target.value })}>
-                              <option value="">Enter the registered buyer below</option>
+                              <option value="">{prep.demoBuyer ? `Demo registered buyer: ${prep.demoBuyer.name} · NTN ${prep.demoBuyer.ntnMasked}` : "Demo registered buyer (not set yet: set it in step 1)"}</option>
                               {prep.buyers.map((b) => <option key={b.id} value={b.id}>{b.name} · NTN {b.ntnMasked}{b.province ? ` · ${b.province}` : ""}</option>)}
+                              <option value="type">Type another registered buyer…</option>
                             </select>
-                            {!p.customerId && (
+                            {p.customerId === "type" && (
                               <div className="grid gap-1 sm:grid-cols-4">
                                 {(["name", "ntn", "province", "address"] as const).map((k) => (
                                   <input key={k} value={p[k]} onChange={(e) => setPick(s.code, { [k]: e.target.value })} placeholder={{ name: "Buyer business name", ntn: "Buyer NTN / CNIC", province: "Province", address: "Address" }[k]} className="rounded-lg px-2 py-1.5 text-sm ring-1 ring-neutral-200" />
@@ -374,6 +383,7 @@ function SessionPanel({ view, prep, running, queue, notes, counts, onRun, onStop
               <p className="font-semibold">Sandbox Testing Completed Successfully</p>
               <p>{counts.confirmed === counts.passed ? "Every scenario is marked as confirmed in the FBR portal." : "All selected sandbox tests passed. Please confirm completion in the FBR portal, then tick “Confirmed in portal” for each scenario."}</p>
               <p className="mt-1 text-xs">Production is not switched on by this. Do that separately in the business&apos;s FBR setup when FBR has activated production.</p>
+              <div className="mt-2"><ClearCard tenantId={String(s.tenant_id ?? "")} hasProductionToken={!!prep?.hasProductionToken} /></div>
             </div>
           ) : counts.incomplete > 0 && (
             <p className="text-sm text-amber-900">Some scenarios are incomplete. Would you like to test them again?</p>
@@ -441,18 +451,21 @@ function SessionPanel({ view, prep, running, queue, notes, counts, onRun, onStop
                       {isOpen && !!t.verified && t.status !== "submitted" && t.status !== "portal_confirmed" && (
                         <div className="flex flex-wrap items-center gap-2">
                           <select className="rounded-lg px-2 py-1 ring-1 ring-neutral-200" value={t.product_id ?? ""} onChange={(e) => act("scn_update", { scenarioTestId: t.id, productId: e.target.value })}>
-                            <option value="">First suitable product</option>
+                            <option value="">{t.testItem ? itemLabel(t.testItem) : "Test item"}</option>
                             {options.map((o) => <option key={o.id} value={o.id}>{o.name} · HS {o.hs_code} · {o.fbr_uom} · Rs {o.price}</option>)}
                           </select>
                           {t.buyerKind !== "unregistered" && prep && (
                             <select className="rounded-lg px-2 py-1 ring-1 ring-neutral-200" value={t.buyer?.customerId ?? ""} onChange={(e) => act("scn_update", { scenarioTestId: t.id, buyer: e.target.value ? { registered: true, customerId: e.target.value } : { registered: false } })}>
-                              <option value="">{t.buyerKind === "either" ? "Unregistered buyer" : "Choose registered buyer"}</option>
+                              <option value="">{t.buyerKind === "either" ? "Unregistered buyer" : "Demo registered buyer"}</option>
                               {prep.buyers.map((b) => <option key={b.id} value={b.id}>{b.name} · NTN {b.ntnMasked}</option>)}
                             </select>
                           )}
                           {runnable(t) && <Button disabled={running} onClick={() => onRun([t.id])}>Retry this scenario</Button>}
                           <Button disabled={running || !!live} onClick={() => act("scn_update", { scenarioTestId: t.id, skip: t.status !== "skipped" })}>{t.status === "skipped" ? "Take back" : "Skip"}</Button>
                         </div>
+                      )}
+                      {isOpen && !!t.verified && t.testItem && t.status !== "submitted" && t.status !== "portal_confirmed" && (
+                        <ItemEditor item={t.testItem} disabled={running} onSave={(item) => act("scn_update", { scenarioTestId: t.id, item })} onReset={() => act("scn_update", { scenarioTestId: t.id, item: null })} />
                       )}
                       {live && isOpen && (
                         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-2 text-amber-900">
@@ -488,6 +501,136 @@ function SessionPanel({ view, prep, running, queue, notes, counts, onRun, onStop
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const itemLabel = (i: ScenarioTestItem | undefined) =>
+  i ? `Test item: ${i.name} · HS ${i.hs_code} · ${i.fbr_uom} · ${i.fbr_sale_rate}%${i.sro_no ? ` · SRO ${i.sro_no} / ${i.sro_item_serial_no}` : ""} · Rs ${i.price}` : "Test item";
+
+/** Changes to a scenario's hidden test item (when FBR asks for other values). */
+function ItemEditor({ item, disabled, onSave, onReset }: { item: ScenarioTestItem; disabled: boolean; onSave: (i: Partial<ScenarioTestItem>) => void; onReset: () => void }) {
+  const [v, setV] = useState<Record<keyof ScenarioTestItem, string>>(() => toText(item));
+  useEffect(() => setV(toText(item)), [item]);
+  const field = (k: keyof ScenarioTestItem, label: string, w: string) => (
+    <label className="text-[11px] text-neutral-500">{label}
+      <input value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} className={`mt-0.5 block rounded-lg px-2 py-1 text-xs text-neutral-900 ring-1 ring-neutral-200 ${w}`} />
+    </label>
+  );
+  return (
+    <div className="rounded-lg bg-white p-2 ring-1 ring-neutral-200">
+      <p className="mb-1 font-medium text-neutral-700">Test item (hidden: never in Products, stock or reports)</p>
+      <div className="flex flex-wrap items-end gap-2">
+        {field("name", "Description", "w-44")}{field("hs_code", "HS code", "w-24")}{field("fbr_uom", "FBR UOM", "w-44")}{field("fbr_sale_rate", "Rate %", "w-16")}
+        {field("sro_no", "SRO schedule", "w-44")}{field("sro_item_serial_no", "SRO item serial", "w-20")}{field("price", "Price (Rs)", "w-24")}
+        <Button disabled={disabled} onClick={() => onSave({ ...v, fbr_sale_rate: Number(v.fbr_sale_rate), price: Number(v.price) })}>Save item</Button>
+        <Button disabled={disabled} onClick={onReset}>Starting values</Button>
+      </div>
+    </div>
+  );
+}
+const toText = (i: ScenarioTestItem) => Object.fromEntries(Object.entries(i).map(([k, x]) => [k, String(x ?? "")])) as Record<keyof ScenarioTestItem, string>;
+
+/** The registered buyer every business's tests use (one for all; a real NTN active for sales tax). */
+function DemoBuyerCard({ buyer, onSaved }: { buyer: DemoBuyer | null; onSaved: () => void }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ name: "", ntnCnic: "", province: "Punjab", address: "" });
+  const [msg, setMsg] = useState<string | null>(null);
+  async function save() {
+    try { await call("scn_demo_buyer_set", f); setEdit(false); setMsg(null); onSaved(); } catch (e) { setMsg(errText(e)); }
+  }
+  return (
+    <div className="rounded-xl bg-neutral-50 p-3 text-sm ring-1 ring-neutral-200">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">Demo registered buyer (all businesses)</p>
+        <Button className="ml-auto" onClick={() => setEdit((x) => !x)}>{edit ? "Cancel" : buyer ? "Change" : "Set"}</Button>
+      </div>
+      {buyer ? <p className="mt-1 text-neutral-900">{buyer.name} · NTN {buyer.ntnMasked} · {buyer.province}</p> : <p className="mt-1 text-amber-800">Not set: scenarios with a registered buyer (SN001) need a real NTN that is active for sales tax.</p>}
+      {edit && (
+        <div className="mt-2 grid gap-2 sm:grid-cols-4">
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Business name" className="rounded-lg px-2 py-1.5 ring-1 ring-neutral-200" />
+          <input value={f.ntnCnic} onChange={(e) => setF({ ...f, ntnCnic: e.target.value })} placeholder="NTN (active for sales tax)" className="rounded-lg px-2 py-1.5 ring-1 ring-neutral-200" />
+          <input value={f.province} onChange={(e) => setF({ ...f, province: e.target.value })} placeholder="Province" className="rounded-lg px-2 py-1.5 ring-1 ring-neutral-200" />
+          <input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} placeholder="Address" className="rounded-lg px-2 py-1.5 ring-1 ring-neutral-200" />
+          <p className="text-xs text-neutral-500 sm:col-span-3">A real business registered for sales tax (FBR checks the NTN).</p>
+          <Button variant="primary" onClick={() => void save()}>Save buyer</Button>
+          {msg && <p className="text-xs text-rose-700 sm:col-span-4">{msg}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ClearPreview {
+  tenant: { id: string; name: string };
+  counts: { invoices: number; sales: number; returns: number; quotations: number; drafts: number; deleted: number; lines: number; customerPayments: number; fbrRecords: number; handsets: number; stockBatches: number };
+  blockers: string[]; warnings: string[];
+}
+
+/** Go live: remove the business's test-period sales (stock put back), after a downloadable copy. */
+function ClearCard({ tenantId, hasProductionToken }: { tenantId: string; hasProductionToken: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [p, setP] = useState<ClearPreview | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  async function load() {
+    setOpen(true);
+    try { setP(await call<ClearPreview>("clear_preview", { tenantId })); setMsg(null); } catch (e) { setMsg(errText(e)); }
+  }
+  async function clear() {
+    setBusy(true);
+    try {
+      const r = await call<{ summary: string; archive: unknown }>("clear_sales", { tenantId, confirmName: name });
+      // The copy of everything removed: keep it safe.
+      const blob = new Blob([JSON.stringify(r.archive, null, 1)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `mavin-cleared-sales-${(p?.tenant.name ?? "business").replace(/[^A-Za-z0-9]+/g, "-")}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      setDone(r.summary);
+      setMsg(null);
+      setName("");
+      setP(await call<ClearPreview>("clear_preview", { tenantId }));
+    } catch (e) { setMsg(errText(e)); }
+    setBusy(false);
+  }
+  const c = p?.counts;
+  const any = c ? c.invoices + c.customerPayments + c.fbrRecords > 0 : false;
+  return (
+    <div className="rounded-xl bg-white p-3 text-sm ring-1 ring-rose-200">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-semibold text-neutral-900">Go live: clear test sales</p>
+        <span className="text-xs text-neutral-500">After sandbox tests pass and the production token is saved.</span>
+        {!open && <Button className="ml-auto" variant="danger" disabled={!hasProductionToken} onClick={() => void load()}>Clear…</Button>}
+      </div>
+      {!hasProductionToken && <p className="mt-1 text-xs text-amber-800">Save the production token in the business&apos;s FBR setup first.</p>}
+      {open && (
+        <div className="mt-2 space-y-2">
+          {done && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-900">{done} A copy was downloaded: keep it safe.</p>}
+          {c && any && (
+            <ul className="list-disc pl-5 text-neutral-700">
+              <li>Removes {c.invoices} invoice(s): {c.sales} sales, {c.returns} returns, {c.quotations} quotations, {c.drafts} drafts, {c.deleted} already deleted ({c.lines} lines)</li>
+              <li>Removes {c.customerPayments} customer payment(s) and {c.fbrRecords} FBR submission record(s)</li>
+              <li>Puts the sold stock back in {c.stockBatches} batch(es){c.handsets ? `; ${c.handsets} handset(s) back in stock` : ""}</li>
+              <li>Keeps products, customers, suppliers, purchases, settings and FBR tokens. Bill numbers start again at 1.</li>
+            </ul>
+          )}
+          {p?.warnings.map((w) => <p key={w} className="text-amber-800">{w}</p>)}
+          {p?.blockers.length ? <ul className="list-disc rounded-lg bg-rose-50 py-2 pl-6 pr-3 text-rose-800">{p.blockers.map((b) => <li key={b}>{b}</li>)}</ul> : null}
+          {p && !p.blockers.length && any && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Type "${p.tenant.name}" to confirm`} className="min-w-60 flex-1 rounded-lg px-2 py-1.5 ring-1 ring-rose-200" />
+              <Button variant="danger" disabled={busy || name.trim().toLowerCase() !== p.tenant.name.trim().toLowerCase()} onClick={() => void clear()}>{busy ? "Clearing…" : "Clear sales now"}</Button>
+            </div>
+          )}
+          {p && c && !any && <p className="text-emerald-800">No sales to clear: the business is ready for work.</p>}
+          {msg && <p className="whitespace-pre-line text-rose-700">{msg}</p>}
+          <Button onClick={() => setOpen(false)}>Close</Button>
+        </div>
+      )}
     </div>
   );
 }
