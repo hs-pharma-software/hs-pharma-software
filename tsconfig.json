@@ -43,6 +43,7 @@
     "node_modules",
     "src-tauri",
     "desktop",
+    "desktop-standalone",
     "fbr-gateway"
   ]
 }
