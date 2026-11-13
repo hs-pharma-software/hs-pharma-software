@@ -192,21 +192,25 @@ export class Mirror {
       for (const s of sales) {
         if (s.status === "applied" || s.status === "conflict") continue;
         const p = s.payload;
-        if (onServer.get(p.saleId)) continue;
+        // A new sale the server already has: its own rows show. An edit not yet
+        // accepted there replaces the copy's version (a refused one does not).
+        if (p.edit ? s.status === "rejected" : onServer.get(p.saleId)) continue;
         const t = p.totals;
+        const label = `${p.edit ? "Edited" : "Saved"} on this device · ${s.status === "pending" ? "Pending sync" : s.status}`;
+        if (p.edit) this.rw.prepare(`DELETE FROM invoice_items WHERE invoice_id = ?`).run(p.saleId);
         track.run("invoices", p.saleId);
         for (const l of p.lines) track.run("invoice_items", l.lineId);
         this.rw.prepare(
-          `INSERT OR REPLACE INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
+          `INSERT OR REPLACE INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_id, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, created_at, updated_at)
-           VALUES (?, ?, ?, 'cash', 'retail', ?, ?, ?, ?, 0, 0, ?, 0, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)`,
-        ).run(p.saleId, s.serverInvoiceNo, p.date, `Saved on this device · ${s.status === "pending" ? "Pending sync" : s.status}`, p.customerName, p.customerPhone,
-          t.total, t.discountRs, t.payable, t.paid, tenantId, branchId, p.offlineRef, p.occurredAt, p.occurredAt);
+           VALUES (?, ?, ?, ?, 'retail', ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)`,
+        ).run(p.saleId, s.serverInvoiceNo ?? p.edit?.invoiceNo ?? null, p.date, p.payment.method, label, p.customerId ?? null, p.customerName, p.customerPhone,
+          t.total, t.charges ?? 0, t.billDiscountRs ?? 0, t.payable, t.paid, t.balance, tenantId, branchId, p.offlineRef, p.occurredAt, p.occurredAt);
         for (const l of p.lines) {
           this.rw.prepare(
             `INSERT OR REPLACE INTO invoice_items (id, invoice_id, product_id, batch_no, packing, avail_qty, qty, bonus_qty, purchase_price, sale_price, tax_pct, further_tax_pct, tax_rs, discount_pct, discount_rs, total, tenant_id, branch_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, NULL, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ).run(l.lineId, p.saleId, l.productId, l.batchNo, l.packing, l.qtyPacks, l.purchasePrice, l.pricePerPack, l.taxPct, l.taxRs, l.discountPct, l.discountRs, l.total, tenantId, branchId, p.occurredAt, p.occurredAt);
+             VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).run(l.lineId, p.saleId, l.productId, l.batchNo, l.packing, l.qtyPacks, l.bonusPacks ?? 0, l.purchasePrice, l.pricePerPack, l.taxPct, l.taxRs, l.discountPct, l.discountRs, l.total, tenantId, branchId, p.occurredAt, p.occurredAt);
         }
       }
       const set = this.rw.prepare(`UPDATE product_batches SET qty = ? WHERE id = ?`);

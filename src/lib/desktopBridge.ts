@@ -26,12 +26,21 @@ export interface DesktopStatus {
   appVersion?: string;
 }
 export interface OfflineSaleInput {
-  lines: { productId: string; unit: "pack" | "loose"; qty: number; discountPct: number }[];
+  lines: { productId: string; unit: "pack" | "loose"; qty: number; bonusQty: number; discountPct: number }[];
   customerName: string | null;
   customerPhone: string | null;
+  /** A customer of the business (needed for credit). */
+  customerId: string | null;
+  /** cash: paid in full; credit: `paid` received now, the rest on the customer's account. */
+  method: "cash" | "credit";
+  paid: number;
+  billDiscountRs: number;
+  charges: number;
   tendered: number;
+  /** Editing a saved invoice (its id); null for a new sale. */
+  editOf: string | null;
 }
-export interface OfflineSaleResult { saleId: string; offlineRef: string; totals: { payable: number; change: number; tendered: number }; receipt: string }
+export interface OfflineSaleResult { saleId: string; offlineRef: string | null; totals: { payable: number; change: number; tendered: number }; receipt: string }
 
 interface Bridge {
   status(): Promise<Res<DesktopStatus>>;

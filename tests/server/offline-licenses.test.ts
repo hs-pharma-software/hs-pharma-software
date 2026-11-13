@@ -32,7 +32,9 @@ let clock: Date;
 beforeEach(() => { db = fullSchemaDb(); sql = sqliteSql(db); clock = new Date("2026-11-12T08:00:00.000Z"); });
 
 test("the server's public key is the one bundled in the app", () => {
-  assert.equal(lic.APP_PUBLIC_KEY_PEM.trim(), readFileSync(new URL("../../desktop-standalone/resources/license-public.pem", import.meta.url), "utf8").trim());
+  // Same key whatever line endings the checkout gave the file (CRLF on Windows).
+  const pem = (s: string) => s.replace(/\r\n/g, "\n").trim();
+  assert.equal(pem(lic.APP_PUBLIC_KEY_PEM), pem(readFileSync(new URL("../../desktop-standalone/resources/license-public.pem", import.meta.url), "utf8")));
 });
 
 test("Super Admin only; a bad code, a missing key, a wrong key and an unavailable category are refused", async () => {

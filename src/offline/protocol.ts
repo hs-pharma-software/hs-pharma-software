@@ -9,8 +9,10 @@ import { createPublicKey, createPrivateKey, sign as edSign, verify as edVerify }
 
 /** Bumped when the request/response shapes change incompatibly. */
 export const PROTOCOL_VERSION = 1;
-/** Version of the sale operation payload. */
-export const SALE_SCHEMA_VERSION = 1;
+/** Version of the sale operation payload. 2 adds bonus, a customer on credit,
+ * charges, a bill discount and editing a sale; version 1 sales (cash only) are still accepted. */
+export const SALE_SCHEMA_VERSION = 2;
+export const SALE_SCHEMA_VERSIONS = [1, 2] as const;
 /** Modules a device can be allowed to run offline. Only cash sales exist in the pilot. */
 export const OFFLINE_MODULES = ["sale.cash"] as const;
 export type OfflineModule = (typeof OFFLINE_MODULES)[number];
@@ -85,6 +87,9 @@ export interface SaleLine {
   discountPct: number;
   taxPct: number;
   purchasePrice: number;
+  /** Bonus (free) quantity as entered, and in packs; taken from the same batch. Version 2. */
+  bonusEntered?: number;
+  bonusPacks?: number;
   /** Line amounts (see lineAmounts). */
   gross: number;
   discountRs: number;
@@ -94,22 +99,30 @@ export interface SaleLine {
 
 export interface SalePayload {
   saleId: string;
-  /** Receipt number printed offline: <device code>-<6 digits>. The server adds its own invoice number. */
-  offlineRef: string;
+  /** Receipt number printed offline: <device code>-<6 digits>. The server adds its own invoice number.
+   * An edit of an invoice made online has none (null). */
+  offlineRef: string | null;
   /** Business day (yyyy-mm-dd) on the device. */
   date: string;
   occurredAt: string;
   userId: string;
   customerName: string | null;
   customerPhone: string | null;
+  /** A customer of the business (needed for credit). Version 2. */
+  customerId?: string | null;
   lines: SaleLine[];
-  totals: { total: number; discountRs: number; taxRs: number; payable: number; paid: number; balance: number; tendered: number; change: number };
-  payment: { method: "cash"; amount: number };
+  /** discountRs: the lines' discounts; billDiscountRs and charges: on the whole bill (version 2). */
+  totals: { total: number; discountRs: number; taxRs: number; billDiscountRs?: number; charges?: number; payable: number; paid: number; balance: number; tendered: number; change: number };
+  /** cash: paid in full. credit: on the customer's account; amount = what was received now (version 2). */
+  payment: { method: "cash" | "credit"; amount: number };
+  /** Set on an edit (operation sale.update): what this computer last knew of the invoice.
+   * afterOpId: this device's own previous operation on it; invoiceUpdatedAt: the server row it saw. */
+  edit?: { afterOpId: string | null; invoiceUpdatedAt: string | null; invoiceNo: number | null };
 }
 
 export interface Operation {
   opId: string;
-  kind: "sale.create";
+  kind: "sale.create" | "sale.update";
   entityId: string;
   schemaVersion: number;
   dependsOn: string[];
@@ -132,13 +145,23 @@ export function lineAmounts(qtyPacks: number, pricePerPack: number, discountPct:
   return { gross, discountRs, taxRs, total: gross - discountRs + taxRs };
 }
 
-/** Bill totals from the lines (no bill-level discount or charges in the pilot). */
-export function saleTotals(lines: Pick<SaleLine, "gross" | "discountRs" | "taxRs">[], tendered: number) {
+export interface BillTerms { billDiscountRs?: number; charges?: number; method?: "cash" | "credit"; paid?: number }
+
+/** Bill totals, as the online invoice form: lines (after their discounts, with
+ * tax), less the bill discount, plus charges. Cash is paid in full (tendered
+ * covers it); on credit, paid is what was received now and the rest is owed. */
+export function saleTotals(lines: Pick<SaleLine, "gross" | "discountRs" | "taxRs">[], tendered: number, terms: BillTerms = {}) {
   const total = lines.reduce((s, l) => s + l.gross, 0);
   const discountRs = lines.reduce((s, l) => s + l.discountRs, 0);
   const taxRs = lines.reduce((s, l) => s + l.taxRs, 0);
-  const payable = round2(total - discountRs + taxRs);
-  return { total, discountRs, taxRs, payable, paid: payable, balance: 0, tendered, change: round2(tendered - payable) };
+  const billDiscountRs = round2(terms.billDiscountRs ?? 0);
+  const charges = round2(terms.charges ?? 0);
+  const payable = round2(total - discountRs + taxRs - billDiscountRs + charges);
+  if (terms.method === "credit") {
+    const paid = round2(terms.paid ?? 0);
+    return { total, discountRs, taxRs, billDiscountRs, charges, payable, paid, balance: round2(payable - paid), tendered: paid, change: 0 };
+  }
+  return { total, discountRs, taxRs, billDiscountRs, charges, payable, paid: payable, balance: 0, tendered, change: round2(tendered - payable) };
 }
 
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -153,7 +176,12 @@ export function checkSale(p: unknown): string[] {
   const s = p as SalePayload;
   if (!s || typeof s !== "object") return ["payload missing"];
   if (!isStr(s.saleId) || !ID.test(s.saleId)) e.push("saleId");
-  if (!isStr(s.offlineRef, 40) || !/^[A-Z0-9]{3,8}-\d{6,}$/.test(s.offlineRef)) e.push("offlineRef");
+  const ed = s.edit;
+  if (ed != null && (typeof ed !== "object" || (ed.afterOpId != null && !isStr(ed.afterOpId)) || (ed.invoiceUpdatedAt != null && !isStr(ed.invoiceUpdatedAt, 40))
+    || (ed.afterOpId == null) === (ed.invoiceUpdatedAt == null))) e.push("edit");
+  // An edit of an invoice made online has no offline receipt number.
+  if (!(ed != null && s.offlineRef == null) && (!isStr(s.offlineRef, 40) || !/^[A-Z0-9]{3,8}-\d{6,}$/.test(s.offlineRef))) e.push("offlineRef");
+  if (s.customerId != null && !isStr(s.customerId, 64)) e.push("customerId");
   if (!isStr(s.date, 10) || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) e.push("date");
   if (!isStr(s.occurredAt, 40) || Number.isNaN(Date.parse(s.occurredAt))) e.push("occurredAt");
   if (!isStr(s.userId)) e.push("userId");
@@ -169,8 +197,12 @@ export function checkSale(p: unknown): string[] {
     if (!isStr(l.batchId)) bad("batchId");
     if (!isNum(l.packing) || l.packing <= 0) bad("packing");
     if (l.unit !== "pack" && l.unit !== "loose") bad("unit");
-    if (!isNum(l.qtyEntered) || l.qtyEntered <= 0) bad("qtyEntered");
+    // A line may hold only bonus when the bonus runs into a second batch (as online).
+    if (!isNum(l.qtyEntered) || l.qtyEntered < 0 || (l.qtyEntered === 0 && !((l.bonusPacks ?? 0) > 0))) bad("qtyEntered");
     if (!isNum(l.qtyPacks) || Math.abs(l.qtyPacks - toPacks(l.qtyEntered, l.unit, l.packing)) > STOCK_EPS) bad("qtyPacks");
+    if (l.bonusEntered != null || l.bonusPacks != null) {
+      if (!isNum(l.bonusEntered) || l.bonusEntered < 0 || !isNum(l.bonusPacks) || Math.abs(l.bonusPacks - toPacks(l.bonusEntered, l.unit, l.packing)) > STOCK_EPS) bad("bonus");
+    }
     if (!isNum(l.pricePerPack) || l.pricePerPack < 0) bad("pricePerPack");
     if (!isNum(l.discountPct) || l.discountPct < 0 || l.discountPct > 100) bad("discountPct");
     if (!isNum(l.taxPct) || l.taxPct < 0 || l.taxPct > 100) bad("taxPct");
@@ -179,10 +211,20 @@ export function checkSale(p: unknown): string[] {
   });
   const t = s.totals;
   if (!t || typeof t !== "object") return [...e, "totals"];
-  const want = saleTotals(s.lines, t.tendered);
+  const method = s.payment?.method;
+  if (method !== "cash" && method !== "credit") return [...e, "payment"];
+  for (const k of ["billDiscountRs", "charges"] as const) if (t[k] != null && (!isNum(t[k]) || t[k]! < 0)) e.push(`totals.${k}`);
+  const want = saleTotals(s.lines, t.tendered, { billDiscountRs: t.billDiscountRs, charges: t.charges, method, paid: t.paid });
   for (const k of ["total", "discountRs", "taxRs", "payable", "paid", "balance"] as const) if (!isNum(t[k]) || Math.abs(t[k] - want[k]) > MONEY_EPS) e.push(`totals.${k}`);
-  if (!isNum(t.tendered) || t.tendered + MONEY_EPS < t.payable) e.push("totals.tendered");
-  if (!s.payment || s.payment.method !== "cash" || !isNum(s.payment.amount) || Math.abs(s.payment.amount - t.payable) > MONEY_EPS) e.push("payment");
+  if (!(t.payable >= -MONEY_EPS)) e.push("totals.payable");
+  if (method === "cash") {
+    if (!isNum(t.tendered) || t.tendered + MONEY_EPS < t.payable) e.push("totals.tendered");
+  } else {
+    // Credit: on a customer's account; what was received now is between nothing and the bill.
+    if (!isStr(s.customerId ?? "", 64)) e.push("customerId");
+    if (!(t.paid >= -MONEY_EPS && t.paid <= t.payable + MONEY_EPS)) e.push("totals.paid");
+  }
+  if (!isNum(s.payment.amount) || Math.abs(s.payment.amount - t.paid) > MONEY_EPS) e.push("payment");
   return e;
 }
 
@@ -191,13 +233,17 @@ export function checkOperation(o: unknown): string[] {
   if (!op || typeof op !== "object") return ["operation missing"];
   const e: string[] = [];
   if (!isStr(op.opId) || !ID.test(op.opId)) e.push("opId");
-  if (op.kind !== "sale.create") e.push("kind");
-  if (op.schemaVersion !== SALE_SCHEMA_VERSION) e.push("schemaVersion");
+  if (op.kind !== "sale.create" && op.kind !== "sale.update") e.push("kind");
+  if (!(SALE_SCHEMA_VERSIONS as readonly number[]).includes(op.schemaVersion)) e.push("schemaVersion");
   if (!Array.isArray(op.dependsOn) || op.dependsOn.some((d) => !isStr(d))) e.push("dependsOn");
   if (!isStr(op.occurredAt, 40)) e.push("occurredAt");
   if (!isStr(op.userId)) e.push("userId");
   if (e.length) return e;
   const se = checkSale(op.payload);
+  // Only version 2 has the new fields; an edit is a sale.update and says what it changes.
+  const p = op.payload;
+  if (op.schemaVersion === 1 && (p?.payment?.method !== "cash" || p.edit != null || p.customerId != null || p.totals?.billDiscountRs || p.totals?.charges || p.lines?.some((l) => l.bonusPacks))) se.push("schemaVersion");
+  if ((op.kind === "sale.update") !== (p?.edit != null)) se.push("edit");
   if (op.entityId !== op.payload?.saleId) se.push("entityId");
   if (op.userId !== op.payload?.userId) se.push("userId mismatch");
   return se;

@@ -774,17 +774,22 @@ export function InvoiceFormModal({
     }
   }
 
-  /** Offline (desktop app): a cash sale saved on this computer in one step, sent to MAVIN.pk once when the internet returns. */
+  /** Offline (desktop app): a sale (cash, or credit on a customer) or an edit
+   * of a saved invoice, saved on this computer in one step and sent to
+   * MAVIN.pk once when the internet returns. */
   async function saveOffline() {
+    const credit = invOn.toLowerCase() === "credit";
     const block = uncertainSave
       ? "The last save may already be on MAVIN.pk. Reconnect and check Sales before saving this bill offline."
-      : isEdit || isDraft ? "Editing a saved invoice needs an internet connection."
-      : invOn.toLowerCase() !== "cash" ? "Offline sales are cash only. Set Inv On to Cash."
-      : lines.some((l) => l.bonusQty > 0) ? "Bonus quantities need an internet connection."
+      : isDraft ? "Memorized drafts need an internet connection."
+      : invOn.toLowerCase() !== "cash" && !credit ? "Offline, Inv On must be Cash or Credit."
       : lines.some((l) => extraOf(l) > 0) ? "Extra discount needs an internet connection."
       : lines.some((l) => l.product.track_imei) ? "Handsets with IMEI numbers need an internet connection."
-      : (Number(charges) || 0) !== 0 || (Number(discountRs) || 0) !== 0 ? "Charges and bill discount need an internet connection."
-      : (Number(paid) || 0) + 0.005 < payable ? "Offline sales are cash only: Paid must cover the total."
+      : (Number(discountRs) || 0) < 0 || (Number(charges) || 0) < 0 ? "Bill discount and charges cannot be negative."
+      : payable < -0.005 ? "The bill discount is more than the bill."
+      : credit && !customerId ? "A credit sale needs a customer: pick one from the customer list."
+      : credit && (Number(paid) || 0) > payable + 0.005 ? "On credit, Paid cannot be more than the bill."
+      : !credit && (Number(paid) || 0) + 0.005 < payable ? "Paid must cover the total for a cash sale. For the rest on the customer's account, set Inv On to Credit."
       : desktop?.sellBlock ?? null;
     if (block) {
       setError(block);
@@ -794,12 +799,18 @@ export function InvoiceFormModal({
     setError(null);
     try {
       const r = await desktopCall((b) => b.createSale({
-        lines: lines.map((l) => ({ productId: l.product.id, unit: l.unit === "secondary" ? "loose" : "pack", qty: l.qty, discountPct: l.discountPct })),
+        lines: lines.map((l) => ({ productId: l.product.id, unit: l.unit === "secondary" ? "loose" : "pack", qty: l.qty, bonusQty: l.bonusQty || 0, discountPct: l.discountPct })),
         customerName: customerName.trim() || null,
         customerPhone: customerPhone.trim() || null,
+        customerId: customerId || null,
+        method: credit ? "credit" : "cash",
+        paid: Number(paid) || 0,
+        billDiscountRs: Number(discountRs) || 0,
+        charges: Number(charges) || 0,
         tendered: Number(paid) || 0,
+        editOf: isEdit && invoice ? invoice.id : null,
       }));
-      onSaved({ id: r.saleId, no: null, offlineReceipt: r.receipt, offlineRef: r.offlineRef });
+      onSaved({ id: r.saleId, no: null, offlineReceipt: r.receipt, offlineRef: r.offlineRef ?? undefined });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -855,7 +866,8 @@ export function InvoiceFormModal({
           <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <b>Offline.</b> Cash sales are saved on this computer and sent to MAVIN.pk once when the internet returns.
             Prices, tax and stock are this computer&apos;s copy{desktop?.copyRefreshedAt ? ` as of ${new Date(desktop.copyRefreshedAt).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" })}` : ""};
-            sales made on other counters or online since then are not included. Credit, bonus, charges, bill discount, editing invoices and FBR submission need internet.
+            sales made on other counters or online since then are not included. Cash and credit sales, bonus, charges, bill discount and editing invoices work offline;
+            an edited invoice that was changed online in the meantime is held for the owner to review. FBR submission, extra discount, IMEI handsets and drafts need internet.
           </p>
         )}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
@@ -1169,8 +1181,6 @@ export function InvoiceFormModal({
                         min="0"
                         step="any"
                         value={l.bonusQty}
-                        disabled={offline}
-                        title={offline ? "Bonus needs internet" : undefined}
                         onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_BONUS)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -1278,10 +1288,10 @@ export function InvoiceFormModal({
             <Input value={total.toFixed(2)} disabled />
           </Field>
           <Field label={isClothStore && measurement ? "Charges (incl. custom)" : "Charges"}>
-            <Input type="number" min="0" step="any" value={charges} disabled={offline} title={offline ? "Needs internet" : undefined} onChange={(e) => setCharges(e.target.value)} />
+            <Input type="number" min="0" step="any" value={charges} onChange={(e) => setCharges(e.target.value)} />
           </Field>
           <Field label="Discount Rs (F12)">
-            <Input type="number" min="0" step="any" value={discountRs} disabled={offline} title={offline ? "Needs internet" : undefined} onChange={(e) => setDiscountRs(e.target.value)} />
+            <Input type="number" min="0" step="any" value={discountRs} onChange={(e) => setDiscountRs(e.target.value)} />
           </Field>
           <Field label="Tax">
             <Input value={taxTotal.toFixed(2)} disabled />

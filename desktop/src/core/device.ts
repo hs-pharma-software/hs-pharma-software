@@ -43,10 +43,31 @@ export interface DeviceConfig {
 interface Binding { deviceId: string; deviceCode: string; tenantId: string; branchId: string; dbFile: string }
 export interface SessionUser { id: string; name: string; role: string; online: boolean }
 export interface SaleInput {
-  lines: { productId: string; unit: "pack" | "loose"; qty: number; discountPct?: number }[];
+  lines: { productId: string; unit: "pack" | "loose"; qty: number; bonusQty?: number; discountPct?: number }[];
   customerName?: string | null;
   customerPhone?: string | null;
+  /** A customer of the business, from this computer's copy (needed for credit). */
+  customerId?: string | null;
+  /** cash (default): paid in full, tendered covers it. credit: `paid` received now, the rest owed. */
+  method?: "cash" | "credit";
+  paid?: number;
+  billDiscountRs?: number;
+  charges?: number;
   tendered: number;
+  /** Editing a saved invoice: its id, and (for one this computer did not make)
+   * the invoice as this computer's copy has it. */
+  edit?: { invoiceId: string; original?: OriginalInvoice | null };
+}
+/** An invoice from this computer's copy of the server's data (to be edited offline). */
+export interface OriginalInvoice {
+  invoiceNo: number | null;
+  updatedAt: string;
+  date: string;
+  offlineRef: string | null;
+  fbrInvoiceNo: string | null;
+  /** A sale invoice (not a return, quotation or draft) of this branch. */
+  editable: boolean;
+  items: { productId: string; batchNo: string | null; qty: number; bonusQty: number; salePrice: number; taxPct: number }[];
 }
 export interface ProductHit { id: string; name: string; barcode: string | null; packing: number; price: number | null; available: number; isNarcotic: boolean; onlineOnly: string | null }
 
@@ -285,62 +306,171 @@ export class OfflineDevice {
 
   // ── The sale ────────────────────────────────────────────────────────────
 
-  /** One cash sale: sale, lines, stock moves and the outbox entry in ONE local
-   * transaction (all saved or none). Batches earliest expiry first, as online. */
+  /** The bill's lines from what was entered: batches earliest expiry first (as
+   * online), one line per batch used, bonus from the same batches after the
+   * paid quantity. `known` keeps an edited invoice's own price and tax for the
+   * products already on it (an edit does not reprice them). */
+  private buildLines(input: SaleInput, name: string | null, phone: string | null, known: Map<string, { price: number; taxPct: number }>): SaleLine[] {
+    const { db } = this.need();
+    if (!Array.isArray(input.lines) || !input.lines.length) throw new Error("Add at least one product.");
+    const lines: SaleLine[] = [];
+    const used = new Map<string, number>();
+    for (const l of input.lines) {
+      const p = db.get<{ id: string; name: string; packing: number; tax_pct: number; is_narcotic: number; track_imei: number }>(`SELECT * FROM products WHERE id = ? AND deleted = 0`, l.productId);
+      if (!p) throw new Error("A product on the bill is no longer in the catalogue.");
+      if (p.track_imei) throw new Error(`${p.name} needs IMEI numbers: sell it online.`);
+      if (p.is_narcotic && (!name || !phone)) throw new Error(`${p.name} is a controlled medicine: enter the buyer's name and mobile.`);
+      const price = known.get(p.id)?.price ?? this.priceOf(p.id);
+      const taxPct = known.get(p.id)?.taxPct ?? p.tax_pct;
+      if (price == null) throw new Error(`${p.name} has no sale price. Set it online first.`);
+      const bonusIn = Number(l.bonusQty) || 0;
+      if (!(l.qty > 0) && !(bonusIn > 0)) throw new Error(`Enter a quantity for ${p.name}.`);
+      if (!(l.qty >= 0) || bonusIn < 0) throw new Error(`Quantities of ${p.name} cannot be negative.`);
+      const unit = l.unit === "loose" ? "loose" : "pack";
+      const packs = toPacks(l.qty, unit, p.packing);
+      const bonusPacks = toPacks(bonusIn, unit, p.packing);
+      const { parts, short } = allocateBatches(this.batchesFor(p.id), packs, bonusPacks, used);
+      if (short > STOCK_EPS) throw new Error(`Only ${round6(packs + bonusPacks - short)} of ${p.name} in stock on this computer (bonus included).`);
+      const disc = Math.max(0, Math.min(100, Number(l.discountPct) || 0));
+      const entered = (x: number) => (unit === "loose" ? round6(round6(x) * p.packing) : round6(x));
+      for (const part of parts) {
+        const qtyEntered = entered(part.qty);
+        const bonusEntered = entered(part.bonus);
+        lines.push({
+          lineId: randomUUID(), productId: p.id, productName: p.name, batchId: part.batch.id, batchNo: part.batch.batch_no, expiryDate: part.batch.expiry_date,
+          packing: p.packing, unit, qtyEntered, qtyPacks: toPacks(qtyEntered, unit, p.packing), pricePerPack: price, discountPct: disc, taxPct, purchasePrice: part.batch.purchase_price,
+          ...(bonusEntered > 0 ? { bonusEntered, bonusPacks: toPacks(bonusEntered, unit, p.packing) } : {}),
+          ...lineAmounts(toPacks(qtyEntered, unit, p.packing), price, disc, taxPct),
+        });
+      }
+    }
+    return lines;
+  }
+
+  /** The bill's totals and payment from what was entered (cash in full, or credit on a customer). */
+  private billTotals(input: SaleInput, lines: SaleLine[]) {
+    const method = input.method === "credit" ? "credit" : "cash";
+    const billDiscountRs = round2(Number(input.billDiscountRs) || 0);
+    const charges = round2(Number(input.charges) || 0);
+    if (billDiscountRs < 0 || charges < 0) throw new Error("Bill discount and charges cannot be negative.");
+    const tendered = round2(Number(input.tendered) || 0);
+    const totals = saleTotals(lines, tendered, { billDiscountRs, charges, method, paid: Number(input.paid) || 0 });
+    if (totals.payable < 0) throw new Error("The bill discount is more than the bill.");
+    if (method === "cash" && tendered + 0.005 < totals.payable) {
+      throw new Error(`Cash received (${tendered.toFixed(2)}) is less than the bill (${totals.payable.toFixed(2)}). For the rest on the customer's account, set Inv On to Credit.`);
+    }
+    if (method === "credit") {
+      if (!input.customerId) throw new Error("A credit sale needs a customer: pick one from the customer list.");
+      if (totals.paid < 0 || totals.paid > totals.payable + 0.005) throw new Error(`Paid now must be between 0 and the bill (${totals.payable.toFixed(2)}).`);
+    }
+    return { totals, method } as const;
+  }
+
+  private queue(db: LocalDb, op: Operation, at: Date) {
+    const seq = Number(db.get<{ m: number }>(`SELECT COALESCE(MAX(seq), 0) AS m FROM outbox`)?.m ?? 0) + 1;
+    db.run(`INSERT INTO outbox (op_id, seq, kind, entity_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`, op.opId, seq, op.kind, op.entityId, JSON.stringify(op), at.toISOString());
+  }
+
+  /** One sale (cash, or credit on a customer) or an edit of a saved one: sale,
+   * lines, stock moves and the outbox entry in ONE local transaction (all saved
+   * or none). Batches earliest expiry first, as online. */
   createSale(input: SaleInput): { sale: SalePayload; receipt: string } {
     const block = this.sellBlock();
     if (block) throw new Error(block);
+    if (input.edit) return this.editSale(input);
     const { db, b } = this.need();
     const user = this.session!.user;
-    if (!Array.isArray(input.lines) || !input.lines.length) throw new Error("Add at least one product.");
     const name = input.customerName?.trim() || null;
     const phone = input.customerPhone?.trim() || null;
     return db.tx(() => {
-      const lines: SaleLine[] = [];
-      const used = new Map<string, number>();
-      for (const l of input.lines) {
-        const p = db.get<{ id: string; name: string; packing: number; tax_pct: number; is_narcotic: number; track_imei: number }>(`SELECT * FROM products WHERE id = ? AND deleted = 0`, l.productId);
-        if (!p) throw new Error("A product on the bill is no longer in the catalogue.");
-        if (p.track_imei) throw new Error(`${p.name} needs IMEI numbers: sell it online.`);
-        if (p.is_narcotic && (!name || !phone)) throw new Error(`${p.name} is a controlled medicine: enter the buyer's name and mobile.`);
-        const price = this.priceOf(p.id);
-        if (price == null) throw new Error(`${p.name} has no sale price. Set it online first.`);
-        if (!(l.qty > 0)) throw new Error(`Enter a quantity for ${p.name}.`);
-        const unit = l.unit === "loose" ? "loose" : "pack";
-        const packs = toPacks(l.qty, unit, p.packing);
-        const { parts, short } = allocateBatches(this.batchesFor(p.id), packs, 0, used);
-        if (short > STOCK_EPS) throw new Error(`Only ${round6(packs - short)} of ${p.name} in stock on this computer.`);
-        const disc = Math.max(0, Math.min(100, Number(l.discountPct) || 0));
-        for (const part of parts) {
-          // One line per batch used (as online), each with its own amounts.
-          const qtyEntered = unit === "loose" ? round6(round6(part.qty) * p.packing) : round6(part.qty);
-          lines.push({
-            lineId: randomUUID(), productId: p.id, productName: p.name, batchId: part.batch.id, batchNo: part.batch.batch_no, expiryDate: part.batch.expiry_date,
-            packing: p.packing, unit, qtyEntered, qtyPacks: toPacks(qtyEntered, unit, p.packing), pricePerPack: price, discountPct: disc, taxPct: p.tax_pct, purchasePrice: part.batch.purchase_price,
-            ...lineAmounts(toPacks(qtyEntered, unit, p.packing), price, disc, p.tax_pct),
-          });
-        }
-      }
-      const tendered = round2(Number(input.tendered) || 0);
-      const totals = saleTotals(lines, tendered);
-      if (tendered + 0.005 < totals.payable) throw new Error(`Cash received (${tendered.toFixed(2)}) is less than the bill (${totals.payable.toFixed(2)}).`);
+      const lines = this.buildLines(input, name, phone, new Map());
+      const { totals, method } = this.billTotals(input, lines);
       // Receipt number: this device's own sequence (collision-free across devices by the device code).
       const n = Number(meta.get(db, "receipt_seq") ?? 0) + 1;
       meta.set(db, "receipt_seq", String(n));
       const now = this.now();
       const sale: SalePayload = {
         saleId: randomUUID(), offlineRef: `${b.deviceCode}-${String(n).padStart(6, "0")}`, date: localDate(now), occurredAt: now.toISOString(), userId: user.id,
-        customerName: name, customerPhone: phone, lines, totals, payment: { method: "cash", amount: totals.payable },
+        customerName: name, customerPhone: phone, customerId: input.customerId || null, lines, totals, payment: { method, amount: totals.paid },
       };
       const problems = checkSale(sale);
       if (problems.length) throw new Error(`The sale did not pass its checks (${problems.join(", ")}). Nothing was saved.`);
       const op: Operation = { opId: randomUUID(), kind: "sale.create", entityId: sale.saleId, schemaVersion: SALE_SCHEMA_VERSION, dependsOn: [], occurredAt: sale.occurredAt, userId: user.id, payload: sale };
       db.run(`INSERT INTO sales (id, offline_ref, date, occurred_at, user_id, customer_name, customer_phone, payable, tendered, change_due, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        sale.saleId, sale.offlineRef, sale.date, sale.occurredAt, user.id, name, phone, totals.payable, tendered, totals.change, JSON.stringify(sale));
-      for (const l of lines) db.run(`INSERT INTO stock_moves (id, sale_id, op_id, batch_id, qty) VALUES (?, ?, ?, ?, ?)`, l.lineId, sale.saleId, op.opId, l.batchId, -l.qtyPacks);
-      const seq = Number(db.get<{ m: number }>(`SELECT COALESCE(MAX(seq), 0) AS m FROM outbox`)?.m ?? 0) + 1;
-      db.run(`INSERT INTO outbox (op_id, seq, kind, entity_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`, op.opId, seq, op.kind, op.entityId, JSON.stringify(op), now.toISOString());
+        sale.saleId, sale.offlineRef, sale.date, sale.occurredAt, user.id, name, phone, totals.payable, totals.tendered, totals.change, JSON.stringify(sale));
+      for (const l of lines) db.run(`INSERT INTO stock_moves (id, sale_id, op_id, batch_id, qty) VALUES (?, ?, ?, ?, ?)`, l.lineId, sale.saleId, op.opId, l.batchId, -(l.qtyPacks + (l.bonusPacks ?? 0)));
+      this.queue(db, op, now);
       return { sale, receipt: receiptText(sale, this.grant()!, user.name) };
+    });
+  }
+
+  /** Edits a saved invoice offline: the full new bill replaces the old one.
+   * Locally its old stock comes back and the new is taken at once; MAVIN.pk
+   * does the same when the edit arrives, unless the invoice was changed there
+   * in the meantime (then the edit is held for the owner to review). */
+  private editSale(input: SaleInput): { sale: SalePayload; receipt: string } {
+    const { db } = this.need();
+    const user = this.session!.user;
+    const id = input.edit!.invoiceId;
+    const name = input.customerName?.trim() || null;
+    const phone = input.customerPhone?.trim() || null;
+    return db.tx(() => {
+      const local = db.get<{ payload: string; sync_status: string; server_invoice_no: number | null; offline_ref: string }>(`SELECT payload, sync_status, server_invoice_no, offline_ref FROM sales WHERE id = ?`, id);
+      const last = db.get<{ op_id: string }>(`SELECT op_id FROM outbox WHERE entity_id = ? ORDER BY seq DESC LIMIT 1`, id);
+      const o = input.edit!.original ?? null;
+      let old: { batchId: string | null; packs: number; productId: string; price: number; taxPct: number }[];
+      let edit: NonNullable<SalePayload["edit"]>;
+      let offlineRef: string | null;
+      let date: string;
+      const dependsOn: string[] = [];
+      if (local && last) {
+        // A sale this computer made or edited before: the edit follows its last operation.
+        if (local.sync_status === "rejected" || local.sync_status === "held") throw new Error("MAVIN.pk has not accepted this sale, so it cannot be edited. Connect to the internet and check it.");
+        const prev = JSON.parse(local.payload) as SalePayload;
+        old = prev.lines.map((l) => ({ batchId: l.batchId, packs: l.qtyPacks + (l.bonusPacks ?? 0), productId: l.productId, price: l.pricePerPack, taxPct: l.taxPct }));
+        edit = { afterOpId: last.op_id, invoiceUpdatedAt: null, invoiceNo: local.server_invoice_no };
+        offlineRef = prev.offlineRef;
+        date = prev.date;
+        dependsOn.push(last.op_id);
+      } else {
+        if (!o) throw new Error("This invoice is not in this computer's copy. Connect to the internet to edit it.");
+        if (!o.editable) throw new Error("Only sale invoices of this branch can be edited offline.");
+        if (o.fbrInvoiceNo) throw new Error("This invoice was submitted to FBR. Edit it online.");
+        const batches = db.all<{ id: string; product_id: string; batch_no: string | null }>(`SELECT id, product_id, batch_no FROM batches WHERE deleted = 0`);
+        old = o.items.map((it) => ({
+          batchId: batches.find((x) => x.product_id === it.productId && (x.batch_no ?? null) === (it.batchNo ?? null))?.id ?? null,
+          packs: it.qty + it.bonusQty, productId: it.productId, price: it.salePrice, taxPct: it.taxPct,
+        }));
+        edit = { afterOpId: null, invoiceUpdatedAt: o.updatedAt, invoiceNo: o.invoiceNo };
+        offlineRef = o.offlineRef;
+        date = o.date;
+      }
+      const opId = randomUUID();
+      // The old version's stock is available again for the new one.
+      for (const x of old) if (x.batchId && x.packs > 0) db.run(`INSERT INTO stock_moves (id, sale_id, op_id, batch_id, qty) VALUES (?, ?, ?, ?, ?)`, randomUUID(), id, opId, x.batchId, x.packs);
+      const known = new Map<string, { price: number; taxPct: number }>();
+      for (const x of old) if (!known.has(x.productId)) known.set(x.productId, { price: x.price, taxPct: x.taxPct });
+      const lines = this.buildLines(input, name, phone, known);
+      const { totals, method } = this.billTotals(input, lines);
+      const now = this.now();
+      const sale: SalePayload = {
+        saleId: id, offlineRef, date, occurredAt: now.toISOString(), userId: user.id,
+        customerName: name, customerPhone: phone, customerId: input.customerId || null, lines, totals, payment: { method, amount: totals.paid }, edit,
+      };
+      const problems = checkSale(sale);
+      if (problems.length) throw new Error(`The edit did not pass its checks (${problems.join(", ")}). Nothing was saved.`);
+      const op: Operation = { opId, kind: "sale.update", entityId: id, schemaVersion: SALE_SCHEMA_VERSION, dependsOn, occurredAt: sale.occurredAt, userId: user.id, payload: sale };
+      for (const l of lines) db.run(`INSERT INTO stock_moves (id, sale_id, op_id, batch_id, qty) VALUES (?, ?, ?, ?, ?)`, l.lineId, id, opId, l.batchId, -(l.qtyPacks + (l.bonusPacks ?? 0)));
+      if (local) {
+        db.run(`UPDATE sales SET customer_name = ?, customer_phone = ?, payable = ?, tendered = ?, change_due = ?, payload = ?, sync_status = 'pending', server_note = NULL WHERE id = ?`,
+          name, phone, totals.payable, totals.tendered, totals.change, JSON.stringify(sale), id);
+      } else {
+        // Kept here as this computer's record of the invoice, so a second edit follows this one.
+        db.run(`INSERT INTO sales (id, offline_ref, date, occurred_at, user_id, customer_name, customer_phone, payable, tendered, change_due, payload, server_invoice_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, offlineRef ?? `INV-${o!.invoiceNo ?? id.slice(0, 8)}`, date, sale.occurredAt, user.id, name, phone, totals.payable, totals.tendered, totals.change, JSON.stringify(sale), o!.invoiceNo);
+      }
+      this.queue(db, op, now);
+      return { sale, receipt: receiptText(sale, this.grant()!, user.name, edit.invoiceNo) };
     });
   }
 
@@ -486,7 +616,7 @@ export class OfflineDevice {
     const { db } = this.need();
     const since = new Date(this.now().getTime() - days * 86_400_000).toISOString();
     return db.all<{ id: string; payload: string; sync_status: string; server_invoice_no: number | null }>(
-      `SELECT id, payload, sync_status, server_invoice_no FROM sales WHERE occurred_at >= ? OR sync_status = 'pending' ORDER BY occurred_at`, since,
+      `SELECT id, payload, sync_status, server_invoice_no FROM sales WHERE occurred_at >= ? OR sync_status IN ('pending', 'held') ORDER BY occurred_at`, since,
     ).map((s) => ({
       payload: JSON.parse(s.payload) as SalePayload,
       status: s.sync_status,
@@ -551,15 +681,23 @@ export function receiptText(s: SalePayload, g: GrantPayload | null, cashier: str
   const row = (l: string, r: string) => `${l.slice(0, w - r.length - 1).padEnd(w - r.length)}${r}`;
   const out = [
     (g?.tenantName ?? "").slice(0, w), (g?.branchName ?? "").slice(0, w), "-".repeat(w),
-    row(`Receipt ${s.offlineRef}`, s.date), serverNo ? `Invoice no. ${serverNo}` : "Invoice no. given when synced", `Cashier: ${cashier}`.slice(0, w),
+    row(s.offlineRef ? `Receipt ${s.offlineRef}` : "Invoice", s.date), serverNo ? `Invoice no. ${serverNo}` : "Invoice no. given when synced", `Cashier: ${cashier}`.slice(0, w),
+    ...(s.edit ? ["EDITED offline"] : []),
     ...(s.customerName ? [`Customer: ${s.customerName}`.slice(0, w)] : []), "-".repeat(w),
   ];
   for (const l of s.lines) {
     out.push(l.productName.slice(0, w));
     const q = l.unit === "loose" ? `${round6(l.qtyEntered)} loose` : `${round6(l.qtyPacks)}`;
     out.push(row(`  ${q} x ${l.pricePerPack.toFixed(2)}${l.discountPct ? ` -${l.discountPct}%` : ""}${l.batchNo ? ` B:${l.batchNo}` : ""}`, l.total.toFixed(2)));
+    if (l.bonusEntered) out.push(`  + bonus ${round6(l.bonusEntered)}${l.unit === "loose" ? " loose" : ""}`);
   }
-  out.push("-".repeat(w), row("Total", s.totals.payable.toFixed(2)), row("Cash", s.totals.tendered.toFixed(2)), row("Change", s.totals.change.toFixed(2)), "-".repeat(w));
-  out.push("Saved offline. Not submitted to FBR.", "FBR status is set online after sync.");
+  const t = s.totals;
+  out.push("-".repeat(w));
+  if (t.billDiscountRs) out.push(row("Bill discount", `-${t.billDiscountRs.toFixed(2)}`));
+  if (t.charges) out.push(row("Charges", t.charges.toFixed(2)));
+  out.push(row("Total", t.payable.toFixed(2)));
+  if (s.payment.method === "credit") out.push(row("Paid now", t.paid.toFixed(2)), row("On account", t.balance.toFixed(2)));
+  else out.push(row("Cash", t.tendered.toFixed(2)), row("Change", t.change.toFixed(2)));
+  out.push("-".repeat(w), "Saved offline. Not submitted to FBR.", "FBR status is set online after sync.");
   return out.join("\n");
 }

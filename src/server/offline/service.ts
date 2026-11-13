@@ -15,7 +15,7 @@
  *   still hand in its sales: they are held for review, not applied. */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Sql } from "../subSupers";
-import type { Caller } from "../sqlPolicy";
+import { callerCan, type Caller } from "../sqlPolicy";
 import { HttpError } from "../db";
 import { tenantAllows } from "@/lib/tenantFeatures";
 import {
@@ -273,7 +273,7 @@ export async function push(sql: Sql, d: Device, ops: unknown, status?: { pending
     const missingDep = [];
     for (const dep of op.dependsOn) if (!(await sql.execute(`SELECT 1 FROM offline_ops WHERE op_id = ? AND device_id = ? AND status IN ('applied', 'conflict', 'held')`, [dep, d.id])).rows[0]) missingDep.push(dep);
     if (missingDep.length) { results.push({ opId, status: "rejected", error: `Waiting for earlier operation ${missingDep[0]}` }); continue; }
-    results.push(usable ? await applySale(sql, d, op) : await holdOp(sql, d, op));
+    results.push(!usable ? await holdOp(sql, d, op) : op.kind === "sale.update" ? await applyEdit(sql, d, op) : await applySale(sql, d, op));
   }
   await touch(sql, d, status, false);
   return results;
@@ -308,93 +308,107 @@ const reject = async (sql: Sql, d: Device, op: Operation, error: string): Promis
   return (await storedResult(sql, d, op.opId)) ?? result;
 };
 
-/** One cash sale into the books, all or nothing: the operation record, the
- * invoice (server number + the device's receipt number), its lines, the
- * stock taken and any stock exceptions. */
-export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: string | null = null): Promise<PushResult> {
+type Stmt = { sql: string; args: unknown[] };
+type Shortfall = { lineId: string; productId: string; batchId: string; short: number; name: string };
+
+/** Checks shared by new sales and edits: the user, the date, the batches and
+ * products (this business and branch only), the customer. Returns the
+ * reason to hold the operation, or the rows it needs. */
+async function checkSaleRefs(sql: Sql, d: Device, op: Operation): Promise<{ hold: string } | { batches: Map<string, Row> }> {
   const s: SalePayload = op.payload;
   const T = d.tenant_id, B = d.branch_id;
   // Who made it: a user allowed on this device, still in this business.
   const allowed = (JSON.parse(String(d.allowed_users || "[]")) as GrantUser[]).some((u) => u.id === op.userId);
   const u = (await sql.execute(`SELECT id FROM users WHERE id = ? AND tenant_id = ?`, [op.userId, T])).rows[0];
-  if (!allowed || !u) return holdOp(sql, d, op, "The user who made this sale is no longer allowed on this device. Review it.");
-  if (!jsonList(d.modules).includes("sale.cash")) return holdOp(sql, d, op, "Offline cash sales are no longer allowed on this device. Review it.");
-  if (!s.offlineRef.startsWith(`${d.device_code}-`)) return reject(sql, d, op, "Receipt number does not belong to this device.");
+  if (!allowed || !u) return { hold: "The user who made this sale is no longer allowed on this device. Review it." };
+  if (!jsonList(d.modules).includes("sale.cash")) return { hold: "Offline sales are no longer allowed on this device. Review it." };
   // The business day: not ahead of the server by more than a day, not older than the allowance allows (plus a day).
-  const day = Date.parse(`${s.date}T00:00:00Z`);
+  // An edit keeps its invoice's date; it is checked by when it was made instead.
+  const day = op.kind === "sale.update" ? Date.parse(op.occurredAt) : Date.parse(`${s.date}T00:00:00Z`);
   const maxAgeDays = Math.ceil((Number(d.max_offline_hours) || 72) / 24) + 1;
-  if (day > Date.now() + 36 * 3600_000 || day < Date.now() - (maxAgeDays + 1) * 86_400_000) return holdOp(sql, d, op, "The sale date is outside the offline allowance. Review it.");
-  if ((await sql.execute(`SELECT 1 FROM invoices WHERE id = ?`, [s.saleId])).rows[0]) return reject(sql, d, op, "A sale with this id already exists.");
-
+  if (day > Date.now() + 36 * 3600_000 || day < Date.now() - (maxAgeDays + 1) * 86_400_000) return { hold: "The sale date is outside the offline allowance. Review it." };
   // Batches and products: this business and this branch only.
   const batchIds = [...new Set(s.lines.map((l) => l.batchId))];
   const q = Array(batchIds.length).fill("?").join(",");
   const batches = new Map((await sql.execute(`SELECT * FROM product_batches WHERE id IN (${q}) AND tenant_id = ? AND branch_id = ?`, [...batchIds, T, B])).rows.map((r) => [String(r.id), r]));
   for (const l of s.lines) {
     const b = batches.get(l.batchId);
-    if (!b || String(b.product_id) !== l.productId) return holdOp(sql, d, op, `The batch of ${l.productName} is no longer in this branch's stock. Review it.`);
+    if (!b || String(b.product_id) !== l.productId) return { hold: `The batch of ${l.productName} is no longer in this branch's stock. Review it.` };
   }
   const prodIds = [...new Set(s.lines.map((l) => l.productId))];
   const products = new Map((await sql.execute(`SELECT id, name, packing, is_narcotic, track_imei FROM products WHERE id IN (${Array(prodIds.length).fill("?").join(",")}) AND (tenant_id = ? OR tenant_id IS NULL)`, [...prodIds, T])).rows.map((r) => [String(r.id), r]));
   for (const l of s.lines) {
     const p = products.get(l.productId);
-    if (!p) return holdOp(sql, d, op, `${l.productName} is no longer in this business's catalogue. Review it.`);
-    if (Number(p.track_imei) === 1) return holdOp(sql, d, op, `${l.productName} needs IMEI numbers, which offline sales do not record. Review it.`);
-    if (Number(p.is_narcotic) === 1 && (!s.customerName?.trim() || !s.customerPhone?.trim())) return holdOp(sql, d, op, `${l.productName} is a controlled medicine and the buyer's name and mobile are missing. Review it.`);
+    if (!p) return { hold: `${l.productName} is no longer in this business's catalogue. Review it.` };
+    if (Number(p.track_imei) === 1) return { hold: `${l.productName} needs IMEI numbers, which offline sales do not record. Review it.` };
+    if (Number(p.is_narcotic) === 1 && (!s.customerName?.trim() || !s.customerPhone?.trim())) return { hold: `${l.productName} is a controlled medicine and the buyer's name and mobile are missing. Review it.` };
   }
+  // A customer (credit): of this business, not deleted.
+  if (s.customerId && !(await sql.execute(`SELECT 1 FROM customers WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`, [s.customerId, T])).rows[0]) {
+    return { hold: "The customer of this sale is not in this business's customer list. Review it." };
+  }
+  return { batches };
+}
 
-  // Stock: from the batch the device used, never below zero; the rest is an exception.
-  const left = new Map([...batches].map(([id, b]) => [id, Number(b.qty) || 0]));
-  const now = iso();
-  const stmts: { sql: string; args: unknown[] }[] = [];
-  const exceptions: { lineId: string; productId: string; batchId: string; short: number; name: string }[] = [];
-  const takes: { batchId: string; qty: number }[] = [];
+/** Stock the lines take (paid and bonus), from the batch the device used,
+ * never below zero; what the batch no longer has is a shortfall. `extra`
+ * is stock given back first in the same change (an edit's old lines). */
+function planTakes(s: SalePayload, batches: Map<string, Row>, extra: Map<string, number> = new Map()) {
+  const left = new Map([...batches].map(([id, b]) => [id, (Number(b.qty) || 0) + (extra.get(id) ?? 0)]));
+  const shortfalls: Shortfall[] = [];
+  const takes: { batchId: string; qty: number; lineId: string }[] = [];
   for (const l of s.lines) {
+    const want = l.qtyPacks + (l.bonusPacks ?? 0);
     const have = left.get(l.batchId) ?? 0;
-    const take = Math.max(0, Math.min(l.qtyPacks, have));
-    const short = l.qtyPacks - take;
+    const take = Math.max(0, Math.min(want, have));
+    const short = want - take;
     left.set(l.batchId, have - take);
-    if (take > STOCK_EPS) takes.push({ batchId: l.batchId, qty: take });
-    if (short > STOCK_EPS) exceptions.push({ lineId: l.lineId, productId: l.productId, batchId: l.batchId, short, name: l.productName });
+    if (take > STOCK_EPS) takes.push({ batchId: l.batchId, qty: take, lineId: l.lineId });
+    if (short > STOCK_EPS) shortfalls.push({ lineId: l.lineId, productId: l.productId, batchId: l.batchId, short, name: l.productName });
   }
-  const status: PushResult["status"] = exceptions.length ? "conflict" : "applied";
-  const placeholder: PushResult = { opId: op.opId, status };
-  // 1. The operation itself (primary key = exactly once; a concurrent duplicate fails the whole batch).
-  stmts.push({
-    sql: `INSERT INTO offline_ops (op_id, tenant_id, branch_id, device_id, user_id, kind, entity_id, schema_version, depends_on, payload, occurred_at, received_at, status, result, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)${decidedBy ? ` ON CONFLICT(op_id) DO UPDATE SET status = excluded.status, result = excluded.result, error = NULL, decided_by = excluded.decided_by, decided_at = excluded.decided_at WHERE offline_ops.status = 'held'` : ""}`,
-    args: [op.opId, T, B, d.id, op.userId, op.kind, op.entityId, op.schemaVersion, JSON.stringify(op.dependsOn), JSON.stringify(s), op.occurredAt, now, status, JSON.stringify(placeholder), decidedBy, decidedBy ? now : null],
-  });
-  // 2. The invoice: next number of the business, the device's receipt number kept alongside.
-  const t = s.totals;
-  stmts.push({
-    sql: `INSERT INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_id, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
-            is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, created_at, updated_at)
-          VALUES (?, (SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM invoices WHERE tenant_id = ? AND COALESCE(is_quotation, 0) = 0), ?, 'cash', 'retail', ?, NULL, ?, ?, ?, 0, 0, ?, 0, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?)`,
-    args: [s.saleId, T, s.date, `Offline sale ${s.offlineRef}`, s.customerName?.trim() || null, s.customerPhone?.trim() || null, t.total, t.discountRs, t.payable, t.paid, T, B, s.offlineRef, now, now],
-  });
-  // 3. Lines with the prices captured at the counter.
-  for (const l of s.lines) {
+  return { takes, shortfalls };
+}
+
+/** The statements for a bill's lines (prices captured at the counter), the stock they take and the shortfalls. */
+function lineStatements(d: Device, op: Operation, batches: Map<string, Row>, takes: { batchId: string; qty: number }[], shortfalls: Shortfall[], now: string, what: string) {
+  const s: SalePayload = op.payload;
+  const T = d.tenant_id, B = d.branch_id;
+  const items: Stmt[] = s.lines.map((l) => {
     const b = batches.get(l.batchId)!;
-    stmts.push({
+    return {
       sql: `INSERT INTO invoice_items (id, invoice_id, product_id, batch_no, packing, uom_id, avail_qty, qty, bonus_qty, purchase_price, sale_price, tax_pct, further_tax_pct, tax_rs, discount_pct, discount_rs, total, tenant_id, branch_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [l.lineId, s.saleId, l.productId, b.batch_no ?? l.batchNo, l.packing, Number(b.qty) || 0, l.qtyPacks, l.purchasePrice, l.pricePerPack, l.taxPct, l.taxRs, l.discountPct, l.discountRs, l.total, T, B, now, now],
-    });
-  }
-  // 4. Stock taken (a change, never an absolute balance from the device).
-  for (const k of takes) {
-    stmts.push({
-      sql: `UPDATE product_batches SET qty = CASE WHEN ABS(qty - ?) <= ? THEN 0 ELSE qty - ? END, updated_at = ? WHERE id = ? AND tenant_id = ? AND branch_id = ? AND qty + ? >= ?`,
-      args: [k.qty, STOCK_EPS, k.qty, now, k.batchId, T, B, STOCK_EPS, k.qty],
-    });
-  }
-  // 5. Exceptions for stock the batches no longer had.
-  for (const x of exceptions) {
-    stmts.push({
-      sql: `INSERT INTO offline_exceptions (id, tenant_id, branch_id, device_id, op_id, invoice_id, product_id, batch_id, kind, qty, detail, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'stock_short', ?, ?, 'open', ?)`,
-      args: [randomUUID(), T, B, d.id, op.opId, s.saleId, x.productId, x.batchId, x.short, `${x.name}: sold ${round6(x.short)} more than the batch held when the sale arrived (receipt ${s.offlineRef}).`, now],
-    });
-  }
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [l.lineId, s.saleId, l.productId, b.batch_no ?? l.batchNo, l.packing, Number(b.qty) || 0, l.qtyPacks, l.bonusPacks ?? 0, l.purchasePrice, l.pricePerPack, l.taxPct, l.taxRs, l.discountPct, l.discountRs, l.total, T, B, now, now],
+    };
+  });
+  // Stock taken (a change, never an absolute balance from the device).
+  const stock: Stmt[] = takes.map((k) => ({
+    sql: `UPDATE product_batches SET qty = CASE WHEN ABS(qty - ?) <= ? THEN 0 ELSE qty - ? END, updated_at = ? WHERE id = ? AND tenant_id = ? AND branch_id = ? AND qty + ? >= ?`,
+    args: [k.qty, STOCK_EPS, k.qty, now, k.batchId, T, B, STOCK_EPS, k.qty],
+  }));
+  const short: Stmt[] = shortfalls.map((x) => exceptionStmt(d, op, x, `${x.name}: ${round6(x.short)} more than the batch held when the ${what} arrived (${refOf(s)}).`, now));
+  return { items, stock, short };
+}
+
+const refOf = (s: SalePayload) => (s.offlineRef ? `receipt ${s.offlineRef}` : `invoice ${s.edit?.invoiceNo ?? s.saleId}`);
+const exceptionStmt = (d: Device, op: Operation, x: Shortfall, detail: string, now: string): Stmt => ({
+  sql: `INSERT INTO offline_exceptions (id, tenant_id, branch_id, device_id, op_id, invoice_id, product_id, batch_id, kind, qty, detail, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'stock_short', ?, ?, 'open', ?)`,
+  args: [randomUUID(), d.tenant_id, d.branch_id, d.id, op.opId, op.payload.saleId, x.productId, x.batchId, x.short, detail, now],
+});
+
+/** The operation record (primary key = exactly once; a concurrent duplicate fails the whole batch). */
+function opStmt(d: Device, op: Operation, status: PushResult["status"], now: string, decidedBy: string | null): Stmt {
+  return {
+    sql: `INSERT INTO offline_ops (op_id, tenant_id, branch_id, device_id, user_id, kind, entity_id, schema_version, depends_on, payload, occurred_at, received_at, status, result, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)${decidedBy ? ` ON CONFLICT(op_id) DO UPDATE SET status = excluded.status, result = excluded.result, error = NULL, decided_by = excluded.decided_by, decided_at = excluded.decided_at WHERE offline_ops.status = 'held'` : ""}`,
+    args: [op.opId, d.tenant_id, d.branch_id, d.id, op.userId, op.kind, op.entityId, op.schemaVersion, JSON.stringify(op.dependsOn), JSON.stringify(op.payload), op.occurredAt, now, status, JSON.stringify({ opId: op.opId, status }), decidedBy, decidedBy ? now : null],
+  };
+}
+
+/** Runs the statements; a batch whose stock changed between the read and the
+ * write (another counter or the web) keeps the sale and raises an exception
+ * for what could not be taken. Records and returns the final answer. */
+async function finish(sql: Sql, d: Device, op: Operation, stmts: Stmt[], firstTake: number, takes: { batchId: string; qty: number; lineId: string }[], shortCount: number, status: PushResult["status"], extraResult: Partial<PushResult> = {}): Promise<PushResult> {
+  const s: SalePayload = op.payload;
   let affected: number[];
   try {
     affected = await sql.batch(stmts);
@@ -404,28 +418,152 @@ export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: s
     if (again) return again;
     throw e;
   }
-  // A batch changed between the read and the write (another counter or the
-  // web): the sale stays; what could not be taken becomes an exception.
-  const firstTake = 2 + s.lines.length;
-  const late: typeof exceptions = [];
-  takes.forEach((k, i) => {
-    if (affected[firstTake + i] === 0) {
-      const l = s.lines.find((x) => x.batchId === k.batchId)!;
-      late.push({ lineId: l.lineId, productId: l.productId, batchId: k.batchId, short: k.qty, name: l.productName });
-    }
-  });
-  for (const x of late) {
-    await sql.execute(
-      `INSERT INTO offline_exceptions (id, tenant_id, branch_id, device_id, op_id, invoice_id, product_id, batch_id, kind, qty, detail, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'stock_short', ?, ?, 'open', ?)`,
-      [randomUUID(), T, B, d.id, op.opId, s.saleId, x.productId, x.batchId, x.short, `${x.name}: the batch changed while the sale was applied; ${round6(x.short)} not taken (receipt ${s.offlineRef}).`, now],
-    );
+  const now = iso();
+  let late = 0;
+  for (const [i, k] of takes.entries()) {
+    if (affected[firstTake + i] !== 0) continue;
+    const l = s.lines.find((x) => x.lineId === k.lineId)!;
+    late++;
+    const x = { lineId: l.lineId, productId: l.productId, batchId: k.batchId, short: k.qty, name: l.productName };
+    const st = exceptionStmt(d, op, x, `${x.name}: the batch changed while the sale was applied; ${round6(x.short)} not taken (${refOf(s)}).`, now);
+    await sql.execute(st.sql, st.args);
   }
-  const inv = (await sql.execute(`SELECT invoice_no FROM invoices WHERE id = ?`, [s.saleId])).rows[0];
+  const inv = (await sql.execute(`SELECT invoice_no, updated_at FROM invoices WHERE id = ?`, [s.saleId])).rows[0];
   const seq = Number((await sql.execute(`SELECT COALESCE(MAX(seq), 0) AS m FROM offline_changes`)).rows[0]?.m ?? 0);
-  const final: PushResult = { opId: op.opId, status: late.length ? "conflict" : status, invoiceId: s.saleId, invoiceNo: Number(inv?.invoice_no), exceptions: exceptions.length + late.length, appliedSeq: seq };
+  const final: PushResult & { updatedAt?: string } = {
+    opId: op.opId, status: late ? "conflict" : status, invoiceId: s.saleId, invoiceNo: Number(inv?.invoice_no), exceptions: shortCount + late, appliedSeq: seq, ...extraResult,
+    // The invoice as this operation left it: a later edit from this device follows it only if nothing else changed it.
+    updatedAt: inv?.updated_at == null ? undefined : String(inv.updated_at),
+  };
   await sql.execute(`UPDATE offline_ops SET status = ?, result = ?, applied_seq = ? WHERE op_id = ?`, [final.status, JSON.stringify(final), seq, op.opId]);
-  if (final.exceptions) await audit(sql, T, null, "op.stock_exception", { op: op.opId, invoice: s.saleId, count: final.exceptions });
+  if (final.exceptions) await audit(sql, d.tenant_id, null, "op.stock_exception", { op: op.opId, invoice: s.saleId, count: final.exceptions });
   return final;
+}
+
+/** The invoice's header fields from the sale (as the online invoice form saves them:
+ * discount_rs is the bill discount; line discounts stay on the lines). */
+function headerValues(s: SalePayload) {
+  const t = s.totals;
+  return {
+    inv_on: s.payment.method, customer_id: s.customerId || null, customer_name: s.customerName?.trim() || null, customer_phone: s.customerPhone?.trim() || null,
+    total: t.total, charges: t.charges ?? 0, discount_rs: t.billDiscountRs ?? 0, payable: t.payable, paid: t.paid, balance: t.balance,
+  };
+}
+
+/** One sale (cash, or credit on a customer) into the books, all or nothing:
+ * the operation record, the invoice (server number + the device's receipt
+ * number), its lines, the stock taken and any stock exceptions. */
+export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: string | null = null): Promise<PushResult> {
+  const s: SalePayload = op.payload;
+  const T = d.tenant_id, B = d.branch_id;
+  if (!s.offlineRef?.startsWith(`${d.device_code}-`)) return reject(sql, d, op, "Receipt number does not belong to this device.");
+  const refs = await checkSaleRefs(sql, d, op);
+  if ("hold" in refs) return holdOp(sql, d, op, refs.hold);
+  if ((await sql.execute(`SELECT 1 FROM invoices WHERE id = ?`, [s.saleId])).rows[0]) return reject(sql, d, op, "A sale with this id already exists.");
+  const { takes, shortfalls } = planTakes(s, refs.batches);
+  const status: PushResult["status"] = shortfalls.length ? "conflict" : "applied";
+  const now = iso();
+  const h = headerValues(s);
+  const lines = lineStatements(d, op, refs.batches, takes, shortfalls, now, "sale");
+  const stmts: Stmt[] = [
+    opStmt(d, op, status, now, decidedBy),
+    // The invoice: next number of the business, the device's receipt number kept alongside.
+    {
+      sql: `INSERT INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_id, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
+              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, created_at, updated_at)
+            VALUES (?, (SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM invoices WHERE tenant_id = ? AND COALESCE(is_quotation, 0) = 0), ?, ?, 'retail', ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)`,
+      args: [s.saleId, T, s.date, h.inv_on, `Offline sale ${s.offlineRef}`, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, T, B, s.offlineRef, now, now],
+    },
+    ...lines.items,
+  ];
+  const firstTake = stmts.length;
+  stmts.push(...lines.stock, ...lines.short);
+  return finish(sql, d, op, stmts, firstTake, takes, shortfalls.length, status);
+}
+
+/** Whether this user may edit invoices (the same rule as online: staff need
+ * "Edit invoices", and the business must not have it turned off). */
+async function userMayEdit(sql: Sql, tenantId: string, userId: string): Promise<boolean> {
+  const u = (await sql.execute(`SELECT role, denied_actions FROM users WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`, [userId, tenantId])).rows[0];
+  if (!u) return false;
+  const t = await tenantRow(sql, tenantId);
+  const role = String(u.role) as Caller["role"];
+  return callerCan({ userId, role, tenantId, actions: role === "staff" ? jsonList(u.denied_actions) : [], tenantDeniedActions: jsonList(t.denied_actions) } as Caller, "invoice.edit");
+}
+
+/** An offline edit of a sale invoice: the old lines' stock comes back, the
+ * new lines take theirs, the lines and the header are replaced (as editing
+ * online does), all in one change. Held for the owner instead when the
+ * invoice changed elsewhere after this computer saw it, was submitted to FBR,
+ * is not a sale of this branch, or the user may not edit invoices. */
+export async function applyEdit(sql: Sql, d: Device, op: Operation, decidedBy: string | null = null): Promise<PushResult> {
+  const s: SalePayload = op.payload;
+  const T = d.tenant_id, B = d.branch_id;
+  const inv = (await sql.execute(`SELECT * FROM invoices WHERE id = ? AND tenant_id = ?`, [s.saleId, T])).rows[0];
+  if (!inv || inv.deleted_at != null) return holdOp(sql, d, op, "The invoice of this edit is not on MAVIN.pk (deleted, or never received). Review it.");
+  if (String(inv.branch_id ?? "") !== B) return holdOp(sql, d, op, "The invoice belongs to another branch. Review it.");
+  if (Number(inv.is_return ?? 0) || Number(inv.is_memorized ?? 0) || Number(inv.is_quotation ?? 0)) return holdOp(sql, d, op, "Only sale invoices can be edited offline. Review it.");
+  if (inv.fbr_invoice_no) return holdOp(sql, d, op, "The invoice was submitted to FBR, so the offline edit was not applied. Review it.");
+  if (!(await userMayEdit(sql, T, op.userId))) return holdOp(sql, d, op, "The user who edited this invoice may not edit invoices. Review it.");
+  if (s.offlineRef && s.offlineRef !== (inv.offline_ref ?? null)) return reject(sql, d, op, "The receipt number does not match the invoice.");
+  // Changed elsewhere since this computer saw it? (An owner approving a held edit decides that.)
+  if (!decidedBy) {
+    let base: string | null = s.edit?.invoiceUpdatedAt ?? null;
+    if (s.edit?.afterOpId) {
+      const prev = (await sql.execute(`SELECT entity_id, status, result FROM offline_ops WHERE op_id = ? AND device_id = ?`, [s.edit.afterOpId, d.id])).rows[0];
+      const latest = (await sql.execute(`SELECT op_id FROM offline_ops WHERE entity_id = ? AND status IN ('applied', 'conflict') ORDER BY received_at DESC, rowid DESC LIMIT 1`, [s.saleId])).rows[0];
+      base = prev && prev.entity_id === s.saleId && (prev.status === "applied" || prev.status === "conflict") && latest?.op_id === s.edit.afterOpId
+        ? ((JSON.parse(String(prev.result || "{}")) as { updatedAt?: string }).updatedAt ?? null) : null;
+    }
+    if (!base || base !== String(inv.updated_at)) return holdOp(sql, d, op, "The invoice was changed on MAVIN.pk after this computer last saw it, so the offline edit was not applied over it. Review it.");
+  }
+  const refs = await checkSaleRefs(sql, d, op);
+  if ("hold" in refs) return holdOp(sql, d, op, refs.hold);
+  if ((await sql.execute(`SELECT 1 FROM invoice_items WHERE invoice_id = ? AND id IN (${s.lines.map(() => "?").join(",")})`, [s.saleId, ...s.lines.map((l) => l.lineId)])).rows[0]) {
+    return reject(sql, d, op, "The edit's lines were already received.");
+  }
+
+  // The old lines' stock comes back to their batches in this branch (as editing online does).
+  const oldItems = (await sql.execute(`SELECT id, product_id, batch_no, qty, bonus_qty FROM invoice_items WHERE invoice_id = ? AND tenant_id = ? AND deleted_at IS NULL`, [s.saleId, T])).rows;
+  const back = new Map<string, number>();
+  for (const it of oldItems) {
+    const b = (await sql.execute(`SELECT id FROM product_batches WHERE tenant_id = ? AND branch_id = ? AND product_id = ? AND batch_no IS ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1`, [T, B, it.product_id, it.batch_no ?? null])).rows[0];
+    if (!b) return holdOp(sql, d, op, "A batch of the invoice's old lines is no longer in this branch, so its stock cannot be put back. Review it.");
+    back.set(String(b.id), (back.get(String(b.id)) ?? 0) + (Number(it.qty) || 0) + (Number(it.bonus_qty) || 0));
+  }
+  // Batches given stock back that the new lines do not use are read too (for the guard).
+  const { takes, shortfalls } = planTakes(s, refs.batches, back);
+  const status: PushResult["status"] = shortfalls.length ? "conflict" : "applied";
+  const now = iso();
+  const h = headerValues(s);
+  const lines = lineStatements(d, op, refs.batches, [], shortfalls, now, "edit");
+  const stmts: Stmt[] = [
+    // Stops the whole change if the invoice moved since it was read (abs() of the smallest integer is an error in SQLite).
+    { sql: `SELECT CASE WHEN EXISTS (SELECT 1 FROM invoices WHERE id = ? AND updated_at = ? AND deleted_at IS NULL AND fbr_invoice_no IS NULL) THEN 1 ELSE abs(-9223372036854775808) END`, args: [s.saleId, String(inv.updated_at)] },
+    opStmt(d, op, status, now, decidedBy),
+    ...[...back].map(([id, qty]) => ({ sql: `UPDATE product_batches SET qty = qty + ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND branch_id = ?`, args: [qty, now, id, T, B] })),
+    { sql: `UPDATE invoice_items SET deleted_at = ?, updated_at = ? WHERE invoice_id = ? AND tenant_id = ? AND deleted_at IS NULL`, args: [now, now, s.saleId, T] },
+    {
+      sql: `UPDATE invoices SET inv_on = ?, customer_id = ?, customer_name = ?, customer_phone = ?, total = ?, charges = ?, discount_rs = ?, payable = ?, paid = ?, balance = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+      args: [h.inv_on, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, now, s.saleId, T],
+    },
+    ...lines.items,
+  ];
+  // The new lines take their stock after the old came back.
+  const firstTake = stmts.length;
+  stmts.push(...takes.map((k) => ({
+    sql: `UPDATE product_batches SET qty = CASE WHEN ABS(qty - ?) <= ? THEN 0 ELSE qty - ? END, updated_at = ? WHERE id = ? AND tenant_id = ? AND branch_id = ? AND qty + ? >= ?`,
+    args: [k.qty, STOCK_EPS, k.qty, now, k.batchId, T, B, STOCK_EPS, k.qty],
+  })), ...lines.short);
+  try {
+    const r = await finish(sql, d, op, stmts, firstTake, takes, shortfalls.length, status);
+    await audit(sql, T, op.userId, "invoice.edited_offline", { op: op.opId, invoice: s.saleId, device: d.id });
+    return r;
+  } catch (e) {
+    // The guard stopped it: the invoice changed between the read and the write.
+    if (/overflow/i.test(e instanceof Error ? e.message : String(e))) return holdOp(sql, d, op, "The invoice was changed on MAVIN.pk while this edit arrived. Review it.");
+    throw e;
+  }
 }
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -508,9 +646,13 @@ export async function resolveException(sql: Sql, caller: Caller, id: string, not
 
 export async function listHeld(sql: Sql, caller: Caller, tenantId: string) {
   managerOf(caller, tenantId);
-  return (await sql.execute(`SELECT op_id, device_id, payload, received_at FROM offline_ops WHERE tenant_id = ? AND status = 'held' ORDER BY received_at`, [tenantId])).rows.map((r) => {
+  return (await sql.execute(`SELECT op_id, device_id, kind, payload, received_at, error FROM offline_ops WHERE tenant_id = ? AND status = 'held' ORDER BY received_at`, [tenantId])).rows.map((r) => {
     const p = JSON.parse(String(r.payload)) as SalePayload;
-    return { opId: String(r.op_id), deviceId: String(r.device_id), offlineRef: p.offlineRef, date: p.date, payable: p.totals.payable, lines: p.lines.length, receivedAt: String(r.received_at) };
+    return {
+      opId: String(r.op_id), deviceId: String(r.device_id), kind: String(r.kind) === "sale.update" ? "edit" : "sale",
+      offlineRef: p.offlineRef ?? (p.edit?.invoiceNo != null ? `Invoice ${p.edit.invoiceNo}` : null), date: p.date, payable: p.totals.payable, lines: p.lines.length,
+      receivedAt: String(r.received_at), reason: (r.error as string | null) ?? null,
+    };
   });
 }
 
@@ -527,9 +669,10 @@ export async function decideHeld(sql: Sql, caller: Caller, opId: string, approve
     await audit(sql, d.tenant_id, caller.userId, "op.held_rejected", { op: opId, note: why });
     return { status: "rejected" };
   }
-  const op: Operation = { opId, kind: "sale.create", entityId: String(r.entity_id), schemaVersion: Number(r.schema_version), dependsOn: jsonList(r.depends_on), occurredAt: String(r.occurred_at), userId: String(r.user_id), payload: JSON.parse(String(r.payload)) };
-  // Applied as the device would have been, by the owner's decision.
-  const res = await applySale(sql, d, op, caller.userId);
+  const kind = String(r.kind) === "sale.update" ? "sale.update" : "sale.create";
+  const op: Operation = { opId, kind, entityId: String(r.entity_id), schemaVersion: Number(r.schema_version), dependsOn: jsonList(r.depends_on), occurredAt: String(r.occurred_at), userId: String(r.user_id), payload: JSON.parse(String(r.payload)) };
+  // Applied as the device would have been, by the owner's decision (an edit over later changes too).
+  const res = kind === "sale.update" ? await applyEdit(sql, d, op, caller.userId) : await applySale(sql, d, op, caller.userId);
   await audit(sql, d.tenant_id, caller.userId, "op.held_approved", { op: opId, status: res.status });
   return res;
 }

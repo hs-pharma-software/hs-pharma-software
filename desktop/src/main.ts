@@ -14,7 +14,7 @@ import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from "
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
-import { OfflineDevice, TransportError, type SaleInput, type SecretStore, type Transport } from "./core/device";
+import { OfflineDevice, TransportError, type OriginalInvoice, type SaleInput, type SecretStore, type Transport } from "./core/device";
 import { Mirror, readOnlySql } from "./core/mirror";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
@@ -284,12 +284,37 @@ const optStr = (v: unknown, max: number) => (typeof v === "string" && v.trim() ?
 function saleInput(v: unknown): SaleInput {
   const o = v as Record<string, unknown>;
   if (!o || !Array.isArray(o.lines) || o.lines.length < 1 || o.lines.length > 100) throw new Error("Add at least one product.");
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const editId = optStr(o.editOf, 64);
   return {
     lines: o.lines.map((l) => {
       const x = l as Record<string, unknown>;
-      return { productId: str(x.productId, 64, "product"), unit: x.unit === "loose" ? "loose" : "pack", qty: Number(x.qty), discountPct: Number(x.discountPct) || 0 };
+      return { productId: str(x.productId, 64, "product"), unit: x.unit === "loose" ? "loose" : "pack", qty: Number(x.qty), bonusQty: num(x.bonusQty), discountPct: num(x.discountPct) };
     }),
-    customerName: optStr(o.customerName, 120), customerPhone: optStr(o.customerPhone, 30), tendered: Number(o.tendered),
+    customerName: optStr(o.customerName, 120), customerPhone: optStr(o.customerPhone, 30), customerId: optStr(o.customerId, 64),
+    method: o.method === "credit" ? "credit" : "cash", paid: num(o.paid), billDiscountRs: num(o.billDiscountRs), charges: num(o.charges), tendered: Number(o.tendered),
+    ...(editId ? { edit: { invoiceId: editId, original: originalInvoice(editId) } } : {}),
+  };
+}
+
+/** An invoice as this computer's copy of the server's data has it (to edit it offline). */
+function originalInvoice(id: string): OriginalInvoice | null {
+  const inv = mirror?.query(`SELECT * FROM invoices WHERE id = ? AND deleted_at IS NULL`, [id])[0];
+  const ident = device.identity;
+  if (!inv || !ident) return null;
+  const items = mirror!.query(`SELECT product_id, batch_no, qty, bonus_qty, sale_price, tax_pct FROM invoice_items WHERE invoice_id = ? AND deleted_at IS NULL`, [id]);
+  const flag = (k: string) => Number(inv[k] ?? 0) === 1;
+  return {
+    invoiceNo: inv.invoice_no == null ? null : Number(inv.invoice_no),
+    updatedAt: String(inv.updated_at ?? ""),
+    date: String(inv.date),
+    offlineRef: (inv.offline_ref as string | null) ?? null,
+    fbrInvoiceNo: (inv.fbr_invoice_no as string | null) || null,
+    editable: !flag("is_return") && !flag("is_memorized") && !flag("is_quotation") && String(inv.branch_id ?? ident.branchId) === ident.branchId,
+    items: items.map((it) => ({
+      productId: String(it.product_id), batchNo: (it.batch_no as string | null) ?? null, qty: Number(it.qty) || 0, bonusQty: Number(it.bonus_qty) || 0,
+      salePrice: Number(it.sale_price) || 0, taxPct: Number(it.tax_pct) || 0,
+    })),
   };
 }
 

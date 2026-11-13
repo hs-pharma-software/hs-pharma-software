@@ -29,7 +29,8 @@ let db: DatabaseSync;
 let sql: Sql;
 let root: string;
 let clock: Date;
-const T = "2026-11-08T08:00:00.000Z";
+// "Now" for the test: an hour ago (the server checks sale dates and stamps rows with the real clock).
+const T = new Date(Date.now() - 3_600_000).toISOString();
 const run = (q: string, ...a: unknown[]) => db.prepare(q).run(...(a as never[]));
 const one = (q: string, ...a: unknown[]) => db.prepare(q).get(...(a as never[])) as Record<string, unknown>;
 const all = (q: string, ...a: unknown[]) => db.prepare(q).all(...(a as never[])) as Record<string, unknown>[];
@@ -328,7 +329,7 @@ test("businesses and branches stay apart", async () => {
   // A forged sale using another business's batch is not applied.
   const dev = (await off.deviceFromAuth(sql, `${String(one(`SELECT id FROM offline_devices`).id)}:${[...secrets.values()][0]}`));
   const { sale } = (() => { net.down = true; return d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 }); })();
-  const forged = { ...sale, saleId: "forged-sale-0001", offlineRef: sale.offlineRef.replace(/\d+$/, "999999"), lines: sale.lines.map((l) => ({ ...l, lineId: "forged-line-0001", batchId: "bq", productId: "q1" })) };
+  const forged = { ...sale, saleId: "forged-sale-0001", offlineRef: sale.offlineRef!.replace(/\d+$/, "999999"), lines: sale.lines.map((l) => ({ ...l, lineId: "forged-line-0001", batchId: "bq", productId: "q1" })) };
   const res = await off.push(sql, dev, [{ opId: "forged-op-00001", kind: "sale.create", entityId: forged.saleId, schemaVersion: 1, dependsOn: [], occurredAt: forged.occurredAt, userId: forged.userId, payload: forged }]);
   assert.equal(res[0].status, "held");
   assert.equal(serverQty("bq"), 9);
@@ -625,4 +626,173 @@ test("a server without some copy table yet is skipped, not fatal", async () => {
   mirrors.push(m);
   await m.refresh(["products", "not_on_this_server", "customers"], (t, o) => d.mirrorPage(t, o));
   assert.equal(m.query(`SELECT COUNT(*) AS n FROM products`, [])[0].n, 4);
+});
+
+// ── Version 2: credit, bonus, charges, bill discount, editing (desktop 0.2.3) ──
+
+const inv = (id: string) => one(`SELECT * FROM invoices WHERE id = ?`, id);
+const items = (id: string) => all(`SELECT * FROM invoice_items WHERE invoice_id = ? AND deleted_at IS NULL ORDER BY batch_no`, id);
+const heldReason = (opId?: string) => String(one(`SELECT error FROM offline_ops WHERE status = 'held'${opId ? " AND op_id = ?" : ""}`, ...(opId ? [opId] : [])).error);
+
+test("offline credit sale with bonus, charges and bill discount: booked as online, stock includes the bonus", async () => {
+  serverRow("customers", { id: "c1", tenant_id: "t1", name: "Ali Medical" });
+  const d = await provisioned();
+  net.down = true;
+  // 4 packs + 2 bonus of p1 (5 in b1a, then b1b), 2% off the line; bill discount 20, charges 15; 100 paid now.
+  const { sale, receipt } = d.createSale({
+    lines: [{ productId: "p1", unit: "pack", qty: 4, bonusQty: 2, discountPct: 2 }],
+    customerId: "c1", customerName: "Ali Medical", method: "credit", paid: 100, billDiscountRs: 20, charges: 15, tendered: 100,
+  });
+  assert.deepEqual(sale.lines.map((l) => [l.batchId, l.qtyPacks, l.bonusPacks ?? 0]), [["b1a", 4, 1], ["b1b", 0, 1]]);
+  assert.equal(sale.totals.payable, 387); // 400 - 8 - 20 + 15
+  assert.equal(sale.totals.balance, 287);
+  assert.match(receipt, /On account\s+287\.00/);
+  assert.match(receipt, /bonus 1/);
+  assert.equal(d.search("panadol")[0].available, 19, "6 packs left the local stock (bonus included)");
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).applied, 1);
+  const i = inv(sale.saleId);
+  assert.deepEqual([i.inv_on, i.customer_id, Number(i.charges), Number(i.discount_rs), Number(i.payable), Number(i.paid), Number(i.balance)], ["credit", "c1", 15, 20, 387, 100, 287]);
+  assert.deepEqual(items(sale.saleId).map((x) => [Number(x.qty), Number(x.bonus_qty)]), [[4, 1], [0, 1]]);
+  assert.deepEqual([serverQty("b1a"), serverQty("b1b")], [0, 19]);
+});
+
+test("credit needs a known customer; cash must be paid in full", async () => {
+  const d = await provisioned();
+  net.down = true;
+  assert.throws(() => d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], method: "credit", paid: 0, tendered: 0 }), /needs a customer/);
+  assert.throws(() => d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 10 }), /less than the bill/);
+  // A customer this business does not have: the server keeps the sale for review, not in the books.
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], customerId: "nobody", method: "credit", paid: 0, tendered: 0 });
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).held, 1);
+  assert.match(heldReason(), /customer/);
+  assert.equal(invoices().length, 0);
+});
+
+test("editing an offline sale before it was sent: both go up in order, the books show the edit, stock taken once", async () => {
+  const d = await provisioned();
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 3 }], tendered: 300 });
+  assert.equal(d.search("panadol")[0].available, 22);
+  const { sale: edited } = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 5, bonusQty: 1 }, { productId: "p2", unit: "pack", qty: 1 }], tendered: 1000, edit: { invoiceId: sale.saleId } });
+  assert.equal(edited.saleId, sale.saleId);
+  assert.equal(edited.offlineRef, sale.offlineRef, "same receipt");
+  assert.equal(d.search("panadol")[0].available, 19, "old 3 back, new 6 out");
+  assert.equal(d.status().provisioned && d.status().pending, 2);
+  net.down = false;
+  const r = await d.sync({ manual: true });
+  assert.equal(r.applied, 2);
+  assert.equal(invoices().length, 1);
+  assert.equal(Number(inv(sale.saleId).payable), edited.totals.payable);
+  assert.equal(items(sale.saleId).length, 3, "old line replaced by the new ones (p1 over two batches, p2)");
+  assert.deepEqual([serverQty("b1a"), serverQty("b1b"), serverQty("b2")], [0, 19, 2]);
+  assert.equal(d.search("panadol")[0].available, 19, "after the download, not counted twice");
+});
+
+/** An invoice made online (stock already taken), as the device's copy would hold it. */
+function onlineInvoice(id: string, qty: number) {
+  serverRow("invoices", { id, tenant_id: "t1", branch_id: "main-t1", invoice_no: 50, date: T.slice(0, 10), inv_on: "cash", total: qty * 250.5, payable: 100, paid: 100, balance: 0 });
+  serverRow("invoice_items", { id: `${id}-1`, invoice_id: id, tenant_id: "t1", branch_id: "main-t1", product_id: "p2", batch_no: "B-b2", qty, bonus_qty: 0, sale_price: 240, tax_pct: 18, total: 1 });
+  run(`UPDATE product_batches SET qty = qty - ? WHERE id = 'b2'`, qty);
+  const r = inv(id);
+  return {
+    invoiceNo: 50, updatedAt: String(r.updated_at), date: String(r.date), offlineRef: null, fbrInvoiceNo: null as string | null, editable: true,
+    items: [{ productId: "p2", batchNo: "B-b2", qty, bonusQty: 0, salePrice: 240, taxPct: 18 }],
+  };
+}
+
+test("editing an invoice made online, offline: old stock back, new taken, its own price kept", async () => {
+  const original = onlineInvoice("web-invoice-01", 2);
+  const d = await provisioned();
+  assert.equal(d.search("syrup")[0].available, 1);
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 3 }], tendered: 1000, edit: { invoiceId: "web-invoice-01", original } });
+  assert.equal(sale.lines[0].pricePerPack, 240, "the invoice's price, not today's price list");
+  assert.equal(d.search("syrup")[0].available, 0, "2 back, 3 out");
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).applied, 1);
+  assert.equal(serverQty("b2"), 0);
+  assert.equal(items("web-invoice-01").length, 1);
+  assert.equal(Number(items("web-invoice-01")[0].qty), 3);
+  assert.equal(Number(inv("web-invoice-01").payable), sale.totals.payable);
+  assert.equal(all(`SELECT * FROM invoice_items WHERE invoice_id = 'web-invoice-01' AND deleted_at IS NOT NULL`).length, 1, "old line kept, marked deleted");
+});
+
+test("an invoice changed online meanwhile: the offline edit is held, not written over it; the owner can still apply it", async () => {
+  const original = onlineInvoice("web-invoice-01", 1);
+  const d = await provisioned();
+  net.down = true;
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 2 }], tendered: 1000, edit: { invoiceId: "web-invoice-01", original } });
+  run(`UPDATE invoices SET payable = 999, updated_at = ? WHERE id = 'web-invoice-01'`, new Date(Date.now() + 1000).toISOString());
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).held, 1);
+  assert.match(heldReason(), /changed on MAVIN\.pk/);
+  assert.equal(Number(inv("web-invoice-01").payable), 999, "the online change stays");
+  const held = await off.listHeld(sql, LOGINS.owner1.caller, "t1");
+  assert.equal(held[0].kind, "edit");
+  const res = await off.decideHeld(sql, LOGINS.owner1.caller, held[0].opId, true, null) as { status: string };
+  assert.equal(res.status, "applied");
+  assert.equal(Number(items("web-invoice-01")[0].qty), 2);
+  assert.equal(serverQty("b2"), 1, "3 - 1 (online) + 1 back - 2");
+});
+
+test("FBR-submitted invoices are not edited offline; staff without Edit invoices are held", async () => {
+  const original = onlineInvoice("web-invoice-01", 1);
+  const d = await provisioned();
+  net.down = true;
+  assert.throws(() => d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 1000, edit: { invoiceId: "web-invoice-01", original: { ...original, fbrInvoiceNo: "FBR-1" } } }), /submitted to FBR/);
+  // Submitted on the server after this computer saw it: held there.
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 1000, edit: { invoiceId: "web-invoice-01", original } });
+  run(`UPDATE invoices SET fbr_invoice_no = 'FBR-9' WHERE id = 'web-invoice-01'`);
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).held, 1);
+  assert.match(heldReason(), /FBR/);
+});
+
+test("a staff login without Edit invoices: the offline edit is held", async () => {
+  const original = onlineInvoice("web-invoice-01", 1);
+  const d = await provisioned();
+  run(`UPDATE users SET denied_actions = ? WHERE id = 's1'`, JSON.stringify(["invoice.edit"]));
+  await d.signIn("cashier", "pass-1234");
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 1000, edit: { invoiceId: "web-invoice-01", original } });
+  net.down = false;
+  await d.sync({ manual: true });
+  const op = String(one(`SELECT op_id FROM offline_ops WHERE entity_id = ? AND user_id = 's1'`, sale.saleId).op_id);
+  assert.match(heldReason(op), /may not edit invoices/);
+});
+
+test("a version 1 sale (desktop 0.2.2) is still accepted", async () => {
+  const d = await provisioned();
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 1000 });
+  const { customerId: _c, ...rest } = sale;
+  const v1 = {
+    ...rest, saleId: "v1-sale-00000001", offlineRef: sale.offlineRef!.replace(/\d+$/, "777777"),
+    lines: sale.lines.map((l) => ({ ...l, lineId: "v1-line-00000001" })),
+    totals: { total: sale.totals.total, discountRs: sale.totals.discountRs, taxRs: sale.totals.taxRs, payable: sale.totals.payable, paid: sale.totals.paid, balance: 0, tendered: sale.totals.tendered, change: sale.totals.change },
+  };
+  const dev = await off.deviceFromAuth(sql, `${all(`SELECT id FROM offline_devices`)[0].id}:${[...secrets.values()][0]}`);
+  const r = await off.push(sql, dev, [{ opId: "v1-op-000000001", kind: "sale.create", entityId: v1.saleId, schemaVersion: 1, dependsOn: [], occurredAt: v1.occurredAt, userId: v1.userId, payload: v1 }]);
+  assert.equal(r[0].status, "applied", r[0].error);
+  assert.equal(inv("v1-sale-00000001").inv_on, "cash");
+});
+
+test("an offline edit shows in the copy at once, and the server's version replaces it after sync", async () => {
+  const original = onlineInvoice("web-invoice-02", 1);
+  const d = await provisioned();
+  const m = await copyOf(d);
+  const copyItems = () => m.query(`SELECT qty, bonus_qty FROM invoice_items WHERE invoice_id = 'web-invoice-02'`, []).map((r) => [Number(r.qty), Number(r.bonus_qty)]);
+  assert.deepEqual(copyItems(), [[1, 0]]);
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 2, bonusQty: 1 }], customerId: null, tendered: 1000, edit: { invoiceId: "web-invoice-02", original } });
+  m.overlay(d.localSales(30), d.stockNow(), "t1", "main-t1");
+  assert.deepEqual(copyItems(), [[2, 1]], "the edited lines, not the old ones");
+  assert.equal(Number(m.query(`SELECT payable FROM invoices WHERE id = 'web-invoice-02'`, [])[0].payable), sale.totals.payable);
+  assert.equal(copyQty(m, "b2"), 0, "2 + 1 back, 3 out");
+  net.down = false;
+  await d.sync({ manual: true });
+  await history(m, d);
+  assert.deepEqual(copyItems(), [[2, 1]], "now the server's own rows");
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM mirror_overlay`, [])[0].n, 0);
 });
