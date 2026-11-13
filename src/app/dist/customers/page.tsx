@@ -5,7 +5,7 @@ import { Crosshair, MapPin, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { dist, errorText, getFix } from "@/lib/dist";
+import { dist, errorText, fbrAtlVerifier, getFix } from "@/lib/dist";
 import { cdslState } from "@/lib/dist/engine";
 import type { DistCustomer } from "@/lib/dist/store";
 import { Badge, DistGuard, Err, MapView, Note, PageTitle, todayYmd, useLoad, type DistCtx } from "@/components/dist/ui";
@@ -140,6 +140,7 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
   const [v, setV] = useState<Partial<DistCustomer>>(value);
   const [loc, setLoc] = useState<{ lat: number; lng: number; accuracy?: number | null; source: "device" | "manual_pin" } | null>(value.lat != null && value.lng != null ? { lat: value.lat, lng: value.lng, accuracy: value.location_accuracy, source: (value.location_source as "device" | "manual_pin") ?? "device" } : null);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const salesmen = useLoad(() => (c.admin ? dist.listSalesmen() : Promise.resolve([])), [c.admin]);
   const editable = (f: string) => isNew || c.admin || c.fields.includes(f);
   const t = (k: keyof DistCustomer, label: string, opts: { required?: boolean; type?: string; placeholder?: string } = {}) => (
@@ -151,13 +152,21 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
   const save = async () => {
     setError(null);
     try {
-      if (isNew) await dist.createCustomer({ ...v, location: loc });
+      let id = value.id ?? null;
+      if (isNew) id = (await dist.createCustomer({ ...v, location: loc })).id;
       else {
         const patch: Partial<DistCustomer> = {};
         for (const k of Object.keys(v) as (keyof DistCustomer)[]) if (v[k] !== value[k] && editable(k)) (patch as Record<string, unknown>)[k] = v[k];
         await dist.updateCustomer(value.id!, patch);
         const moved = loc && (loc.lat !== value.lat || loc.lng !== value.lng);
         if (moved) await dist.setCustomerLocation(value.id!, loc!);
+      }
+      // A new NTN / CNIC: FBR is asked at once (ATL decides the withholding rate). No answer: saved anyway, left unverified.
+      const idChanged = isNew ? !!(v.ntn || v.cnic) : (v.ntn ?? null) !== (value.ntn ?? null) || (v.cnic ?? null) !== (value.cnic ?? null);
+      if (id && idChanged && (v.ntn || v.cnic) && c.can("customers.verify")) {
+        setChecking(true);
+        await dist.verifyAtl(id, fbrAtlVerifier, 10000).catch(() => undefined);
+        setChecking(false);
       }
       onSaved();
     } catch (e) {
@@ -179,8 +188,14 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
           {t("territory", "Territory / area")}
           <Field label="Withholding tax class">
             <Select disabled={!editable("tax_class")} value={v.tax_class ?? "retailer"} onChange={(e) => setV({ ...v, tax_class: e.target.value })}>
-              {Object.entries(c.settings.wht.classes).map(([k, r]) => <option key={k} value={k}>{k} ({r.section})</option>)}
+              {Object.entries(c.settings.wht.classes).map(([k, r]) => (
+                <option key={k} value={k}>{k[0].toUpperCase() + k.slice(1)} · {r.section} · ATL {r.activeRate} % / non-ATL {r.inactiveRate} %</option>
+              ))}
             </Select>
+            {(() => {
+              const r = c.settings.wht.classes[v.tax_class ?? "retailer"];
+              return r ? <span className="text-[11px] text-neutral-500">Section {r.section}: {r.activeRate} % if the customer is on FBR&apos;s Active Taxpayers List, {r.inactiveRate} % if not.</span> : null;
+            })()}
           </Field>
           {pharma && (
             <>
@@ -204,7 +219,7 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
       </div>
       <div className="mt-3 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()}>Save</Button>
+        <Button variant="primary" disabled={checking} onClick={() => void save()}>{checking ? "Checking ATL with FBR…" : "Save"}</Button>
       </div>
     </Modal>
   );
@@ -248,8 +263,18 @@ function CustomerView({ c, customer, onClose, onChanged }: { c: DistCtx; custome
         )}
         {c.can("customers.verify") && (
           <section className="space-y-2 rounded-xl border border-neutral-200 p-3">
-            <h3 className="flex items-center gap-1 text-sm font-semibold"><ShieldCheck size={14} /> Record Active Taxpayers List (ATL) check</h3>
-            <p className="text-xs text-neutral-500">Check {customer.ntn ? `NTN ${customer.ntn}` : customer.cnic ? `CNIC ${customer.cnic}` : "(no NTN / CNIC)"} on FBR&apos;s ATL portal or by SMS &quot;ATL &lt;NTN/CNIC&gt;&quot; to 9966, then record exactly what FBR showed.</p>
+            <h3 className="flex items-center gap-1 text-sm font-semibold"><ShieldCheck size={14} /> Active Taxpayers List (ATL) check</h3>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 px-3 py-2">
+              <p className="flex-1 text-xs text-sky-900">
+                Ask FBR directly (STATL) for {customer.ntn ? `NTN ${customer.ntn}` : customer.cnic ? `CNIC ${customer.cnic}` : "(no NTN / CNIC)"} with your business&apos;s FBR token. The result sets this customer&apos;s withholding rate on invoices.
+              </p>
+              <Button variant="primary" disabled={!customer.ntn && !customer.cnic} onClick={() => void run(async () => {
+                const r = await dist.verifyAtl(customer.id, fbrAtlVerifier, 20000);
+                if (!r.ok) throw new Error(r.error);
+                setMsg({ ok: true, text: `FBR says: ${r.status === "active" ? "Active (on the ATL)" : "In-Active (not on the ATL)"}.` });
+              }, "", true)}>Check with FBR now</Button>
+            </div>
+            <p className="text-xs text-neutral-500">If FBR can&apos;t be reached: check on FBR&apos;s ATL portal or by SMS &quot;ATL &lt;NTN/CNIC&gt;&quot; to 9966, then record exactly what FBR showed.</p>
             <div className="grid gap-2 md:grid-cols-4">
               <Select value={atl.result} onChange={(e) => setAtl({ ...atl, result: e.target.value as "active" | "inactive" })}>
                 <option value="active">Active (on ATL)</option>

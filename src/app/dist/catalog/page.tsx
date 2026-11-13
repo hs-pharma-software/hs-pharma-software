@@ -8,13 +8,22 @@ import { Modal } from "@/components/ui/Modal";
 import { dist, errorText } from "@/lib/dist";
 import type { DistMode } from "@/lib/dist/engine";
 import type { DistProduct } from "@/lib/dist/store";
-import { DistGuard, Err, PageTitle, downloadCsv, money, useLoad } from "@/components/dist/ui";
+import { DistGuard, Err, Note, PageTitle, money, useLoad } from "@/components/dist/ui";
+import { useCan } from "@/lib/actionPermissions";
+import { buildCsv, downloadCsv as saveCsv } from "@/lib/csv";
+import { parseCsv } from "@/lib/productImport";
+import { detectNarcotic } from "@/lib/narcotics";
+
+const CSV_HEADERS = ["code", "name", "company", "category", "unit", "pack_size", "generic_name", "strength", "dosage_form", "drap_reg_no", "barcode", "trade_price", "retail_price", "cost", "sales_tax_rate", "reorder_level", "opening_qty"];
 
 export default function CatalogPage() {
   return <DistGuard need="catalog.view">{(c) => <Catalog mode={c.mode} canManage={c.can("catalog.manage")} canExport={c.can("reports.view")} />}</DistGuard>;
 }
 
 function Catalog({ mode, canManage, canExport }: { mode: DistMode; canManage: boolean; canExport: boolean }) {
+  // Import / export / sample file: switched on per business by the Super Admin (off by default).
+  const canCsv = useCan("products.csv");
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string; errors?: { row: number; code: string; message: string }[] } | null>(null);
   const [search, setSearch] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -29,12 +38,42 @@ function Catalog({ mode, canManage, canExport }: { mode: DistMode; canManage: bo
         sub="Your own catalog only."
         actions={
           <>
-            {canExport && <Button onClick={() => downloadCsv("products.csv", (list.data ?? []).map(({ code, name, company_name, category_name, unit, trade_price, retail_price, stock }) => ({ code, name, company_name, category_name, unit, trade_price, retail_price, stock })))}>Export CSV</Button>}
+            {canCsv && canExport && <Button onClick={() => saveCsv(`products-${new Date().toISOString().slice(0, 10)}.csv`, buildCsv(CSV_HEADERS, (list.data ?? []).map((p) => [p.code, p.name, p.company_name, p.category_name, p.unit, p.pack_size, p.generic_name, p.strength, p.dosage_form, p.drap_reg_no, p.barcode, p.trade_price, p.retail_price, p.cost, p.sales_tax_rate, p.reorder_level, p.stock])))}>Export CSV</Button>}
+            {canCsv && canManage && <Button onClick={() => saveCsv("products-import-sample.csv", buildCsv(CSV_HEADERS, mode === "pharma"
+              ? [["PAN500", "Panadol 500mg Tab", "GSK", "Tablets", "box", "10", "Paracetamol", "500mg", "Tablet", "012345", "8964000001", "420", "500", "380", "0", "20", "100"],
+                 ["TRM50", "Tramal 50mg Cap", "Searle", "Capsules", "box", "10", "Tramadol", "50mg", "Capsule", "067890", "", "650", "750", "600", "0", "5", "10"]]
+              : [["SOAP100", "Bath Soap 100g", "Unilever", "Personal Care", "pcs", "72", "", "", "", "", "8961000001", "95", "110", "85", "18", "50", "500"]]))}>Sample File</Button>}
+            {canCsv && canManage && (
+              <label className="inline-flex cursor-pointer items-center rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium hover:bg-neutral-50">
+                Import CSV
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  setImportMsg(null);
+                  try {
+                    const [head, ...body] = parseCsv(await file.text()).filter((r) => r.some((c) => c.trim()));
+                    const rows = body.map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""])));
+                    const r = await dist.importProducts(rows);
+                    setImportMsg({ ok: !r.errors.length, text: `${r.created} added, ${r.updated} updated${r.errors.length ? `, ${r.errors.length} not imported` : ""}.`, errors: r.errors });
+                    void list.reload();
+                  } catch (err) {
+                    setImportMsg({ ok: false, text: errorText(err) });
+                  }
+                }} />
+              </label>
+            )}
             {canManage && <Button variant="primary" disabled={!companies.data?.length} onClick={() => setEditing({ is_active: 1, unit: mode === "pharma" ? "box" : "pcs", pack_size: 1 })}><Plus size={14} /> Add product</Button>}
           </>
         }
       />
       {!companies.data?.length && !companies.loading && <Err error="Add a company first (Companies)." />}
+      {importMsg && (
+        <Note tone={importMsg.ok ? "emerald" : "amber"}>
+          {importMsg.text}
+          {!!importMsg.errors?.length && <ul className="mt-1 list-disc ps-5 text-xs">{importMsg.errors.slice(0, 20).map((x) => <li key={x.row}>Row {x.row}{x.code ? ` (${x.code})` : ""}: {x.message}</li>)}</ul>}
+        </Note>
+      )}
       <div className="flex flex-wrap gap-2">
         <Input className="!w-72" placeholder={mode === "pharma" ? "Search name, code, barcode, generic" : "Search name, code, barcode, brand"} value={search} onChange={(e) => setSearch(e.target.value)} />
         <Select className="!w-56" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
@@ -67,6 +106,7 @@ function Catalog({ mode, canManage, canExport }: { mode: DistMode; canManage: bo
                 <td className="px-3 py-2 text-xs">{p.code}</td>
                 <td className="px-3 py-2">
                   <span className="font-medium">{p.name}</span>
+                  {p.is_narcotic === 1 && <span className="ms-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800" title="Sold only to customers with a valid CDSL (Form-9)">Narcotic · Form-9</span>}
                   <span className="block text-[11px] text-neutral-500">{[p.generic_name, p.strength, p.dosage_form, p.brand, p.size, `${p.unit}${p.pack_size > 1 ? ` × ${p.pack_size}` : ""}`].filter(Boolean).join(" · ")}</span>
                 </td>
                 <td className="px-3 py-2 text-xs">{p.company_name}</td>
@@ -122,6 +162,14 @@ function ProductModal({ mode, value, companies, categories, onClose, onSaved }: 
             {t("strength", "Strength")}
             {t("dosage_form", "Dosage form")}
             {t("drap_reg_no", "DRAP registration no.")}
+            {(() => {
+              const hit = detectNarcotic(v.generic_name, v.name);
+              return hit ? (
+                <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-900 md:col-span-3" role="status">
+                  <b>Narcotic / controlled ({hit.toLowerCase()})</b>: this product will be sold only to customers with a valid CDSL (Form-9).
+                </p>
+              ) : null;
+            })()}
           </>
         ) : (
           <>

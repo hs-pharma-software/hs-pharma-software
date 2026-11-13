@@ -75,7 +75,8 @@ function DocPrint({ doc, items }: { doc: DistDoc; items: DistDocItem[] }) {
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-y border-black">
-            <th className="py-1 text-start">#</th><th className="text-start">Product</th><th className="text-end">Qty</th><th className="text-end">Rate</th><th className="text-end">Discount</th><th className="text-end">ST %</th><th className="text-end">ST</th><th className="text-end">Amount</th>
+            <th className="py-1 text-start">#</th><th className="text-start">Product</th><th className="text-start">Batch / Expiry</th><th className="text-end">Qty</th><th className="text-end">Bonus</th><th className="text-end">Rate</th>
+            <th className="text-end">Disc %</th><th className="text-end">Discount</th><th className="text-end">ST %</th><th className="text-end">ST</th>{doc.wht_rate > 0 && <th className="text-end">W.T %</th>}<th className="text-end">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -83,11 +84,15 @@ function DocPrint({ doc, items }: { doc: DistDoc; items: DistDocItem[] }) {
             <tr key={i.id} className="border-b border-neutral-300">
               <td className="py-0.5">{n + 1}</td>
               <td>{i.name} <span className="text-[10px] text-neutral-500">{i.code}</span></td>
+              <td className="text-[10px]">{i.batch_no ?? ""}{i.expiry ? ` · ${i.expiry}` : ""}</td>
               <td className="text-end">{i.qty} {i.unit}</td>
+              <td className="text-end">{i.bonus_qty ? i.bonus_qty : ""}</td>
               <td className="text-end">{i.price.toFixed(2)}</td>
+              <td className="text-end text-[10px]">{[i.disc_pct ? `${i.disc_pct}` : "", i.extra_disc_pct ? `+${i.extra_disc_pct}` : ""].filter(Boolean).join(" ")}</td>
               <td className="text-end">{i.discount.toFixed(2)}</td>
               <td className="text-end">{i.sales_tax_rate}</td>
               <td className="text-end">{i.sales_tax.toFixed(2)}</td>
+              {doc.wht_rate > 0 && <td className="text-end">{i.wht_rate || doc.wht_rate}</td>}
               <td className="text-end">{i.line_total.toFixed(2)}</td>
             </tr>
           ))}
@@ -98,9 +103,9 @@ function DocPrint({ doc, items }: { doc: DistDoc; items: DistDocItem[] }) {
         <Row l="Discount" v={-doc.discount} />
         <Row l="Sales tax" v={doc.sales_tax} />
         <Row l="Total (goods)" v={doc.total} bold />
-        {doc.party_type === "customer" && (
+        {(doc.party_type === "customer" || doc.wht_amount > 0) && (
           <>
-            <Row l={`Withholding income tax ${doc.wht_section ?? ""} @ ${doc.wht_rate}% on ${doc.wht_base.toFixed(2)}`} v={doc.wht_amount} />
+            <Row l={`Withholding income tax ${doc.wht_section ?? ""} @ ${doc.wht_rate}% on ${doc.wht_base.toFixed(2)}${doc.party_type === "supplier" ? " (charged by supplier)" : ""}`} v={doc.wht_amount} />
             <Row l="Payable" v={payable} bold />
           </>
         )}

@@ -7,6 +7,8 @@ export const TENANT_OPT_IN_ACTIONS: readonly string[] = [
   "payments.online", "payments.jazzcash", "payments.easypaisa", "payments.card", "payments.custom_merchant", "payments.refund",
   // Offline desktop pilot (server/offline): devices, offline allowance, sync.
   "desktop.offline",
+  // Products: CSV import, export and the sample file (every business type).
+  "products.csv",
 ];
 
 /** Whether the business's list (set by the Super Admin) allows an action. */

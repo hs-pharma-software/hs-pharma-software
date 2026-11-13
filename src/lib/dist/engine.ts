@@ -7,6 +7,27 @@ import { calcDoc, toPaisa, toRupees, type DocCalc } from "../electric/engine.ts"
 
 export { calcDoc, toPaisa, toRupees, type DocCalc };
 
+/** A line's discount in paisa, as distribution invoices print it: the
+ * discount %, then the extra discount % on what is left, then a rupee
+ * amount; never more than the line itself. */
+export function lineDiscountPaisa(grossPaisa: number, discPct = 0, extraDiscPct = 0, rupees = 0): number {
+  const pct = (v: number) => Math.min(100, Math.max(0, Number(v) || 0));
+  const first = Math.round((grossPaisa * pct(discPct)) / 100);
+  const extra = Math.round(((grossPaisa - first) * pct(extraDiscPct)) / 100);
+  return Math.min(grossPaisa, first + extra + Math.max(0, toPaisa(Number(rupees) || 0)));
+}
+
+/** Splits an amount over lines in proportion to their weights (largest remainders), so the parts add up exactly. */
+export function splitPaisa(amountPaisa: number, weights: number[]): number[] {
+  const total = weights.reduce((a, b) => a + Math.max(0, b), 0);
+  if (!total || !amountPaisa) return weights.map(() => 0);
+  const raw = weights.map((w) => (amountPaisa * Math.max(0, w)) / total);
+  const out = raw.map(Math.floor);
+  let left = amountPaisa - out.reduce((a, b) => a + b, 0);
+  [...raw.keys()].sort((a, b) => (raw[b] - out[b]) - (raw[a] - out[a])).forEach((i) => { if (left > 0) { out[i]++; left--; } });
+  return out;
+}
+
 export type DistMode = "pharma" | "general";
 
 // ── Settings ──────────────────────────────────────────────────────────
@@ -229,7 +250,7 @@ export const DIST_PERMS = [
   "customers.view", "customers.add", "customers.edit", "customers.verify",
   "catalog.view", "catalog.manage", "companies.manage",
   "bookings.create", "bookings.submit", "bookings.approve", "bookings.view_all",
-  "invoices.view", "invoices.create", "invoices.edit_lines", "invoices.edit_qty", "invoices.edit_price", "invoices.discount", "invoices.view_cost",
+  "invoices.view", "invoices.create", "invoices.edit_lines", "invoices.edit_qty", "invoices.edit_price", "invoices.discount", "invoices.bonus", "invoices.view_cost",
   "invoices.edit_description", "invoices.edit_tax_base", "invoices.edit_wht_rate", "invoices.edit_wht_amount", "invoices.edit_customer", "invoices.return",
   "purchases.view", "purchases.create", "purchases.edit_qty", "purchases.edit_price", "purchases.discount", "purchases.edit_tax", "purchases.return",
   "payments.receive", "reports.view", "locations.view", "targets.view", "salesmen.view",

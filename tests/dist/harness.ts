@@ -5,7 +5,7 @@ import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { createDistStore, type DistContext, type DistDb } from "../../src/lib/dist/store.ts";
 
 export function makeDist() {
-  const sql: DatabaseSync = fullSchemaDb(30);
+  const sql: DatabaseSync = fullSchemaDb();
   const db: DistDb = {
     async select(q, p = []) {
       return sql.prepare(q).all(...(p as never[])) as never[];

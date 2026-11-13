@@ -77,8 +77,9 @@ export default function DistSettingsPage() {
             <Note tone="sky">
               Checked against FBR&apos;s Withholding Tax Rate Card (updated up to 30 June 2025, Finance Act 2025): <b>236H</b> sales to retailers 0.5 % (ATL) / 2.5 % (non-ATL);{" "}
               <b>236G</b> sales to distributors, dealers &amp; wholesalers (other than fertilizers) 0.1 % / 2.0 % (fertilizers 0.25 % / 0.7 %). Your requested 0.5 % / 2.5 % therefore apply to
-              retailer customers only — set each customer&apos;s tax class. ATL status comes from FBR&apos;s ATL portal (e.fbr.gov.pk) or SMS 9966; FBR publishes no API, so checks are recorded
-              by an authorised user with their source and date. Exemptions, rate changes after the card and the exact taxable base are legal questions: confirm with your tax advisor. The
+              retailer customers only — set each customer&apos;s tax class. ATL status is checked with FBR directly (STATL, Digital Invoicing API, with your business&apos;s FBR token) when a
+              customer&apos;s NTN or CNIC is entered, or with &quot;Check with FBR now&quot;; when FBR can&apos;t be reached, an authorised user records the portal (e.fbr.gov.pk) or SMS 9966 result
+              with its source and date. Exemptions, rate changes after the card and the exact taxable base are legal questions: confirm with your tax advisor. The
               statute prevails over these settings.
             </Note>
             <label className="flex items-center gap-2 text-sm">

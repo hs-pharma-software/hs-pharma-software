@@ -38,6 +38,11 @@ before(async () => {
       fbrCalls.push({ url: req.url!, auth: req.headers.authorization, body });
       const reply = () => {
         if (mode === "reject401") { res.writeHead(401); return res.end(""); }
+        // FBR's STATL: "7654321" is not on the ATL, any other number is.
+        if (req.url === "/dist/v1/statl") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          return res.end(JSON.parse(body).regno === "7654321" ? `{"status code" : "02" , "status" : "In-Active"}` : `{"status code" : "01" , "status" : "Active"}`);
+        }
         if (mode === "error500") { res.writeHead(500); return res.end("<html>Internal error</html>"); }
         if (mode === "item-error") {
           res.writeHead(200);
@@ -346,4 +351,23 @@ test("Super Admin overview: gateway health and businesses, never a token", async
 test("MAVIN and the gateway sign requests identically", () => {
   const args = [SECRET, "1762934400000", "req-12345678", "POST", "/v1/fbr", `{"a":1}`] as const;
   assert.equal(mavinSign(...args), gatewaySign(...args));
+});
+
+test("ATL status: FBR STATL through the gateway with the business's token; Active / In-Active; bad numbers never sent", async () => {
+  await withTokens();
+  const a = await fbr.atlStatus(sql, owner("t1"), { regno: "7308865-2" }, deps());
+  assert.deepEqual([a.direct, a.status], [false, "active"]);
+  const call = fbrCalls.find((c) => c.url === "/dist/v1/statl")!;
+  assert.equal(call.auth, "Bearer sandbox-token-t1");
+  assert.deepEqual(JSON.parse(call.body), { regno: "7308865", date: a.direct ? "" : a.date }, "an NTN with its check digit is sent as the 7-digit NTN, with today in Pakistan");
+  assert.equal((await fbr.atlStatus(sql, owner("t1"), { regno: "7654321" }, deps())).status, "inactive");
+  assert.equal((await fbr.atlStatus(sql, owner("t1"), { regno: "35202-1234567-1" }, deps())).status, "active", "a CNIC");
+  const before = fbrCalls.length;
+  await assert.rejects(() => fbr.atlStatus(sql, owner("t1"), { regno: "123" }, deps()), /7 digits/);
+  assert.equal(fbrCalls.length, before, "nothing sent for a bad number");
+  await assert.rejects(() => fbr.atlStatus(sql, owner("t2"), { regno: "7308865" }, deps()), /No FBR sandbox token/);
+  // Direct mode: the browser asks FBR itself with the token and the exact body.
+  const d = await fbr.atlStatus(sql, owner("t1"), { regno: "7308865" }, direct());
+  assert.deepEqual([d.direct, d.direct && d.path, d.direct && d.payload], [true, "/dist/v1/statl", { regno: "7308865", date: "2026-11-12" }]);
+  assert.deepEqual([fbr.parseAtl(`{"status" : "In-Active"}`), fbr.parseAtl(`{"status":"Active"}`), fbr.parseAtl("<html>")], ["inactive", "active", null]);
 });

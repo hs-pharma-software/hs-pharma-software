@@ -1867,6 +1867,84 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v89() -> &'static str {
+    r#"
+    -- Distribution upgrade: invoice and purchase line fields (bonus, discount %,
+    -- extra discount %, withholding tax per line), narcotic products, salesman
+    -- wages and career, salaries and month closing; offline desktops per branch.
+    ALTER TABLE dist_doc_items ADD COLUMN bonus_qty REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN extra_disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN wht_rate REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN wht_amount REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_products ADD COLUMN is_narcotic INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE dist_salesmen ADD COLUMN wage_type TEXT NOT NULL DEFAULT 'monthly';
+    ALTER TABLE dist_salesmen ADD COLUMN wage_amount REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_salesmen ADD COLUMN joined_on TEXT;
+    ALTER TABLE dist_salesmen ADD COLUMN closed_on TEXT;
+    ALTER TABLE dist_salesmen ADD COLUMN close_reason TEXT;
+    CREATE TABLE IF NOT EXISTS dist_salaries (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        salesman_id TEXT NOT NULL,
+        month TEXT NOT NULL,
+        wage_type TEXT NOT NULL,
+        rate REAL NOT NULL DEFAULT 0,
+        days_worked REAL,
+        amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'unpaid',
+        paid_on TEXT,
+        paid_method TEXT,
+        expense_id TEXT,
+        closing_id TEXT,
+        note TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_salaries_month ON dist_salaries (tenant_id, salesman_id, month) WHERE deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS dist_month_closings (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        month TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'final',
+        salaries_total REAL NOT NULL DEFAULT 0,
+        salaries_count INTEGER NOT NULL DEFAULT 0,
+        report TEXT,
+        closed_by TEXT,
+        closed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_month_closings ON dist_month_closings (tenant_id, month) WHERE deleted_at IS NULL;
+    ALTER TABLE tenants ADD COLUMN offline_devices_per_branch INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE offline_devices ADD COLUMN deleted_at TEXT;
+    -- More than one device per branch when MAVIN.pk allows it (checked in code, tenants.offline_devices_per_branch).
+    DROP INDEX IF EXISTS ux_offline_devices_branch_active;
+    CREATE INDEX IF NOT EXISTS idx_offline_devices_branch ON offline_devices (tenant_id, branch_id, status);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salaries_ins AFTER INSERT ON dist_salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salaries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salaries_upd AFTER UPDATE ON dist_salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salaries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salaries_del AFTER DELETE ON dist_salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salaries', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_month_closings_ins AFTER INSERT ON dist_month_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_month_closings', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_month_closings_upd AFTER UPDATE ON dist_month_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_month_closings', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_month_closings_del AFTER DELETE ON dist_month_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_month_closings', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
 fn schema_sql_v88() -> &'static str {
     r#"
     -- The change log the desktop app's local copy follows (Phase 1): which row
@@ -6167,6 +6245,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 88,
             description: "data_changes_log",
             sql: schema_sql_v88(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 89,
+            description: "distribution_upgrade",
+            sql: schema_sql_v89(),
             kind: MigrationKind::Up,
         },
     ]

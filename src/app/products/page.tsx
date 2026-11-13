@@ -17,6 +17,7 @@ import { PRODUCT_IMPORT_HEADERS } from "@/lib/productImport";
 import { listProductsForGrid, productsRepo, type ProductListRow } from "@/lib/repo/products";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
+import { useCan } from "@/lib/actionPermissions";
 import type { Product } from "@/lib/types";
 
 export default function ProductsPage() {
@@ -27,6 +28,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  // Import / export / sample file: switched on per business by the Super Admin (off by default).
+  const canCsv = useCan("products.csv");
 
   // Contractors top up stock by hand per item, here as on the Stock page.
   const sessionTenant = useAuthStore((s) => s.currentTenant);
@@ -163,7 +166,7 @@ export default function ProductsPage() {
             >
               Add
             </Button>
-            <Button className="max-sm:hidden"
+            {canCsv && <Button className="max-sm:hidden"
               onClick={() => {
                 const PROD_HEADERS = ["Barcode","Product Name","Company","Category","Sub Category","UOM","Avail Qty","Sale Price","HS Code"];
                 exportCsv(
@@ -174,8 +177,8 @@ export default function ProductsPage() {
               }}
             >
               Export CSV
-            </Button>
-            <Button className="max-sm:hidden"
+            </Button>}
+            {canCsv && <Button className="max-sm:hidden"
               onClick={() => {
                 const sample = [
                   ["PARACETAMOL 500MG TAB","5000168002658","GSK","Analgesics","Tablets","Tablet","4.20","5.00","4.50","5.50","3004.9090","10","0"],
@@ -186,10 +189,10 @@ export default function ProductsPage() {
               }}
             >
               Sample File
-            </Button>
-            <Button className="max-sm:hidden" onClick={() => setImportOpen(true)} disabled={!tauriReady}>
+            </Button>}
+            {canCsv && <Button className="max-sm:hidden" onClick={() => setImportOpen(true)} disabled={!tauriReady}>
               Import CSV
-            </Button>
+            </Button>}
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
         }

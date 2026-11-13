@@ -74,8 +74,13 @@ export async function provisionDevice(sql: Sql, caller: Caller, input: { branchI
   const branchName = b ? String(b.name) : branchId === `main-${tenantId}` ? "Main branch" : null;
   if (!branchName) throw new HttpError(404, "Branch not found.");
   if (b && String(b.status) !== "active") throw new HttpError(409, "This branch is not active.");
-  if ((await sql.execute(`SELECT 1 FROM offline_devices WHERE tenant_id = ? AND branch_id = ? AND status = 'active'`, [tenantId, branchId])).rows[0]) {
-    throw new HttpError(409, "This branch already has an offline checkout device. Revoke it first (one offline device per branch).");
+  // Devices per branch: one unless MAVIN.pk allows more for this business.
+  const limit = await devicesPerBranch(sql, tenantId);
+  const inUse = Number((await sql.execute(`SELECT COUNT(*) AS n FROM offline_devices WHERE tenant_id = ? AND branch_id = ? AND status IN ('active', 'blocked') AND deleted_at IS NULL`, [tenantId, branchId])).rows[0]?.n ?? 0);
+  if (inUse >= limit) {
+    throw new HttpError(409, limit === 1
+      ? "This branch already has an offline checkout device. Turn it off first, or ask MAVIN.pk to allow more than one device per branch."
+      : `This branch already has ${inUse} offline devices (the most allowed: ${limit}). Turn one off first, or ask MAVIN.pk to allow more.`);
   }
   const name = typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 60) : "Checkout";
   const id = randomUUID();
@@ -115,7 +120,62 @@ export async function deviceFromAuth(sql: Sql, header: string | null): Promise<D
   const a = Buffer.from(sha(m[2]), "hex");
   const b = Buffer.from(String(d?.secret_hash ?? "00"), "hex");
   if (!d || a.length !== b.length || !timingSafeEqual(a, b)) throw new HttpError(401, "This computer is not set up as an offline device.");
+  if (d.deleted_at) throw new HttpError(401, "This offline device was removed by MAVIN.pk. Set the computer up again.");
   return d;
+}
+
+/** How many offline devices a branch of this business may have (Super Admin setting, 1 by default). */
+async function devicesPerBranch(sql: Sql, tenantId: string): Promise<number> {
+  const r = (await sql.execute(`SELECT offline_devices_per_branch AS n FROM tenants WHERE id = ?`, [tenantId])).rows[0];
+  return Math.max(1, Math.min(20, Number(r?.n) || 1));
+}
+
+const superAdminOnly = (caller: Caller) => {
+  if (caller.role !== "super_admin") throw new HttpError(403, "Only MAVIN.pk (Super Admin) can do this.");
+};
+
+/** Super Admin: how many offline devices each branch of a business may have (1-20). */
+export async function setDevicesPerBranch(sql: Sql, caller: Caller, tenantId: string, n: unknown) {
+  superAdminOnly(caller);
+  await tenantRow(sql, tenantId);
+  const v = Math.round(Number(n));
+  if (!(v >= 1 && v <= 20)) throw new HttpError(400, "Between 1 and 20 devices per branch.");
+  await sql.execute(`UPDATE tenants SET offline_devices_per_branch = ?, updated_at = ? WHERE id = ?`, [v, iso(), tenantId]);
+  await audit(sql, tenantId, caller.userId, "devices.per_branch", { value: v });
+  return { ok: true, perBranch: v };
+}
+
+/** Super Admin: blocks a device (no offline selling or sync until unblocked;
+ * sales it sends meanwhile are held for review), or unblocks it. */
+export async function blockDevice(sql: Sql, caller: Caller, id: string, block: boolean, reason: unknown) {
+  superAdminOnly(caller);
+  const d = await deviceById(sql, id);
+  if (!d || d.deleted_at) throw new HttpError(404, "Device not found.");
+  const why = typeof reason === "string" ? reason.trim().slice(0, 200) : "";
+  if (block) {
+    if (d.status !== "active") throw new HttpError(409, "Only an active device can be blocked.");
+    await sql.execute(`UPDATE offline_devices SET status = 'blocked', revoked_at = ?, revoked_by = ?, revoke_reason = ?, updated_at = ? WHERE id = ?`, [iso(), caller.userId, why || "Blocked by MAVIN.pk", iso(), id]);
+  } else {
+    if (d.status !== "blocked") throw new HttpError(409, "This device is not blocked.");
+    const limit = await devicesPerBranch(sql, d.tenant_id);
+    const active = Number((await sql.execute(`SELECT COUNT(*) AS n FROM offline_devices WHERE tenant_id = ? AND branch_id = ? AND status = 'active' AND deleted_at IS NULL`, [d.tenant_id, d.branch_id])).rows[0]?.n ?? 0);
+    if (active >= limit) throw new HttpError(409, `The branch already has ${active} active device${active === 1 ? "" : "s"} (the most allowed: ${limit}).`);
+    await sql.execute(`UPDATE offline_devices SET status = 'active', revoked_at = NULL, revoked_by = NULL, revoke_reason = NULL, updated_at = ? WHERE id = ?`, [iso(), id]);
+  }
+  await audit(sql, d.tenant_id, caller.userId, block ? "device.blocked" : "device.unblocked", { device: id, reason: why || null });
+  return { ok: true };
+}
+
+/** Super Admin: removes an old device (blocked or turned off) from the list;
+ * it frees its place and can't connect again. Its held sales stay for review. */
+export async function deleteDevice(sql: Sql, caller: Caller, id: string) {
+  superAdminOnly(caller);
+  const d = await deviceById(sql, id);
+  if (!d || d.deleted_at) throw new HttpError(404, "Device not found.");
+  if (d.status === "active") throw new HttpError(409, "Turn the device off or block it before removing it.");
+  await sql.execute(`UPDATE offline_devices SET deleted_at = ?, updated_at = ? WHERE id = ?`, [iso(), iso(), id]);
+  await audit(sql, d.tenant_id, caller.userId, "device.deleted", { device: id, code: d.device_code });
+  return { ok: true };
 }
 
 /** Device still allowed to work offline: active and the business still has the switch. */
@@ -572,12 +632,13 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
 export async function listDevices(sql: Sql, caller: Caller, tenantId: string) {
   managerOf(caller, tenantId);
-  const rows = (await sql.execute(`SELECT d.*, b.name AS branch_name FROM offline_devices d LEFT JOIN branches b ON b.id = d.branch_id WHERE d.tenant_id = ? ORDER BY d.status = 'active' DESC, d.registered_at DESC`, [tenantId])).rows;
+  const rows = (await sql.execute(`SELECT d.*, b.name AS branch_name FROM offline_devices d LEFT JOIN branches b ON b.id = d.branch_id WHERE d.tenant_id = ? AND d.deleted_at IS NULL ORDER BY d.status = 'active' DESC, d.registered_at DESC`, [tenantId])).rows;
   const t = await tenantRow(sql, tenantId);
   const counts = (await sql.execute(`SELECT device_id, status, COUNT(*) AS n FROM offline_ops WHERE tenant_id = ? AND status IN ('held', 'rejected') GROUP BY device_id, status`, [tenantId])).rows;
   const open = (await sql.execute(`SELECT device_id, COUNT(*) AS n FROM offline_exceptions WHERE tenant_id = ? AND status = 'open' GROUP BY device_id`, [tenantId])).rows;
   return {
     allowed: offlineAllowed(t),
+    perBranch: await devicesPerBranch(sql, tenantId),
     supportedType: (OFFLINE_BUSINESS_TYPES as readonly string[]).includes(String(t.business_type)),
     devices: rows.map((r) => ({
       id: String(r.id), name: String(r.name), code: String(r.device_code), branchId: String(r.branch_id), branchName: (r.branch_name as string | null) ?? "Main branch",

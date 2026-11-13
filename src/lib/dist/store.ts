@@ -16,6 +16,8 @@
  * Relative imports only (runs under `node --test`).
  */
 import type { RestDb as DistDb, RestContext as DistContext } from "../restaurant/store.ts";
+import { detectNarcotic } from "../narcotics.ts";
+import { tenantAllows } from "../tenantFeatures.ts";
 import {
   ADMIN_ONLY,
   BOOKING_FLOW,
@@ -28,6 +30,8 @@ import {
   type DistPerm,
   type DistSettings,
   calcDoc,
+  lineDiscountPaisa,
+  splitPaisa,
   canMove,
   cdslState,
   distanceKm,
@@ -104,6 +108,8 @@ export interface DistProduct extends Base {
   sales_tax_rate: number;
   stock: number;
   reorder_level: number;
+  /** Pharma: a controlled (narcotic / psychotropic) medicine, sold only with a valid CDSL (Form-9). */
+  is_narcotic: number;
   is_active: number;
 }
 export interface DistCustomer extends Base {
@@ -149,6 +155,11 @@ export interface DistSalesman extends Base {
   company_ids: string | null;
   monthly_target: number;
   employment: string | null;
+  wage_type: "monthly" | "daily";
+  wage_amount: number;
+  joined_on: string | null;
+  closed_on: string | null;
+  close_reason: string | null;
   is_active: number;
 }
 export interface DistBooking extends Base {
@@ -241,6 +252,11 @@ export interface DistDocItem extends Base {
   line_total: number;
   cost: number;
   returned_qty: number;
+  bonus_qty: number;
+  disc_pct: number;
+  extra_disc_pct: number;
+  wht_rate: number;
+  wht_amount: number;
 }
 
 export interface LineIn {
@@ -248,7 +264,13 @@ export interface LineIn {
   qty: number;
   /** Price per unit; defaults to the product's trade price (changing it needs permission). */
   price?: number | null;
+  /** Discount in rupees, after the percentages. */
   discount?: number;
+  /** Discount %, then extra discount % on what is left. */
+  discPct?: number;
+  extraDiscPct?: number;
+  /** Free quantity, taken from stock but not charged. */
+  bonusQty?: number;
   batchNo?: string | null;
   expiry?: string | null;
 }
@@ -257,19 +279,28 @@ export interface PurchaseLineIn {
   qty: number;
   cost: number;
   discount?: number;
+  discPct?: number;
+  extraDiscPct?: number;
+  /** Free quantity received: adds to stock, lowers the true cost per unit. */
+  bonusQty?: number;
   taxRate?: number;
   batchNo?: string | null;
   expiry?: string | null;
 }
+
+/** One priced line, ready to total: discount is the rupee total of all its discounts. */
+interface PricedLine { p: DistProduct; qty: number; bonus: number; price: number; discount: number; discPct: number; extraDiscPct: number; batchNo: string | null; expiry: string | null }
+const pctOf = (v: unknown) => Math.min(100, Math.max(0, Number(v) || 0));
+const qty3 = (v: unknown) => Math.round((Number(v) || 0) * 1000) / 1000;
 export interface PaymentIn {
   method: "cash" | "bank" | "cheque" | "digital";
   amount: number;
   reference?: string | null;
 }
 
-/** Optional authoritative ATL lookup. None ships with the app: FBR publishes
- * no API for the Active Taxpayers List (only the e.fbr.gov.pk portal and SMS
- * 9966), so status is recorded manually unless an adapter is configured. */
+/** An authoritative ATL lookup. The app ships FBR's own (STATL, DI API, with the
+ * business's FBR token: fbrAtlVerifier in ./index.ts); without one, status is
+ * recorded manually from the e.fbr.gov.pk portal or SMS 9966. */
 export interface AtlVerifier {
   name: string;
   check(identifier: string): Promise<{ status: "active" | "inactive"; reference?: string }>;
@@ -446,11 +477,23 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       throw new DistError("CONFLICT", `${c.business_name}: CDSL ${st === "missing" ? "number / expiry missing" : `expired on ${c.cdsl_expiry}`}. Update the licence before selling.`);
   }
 
+  /** Narcotic products go only to a customer holding a valid CDSL (Form-9),
+   * whatever the general CDSL settings say. */
+  function assertNarcotics(c: DistCustomer, products: DistProduct[], mode: DistMode) {
+    if (mode !== "pharma") return;
+    const controlled = products.filter((p) => Number(p.is_narcotic) === 1);
+    if (!controlled.length) return;
+    const st = cdslState(c.cdsl_no, c.cdsl_expiry, today(), 0);
+    if (st === "missing" || st === "expired") {
+      throw new DistError("FORBIDDEN", `${controlled.map((p) => p.name).join(", ")}: narcotic / controlled ${controlled.length === 1 ? "medicine" : "medicines"}, sold only to customers with a valid CDSL (Form-9). ${c.business_name}'s CDSL is ${st === "missing" ? "missing" : `expired (${c.cdsl_expiry})`}.`);
+    }
+  }
+
   /** Prices lines from stored products, enforcing price / discount permissions. */
   async function priceLines(lines: LineIn[], opts: { companyId?: string | null; salesman?: DistSalesman | null }) {
     if (!lines?.length) throw new DistError("INVALID", "Add at least one product.");
     const allowed = opts.salesman ? json<string[]>(opts.salesman.company_ids, []) : [];
-    const prepared: { p: DistProduct; qty: number; price: number; discount: number; batchNo: string | null; expiry: string | null }[] = [];
+    const prepared: PricedLine[] = [];
     for (const l of lines) {
       const p = await owned<DistProduct>("dist_products", l.productId, "Product");
       if (!p.is_active) throw new DistError("CONFLICT", `${p.name} is inactive.`);
@@ -462,9 +505,13 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       if (!Number.isFinite(price) || price < 0) throw new DistError("INVALID", `Invalid price for ${p.name}.`);
       if (toPaisa(price) !== toPaisa(p.trade_price)) await need("invoices.edit_price");
       if (p.min_price != null && price < p.min_price && !isAdmin()) throw new DistError("FORBIDDEN", `${p.name} can't be sold below Rs ${p.min_price}.`);
-      const discount = Math.max(0, Number(l.discount) || 0);
-      if (discount > 0) await need("invoices.discount");
-      prepared.push({ p, qty, price, discount, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
+      const rupees = Math.max(0, Number(l.discount) || 0);
+      const discPct = pctOf(l.discPct), extraDiscPct = pctOf(l.extraDiscPct);
+      if (rupees > 0 || discPct > 0 || extraDiscPct > 0) await need("invoices.discount");
+      const bonus = Math.max(0, qty3(l.bonusQty));
+      if (bonus > 0) await need("invoices.bonus");
+      const discount = toRupees(lineDiscountPaisa(Math.round(toPaisa(price) * qty), discPct, extraDiscPct, rupees));
+      prepared.push({ p, qty, bonus, price, discount, discPct, extraDiscPct, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
     }
     return prepared;
   }
@@ -733,6 +780,8 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
         trade_price: n(input.trade_price, "Trade price", true)!, retail_price: n(input.retail_price, "Retail price"), cost: n(input.cost, "Cost") ?? 0,
         min_price: n(input.min_price, "Minimum price"), sales_tax_rate: n(input.sales_tax_rate, "Sales tax rate") ?? 0, reorder_level: n(input.reorder_level, "Reorder level") ?? 0,
         is_active: input.is_active === 0 ? 0 : 1,
+        // Pharma: a controlled generic (CNSA / DRAP schedules) makes it narcotic, sold only to customers with a valid CDSL (Form-9).
+        is_narcotic: mode === "pharma" && (detectNarcotic(input.generic_name, name) || Number(input.is_narcotic) === 1) ? 1 : 0,
       };
       if (input.id) {
         const before = await owned<DistProduct>("dist_products", input.id, "Product");
@@ -748,6 +797,66 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       }
       await audit("product.create", "product", row.id, { next: { code, name } });
       return owned<DistProduct>("dist_products", row.id, "Product");
+    },
+    /** Products from a CSV (the sample file's columns): a known code is updated,
+     * a new one created with its opening stock; a company or category named
+     * that does not exist yet is created. Each row stands alone: a bad row is
+     * reported and the rest still go in. Needs the Super Admin's
+     * "Products: import / export CSV" switch for this business. */
+    async importProducts(rows: Record<string, string>[]) {
+      await need("catalog.manage");
+      if (!tenantAllows(context().deniedActions, "products.csv")) throw new DistError("FORBIDDEN", "CSV import is not switched on for your business. Ask MAVIN.pk.");
+      if (!Array.isArray(rows) || !rows.length) throw new DistError("INVALID", "The file has no product rows.");
+      if (rows.length > 5000) throw new DistError("INVALID", "Up to 5000 products per file.");
+      const pick = (r: Record<string, string>, ...keys: string[]) => {
+        for (const k of keys) {
+          const hit = Object.keys(r).find((x) => x.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_") === k);
+          if (hit && String(r[hit] ?? "").trim()) return String(r[hit]).trim();
+        }
+        return "";
+      };
+      const companies = new Map((await db.select<DistCompany>(`SELECT * FROM dist_companies WHERE tenant_id = ? AND deleted_at IS NULL`, [tenant()])).flatMap((c) => [[c.code.toUpperCase(), c.id], [c.name.toUpperCase(), c.id]] as [string, string][]));
+      const categories = new Map((await db.select<DistCategory>(`SELECT * FROM dist_categories WHERE tenant_id = ? AND deleted_at IS NULL`, [tenant()])).map((c) => [c.name.toUpperCase(), c.id]));
+      let created = 0, updated = 0;
+      const errors: { row: number; code: string; message: string }[] = [];
+      for (const [i, r] of rows.entries()) {
+        const code = pick(r, "code", "product_code").toUpperCase();
+        try {
+          const companyName = pick(r, "company", "company_code", "company_name");
+          if (!companyName) throw new DistError("INVALID", "Company is required.");
+          let companyId = companies.get(companyName.toUpperCase());
+          if (!companyId) {
+            const co = await api.saveCompany({ code: companyName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12).toUpperCase() || `CO${companies.size + 1}`, name: companyName });
+            companyId = co.id;
+            companies.set(companyName.toUpperCase(), co.id);
+          }
+          const catName = pick(r, "category", "category_name");
+          let categoryId: string | null = catName ? categories.get(catName.toUpperCase()) ?? null : null;
+          if (catName && !categoryId) {
+            const cat = await api.saveCategory({ name: catName });
+            categoryId = cat.id;
+            categories.set(catName.toUpperCase(), cat.id);
+          }
+          const existing = (await db.select<DistProduct>(`SELECT * FROM dist_products WHERE tenant_id = ? AND code = ? AND deleted_at IS NULL`, [tenant(), code]))[0];
+          const v = (k: string, ...alt: string[]) => pick(r, k, ...alt) || undefined;
+          await api.saveProduct({
+            ...(existing ?? {}),
+            company_id: companyId, category_id: categoryId ?? existing?.category_id ?? null, code, name: v("name", "product_name") ?? existing?.name,
+            barcode: v("barcode") ?? existing?.barcode ?? null, unit: v("unit") ?? existing?.unit, pack_size: (v("pack_size", "packing") ?? existing?.pack_size) as never,
+            generic_name: v("generic_name", "generic") ?? existing?.generic_name ?? null, strength: v("strength") ?? existing?.strength ?? null,
+            dosage_form: v("dosage_form", "form") ?? existing?.dosage_form ?? null, drap_reg_no: v("drap_reg_no", "registration_no") ?? existing?.drap_reg_no ?? null,
+            trade_price: (v("trade_price", "price") ?? existing?.trade_price) as never, retail_price: (v("retail_price", "mrp") ?? existing?.retail_price ?? null) as never,
+            cost: (v("cost", "purchase_price") ?? existing?.cost) as never, sales_tax_rate: (v("sales_tax_rate", "sales_tax", "gst") ?? existing?.sales_tax_rate) as never,
+            reorder_level: (v("reorder_level") ?? existing?.reorder_level) as never,
+            openingQty: existing ? undefined : Number(v("opening_qty", "stock", "opening_stock") ?? 0),
+          });
+          if (existing) updated++; else created++;
+        } catch (e) {
+          errors.push({ row: i + 2, code, message: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      await audit("product.import", "product", null, { detail: { created, updated, failed: errors.length } });
+      return { created, updated, errors };
     },
 
     // ── Customers ──
@@ -982,16 +1091,178 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       } catch (e) {
         throw new DistError("INVALID", (e as Error).message);
       }
-      const data = { user_id: input.user_id || null, code, name, mobile, territory: trimOrNull(input.territory), company_ids: JSON.stringify(input.companyIds ?? json(input.company_ids, [])), monthly_target: Math.max(0, Number(input.monthly_target) || 0), employment: trimOrNull(input.employment), is_active: input.is_active === 0 ? 0 : 1 };
+      const wageType = input.wage_type === "daily" ? "daily" : "monthly";
+      const wage = Number(input.wage_amount ?? 0);
+      if (!(wage >= 0)) throw new DistError("INVALID", "Wage must be 0 or more.");
+      const joined = trimOrNull(input.joined_on);
+      if (joined && !/^\d{4}-\d{2}-\d{2}$/.test(joined)) throw new DistError("INVALID", "Joining date must be a date.");
+      const data = {
+        user_id: input.user_id || null, code, name, mobile, territory: trimOrNull(input.territory), company_ids: JSON.stringify(input.companyIds ?? json(input.company_ids, [])),
+        monthly_target: Math.max(0, Number(input.monthly_target) || 0), employment: trimOrNull(input.employment), is_active: input.is_active === 0 ? 0 : 1,
+        wage_type: wageType, wage_amount: Math.round(wage * 100) / 100,
+      };
       if (input.id) {
-        await owned("dist_salesmen", input.id, "Salesman");
-        await update("dist_salesmen", input.id, data);
+        const before = await owned<DistSalesman>("dist_salesmen", input.id, "Salesman");
+        // A closed account is reopened only through its own action, never by editing.
+        await update("dist_salesmen", input.id, { ...data, ...(joined ? { joined_on: joined } : {}), ...(before.closed_on ? { is_active: 0 } : {}) });
         await audit("salesman.update", "salesman", input.id, { next: data });
         return owned<DistSalesman>("dist_salesmen", input.id, "Salesman");
       }
-      const row = await insert<DistSalesman>("dist_salesmen", data as never);
+      const row = await insert<DistSalesman>("dist_salesmen", { ...data, joined_on: joined ?? today() } as never);
       await audit("salesman.create", "salesman", row.id, { next: data });
       return row;
+    },
+
+    /** A salesman who leaves: the account closes on a date with a reason (the
+     * login is unlinked, history and salaries stay; reopening is a new account). */
+    async closeSalesman(id: string, input: { date?: string | null; reason: string }) {
+      needAdmin("salesmen.manage");
+      const s = await owned<DistSalesman>("dist_salesmen", id, "Salesman");
+      if (s.closed_on) throw new DistError("CONFLICT", `${s.name}'s account was already closed on ${s.closed_on}.`);
+      const reason = trimOrNull(input.reason);
+      if (!reason) throw new DistError("INVALID", "Give a reason for closing the account.");
+      const date = trimOrNull(input.date) ?? today();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) throw new DistError("INVALID", "Closing date must be today or earlier.");
+      if (s.joined_on && date < s.joined_on) throw new DistError("INVALID", `Closing date is before the joining date (${s.joined_on}).`);
+      await update("dist_salesmen", id, { closed_on: date, close_reason: reason, is_active: 0, user_id: null });
+      await audit("salesman.close", "salesman", id, { field: "closed_on", next: date, reason });
+      return owned<DistSalesman>("dist_salesmen", id, "Salesman");
+    },
+
+    /** A salesman's whole career, month by month: sales, returns, collections,
+     * bookings, target against achieved, and salary. */
+    async salesmanCareer(id: string) {
+      await need("targets.view");
+      const { settings } = await cfg();
+      const s = await owned<DistSalesman>("dist_salesmen", id, "Salesman", true);
+      const ym = "strftime('%Y-%m', date)";
+      const docs = await db.select<{ m: string; sale: number; ret: number; invoices: number }>(
+        `SELECT ${ym} AS m, COALESCE(SUM(CASE WHEN doc_type = 'sale' THEN total END), 0) AS sale, COALESCE(SUM(CASE WHEN doc_type = 'sale_return' THEN total END), 0) AS ret, SUM(doc_type = 'sale') AS invoices
+         FROM dist_docs WHERE tenant_id = ? AND salesman_id = ? AND doc_type IN ('sale', 'sale_return') AND deleted_at IS NULL GROUP BY 1`, [tenant(), id]);
+      const books = await db.select<{ m: string; all: number; approved: number; n: number }>(
+        `SELECT ${ym} AS m, COALESCE(SUM(CASE WHEN status IN ('submitted', 'pending_approval', 'approved', 'converted') THEN total END), 0) AS "all",
+                COALESCE(SUM(CASE WHEN status IN ('approved', 'converted') THEN total END), 0) AS approved, COUNT(*) AS n
+         FROM dist_bookings WHERE tenant_id = ? AND salesman_id = ? AND deleted_at IS NULL GROUP BY 1`, [tenant(), id]);
+      const paid = await db.select<{ m: string; total: number }>(
+        `SELECT strftime('%Y-%m', x.date) AS m, COALESCE(SUM(x.amount), 0) AS total FROM dist_payments x JOIN dist_docs d ON d.id = x.doc_id AND d.tenant_id = x.tenant_id
+         WHERE x.tenant_id = ? AND d.salesman_id = ? AND x.party_type = 'customer' AND x.deleted_at IS NULL GROUP BY 1`, [tenant(), id]);
+      const targets = await db.select<{ month: string; amount: number }>(`SELECT month, amount FROM dist_targets WHERE tenant_id = ? AND salesman_id = ?`, [tenant(), id]);
+      const salaries = await db.select<{ month: string; amount: number; status: string }>(`SELECT month, amount, status FROM dist_salaries WHERE tenant_id = ? AND salesman_id = ? AND deleted_at IS NULL`, [tenant(), id]);
+      const from = (s.joined_on ?? s.created_at).slice(0, 7);
+      const to = (s.closed_on ?? today()).slice(0, 7);
+      const months: string[] = [];
+      for (let m = from; m <= to && months.length < 600; ) {
+        months.push(m);
+        const [y, mm] = m.split("-").map(Number);
+        m = `${mm === 12 ? y + 1 : y}-${String(mm === 12 ? 1 : mm + 1).padStart(2, "0")}`;
+      }
+      const rows = months.map((m) => {
+        const d = docs.find((x) => x.m === m), b = books.find((x) => x.m === m);
+        const metrics = { bookings: b?.all ?? 0, approved: b?.approved ?? 0, invoiced: d?.sale ?? 0, net_sales: toRupees(toPaisa(d?.sale ?? 0) - toPaisa(d?.ret ?? 0)) };
+        const target = targets.find((t) => t.month === m)?.amount ?? s.monthly_target ?? 0;
+        const achieved = metrics[settings.target.metric];
+        const sal = salaries.find((x) => x.month === m);
+        return {
+          month: m, invoices: d?.invoices ?? 0, invoiced: d?.sale ?? 0, returns: d?.ret ?? 0, netSales: metrics.net_sales, bookings: b?.n ?? 0,
+          collected: paid.find((x) => x.m === m)?.total ?? 0, target, achieved, pct: target > 0 ? Math.round((achieved / target) * 1000) / 10 : 0,
+          salary: sal?.amount ?? null, salaryStatus: sal?.status ?? null,
+        };
+      });
+      const sum = (k: "invoiced" | "returns" | "netSales" | "collected" | "target" | "achieved") => toRupees(rows.reduce((a, r) => a + toPaisa(r[k]), 0));
+      const customers = (await db.select<{ n: number }>(`SELECT COUNT(*) AS n FROM dist_customers WHERE tenant_id = ? AND salesman_id = ? AND deleted_at IS NULL`, [tenant(), id]))[0]?.n ?? 0;
+      return {
+        salesman: s, metric: settings.target.metric, months: rows.reverse(), customers,
+        totals: {
+          months: rows.length, invoices: rows.reduce((a, r) => a + r.invoices, 0), invoiced: sum("invoiced"), returns: sum("returns"), netSales: sum("netSales"), collected: sum("collected"),
+          target: sum("target"), achieved: sum("achieved"), salariesPaid: toRupees(salaries.filter((x) => x.status === "paid").reduce((a, x) => a + toPaisa(x.amount), 0)),
+          salariesUnpaid: toRupees(salaries.filter((x) => x.status !== "paid").reduce((a, x) => a + toPaisa(x.amount), 0)),
+        },
+      };
+    },
+
+    // ── Salaries and month closing ──
+    /** Every salesman's salary for a month: the saved one, or the one due (a
+     * monthly wage pro-rated for a month joined or left part-way; a daily wage
+     * times the days employed, editable). */
+    async salaries(month: string) {
+      needAdmin("salesmen.manage");
+      return salaryRows(month);
+    },
+    /** Sets a salary's days worked, amount or note (an open month only). */
+    async saveSalary(salesmanId: string, month: string, input: { daysWorked?: number | null; amount?: number | null; note?: string | null }) {
+      needAdmin("salesmen.manage");
+      await assertMonthOpen(month);
+      const row = (await salaryRows(month)).find((r) => r.salesman_id === salesmanId);
+      if (!row) throw new DistError("INVALID", "This salesman was not employed in that month.");
+      const days = input.daysWorked == null || String(input.daysWorked) === "" ? row.days_worked : Number(input.daysWorked);
+      if (days != null && !(days >= 0 && days <= 31)) throw new DistError("INVALID", "Days worked must be 0-31.");
+      const amount = input.amount != null && String(input.amount) !== "" ? Number(input.amount) : row.wage_type === "daily" ? Math.round(row.rate * (days ?? 0) * 100) / 100 : row.amount;
+      if (!(amount >= 0)) throw new DistError("INVALID", "Salary must be 0 or more.");
+      const patch = { days_worked: days, amount, note: trimOrNull(input.note) ?? row.note };
+      if (row.id) await update("dist_salaries", row.id, patch);
+      else await insert("dist_salaries", { salesman_id: salesmanId, month, wage_type: row.wage_type, rate: row.rate, status: "unpaid", created_by: context().userName, ...patch } as never);
+      await audit("salary.save", "salesman", salesmanId, { field: month, next: patch });
+      return (await salaryRows(month)).find((r) => r.salesman_id === salesmanId)!;
+    },
+    /** Marks a salary paid (or unpaid again); allowed after the month is closed too. */
+    async setSalaryPaid(salesmanId: string, month: string, paid: { method: PaymentIn["method"]; date?: string | null } | null) {
+      needAdmin("salesmen.manage");
+      let row = (await salaryRows(month)).find((r) => r.salesman_id === salesmanId);
+      if (!row) throw new DistError("INVALID", "This salesman was not employed in that month.");
+      if (!row.id) row = await api.saveSalary(salesmanId, month, {});
+      const date = trimOrNull(paid?.date) ?? today();
+      await update("dist_salaries", row.id!, paid ? { status: "paid", paid_on: date, paid_method: paid.method } : { status: "unpaid", paid_on: null, paid_method: null });
+      if (row.expense_id) await db.execute(`UPDATE expenses SET payment_method = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, [paid ? paid.method : "unpaid", iso(db.now()), row.expense_id, tenant()]);
+      await audit(paid ? "salary.paid" : "salary.unpaid", "salesman", salesmanId, { field: month, next: paid });
+      return (await salaryRows(month)).find((r) => r.salesman_id === salesmanId)!;
+    },
+    /** Whether a month is closed, and whether closing it is due (from its last day on). */
+    async monthStatus(month?: string | null) {
+      needAdmin("salesmen.manage");
+      const now = today();
+      const cur = now.slice(0, 7);
+      const [y, mm] = cur.split("-").map(Number);
+      const prev = `${mm === 1 ? y - 1 : y}-${String(mm === 1 ? 12 : mm - 1).padStart(2, "0")}`;
+      const closedPrev = await closingOf(prev);
+      // The month to remind about: last month while it is still open, else this one.
+      const m = month ?? (!closedPrev && (await salaryRows(prev)).length ? prev : cur);
+      const closing = await closingOf(m);
+      const last = lastDayOf(m);
+      return { month: m, closed: !!closing, closing, lastDay: last, due: !closing && now >= last, isLastDay: now === last };
+    },
+    /** The month's report: sales, profit, collections, expenses and every salary.
+     * Draft (nothing is written) or final: the salaries become expenses, the
+     * month's salaries are locked and the report is kept. */
+    async closeMonth(month: string, opts: { final: boolean }) {
+      needAdmin("salesmen.manage");
+      if (!/^\d{4}-\d{2}$/.test(month)) throw new DistError("INVALID", "Month must be YYYY-MM.");
+      const existing = await closingOf(month);
+      if (existing) {
+        if (opts.final) throw new DistError("CONFLICT", `${month} was already closed on ${existing.closed_at.slice(0, 10)}.`);
+        return { ...(JSON.parse(existing.report ?? "{}") as MonthReport), draft: false };
+      }
+      if (opts.final && today() < lastDayOf(month)) throw new DistError("CONFLICT", `${month} can be closed from its last day (${lastDayOf(month)}).`);
+      const report = await monthReport(month, !opts.final);
+      if (!opts.final) return report;
+      // Salaries into expenses (one per salesman), under the "Salaries" category.
+      let cat = (await db.select<{ id: string }>(`SELECT id FROM expense_categories WHERE tenant_id = ? AND deleted_at IS NULL AND LOWER(name) = 'salaries' LIMIT 1`, [tenant()]))[0]?.id;
+      if (!cat) cat = (await insert("expense_categories", { name: "Salaries", description: "Salesman salaries (month closing)" } as never)).id;
+      const closingRow = await insert<Base & { report: string | null; closed_at: string }>("dist_month_closings", {
+        month, status: "final", salaries_total: report.salariesTotal, salaries_count: report.salaries.length, report: null, closed_by: context().userName, closed_at: iso(db.now()),
+      } as never);
+      for (const r of await salaryRows(month)) {
+        // A salary still only "due" is saved as it stands, then recorded as an expense.
+        const id = r.id ?? (await insert("dist_salaries", { salesman_id: r.salesman_id, month, wage_type: r.wage_type, rate: r.rate, days_worked: r.days_worked, amount: r.amount, status: "unpaid", created_by: context().userName } as never)).id;
+        const exp = await insert("expenses", {
+          date: lastDayOf(month), category_id: cat, expense_by: context().userName, amount: r.amount, payment_method: r.status === "paid" ? r.paid_method ?? "cash" : "unpaid",
+          description: `Salary ${month}: ${r.name} (${r.code})${r.wage_type === "daily" ? `, ${r.days_worked ?? 0} days x ${r.rate}` : ""}${r.status === "paid" ? "" : " (unpaid)"}`,
+        } as never);
+        await update("dist_salaries", id!, { expense_id: exp.id, closing_id: closingRow.id });
+      }
+      const final = { ...report, draft: false, closedAt: closingRow.closed_at, closedBy: context().userName };
+      await update("dist_month_closings", closingRow.id, { report: JSON.stringify(final) });
+      await audit("month.close", "closing", closingRow.id, { field: month, next: { salaries: report.salariesTotal, count: report.salaries.length } });
+      return final;
     },
     async setTarget(salesmanId: string, month: string, amount: number) {
       needAdmin("targets.set");
@@ -1094,6 +1365,7 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       await assertCdsl(customer, settings, mode);
       if (input.companyId) await owned("dist_companies", input.companyId, "Company");
       const prepared = await priceLines(input.lines, { companyId: input.companyId, salesman });
+      assertNarcotics(customer, prepared.map((x) => x.p), mode);
       const calc = calcDoc(prepared.map((x) => ({ qty: x.qty, price: x.price, discount: x.discount, taxRate: x.p.sales_tax_rate })), 0);
       const b = await insertNumbered<DistBooking>("dist_bookings", "booking_no", {
         client_ref: trimOrNull(input.clientRef), salesman_id: salesman?.id ?? null, customer_id: customer.id, company_id: input.companyId || null, status: "draft", date: today(),
@@ -1251,7 +1523,7 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       await need("invoices.return");
       return returnInternal("sale", input);
     },
-    async createPurchase(input: { supplierId: string; supplierInvoiceNo?: string | null; date?: string; lines: PurchaseLineIn[]; billDiscount?: number; payments?: PaymentIn[]; description?: string | null }) {
+    async createPurchase(input: { supplierId: string; supplierInvoiceNo?: string | null; date?: string; lines: PurchaseLineIn[]; billDiscount?: number; payments?: PaymentIn[]; description?: string | null; whtRate?: number; whtSection?: string | null }) {
       await need("purchases.create");
       // Distributors use dist_companies as supplier principals; fall back to the
       // generic suppliers table so existing records remain accessible.
@@ -1270,38 +1542,63 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
         const cost = Number(l.cost);
         if (!(cost >= 0)) throw new DistError("INVALID", `Invalid cost for ${p.name}.`);
         if (p.cost > 0 && toPaisa(cost) !== toPaisa(p.cost)) await need("purchases.edit_price");
-        const discount = Math.max(0, Number(l.discount) || 0);
-        if (discount > 0) await need("purchases.discount");
+        const rupees = Math.max(0, Number(l.discount) || 0);
+        const discPct = pctOf(l.discPct), extraDiscPct = pctOf(l.extraDiscPct);
+        if (rupees > 0 || discPct > 0 || extraDiscPct > 0) await need("purchases.discount");
         const taxRate = Math.max(0, Number(l.taxRate) || 0);
         if (taxRate > 0) await need("purchases.edit_tax");
-        prepared.push({ p, qty, cost, discount, taxRate, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
+        const bonus = Math.max(0, qty3(l.bonusQty));
+        const discount = toRupees(lineDiscountPaisa(Math.round(toPaisa(cost) * qty), discPct, extraDiscPct, rupees));
+        prepared.push({ p, qty, bonus, cost, discount, discPct, extraDiscPct, taxRate, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
       }
       if ((Number(input.billDiscount) || 0) > 0) await need("purchases.discount");
       const calc = calcDoc(prepared.map((x) => ({ qty: x.qty, price: x.cost, discount: x.discount, taxRate: x.taxRate })), Number(input.billDiscount) || 0);
+      // Withholding tax the supplier charged on this purchase (236G / 236H): added to what is owed to them.
+      const whtRate = Math.max(0, Number(input.whtRate) || 0);
+      if (whtRate > 100) throw new DistError("INVALID", "Withholding rate must be 0-100 %.");
+      if (whtRate > 0) await need("purchases.edit_tax");
+      const { settings } = await cfg();
+      const wht = whtAmount(settings, calc, whtRate);
+      const owed = calc.totalPaisa + wht.amountPaisa;
       const payments = (input.payments ?? []).filter((x) => Number(x.amount) > 0);
-      const paid = Math.min(calc.totalPaisa, payments.reduce((s, x) => s + toPaisa(x.amount), 0));
+      const paid = Math.min(owed, payments.reduce((s, x) => s + toPaisa(x.amount), 0));
       const doc = await insertNumbered<DistDoc>("dist_docs", "doc_no", {
         doc_type: "purchase", date: input.date || today(), party_type: "supplier", party_id: sup.id, party_name: sup.name, party_address: sup.address,
         supplier_invoice_no: trimOrNull(input.supplierInvoiceNo), description: trimOrNull(input.description),
         gross: toRupees(calc.grossPaisa), discount: toRupees(calc.discountPaisa), sales_tax: toRupees(calc.taxPaisa), total: toRupees(calc.totalPaisa),
-        paid: toRupees(paid), balance: toRupees(calc.totalPaisa - paid), status: "final", created_by: context().userName,
+        wht_section: whtRate > 0 ? trimOrNull(input.whtSection) ?? "236G" : null, wht_status: whtRate > 0 ? "charged by supplier" : null, wht_rate: whtRate,
+        wht_base: toRupees(wht.basePaisa), wht_amount: toRupees(wht.amountPaisa),
+        paid: toRupees(paid), balance: toRupees(owed - paid), status: "final", created_by: context().userName,
       } as never, "AND doc_type = ?", ["purchase"]);
+      const whtLines = splitPaisa(wht.amountPaisa, calc.lines.map((c) => c.totalPaisa));
       for (const [i, x] of prepared.entries()) {
         const c = calc.lines[i];
         const item = await insert<DistDocItem>("dist_doc_items", {
           doc_id: doc.id, product_id: x.p.id, code: x.p.code, name: x.p.name, unit: x.p.unit, company_id: x.p.company_id, category_id: x.p.category_id, batch_no: x.batchNo, expiry: x.expiry,
-          qty: x.qty, price: x.cost, discount: toRupees(c.discountPaisa), sales_tax_rate: x.taxRate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa), cost: x.cost,
+          qty: x.qty, bonus_qty: x.bonus, price: x.cost, discount: toRupees(c.discountPaisa), disc_pct: x.discPct, extra_disc_pct: x.extraDiscPct,
+          sales_tax_rate: x.taxRate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa), cost: x.cost, wht_rate: whtRate, wht_amount: toRupees(whtLines[i]),
         } as never);
+        // Bonus arrives free: the true cost per unit is what was paid (before sales tax) over everything received.
+        const received = x.qty + x.bonus;
         const fresh = await owned<DistProduct>("dist_products", x.p.id, "Product");
-        const unitCost = toRupees(c.grossPaisa - c.discountPaisa) / x.qty;
-        const avg = fresh.stock > 0 ? (fresh.stock * fresh.avg_cost + x.qty * unitCost) / (fresh.stock + x.qty) : unitCost;
+        const unitCost = toRupees(c.grossPaisa - c.discountPaisa) / received;
+        const avg = fresh.stock > 0 ? (fresh.stock * fresh.avg_cost + received * unitCost) / (fresh.stock + received) : unitCost;
         await update("dist_products", x.p.id, { avg_cost: Math.round(avg * 10000) / 10000, cost: x.cost });
-        await addStock(x.p.id, x.qty);
-        await stockMove(x.p.id, x.qty, "purchase", doc.id, item.id, unitCost);
+        await addStock(x.p.id, received);
+        await stockMove(x.p.id, received, "purchase", doc.id, item.id, unitCost);
       }
       for (const pm of payments) await insert("dist_payments", { party_type: "supplier", party_id: sup.id, doc_id: doc.id, amount: Number(pm.amount), method: pm.method, date: doc.date, reference: pm.reference ?? null, created_by: context().userName } as never);
       await audit("purchase.create", "doc", doc.id, { detail: { no: doc.doc_no, total: doc.total } });
       return docWithItems(doc.id);
+    },
+    /** What a product was last bought for: from any company, and from the given one (the purchase form shows both). */
+    async lastPurchaseRates(productId: string, supplierId?: string | null) {
+      await need("purchases.view");
+      const q = (extra: string, args: unknown[]) => db.select<{ price: number; disc_pct: number; extra_disc_pct: number; bonus_qty: number; qty: number; date: string; doc_no: number; party_name: string | null }>(
+        `SELECT i.price, i.disc_pct, i.extra_disc_pct, i.bonus_qty, i.qty, d.date, d.doc_no, d.party_name FROM dist_doc_items i JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id
+         WHERE i.tenant_id = ? AND i.product_id = ? AND d.doc_type = 'purchase' AND i.deleted_at IS NULL AND d.deleted_at IS NULL ${extra} ORDER BY d.date DESC, d.doc_no DESC LIMIT 1`,
+        [tenant(), productId, ...args]);
+      return { any: (await q("", []))[0] ?? null, supplier: supplierId ? (await q("AND d.party_id = ?", [supplierId]))[0] ?? null : null };
     },
     async createPurchaseReturn(input: { purchaseId: string; lines: { itemId: string; qty: number }[]; reason: string; refund?: PaymentIn | null }) {
       await need("purchases.return");
@@ -1456,7 +1753,165 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       const get = (t: string) => r.find((x) => x.doc_type === t) ?? { n: 0, total: 0, wht: 0 };
       return { sales: get("sale"), returns: get("sale_return"), purchases: get("purchase"), purchaseReturns: get("purchase_return"), bookings: b };
     },
+    /** Everything the owner's dashboard shows for a month (yyyy-mm), with the
+     * month before for comparison: totals, the daily sales trend, the best
+     * companies, customers and products, withholding tax by section,
+     * collections, money owed both ways, low stock and every salesman's target. */
+    async dashboard(month: string) {
+      await need("reports.view");
+      const { settings } = await cfg();
+      const [y, m] = month.split("-").map(Number);
+      const prev = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, "0")}`;
+      const range = (mm: string) => [`${mm}-01`, `${mm}-31`] as const;
+      const totals = async (mm: string) => {
+        const [from, to] = range(mm);
+        const rows = await db.select<{ doc_type: string; n: number; total: number; wht: number; cost: number }>(
+          `SELECT doc_type, COUNT(*) AS n, COALESCE(SUM(total), 0) AS total, COALESCE(SUM(wht_amount), 0) AS wht, COALESCE(SUM(cost_total), 0) AS cost
+           FROM dist_docs WHERE tenant_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY doc_type`, [tenant(), from, to]);
+        const g = (t: string) => rows.find((x) => x.doc_type === t) ?? { n: 0, total: 0, wht: 0, cost: 0 };
+        const sale = g("sale"), ret = g("sale_return");
+        const net = toRupees(toPaisa(sale.total) - toPaisa(ret.total));
+        // Cost of what left the shelf, from the lines (unit cost x quantity, bonus included), returned lines taken off.
+        const cost = (await db.select<{ c: number }>(
+          `SELECT COALESCE(SUM(CASE WHEN d.doc_type = 'sale' THEN i.cost * (i.qty + COALESCE(i.bonus_qty, 0)) ELSE -i.cost * (i.qty + COALESCE(i.bonus_qty, 0)) END), 0) AS c
+           FROM dist_doc_items i JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id
+           WHERE i.tenant_id = ? AND d.doc_type IN ('sale', 'sale_return') AND d.date BETWEEN ? AND ? AND i.deleted_at IS NULL AND d.deleted_at IS NULL`, [tenant(), from, to]))[0]?.c ?? 0;
+        const collected = (await db.select<{ t: number }>(`SELECT COALESCE(SUM(amount), 0) AS t FROM dist_payments WHERE tenant_id = ? AND party_type = 'customer' AND date BETWEEN ? AND ? AND deleted_at IS NULL`, [tenant(), from, to]))[0]?.t ?? 0;
+        return {
+          invoices: sale.n, sales: sale.total, returns: ret.total, net, purchases: toRupees(toPaisa(g("purchase").total) - toPaisa(g("purchase_return").total)),
+          wht: toRupees(toPaisa(sale.wht) - toPaisa(ret.wht)), grossProfit: toRupees(toPaisa(net) - toPaisa(cost)), marginPct: net > 0 ? Math.round(((net - cost) / net) * 1000) / 10 : 0, collected,
+        };
+      };
+      const [from, to] = range(month);
+      const daily = await db.select<{ day: string; amount: number }>(
+        `SELECT date AS day, ROUND(SUM(CASE WHEN doc_type = 'sale' THEN total ELSE -total END), 2) AS amount
+         FROM dist_docs WHERE tenant_id = ? AND doc_type IN ('sale', 'sale_return') AND date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY date ORDER BY date`, [tenant(), from, to]);
+      const top = (label: string, join = "") => db.select<{ label: string; amount: number }>(
+        `SELECT ${label} AS label, ROUND(SUM(CASE WHEN d.doc_type = 'sale' THEN i.line_total ELSE -i.line_total END), 2) AS amount
+         FROM dist_doc_items i JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id ${join}
+         WHERE i.tenant_id = ? AND d.doc_type IN ('sale', 'sale_return') AND d.date BETWEEN ? AND ? AND i.deleted_at IS NULL AND d.deleted_at IS NULL
+         GROUP BY 1 ORDER BY 2 DESC LIMIT 6`, [tenant(), from, to]);
+      const wht = await db.select<{ section: string; status: string; rate: number; base: number; amount: number; invoices: number }>(
+        `SELECT COALESCE(wht_section, '-') AS section, COALESCE(wht_status, '-') AS status, wht_rate AS rate, COUNT(*) AS invoices,
+                ROUND(SUM(CASE WHEN doc_type = 'sale' THEN wht_base ELSE -wht_base END), 2) AS base,
+                ROUND(SUM(CASE WHEN doc_type = 'sale' THEN wht_amount ELSE -wht_amount END), 2) AS amount
+         FROM dist_docs WHERE tenant_id = ? AND doc_type IN ('sale', 'sale_return') AND date BETWEEN ? AND ? AND deleted_at IS NULL AND wht_amount <> 0
+         GROUP BY 1, 2, 3 ORDER BY 1, 2`, [tenant(), from, to]);
+      const lowStock = await db.select<{ id: string; name: string; code: string; stock: number; reorder_level: number }>(
+        `SELECT id, name, code, stock, reorder_level FROM dist_products WHERE tenant_id = ? AND deleted_at IS NULL AND is_active = 1 AND reorder_level > 0 AND stock <= reorder_level ORDER BY stock - reorder_level LIMIT 50`, [tenant()]);
+      const targets = await teamTargets(month);
+      const owed = async (type: "customer" | "supplier") => {
+        try { return (await api.balances(type)).reduce((a, r) => toRupees(toPaisa(a) + toPaisa(Math.max(0, r.balance))), 0); } catch { return null; }
+      };
+      const bookings = await db.select<{ status: string; n: number; total: number }>(`SELECT status, COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM dist_bookings WHERE tenant_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY status`, [tenant(), from, to]);
+      return {
+        month, metric: settings.target.metric,
+        now: await totals(month), before: await totals(prev),
+        daily,
+        companies: await top("COALESCE(k.name, '-')", "LEFT JOIN dist_companies k ON k.id = i.company_id AND k.tenant_id = i.tenant_id"),
+        customers: await top("COALESCE(d.party_name, '-')"),
+        products: await top("i.name"),
+        wht, lowStock, targets, bookings,
+        receivable: await owed("customer"), payable: await owed("supplier"),
+      };
+    },
+    /** Every active salesman's month against target (the Salesmen page's bars). */
+    async targets(month: string) {
+      await need("targets.view");
+      return teamTargets(month);
+    },
   };
+
+  /** Every active salesman's target for a month on the configured metric
+   * (one query per measure, not one per salesman). */
+  // ── Salaries and month closing (internal) ──
+  function lastDayOf(month: string) {
+    const [y, m] = month.split("-").map(Number);
+    return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  }
+  const dayNo = (d: string) => Math.round(Date.parse(`${d}T00:00:00Z`) / 864e5);
+  async function closingOf(month: string) {
+    return (await db.select<Base & { month: string; report: string | null; closed_at: string; closed_by: string | null; salaries_total: number }>(
+      `SELECT * FROM dist_month_closings WHERE tenant_id = ? AND month = ? AND deleted_at IS NULL`, [tenant(), month]))[0] ?? null;
+  }
+  async function assertMonthOpen(month: string) {
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new DistError("INVALID", "Month must be YYYY-MM.");
+    const c = await closingOf(month);
+    if (c) throw new DistError("CONFLICT", `${month} is closed (${c.closed_at.slice(0, 10)}): its salaries can't change.`);
+  }
+  interface SalaryRow {
+    id: string | null; salesman_id: string; name: string; code: string; wage_type: "monthly" | "daily"; rate: number;
+    days_in_month: number; days_employed: number; days_worked: number | null; amount: number;
+    status: "paid" | "unpaid"; paid_on: string | null; paid_method: string | null; expense_id: string | null; closing_id: string | null; note: string | null; closed_on: string | null;
+  }
+  /** The month's salaries: saved ones as saved, the others as due. Salesmen
+   * with no wage set and nothing saved are left out. */
+  async function salaryRows(month: string): Promise<SalaryRow[]> {
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new DistError("INVALID", "Month must be YYYY-MM.");
+    const first = `${month}-01`, last = lastDayOf(month);
+    const daysInMonth = dayNo(last) - dayNo(first) + 1;
+    const people = await db.select<DistSalesman>(
+      `SELECT * FROM dist_salesmen WHERE tenant_id = ? AND deleted_at IS NULL AND COALESCE(joined_on, substr(created_at, 1, 10)) <= ? AND (closed_on IS NULL OR closed_on >= ?) ORDER BY name`, [tenant(), last, first]);
+    const saved = new Map((await db.select<{ id: string; salesman_id: string; wage_type: string; rate: number; days_worked: number | null; amount: number; status: string; paid_on: string | null; paid_method: string | null; expense_id: string | null; closing_id: string | null; note: string | null }>(
+      `SELECT * FROM dist_salaries WHERE tenant_id = ? AND month = ? AND deleted_at IS NULL`, [tenant(), month])).map((r) => [r.salesman_id, r]));
+    const out: SalaryRow[] = [];
+    for (const s of people) {
+      const sv = saved.get(s.id);
+      if (!sv && !(Number(s.wage_amount) > 0)) continue;
+      const start = [first, s.joined_on ?? s.created_at.slice(0, 10)].sort().pop()!;
+      const end = [last, s.closed_on ?? last].sort()[0];
+      const employed = Math.max(0, dayNo(end) - dayNo(start) + 1);
+      if (!employed && !sv) continue;
+      const type = (sv?.wage_type ?? s.wage_type) === "daily" ? "daily" : "monthly";
+      const rate = sv?.rate ?? Number(s.wage_amount) ?? 0;
+      const days = sv ? sv.days_worked : type === "daily" ? employed : null;
+      const due = type === "daily" ? Math.round(rate * (days ?? 0) * 100) / 100 : Math.round(((rate * employed) / daysInMonth) * 100) / 100;
+      out.push({
+        id: sv?.id ?? null, salesman_id: s.id, name: s.name, code: s.code, wage_type: type, rate, days_in_month: daysInMonth, days_employed: employed, days_worked: days,
+        amount: sv ? sv.amount : due, status: sv?.status === "paid" ? "paid" : "unpaid", paid_on: sv?.paid_on ?? null, paid_method: sv?.paid_method ?? null,
+        expense_id: sv?.expense_id ?? null, closing_id: sv?.closing_id ?? null, note: sv?.note ?? null, closed_on: s.closed_on ?? null,
+      });
+    }
+    return out;
+  }
+  async function monthReport(month: string, draft: boolean) {
+    const first = `${month}-01`, last = lastDayOf(month);
+    const d = await api.dashboard(month);
+    const salaries = await salaryRows(month);
+    const other = (await db.select<{ t: number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS t FROM expenses WHERE tenant_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL
+       AND id NOT IN (SELECT expense_id FROM dist_salaries WHERE tenant_id = ? AND expense_id IS NOT NULL)`, [tenant(), first, last, tenant()]))[0]?.t ?? 0;
+    const business = (await db.select<{ name: string }>(`SELECT name FROM tenants WHERE id = ?`, [tenant()]))[0]?.name ?? "";
+    const total = (f: (r: SalaryRow) => boolean) => toRupees(salaries.filter(f).reduce((a, r) => a + toPaisa(r.amount), 0));
+    const salariesTotal = total(() => true);
+    return {
+      month, business, draft, generatedAt: iso(db.now()), generatedBy: context().userName,
+      sales: d.now, receivable: d.receivable, payable: d.payable, wht: d.wht, targets: d.targets,
+      salaries: salaries.map((r) => ({ name: r.name, code: r.code, wage_type: r.wage_type, rate: r.rate, days: r.wage_type === "daily" ? r.days_worked : r.days_employed, amount: r.amount, status: r.status, paid_on: r.paid_on })),
+      salariesTotal, salariesPaid: total((r) => r.status === "paid"), salariesUnpaid: total((r) => r.status !== "paid"),
+      otherExpenses: other, netProfit: toRupees(toPaisa(d.now.grossProfit) - toPaisa(other) - toPaisa(salariesTotal)),
+    };
+  }
+  type MonthReport = Awaited<ReturnType<typeof monthReport>> & { closedAt?: string; closedBy?: string | null };
+
+  async function teamTargets(month: string) {
+    const { settings } = await cfg();
+    const from = `${month}-01`, to = `${month}-31`;
+    const salesmen = await db.select<DistSalesman>(`SELECT * FROM dist_salesmen WHERE tenant_id = ? AND deleted_at IS NULL AND is_active = 1 ORDER BY name`, [tenant()]);
+    const tgt = new Map((await db.select<{ salesman_id: string; amount: number }>(`SELECT salesman_id, amount FROM dist_targets WHERE tenant_id = ? AND month = ?`, [tenant(), month])).map((t) => [t.salesman_id, t.amount]));
+    const docBy = new Map((await db.select<{ sid: string; sale: number; ret: number }>(
+      `SELECT salesman_id AS sid, COALESCE(SUM(CASE WHEN doc_type = 'sale' THEN total END), 0) AS sale, COALESCE(SUM(CASE WHEN doc_type = 'sale_return' THEN total END), 0) AS ret
+       FROM dist_docs WHERE tenant_id = ? AND salesman_id IS NOT NULL AND doc_type IN ('sale', 'sale_return') AND date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY salesman_id`, [tenant(), from, to])).map((r) => [r.sid, r]));
+    const bookBy = new Map((await db.select<{ sid: string; all: number; approved: number }>(
+      `SELECT salesman_id AS sid, COALESCE(SUM(CASE WHEN status IN ('submitted', 'pending_approval', 'approved', 'converted') THEN total END), 0) AS "all",
+              COALESCE(SUM(CASE WHEN status IN ('approved', 'converted') THEN total END), 0) AS approved
+       FROM dist_bookings WHERE tenant_id = ? AND salesman_id IS NOT NULL AND date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY salesman_id`, [tenant(), from, to])).map((r) => [r.sid, r]));
+    return salesmen.map((s) => {
+      const d = docBy.get(s.id), b = bookBy.get(s.id);
+      const metrics = { bookings: b?.all ?? 0, approved: b?.approved ?? 0, invoiced: d?.sale ?? 0, net_sales: toRupees(toPaisa(d?.sale ?? 0) - toPaisa(d?.ret ?? 0)) };
+      return { id: s.id, name: s.name, code: s.code, ...targetProgress(tgt.get(s.id) ?? s.monthly_target ?? 0, metrics[settings.target.metric], month, today(), settings.target.onTrackRatio) };
+    });
+  }
 
   interface WhtOverride {
     rate?: number | null;
@@ -1478,9 +1933,10 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       const b = fromBooking(l);
       if (b) {
         const p = await owned<DistProduct>("dist_products", l.productId, "Product");
-        prepared.push({ p, qty: Math.round(Number(l.qty) * 1000) / 1000, price: b.price, discount: b.discount, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
+        prepared.push({ p, qty: Math.round(Number(l.qty) * 1000) / 1000, bonus: 0, price: b.price, discount: b.discount, discPct: 0, extraDiscPct: 0, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
       } else prepared.push(...(await priceLines([l], {})));
     }
+    assertNarcotics(customer, prepared.map((x) => x.p), mode);
     const billDiscount = Math.max(0, Number(input.billDiscount) || 0);
     if (billDiscount > 0) await need("invoices.discount");
     const calc = calcDoc(prepared.map((x) => ({ qty: x.qty, price: x.price, discount: x.discount, taxRate: x.p.sales_tax_rate })), billDiscount);
@@ -1523,25 +1979,31 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
     // Stock claims first (each one conditional), undone if anything fails.
     const taken: { id: string; qty: number }[] = [];
     try {
+      // Bonus leaves the shelf with the sold quantity.
       for (const x of prepared) {
-        if (!(await claimStock(x.p.id, x.qty, settings.stock.allowNegative))) throw new DistError("CONFLICT", `Only ${(await owned<DistProduct>("dist_products", x.p.id, "Product")).stock} ${x.p.unit} of ${x.p.name} in stock.`);
-        taken.push({ id: x.p.id, qty: x.qty });
+        const out = x.qty + x.bonus;
+        if (!(await claimStock(x.p.id, out, settings.stock.allowNegative))) throw new DistError("CONFLICT", `Only ${(await owned<DistProduct>("dist_products", x.p.id, "Product")).stock} ${x.p.unit} of ${x.p.name} in stock${x.bonus ? " (bonus included)" : ""}.`);
+        taken.push({ id: x.p.id, qty: out });
       }
+      // The withholding tax shown per line: the invoice's amount split by line value (adds up exactly).
+      const whtLines = splitPaisa(amountPaisa, calc.lines.map((c) => c.totalPaisa));
       const doc = await insertNumbered<DistDoc>("dist_docs", "doc_no", {
         doc_type: "sale", date: input.date || today(), party_type: "customer", party_id: customer.id, party_name: customer.business_name, party_ntn: customer.ntn, party_cnic: customer.cnic, party_address: customer.address,
         salesman_id: input.salesmanId, booking_id: input.bookingId, description: trimOrNull(input.description),
         gross: toRupees(calc.grossPaisa), discount: toRupees(calc.discountPaisa), sales_tax: toRupees(calc.taxPaisa),
         wht_section: t.section, wht_status: t.status, wht_rate: rate, wht_base: toRupees(basePaisa), wht_amount: toRupees(amountPaisa), wht_overridden: overridden ? 1 : 0, tax_snapshot: JSON.stringify(snapshot),
         total: toRupees(calc.totalPaisa), paid: toRupees(paid), balance: toRupees(payable - paid),
-        cost_total: toRupees(prepared.reduce((s, x) => s + Math.round(toPaisa(x.p.avg_cost) * x.qty), 0)), status: "final", created_by: context().userName,
+        cost_total: toRupees(prepared.reduce((s, x) => s + Math.round(toPaisa(x.p.avg_cost) * (x.qty + x.bonus)), 0)), status: "final", created_by: context().userName,
       } as never, "AND doc_type = ?", ["sale"]);
       for (const [i, x] of prepared.entries()) {
         const c = calc.lines[i];
         const item = await insert<DistDocItem>("dist_doc_items", {
           doc_id: doc.id, product_id: x.p.id, code: x.p.code, name: x.p.name, unit: x.p.unit, company_id: x.p.company_id, category_id: x.p.category_id, batch_no: x.batchNo, expiry: x.expiry,
-          qty: x.qty, price: x.price, discount: toRupees(c.discountPaisa), sales_tax_rate: x.p.sales_tax_rate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa), cost: x.p.avg_cost,
+          qty: x.qty, bonus_qty: x.bonus, price: x.price, discount: toRupees(c.discountPaisa), disc_pct: x.discPct, extra_disc_pct: x.extraDiscPct,
+          sales_tax_rate: x.p.sales_tax_rate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa), cost: x.p.avg_cost,
+          wht_rate: rate, wht_amount: toRupees(whtLines[i]),
         } as never);
-        await stockMove(x.p.id, -x.qty, "sale", doc.id, item.id, x.p.avg_cost);
+        await stockMove(x.p.id, -(x.qty + x.bonus), "sale", doc.id, item.id, x.p.avg_cost);
       }
       for (const pm of payments) await insert("dist_payments", { party_type: "customer", party_id: customer.id, doc_id: doc.id, amount: Number(pm.amount), method: pm.method, date: doc.date, reference: pm.reference ?? null, created_by: context().userName } as never);
       await audit("invoice.create", "doc", doc.id, { detail: { no: doc.doc_no, total: doc.total, wht: doc.wht_amount, booking: input.bookingId } });

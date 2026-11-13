@@ -9,7 +9,7 @@
  *                invoice: MAVIN must NOT send it again on its own. */
 
 export type Environment = "sandbox" | "production";
-export type Operation = "post" | "validate" | "reference";
+export type Operation = "post" | "validate" | "reference" | "atl";
 
 const DI = {
   post: { sandbox: "/di_data/v1/di/postinvoicedata_sb", production: "/di_data/v1/di/postinvoicedata" },
@@ -19,8 +19,18 @@ const DI = {
 /** Reference lookups MAVIN uses (DI API v1.12), with a plain query string. */
 const REFERENCE = /^\/pdi\/v[12]\/(SaleTypeToRate|HS_UOM|SroSchedule|SROItem)\?[A-Za-z0-9_=&.%-]{1,300}$/;
 
+/** FBR's Active Taxpayer status (STATL, DI API): one POST with a registration number and a date. */
+const ATL_PATH = "/dist/v1/statl";
+
+export function atlPayloadOk(p: unknown): boolean {
+  if (!p || typeof p !== "object") return false;
+  const o = p as Record<string, unknown>;
+  return Object.keys(o).length === 2 && typeof o.regno === "string" && /^\d{7,13}$/.test(o.regno) && typeof o.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.date);
+}
+
 export function fbrPath(op: Operation, env: Environment, referencePath?: string): string | null {
   if (op === "post" || op === "validate") return DI[op][env];
+  if (op === "atl") return ATL_PATH;
   if (op === "reference" && typeof referencePath === "string" && REFERENCE.test(referencePath)) return referencePath;
   return null;
 }

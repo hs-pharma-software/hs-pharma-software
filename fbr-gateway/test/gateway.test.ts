@@ -108,6 +108,19 @@ test("reference lookups: only FBR's known lookups, as GET", async () => {
   assert.equal(seen.length, 1, "nothing else reached FBR");
 });
 
+test("ATL status (STATL): a registration number and a date, POSTed to FBR's statl address; anything else refused", async () => {
+  behaviour = "accept";
+  seen.length = 0;
+  const ok = await call({ environment: "production", operation: "atl", payload: { regno: "7308865", date: "2026-11-13" }, token: "t1", tenantRef: "tenant-ref-1" });
+  assert.equal(ok.json.outcome, "response");
+  assert.deepEqual([seen[0].url, seen[0].method], ["/dist/v1/statl", "POST"]);
+  for (const bad of [{ regno: "12", date: "2026-11-13" }, { regno: "7308865" }, { regno: "7308865", date: "13-11-2026" }, { regno: "7308865", date: "2026-11-13", extra: "x" }, { regno: "73088 65", date: "2026-11-13" }]) {
+    const r = await call({ environment: "production", operation: "atl", payload: bad, token: "t1", tenantRef: "tenant-ref-1" });
+    assert.equal(r.status, 400, JSON.stringify(bad));
+  }
+  assert.equal(seen.length, 1, "nothing else reached FBR");
+});
+
 test("unsigned, wrongly signed, tampered, stale or replayed requests are refused before FBR", async () => {
   behaviour = "accept";
   seen.length = 0;

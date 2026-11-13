@@ -19,7 +19,7 @@ const LABEL: Record<string, string> = {
   "catalog.view": "View product catalogs", "catalog.manage": "Manage products & categories", "companies.manage": "Manage companies",
   "bookings.create": "Create bookings", "bookings.submit": "Submit bookings", "bookings.approve": "Approve / reject bookings", "bookings.view_all": "See all salesmen's bookings & customers",
   "invoices.view": "View invoices", "invoices.create": "Create invoices", "invoices.edit_lines": "Change lines when converting a booking", "invoices.edit_qty": "Change quantities", "invoices.edit_price": "Change product prices",
-  "invoices.discount": "Apply discounts", "invoices.view_cost": "See purchase rate while billing", "invoices.edit_description": "Invoice description", "invoices.edit_tax_base": "Change taxable base", "invoices.edit_wht_rate": "Change withholding rate",
+  "invoices.discount": "Apply discounts", "invoices.bonus": "Give bonus (free) quantity", "invoices.view_cost": "See purchase rate while billing", "invoices.edit_description": "Invoice description", "invoices.edit_tax_base": "Change taxable base", "invoices.edit_wht_rate": "Change withholding rate",
   "invoices.edit_wht_amount": "Change withholding amount", "invoices.edit_customer": "Change customer on a transaction", "invoices.return": "Sales returns / credit notes",
   "purchases.view": "View purchases (and costs)", "purchases.create": "Create purchases", "purchases.edit_qty": "Purchase quantities", "purchases.edit_price": "Purchase prices (vs. product cost)",
   "purchases.discount": "Purchase discounts", "purchases.edit_tax": "Purchase tax fields", "purchases.return": "Purchase returns",

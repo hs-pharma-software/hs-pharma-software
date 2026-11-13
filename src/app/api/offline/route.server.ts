@@ -29,6 +29,10 @@ export async function POST(req: Request): Promise<Response> {
       case "devices": result = await off.listDevices(sql, await callerOf(req), await tenantOf(req, b)); break;
       case "revoke": result = await off.revokeDevice(sql, await callerOf(req), str(b.id), b.reason); break;
       case "hours": result = await off.setDeviceHours(sql, await callerOf(req), str(b.id), b.hours); break;
+      case "block": result = await off.blockDevice(sql, await callerOf(req), str(b.id), true, b.reason); break;
+      case "unblock": result = await off.blockDevice(sql, await callerOf(req), str(b.id), false, null); break;
+      case "delete": result = await off.deleteDevice(sql, await callerOf(req), str(b.id)); break;
+      case "perBranch": result = await off.setDevicesPerBranch(sql, await callerOf(req), await tenantOf(req, b), b.perBranch); break;
       case "exceptions": result = await off.listExceptions(sql, await callerOf(req), await tenantOf(req, b)); break;
       case "resolve": result = await off.resolveException(sql, await callerOf(req), str(b.id), b.note); break;
       case "held": result = await off.listHeld(sql, await callerOf(req), await tenantOf(req, b)); break;

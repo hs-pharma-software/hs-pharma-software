@@ -25,6 +25,7 @@ export async function POST(req: Request): Promise<Response> {
       case "tokens": result = await fbr.saveTokens(sql, caller, b); break;
       case "test": result = await fbr.testToken(sql, caller, b); break;
       case "reference": result = await fbr.reference(sql, caller, b); break;
+      case "atl": result = await fbr.atlStatus(sql, caller, b); break;
       case "submit": result = await fbr.submit(sql, caller, b, await branchScopeFor(sql, caller, req.headers.get("x-branch"))); break;
       case "finish": result = await fbr.finish(sql, caller, b); break;
       case "resolve": result = await fbr.resolve(sql, caller, b); break;

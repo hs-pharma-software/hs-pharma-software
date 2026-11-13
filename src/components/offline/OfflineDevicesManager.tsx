@@ -19,7 +19,7 @@ const when = (s: string | null) => (s ? new Date(s).toLocaleString("en-PK", { da
  * waiting, stock exceptions and held sales. The Super Admin passes the
  * business; an owner sees their own (tenantId omitted). */
 export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenantId?: string; superAdmin?: boolean }) {
-  const [d, setD] = useState<{ allowed: boolean; supportedType: boolean; devices: Device[] } | null>(null);
+  const [d, setD] = useState<{ allowed: boolean; supportedType: boolean; perBranch: number; devices: Device[] } | null>(null);
   const [ex, setEx] = useState<Exception[]>([]);
   const [held, setHeld] = useState<Held[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -46,10 +46,20 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
       {!d.supportedType && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline billing is built for pharmacies, medical stores and general stores only. This business uses MAVIN.pk online.</p>}
       {d.supportedType && !d.allowed && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline Desktop is off for this business{superAdmin ? ": switch it on under Permissions > Offline Desktop." : ". Ask MAVIN.pk to switch it on."}</p>}
       <p className="text-neutral-600">
-        Pilot: one offline checkout computer per branch, cash sales only. It sells from its own copy of the branch&apos;s stock, so sales made online or on other counters
+        Offline checkout computers: {d.perBranch === 1 ? "one per branch" : `up to ${d.perBranch} per branch`}. It sells from its own copy of the branch&apos;s stock, so sales made online or on other counters
         meanwhile can make a batch short; such sales are kept and listed below as stock exceptions to check. A turned-off device learns of it only when it next connects
         or its offline allowance ends.
       </p>
+
+      {superAdmin && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2">
+          <span className="text-neutral-700">Devices allowed per branch: <b>{d.perBranch}</b></span>
+          <button type="button" className="text-xs text-[var(--accent)] hover:underline" onClick={() => {
+            const n = prompt("How many offline devices may each branch of this business have? (1 to 20)", String(d.perBranch));
+            if (n) void act(() => call("perBranch", { tenantId, perBranch: Number(n) }), `Each branch may now have up to ${n} offline device(s).`);
+          }}>Change</button>
+        </div>
+      )}
 
       {d.devices.length === 0 ? <p className="text-neutral-500">No offline device yet. Install MAVIN Offline on the counter computer and sign in as the owner to set it up.</p> : (
         <div className="overflow-x-auto">
@@ -60,7 +70,12 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
                 <tr key={v.id} className="border-t border-neutral-100 align-top">
                   <td className="py-1.5"><b>{v.name}</b> <span className="font-mono text-xs text-neutral-500">{v.code}</span><span className="block text-xs text-neutral-500">{v.users.join(", ")}</span></td>
                   <td>{v.branchName}</td>
-                  <td>{v.status === "active" ? <span className="text-emerald-700">Active</span> : <span className="text-rose-700" title={v.revokeReason ?? ""}>Turned off {when(v.revokedAt)}</span>}</td>
+                  <td>
+                    {v.status === "active" ? <span className="text-emerald-700">Active</span>
+                      : v.status === "blocked" ? <span className="text-amber-700" title={v.revokeReason ?? ""}>Blocked {when(v.revokedAt)}</span>
+                      : <span className="text-rose-700" title={v.revokeReason ?? ""}>Turned off {when(v.revokedAt)}</span>}
+                    {v.revokeReason && v.status !== "active" && <span className="block text-xs text-neutral-500">{v.revokeReason}</span>}
+                  </td>
                   <td>{when(v.lastSyncAt)}<span className="block text-xs text-neutral-500">seen {when(v.lastSeenAt)}{v.appVersion ? ` · v${v.appVersion}` : ""}</span></td>
                   <td className="text-xs">
                     {v.pendingOnDevice == null ? "—" : `${v.pendingOnDevice} on device`}
@@ -77,7 +92,19 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
                       }}>Change</button>
                     )}
                   </td>
-                  <td className="text-right">
+                  <td className="space-x-1 whitespace-nowrap text-right">
+                    {superAdmin && v.status === "active" && (
+                      <Button onClick={() => {
+                        const why = prompt(`Block ${v.name}? It stops selling offline and syncing until unblocked. Sales it sends meanwhile are held for review.\n\nReason:`);
+                        if (why !== null) void act(() => call("block", { id: v.id, reason: why }), "Blocked.");
+                      }}>Block</Button>
+                    )}
+                    {superAdmin && v.status === "blocked" && <Button onClick={() => void act(() => call("unblock", { id: v.id }), "Unblocked: it works again at its next connection.")}>Unblock</Button>}
+                    {superAdmin && v.status !== "active" && (
+                      <Button onClick={() => {
+                        if (confirm(`Remove ${v.name} (${v.code}) for good? It frees its place on the branch and can never connect again. Its held sales stay for review.`)) void act(() => call("delete", { id: v.id }), "Device removed.");
+                      }}>Remove</Button>
+                    )}
                     {v.status === "active" && (
                       <Button onClick={() => {
                         const why = prompt(`Turn off ${v.name}? It stops syncing and selling offline when it next connects. Its unsent sales are still received, held for your review.\n\nReason:`);

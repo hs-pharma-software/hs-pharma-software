@@ -63,7 +63,7 @@ export async function callGateway(
 /** One FBR call through the gateway, reduced to the gateway's three outcomes. */
 export async function viaGateway(
   g: GatewaySettings,
-  req: { environment: Environment; operation: "post" | "validate" | "reference"; token: string; tenantRef: string; payload?: unknown; referencePath?: string },
+  req: { environment: Environment; operation: "post" | "validate" | "reference" | "atl"; token: string; tenantRef: string; payload?: unknown; referencePath?: string },
   o: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<GatewayOutcome> {
   const r = await callGateway(g, "POST", "/v1/fbr", req, o);

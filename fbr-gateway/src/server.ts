@@ -9,7 +9,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import type { GatewayConfig } from "./config.ts";
 import { ReplayGuard, verifyRequest } from "./auth.ts";
-import { callFbr, fbrPath, type Environment, type Operation } from "./fbr.ts";
+import { atlPayloadOk, callFbr, fbrPath, type Environment, type Operation } from "./fbr.ts";
 import { log } from "./log.ts";
 
 export interface GatewayDeps {
@@ -98,7 +98,7 @@ export function createGateway(cfg: GatewayConfig, deps: GatewayDeps = {}): Serve
       let b: { environment?: unknown; operation?: unknown; referencePath?: unknown; token?: unknown; payload?: unknown; tenantRef?: unknown };
       try { b = JSON.parse(raw); } catch { return send(res, 400, { error: "Body must be JSON." }); }
       const env = b.environment === "production" ? "production" : b.environment === "sandbox" ? "sandbox" : null;
-      const op = b.operation === "post" || b.operation === "validate" || b.operation === "reference" ? (b.operation as Operation) : null;
+      const op = b.operation === "post" || b.operation === "validate" || b.operation === "reference" || b.operation === "atl" ? (b.operation as Operation) : null;
       const tenantRef = typeof b.tenantRef === "string" && /^[A-Za-z0-9_-]{4,80}$/.test(b.tenantRef) ? b.tenantRef : null;
       const token = typeof b.token === "string" ? b.token.trim() : "";
       if (!env || !op || !tenantRef) return send(res, 400, { error: "environment, operation and tenantRef are required." });
@@ -106,6 +106,8 @@ export function createGateway(cfg: GatewayConfig, deps: GatewayDeps = {}): Serve
       const path = fbrPath(op, env as Environment, typeof b.referencePath === "string" ? b.referencePath : undefined);
       if (!path) return send(res, 400, { error: "This FBR address is not allowed." });
       if (op !== "reference" && (typeof b.payload !== "object" || b.payload === null)) return send(res, 400, { error: "payload must be the invoice JSON." });
+      // ATL status (FBR STATL): exactly a registration number and a date, nothing else.
+      if (op === "atl" && !atlPayloadOk(b.payload)) return send(res, 400, { error: "payload must be { regno: 7-13 digits, date: yyyy-mm-dd }." });
       if (!rate.allow(tenantRef, cfg.ratePerTenant, now())) return send(res, 429, { error: "Too many requests for this business. Try again in a minute." });
 
       const result = await callFbr(

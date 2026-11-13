@@ -6,7 +6,8 @@ import { recordOutbox } from "@/lib/sync/outbox";
 import { newId } from "@/lib/id";
 import { isTauriShell } from "@/lib/platform";
 import { restaurantContext } from "@/lib/restaurant";
-import { createDistStore, DistError, DIST_TYPE } from "./store.ts";
+import { createDistStore, DistError, DIST_TYPE, type AtlVerifier } from "./store.ts";
+import { serverJson } from "@/lib/serverMode";
 
 export { DIST_TYPE };
 
@@ -27,6 +28,38 @@ export const dist = createDistStore(
 
 export function errorText(e: unknown): string {
   return e instanceof DistError || e instanceof Error ? e.message : String(e);
+}
+
+/** FBR's own Active Taxpayer check (STATL, DI API) with the business's FBR
+ * token: through MAVIN's server (and gateway), or from this browser in
+ * direct mode, as invoices go. An answer other than Active / In-Active is an
+ * error, so the customer is never marked active by guess. */
+export const fbrAtlVerifier: AtlVerifier = {
+  name: "FBR STATL (DI API)",
+  async check(identifier: string) {
+    const regno = identifier.replace(/\D/g, "").length === 8 ? identifier.replace(/\D/g, "").slice(0, 7) : identifier.replace(/\D/g, "");
+    const r = await serverJson<{ direct: boolean; status?: "active" | "inactive" | null; date?: string; token?: string; path?: string; payload?: { regno: string; date: string } }>("/api/fbr/", { action: "atl", regno });
+    let status = r.status ?? null;
+    let date = r.date ?? "";
+    if (r.direct && r.token && r.path && r.payload) {
+      const res = await fetch(`https://gw.fbr.gov.pk${r.path}`, { method: "POST", headers: { Authorization: `Bearer ${r.token}`, "Content-Type": "application/json" }, body: JSON.stringify(r.payload) });
+      if (res.status === 401 || res.status === 403) throw new Error(`FBR refused the check (HTTP ${res.status}): check the FBR token in Settings > FBR.`);
+      status = parseAtlAnswer(await res.text());
+      date = r.payload.date;
+    }
+    if (!status) throw new Error("FBR did not answer Active or In-Active for this number.");
+    return { status, reference: `FBR STATL ${regno} on ${date}` };
+  },
+};
+
+function parseAtlAnswer(body: string): "active" | "inactive" | null {
+  try {
+    const j = JSON.parse(body) as Record<string, unknown>;
+    const s = String(j.status ?? j.Status ?? "").trim().toLowerCase().replace(/[\s_-]/g, "");
+    return s === "active" ? "active" : s === "inactive" ? "inactive" : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Device location ───────────────────────────────────────────────────

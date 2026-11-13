@@ -61,7 +61,16 @@ export const BANQUET_NAV_ORDER = [
   "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings",
 ];
 
-const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER, lab: LAB_NAV_ORDER, banquet_hall: BANQUET_NAV_ORDER };
+/** Distributor sidebar, top to bottom: the day's work first (selling, booking,
+ * customers, stock, buying), then the business set-up, then money and admin. */
+export const DISTRIBUTOR_NAV_ORDER = [
+  "dashboard", "dist_sales", "dist_bookings", "dist_customers", "dist_catalog", "dist_purchases",
+  "dist_companies", "dist_salesmen", "dist_field", "dist_reports",
+  "cash_register", "banks", "expenses", "other_revenue",
+  "staff", "tasks", "dist_settings", "utilities", "settings",
+];
+
+const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER, lab: LAB_NAV_ORDER, banquet_hall: BANQUET_NAV_ORDER, distributor: DISTRIBUTOR_NAV_ORDER };
 
 /** Top-level sidebar entries for a tenant: business-type sections follow the
  * type, shared sections follow the plan, and sub-users only see what they were

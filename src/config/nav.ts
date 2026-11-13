@@ -272,6 +272,7 @@ const BASE_NAV: NavItem[] = [
     onlyFor: ["distributor"],
     children: [
       { label: "Salesmen & Targets", href: "/dist/salesmen" },
+      { label: "Salaries", href: "/dist/salaries" },
       { label: "Live Salesman Map", href: "/dist/live-map" },
     ],
   },

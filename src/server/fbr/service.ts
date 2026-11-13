@@ -174,6 +174,40 @@ export async function reference(sql: Sql, caller: Caller, input: { path?: unknow
   return { status: r.status, body: r.body };
 }
 
+/** FBR's answer to STATL: "Active" or "In-Active" (anything else: not known). */
+export function parseAtl(body: string): "active" | "inactive" | null {
+  try {
+    const j = JSON.parse(body) as Record<string, unknown>;
+    const s = String(j.status ?? j.Status ?? "").trim().toLowerCase().replace(/[\s_-]/g, "");
+    return s === "active" ? "active" : s === "inactive" ? "inactive" : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A customer's Active Taxpayer (ATL) status from FBR (STATL, DI API), with
+ * the business's own token, for a registration number (NTN 7 digits, or a
+ * CNIC's 13), as of today in Pakistan. */
+export async function atlStatus(sql: Sql, caller: Caller, input: { regno?: unknown }, deps: FbrDeps = {}) {
+  const T = tenantOf(caller);
+  if (!canLookUp(caller)) throw new HttpError(403, "Your login cannot look up FBR data.");
+  const digitsOnly = String(input.regno ?? "").replace(/\D/g, "");
+  // An NTN written with its check digit (1234567-8) is the 7-digit NTN.
+  const regno = digitsOnly.length === 8 ? digitsOnly.slice(0, 7) : digitsOnly;
+  if (!/^(\d{7}|\d{13})$/.test(regno)) throw new HttpError(400, "Enter an NTN (7 digits) or a CNIC (13 digits).");
+  const env = await environmentOf(sql, T);
+  const token = (await tokensOf(sql, T, deps))[env];
+  if (!token) throw new HttpError(400, `No FBR ${env} token in Settings > FBR: the ATL check uses your business's FBR token.`);
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi" }).format((deps.now ?? (() => new Date()))());
+  const g = gw(deps);
+  // Direct mode: the browser asks FBR itself (as it does for invoices).
+  if (!g) return { direct: true as const, token, path: "/dist/v1/statl", payload: { regno, date } };
+  const r = await viaGateway(g, { environment: env, operation: "atl", token, tenantRef: tenantRef(T, g.secret), payload: { regno, date } }, { fetchImpl: deps.fetchImpl });
+  if (r.outcome !== "response") throw new HttpError(502, r.error);
+  if (r.status === 401 || r.status === 403) throw new HttpError(502, `FBR refused the ATL check (HTTP ${r.status}): check your FBR ${env} token.`);
+  return { direct: false as const, regno, date, status: parseAtl(r.body), httpStatus: r.status };
+}
+
 // ── Submissions ──────────────────────────────────────────────────────────
 
 interface DocInfo { branchId: string | null; fbrInvoiceNo: string | null; deleted: boolean }

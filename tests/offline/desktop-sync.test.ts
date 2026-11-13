@@ -766,7 +766,7 @@ test("a staff login without Edit invoices: the offline edit is held", async () =
 test("a version 1 sale (desktop 0.2.2) is still accepted", async () => {
   const d = await provisioned();
   const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 1000 });
-  const { customerId: _c, ...rest } = sale;
+  const rest = { ...sale, customerId: undefined };
   const v1 = {
     ...rest, saleId: "v1-sale-00000001", offlineRef: sale.offlineRef!.replace(/\d+$/, "777777"),
     lines: sale.lines.map((l) => ({ ...l, lineId: "v1-line-00000001" })),
@@ -795,4 +795,38 @@ test("an offline edit shows in the copy at once, and the server's version replac
   await history(m, d);
   assert.deepEqual(copyItems(), [[2, 1]], "now the server's own rows");
   assert.equal(m.query(`SELECT COUNT(*) AS n FROM mirror_overlay`, [])[0].n, 0);
+});
+
+// ── Super Admin: devices per branch, block / unblock, remove ──
+test("Super Admin: more than one device per branch; block and unblock; remove an old device for good", async () => {
+  const sa = { userId: "sa", role: "super_admin", tenantId: null } as Caller;
+  const d = await provisioned();
+  const id = String(one(`SELECT id FROM offline_devices`).id);
+  // A second computer on the same branch: refused at first, allowed once MAVIN.pk raises the limit.
+  await assert.rejects(() => off.provisionDevice(sql, LOGINS.owner1.caller, {}), /already has an offline checkout device/);
+  await assert.rejects(() => off.setDevicesPerBranch(sql, LOGINS.owner1.caller, "t1", 2), /Super Admin/);
+  await off.setDevicesPerBranch(sql, sa, "t1", 2);
+  const second = await off.provisionDevice(sql, LOGINS.owner1.caller, { name: "Counter 2" });
+  assert.ok(second.deviceId);
+  await assert.rejects(() => off.provisionDevice(sql, LOGINS.owner1.caller, {}), /the most allowed: 2/);
+  assert.equal((await off.listDevices(sql, sa, "t1")).perBranch, 2);
+  // Block: no sync, sales sent meanwhile are held; unblock: back to work.
+  await assert.rejects(() => off.blockDevice(sql, LOGINS.owner1.caller, id, true, "x"), /Super Admin/);
+  await off.blockDevice(sql, sa, id, true, "Shop asked");
+  net.down = true;
+  d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 1000 });
+  net.down = false;
+  const r = await d.sync({ manual: true });
+  assert.equal(r.held, 1, "kept for review, not in the books");
+  assert.equal(invoices().length, 0);
+  await off.blockDevice(sql, sa, id, false, null);
+  assert.equal(String(one(`SELECT status FROM offline_devices WHERE id = ?`, id).status), "active");
+  // Remove: only a device that is off or blocked; then it can't connect and frees its place.
+  await assert.rejects(() => off.deleteDevice(sql, sa, id), /Turn the device off or block it/);
+  await off.revokeDevice(sql, LOGINS.owner1.caller, id, "replaced");
+  await off.deleteDevice(sql, sa, id);
+  assert.deepEqual((await off.listDevices(sql, sa, "t1")).devices.map((x) => x.name), ["Counter 2"]);
+  const pulled = await d.sync({ manual: true });
+  assert.match(String(pulled.error), /removed by MAVIN\.pk/);
+  assert.ok((await off.provisionDevice(sql, LOGINS.owner1.caller, { name: "Counter 3" })).deviceId, "the freed place can be used");
 });

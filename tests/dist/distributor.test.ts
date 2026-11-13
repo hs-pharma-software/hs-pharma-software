@@ -299,6 +299,39 @@ test("targets: metric drives achievement; conversion is not double counted; retu
   assert.equal(targetProgress(100, 10, "2026-01", "2026-01-31", 0.9).status, "below");
 });
 
+test("dashboard: month totals, margin, daily trend, top lists, WHT by section, low stock and every salesman's target", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const admin = h.as(A.owner);
+  await admin.setTarget(A.salesman.id, month, 10000);
+  await share(h, A.sm);
+  const b = await h.as(A.sm).createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 30 }] }); // 3000 at trade price 100, cost 80
+  await h.as(A.sm).submitBooking(b.booking.id);
+  await admin.decideBooking(b.booking.id, "approved");
+  const inv = await admin.convertBooking(b.booking.id);
+  await admin.createSaleReturn({ invoiceId: inv.doc.id, lines: [{ itemId: inv.items[0].id, qty: 5 }], reason: "damaged" });
+  await admin.saveProduct({ ...(await admin.getProduct(A.product2.id)), reorder_level: 500 });
+  const d = await admin.dashboard(month);
+  assert.equal(d.now.invoices, 1);
+  assert.equal(d.now.net, 2500, "3000 sold, 500 returned");
+  assert.equal(d.now.grossProfit, 500, "net 2500 less cost 2000 (25 × 80)");
+  assert.equal(d.now.marginPct, 20);
+  assert.equal(d.daily.length, 1);
+  assert.equal(d.daily[0].amount, 2500);
+  assert.equal(d.companies[0].amount, 2500);
+  assert.equal(d.customers[0].label, "pA Medical Store");
+  assert.equal(d.products[0].label, "pA Panadol 500");
+  assert.ok(d.wht.every((w) => typeof w.rate === "number"), "each section shows its rate");
+  assert.deepEqual(d.lowStock.map((p) => p.code), ["PA-P2"]);
+  const t = d.targets.find((x) => x.id === A.salesman.id)!;
+  assert.deepEqual([t.target, t.achieved, t.pct], [10000, 3000, 30], "approved bookings, the configured metric");
+  assert.ok(d.receivable != null && d.receivable > 0);
+  // Another business's dashboard never includes these.
+  const B = await distributor(h, "pB", "general");
+  assert.equal((await h.as(B.owner).dashboard(month)).now.net, 0);
+  await assert.rejects(() => h.as(A.sm).dashboard(month), /reports\.view/);
+});
+
 // ── Withholding tax ──
 test("tax: ATL active / inactive / unverified / stale / no NTN follow the configured rates", async () => {
   const h = makeDist();
@@ -449,4 +482,169 @@ test("stock: sales can't oversell; returns put stock back; purchase returns take
   await admin.createPurchaseReturn({ purchaseId: pur.doc.id, lines: [{ itemId: pur.items[0].id, qty: 5 }], reason: "short expiry" });
   assert.equal((await admin.getProduct(A.product2.id)).stock, 109);
   assert.deepEqual((await admin.balances("supplier")).map((b) => b.balance), [600]);
+});
+
+// ── Line fields: batch, expiry, bonus, discount %, extra discount %, sales tax, W.T % ──
+test("sale lines: discount % then extra % then rupees, bonus leaves stock unpaid, WHT shown per line and adds up", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const admin = h.as(A.owner);
+  // 10 x Rs 100 = 1000; 10 % -> 900; extra 5 % of 900 -> 855; then Rs 5 -> 850. Bonus 2 free.
+  const inv = await admin.createSale({ customerId: A.customer.id, lines: [
+    { productId: A.product.id, qty: 10, discPct: 10, extraDiscPct: 5, discount: 5, bonusQty: 2, batchNo: "B-77", expiry: "2027-06-30" },
+    { productId: A.product2.id, qty: 4 }, // 4 x 50 = 200, 18 % sales tax -> 236
+  ] });
+  const l1 = inv.items.find((i) => i.product_id === A.product.id)!, l2 = inv.items.find((i) => i.product_id === A.product2.id)!;
+  assert.deepEqual([l1.qty, l1.bonus_qty, l1.disc_pct, l1.extra_disc_pct, l1.discount, l1.line_total, l1.batch_no, l1.expiry], [10, 2, 10, 5, 150, 850, "B-77", "2027-06-30"]);
+  assert.equal(l2.line_total, 236);
+  assert.equal(l1.wht_rate, inv.doc.wht_rate, "each line shows the invoice's rate");
+  assert.equal(Math.round((l1.wht_amount + l2.wht_amount) * 100), Math.round(inv.doc.wht_amount * 100), "line shares add up to the invoice's withholding tax");
+  assert.equal((await admin.getProduct(A.product.id)).stock, 988, "12 left the shelf: 10 sold + 2 bonus");
+  // Bonus and discounts need their own permissions.
+  const clerk = A.t.staff("clerk");
+  await admin.setPerms(clerk.userId!, ["invoices.view", "invoices.create", "invoices.discount"]);
+  await assert.rejects(() => h.as(clerk).createSale({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 1, bonusQty: 1 }] }), /invoices\.bonus/);
+  await admin.setPerms(clerk.userId!, ["invoices.view", "invoices.create"]);
+  await assert.rejects(() => h.as(clerk).createSale({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 1, discPct: 5 }] }), /invoices\.discount/);
+  // Not enough for the bonus: refused, nothing taken.
+  await assert.rejects(() => admin.createSale({ customerId: A.customer.id, lines: [{ productId: A.product2.id, qty: 90, bonusQty: 20 }] }), /bonus included/);
+  assert.equal((await admin.getProduct(A.product2.id)).stock, 96);
+});
+
+test("purchase lines: bonus adds stock and lowers the true cost; supplier WHT adds to what is owed; last purchase rate", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const admin = h.as(A.owner);
+  assert.deepEqual(await admin.lastPurchaseRates(A.product2.id, A.company.id), { any: null, supplier: null }, "never bought yet");
+  // 100 x Rs 40 = 4000; 5 % -> 3800; extra 2 % -> 3724; 18 % sales tax -> 4394.32; + 10 bonus; 0.1 % WHT (236G) on it.
+  const pur = await admin.createPurchase({ supplierId: A.company.id, supplierInvoiceNo: "INV-9", whtRate: 0.1, lines: [
+    { productId: A.product2.id, qty: 100, cost: 40, discPct: 5, extraDiscPct: 2, taxRate: 18, bonusQty: 10, batchNo: "PB-1", expiry: "2028-01-31" },
+  ] });
+  const it = pur.items[0];
+  assert.deepEqual([it.qty, it.bonus_qty, it.discount, it.line_total, it.batch_no], [100, 10, 276, 4394.32, "PB-1"]);
+  assert.deepEqual([pur.doc.wht_section, pur.doc.wht_rate], ["236G", 0.1]);
+  assert.ok(pur.doc.wht_amount > 0);
+  assert.equal(pur.doc.balance, Math.round((4394.32 + pur.doc.wht_amount) * 100) / 100, "owed: the bill plus the supplier's withholding tax");
+  const p = await admin.getProduct(A.product2.id);
+  assert.equal(p.stock, 210, "100 old + 100 bought + 10 bonus");
+  // True cost of the 110 received: 3724 / 110 = 33.85 each; average with 100 old ones at 40.
+  assert.equal(Math.round(p.avg_cost * 100) / 100, Math.round(((100 * 40 + 3724) / 210) * 100) / 100);
+  const last = await admin.lastPurchaseRates(A.product2.id, A.company.id);
+  assert.deepEqual([last.any?.price, last.any?.disc_pct, last.any?.bonus_qty, last.supplier?.price], [40, 5, 10, 40]);
+  assert.equal((await admin.lastPurchaseRates(A.product2.id, "another-co")).supplier, null);
+});
+
+// ── Products: narcotics (Form-9 CDSL only), CSV import ──
+test("narcotics: a controlled generic is detected; only customers with a valid CDSL (Form-9) can buy or book it", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const admin = h.as(A.owner);
+  const tram = await admin.saveProduct({ company_id: A.company.id, code: "TRM50", name: "Tramal 50", generic_name: "Tramadol HCl", trade_price: 60, cost: 50, openingQty: 100 });
+  assert.equal(tram.is_narcotic, 1, "detected from the generic name");
+  assert.equal((await admin.saveProduct({ ...tram, is_narcotic: 0 })).is_narcotic, 1, "can't be unmarked while the generic is controlled");
+  assert.equal(A.product.is_narcotic, 0);
+  // A customer without CDSL (allowed for ordinary medicines when CDSL is optional).
+  const cur = (await admin.config())!.settings;
+  await admin.saveSettings({ ...cur, cdsl: { ...cur.cdsl, required: false } });
+  const noLicence = await admin.createCustomer({ business_name: "Corner Store", mobile: "03009998877", address: "Lahore", location: { lat: 31.52, lng: 74.35, accuracy: 15, source: "device" } });
+  await admin.createSale({ customerId: noLicence.id, lines: [{ productId: A.product.id, qty: 1 }] });
+  await assert.rejects(() => admin.createSale({ customerId: noLicence.id, lines: [{ productId: tram.id, qty: 1 }] }), /Form-9/);
+  // An expired licence: refused too; a valid one: sold.
+  await admin.updateCustomer(A.customer.id, { cdsl_expiry: "2020-01-01" });
+  await assert.rejects(() => admin.createSale({ customerId: A.customer.id, lines: [{ productId: tram.id, qty: 1 }] }), /Form-9|expired/);
+  await admin.updateCustomer(A.customer.id, { cdsl_expiry: "2030-01-01" });
+  const ok = await admin.createSale({ customerId: A.customer.id, lines: [{ productId: tram.id, qty: 1 }] });
+  assert.equal(ok.items[0].qty, 1);
+  // General distributors: no CDSL, no narcotic marking.
+  const G = await distributor(h, "gC", "general");
+  const g = await h.as(G.owner).saveProduct({ company_id: G.company.id, code: "X1", name: "Codeine syrup (not pharma mode)", generic_name: "Codeine", trade_price: 10 });
+  assert.equal(g.is_narcotic, 0);
+});
+
+test("products CSV import: off until the Super Admin switches it on; updates by code, creates the rest, reports bad rows", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const rows: Record<string, string>[] = [
+    { code: "pA-P1", name: "pA Panadol 500", company: "pA Pharma Co", trade_price: "110" },
+    { Code: "NEW1", Name: "Brand New Tab", Company: "Fresh Labs", Category: "Brand New Category", "Trade Price": "25", Generic_Name: "Alprazolam", "Opening Qty": "40" },
+    { code: "BAD1", name: "No price", company: "Fresh Labs" },
+  ];
+  await assert.rejects(() => h.as(A.owner).importProducts(rows), /not switched on/);
+  const on = h.as({ ...A.owner, deniedActions: ["+products.csv"] });
+  const r = await on.importProducts(rows);
+  assert.deepEqual([r.created, r.updated], [1, 1]);
+  assert.deepEqual(r.errors.map((e) => [e.row, e.code]), [[4, "BAD1"]]);
+  assert.match(r.errors[0].message, /Trade price/);
+  assert.equal((await on.getProduct(A.product.id)).trade_price, 110);
+  const fresh = (await on.listProducts({ search: "Brand New" }))[0];
+  assert.deepEqual([fresh.stock, fresh.is_narcotic, fresh.company_name, fresh.category_name], [40, 1, "Fresh Labs", "Brand New Category"]);
+  // Without catalogue rights the switch is not enough.
+  const clerk = A.t.staff("clerk");
+  await assert.rejects(() => h.as({ ...clerk, deniedActions: ["+products.csv"] }).importProducts(rows), /catalog\.manage/);
+});
+
+// ── Salesmen: wages, salaries, month closing, leaving ──
+test("salaries: monthly pro-rated, daily by days worked; paid / unpaid; draft writes nothing; closing posts expenses and locks the month", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const admin = h.as(A.owner);
+  const M = "2026-09"; // 30 days, already over
+  const monthly = await admin.saveSalesman({ code: "S-M", name: "Monthly Man", mobile: "03021234567", wage_type: "monthly", wage_amount: 30000, joined_on: "2026-09-11" });
+  const daily = await admin.saveSalesman({ code: "S-D", name: "Daily Man", mobile: "03031234567", wage_type: "daily", wage_amount: 1000, joined_on: "2026-08-01" });
+  let rows = await admin.salaries(M);
+  const get = (id: string) => rows.find((r) => r.salesman_id === id)!;
+  assert.deepEqual([get(monthly.id).days_employed, get(monthly.id).amount], [20, 20000], "joined on the 11th: 20 of 30 days");
+  assert.deepEqual([get(daily.id).days_worked, get(daily.id).amount], [30, 30000]);
+  assert.ok(!rows.some((r) => r.salesman_id === A.salesman.id), "no wage set: not listed");
+  await admin.saveSalary(daily.id, M, { daysWorked: 26 });
+  await admin.setSalaryPaid(monthly.id, M, { method: "bank", date: "2026-10-01" });
+  rows = await admin.salaries(M);
+  assert.deepEqual([get(daily.id).amount, get(monthly.id).status, get(monthly.id).paid_method], [26000, "paid", "bank"]);
+  const status = await admin.monthStatus(M);
+  assert.deepEqual([status.closed, status.due, status.lastDay], [false, true, "2026-09-30"]);
+  // Draft: the report, nothing written.
+  const expenses = () => h.sql.prepare(`SELECT * FROM expenses WHERE tenant_id = 'pA' AND deleted_at IS NULL`).all() as { amount: number; payment_method: string; category_id: string; date: string }[];
+  const draft = await admin.closeMonth(M, { final: false });
+  assert.deepEqual([draft.draft, draft.salariesTotal, draft.salariesPaid, draft.salariesUnpaid, draft.salaries.length], [true, 46000, 20000, 26000, 2]);
+  assert.equal(expenses().length, 0);
+  // Final: one expense per salary under "Salaries", the month locked, the report kept.
+  const fin = await admin.closeMonth(M, { final: true });
+  assert.equal(fin.draft, false);
+  const ex = expenses();
+  assert.deepEqual(ex.map((e) => e.amount).sort(), [20000, 26000]);
+  assert.deepEqual([...new Set(ex.map((e) => e.date))], ["2026-09-30"]);
+  assert.deepEqual(ex.map((e) => e.payment_method).sort(), ["bank", "unpaid"]);
+  const cat = h.sql.prepare(`SELECT name FROM expense_categories WHERE id = ?`).get(ex[0].category_id) as { name: string };
+  assert.equal(cat.name, "Salaries");
+  assert.equal((await admin.monthStatus(M)).closed, true);
+  await assert.rejects(() => admin.saveSalary(daily.id, M, { daysWorked: 20 }), /closed/);
+  await assert.rejects(() => admin.closeMonth(M, { final: true }), /already closed/);
+  assert.equal((await admin.closeMonth(M, { final: false })).salariesTotal, 46000, "the kept report");
+  // Paying after closing updates the expense's payment method too.
+  await admin.setSalaryPaid(daily.id, M, { method: "cash" });
+  assert.deepEqual(expenses().map((e) => e.payment_method).sort(), ["bank", "cash"]);
+  // A month not yet over can't be closed; staff can't see salaries.
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const lastDay = new Date(Date.UTC(Number(thisMonth.slice(0, 4)), Number(thisMonth.slice(5)), 0)).toISOString().slice(0, 10);
+  if (new Date().toISOString().slice(0, 10) < lastDay) await assert.rejects(() => admin.closeMonth(thisMonth, { final: true }), /from its last day/);
+  await assert.rejects(() => h.as(A.sm).salaries(M), /administrator/);
+});
+
+test("leaving: a salesman's account closes with a reason; the last month is pro-rated; the career report covers every month", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const admin = h.as(A.owner);
+  const s = await admin.saveSalesman({ code: "S-X", name: "Leaving Man", mobile: "03041234567", wage_type: "daily", wage_amount: 800, joined_on: "2026-09-01", monthly_target: 5000 });
+  await assert.rejects(() => admin.closeSalesman(s.id, { date: "2026-10-15", reason: "" }), /reason/);
+  const closed = await admin.closeSalesman(s.id, { date: "2026-10-15", reason: "Left for another distributor" });
+  assert.deepEqual([closed.closed_on, closed.is_active, closed.close_reason], ["2026-10-15", 0, "Left for another distributor"]);
+  await assert.rejects(() => admin.closeSalesman(s.id, { reason: "again" }), /already closed/);
+  assert.equal((await admin.salaries("2026-10")).find((r) => r.salesman_id === s.id)!.days_worked, 15, "until the closing date");
+  assert.equal((await admin.salaries("2026-11")).find((r) => r.salesman_id === s.id), undefined, "no salary after leaving");
+  const career = await admin.salesmanCareer(s.id);
+  assert.deepEqual(career.months.map((m) => m.month), ["2026-10", "2026-09"]);
+  assert.equal(career.totals.months, 2);
+  assert.equal(career.months[0].target, 5000);
+  // Editing does not reopen a closed account.
+  assert.equal((await admin.saveSalesman({ ...closed, is_active: 1 })).is_active, 0);
 });
