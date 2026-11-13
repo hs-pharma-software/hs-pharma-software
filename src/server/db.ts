@@ -21,7 +21,7 @@ export function serverDb(): Client {
 
 let cache: { at: number; names: Set<string>; schema: Schema } | null = null;
 /** The database's tables and their columns, refreshed every 5 minutes (a migration adds them). */
-async function schemaInfo(): Promise<{ names: Set<string>; schema: Schema }> {
+export async function schemaInfo(): Promise<{ names: Set<string>; schema: Schema }> {
   if (cache && Date.now() - cache.at < 300_000) return cache;
   const rs = await serverDb().execute(`SELECT m.name AS t, p.name AS c FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type IN ('table', 'view')`);
   const schema: Schema = new Map();

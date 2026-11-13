@@ -11,11 +11,13 @@
  * The window is locked down: context isolation, no Node in the page, sandbox,
  * no navigation away from the app, a fixed list of validated calls. */
 import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 import { OfflineDevice, TransportError, type OriginalInvoice, type SaleInput, type SecretStore, type Transport } from "./core/device";
 import { Mirror, readOnlySql } from "./core/mirror";
+import { answerableLocally, copiedTables, copyReady, fillCopy, followCopy } from "./core/replicaSync";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
@@ -67,7 +69,7 @@ function setOnline(v: boolean) {
   online = v;
   pushStatus();
   // Back online: send what was saved here, then refresh the copy (never reloads the page).
-  if (v && was === false) void syncAll(true);
+  if (v && was === false) { void syncAll(true); void refreshReplica(); }
 }
 
 /** A kept-alive connection the server had already closed: the request never
@@ -129,8 +131,12 @@ async function pageRequest(a: unknown) {
   const headers: Record<string, string> = {};
   const h = (o.headers ?? {}) as Record<string, unknown>;
   for (const k of ["Content-Type", "X-Branch"]) if (typeof h[k] === "string") headers[k] = h[k] as string;
+  if (path.startsWith("/api/db")) pageBranch = headers["X-Branch"] ?? "";
   if (cookies.size) headers.Cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
   const body = method === "GET" ? undefined : typeof o.body === "string" ? o.body : undefined;
+  // A save (anything but a read): screens read MAVIN.pk until the copy has it, which is fetched at once.
+  const saving = method !== "GET" && !path.startsWith("/api/replica") && !path.startsWith("/api/auth/me") && !safeToRepeat(method, path, body);
+  if (saving) lastWriteAt = Date.now();
   for (let attempt = 0; ; attempt++) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 30_000);
@@ -138,6 +144,7 @@ async function pageRequest(a: unknown) {
       const res = await fetch(`${API_BASE}${path}`, { method, headers, body, signal: ctrl.signal });
       keepCookies(res);
       setOnline(true);
+      if (saving) { lastWriteAt = Date.now(); setTimeout(() => void refreshReplica(), 200); }
       return { status: res.status, body: await res.text() };
     } catch (e) {
       // A kept-alive connection the server had closed: sent again once, only if repeating is harmless.
@@ -182,8 +189,110 @@ function openMirror() {
 
 function overlay() {
   const id = device.identity;
-  if (!mirror || !id) return;
-  try { mirror.overlay(device.localSales(30), device.stockNow(), id.tenantId, id.branchId); } catch (e) { console.error("[mirror] overlay", e); }
+  if (!id) return;
+  for (const m of [mirror, replica?.m]) {
+    if (!m) continue;
+    try { m.overlay(device.localSales(30), device.stockNow(), id.tenantId, id.branchId); } catch (e) { console.error("[copy] overlay", e); }
+  }
+}
+
+// ── The local copy of the business (Phase 1: fast screens for every business) ──
+//
+// One copy per login and branch, filled on first use and then kept up to
+// date from MAVIN.pk's change log every few seconds (core/replicaSync.ts).
+// Screens read it while it is complete, belongs to the same login and branch
+// as the page, and nothing saved from here is still on its way into it;
+// otherwise they read MAVIN.pk as before. Saving always goes to MAVIN.pk.
+
+const REPLICA_EVERY_MS = 15_000;
+let replica: { m: Mirror; userId: string; tenantId: string; branch: string } | null = null;
+/** The branch the page last asked for (X-Branch); "" = the login's default. */
+let pageBranch = "";
+/** When something was last saved from this computer, and when the copy last caught up after starting at a time. */
+let lastWriteAt = 0;
+let caughtUpFrom = 0;
+let replicaBusy: Promise<void> | null = null;
+let replicaNote: string | null = null;
+
+async function asLogin<T>(path: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (pageBranch) headers["X-Branch"] = pageBranch;
+  if (cookies.size) headers.Cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60_000);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body), signal: ctrl.signal });
+    keepCookies(res);
+    const data = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
+    if (!res.ok || data === null) throw new Error(data?.error ?? `MAVIN.pk answered ${res.status}`);
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The copy for the signed-in login and the page's branch (opened, or switched). */
+async function currentReplica() {
+  if (!cookies.size) return null;
+  const me = await asLogin<{ userId: string; role: string; tenantId: string | null; platformRole: string | null }>("/api/auth/me/", undefined);
+  if (!me.tenantId || me.role === "super_admin" || me.platformRole) return null;
+  if (replica && replica.userId === me.userId && replica.tenantId === me.tenantId && replica.branch === pageBranch) return replica;
+  const schemaFile = join(resources, "schema.sql");
+  if (!existsSync(schemaFile)) return null;
+  try { replica?.m.close(); } catch { /* closed */ }
+  const safe = (s: string) => s.replace(/[^\w-]/g, "_");
+  replica = {
+    m: new Mirror(join(dataRoot, "data", safe(me.tenantId), safe(pageBranch || "default"), "users", safe(me.userId), "copy.db"), readFileSync(schemaFile, "utf8")),
+    userId: me.userId, tenantId: me.tenantId, branch: pageBranch,
+  };
+  caughtUpFrom = 0;
+  return replica;
+}
+
+/** Fills the copy the first time, then brings it up to date (one run at a time). */
+let replicaAgain = false;
+function refreshReplica(): Promise<void> {
+  // Asked again while a run is on (a save just landed): one more run right after it.
+  if (replicaBusy) { replicaAgain = true; return replicaBusy; }
+  {
+    replicaBusy = (async () => {
+      if (quitting || online === false) return;
+      const startedAt = Date.now();
+      try {
+        const r = await currentReplica();
+        if (!r) return;
+        const call = <T,>(body: Record<string, unknown>) => asLogin<{ result: T }>("/api/replica/", body).then((x) => x.result);
+        if (!copyReady(r.m)) replicaNote = "Copying this business's data to this computer…";
+        await fillCopy(r.m, call, (done, total) => { replicaNote = `Copying this business's data to this computer: ${done} of ${total} tables…`; pushStatus(); });
+        await followCopy(r.m, call);
+        overlay();
+        replicaNote = null;
+        if (r === replica) caughtUpFrom = startedAt;
+      } catch (e) {
+        console.error("[copy]", e instanceof Error ? e.message : e);
+      }
+      pushStatus();
+    })().finally(() => {
+      replicaBusy = null;
+      if (replicaAgain) { replicaAgain = false; void refreshReplica(); }
+    });
+  }
+  return replicaBusy;
+}
+
+/** A read the local copy may answer now (else MAVIN.pk answers it). */
+function localRead(a: unknown): { local: true; rows: Record<string, unknown>[] } | { local: false } {
+  const o = a as { sql?: unknown; params?: unknown; userId?: unknown; branch?: unknown };
+  const r = replica;
+  if (!r || typeof o?.sql !== "string" || !copyReady(r.m)) return { local: false };
+  // Same login and branch as the page, and nothing saved from here still on its way into the copy.
+  if (o.userId !== r.userId || String(o.branch ?? "") !== r.branch || lastWriteAt >= caughtUpFrom) return { local: false };
+  if (!readOnlySql(o.sql) || !answerableLocally(o.sql, copiedTables(r.m), r.m.tableNames())) return { local: false };
+  try {
+    return { local: true, rows: r.m.query(o.sql, Array.isArray(o.params) ? o.params : []) };
+  } catch {
+    return { local: false };
+  }
 }
 
 let syncing: Promise<void> | null = null;
@@ -220,7 +329,11 @@ function statusNow() {
   const s = device ? device.status() : { provisioned: false as const };
   return {
     ...s, online, server: API_BASE, appVersion: app.getVersion(),
-    copyRefreshedAt: mirror?.meta("refreshed_at") ?? null,
+    copyRefreshedAt: (replica && copyReady(replica.m) ? replica.m.meta("replica_followed_at") : null) ?? mirror?.meta("refreshed_at") ?? null,
+    /** The local copy of the business: complete (screens read it), or being copied. */
+    localCopy: replica ? { ready: copyReady(replica.m), note: replicaNote } : null,
+    /** A newer version: being downloaded, or ready (installed when the app is closed). */
+    update,
   };
 }
 function pushStatus() { if (win && !win.isDestroyed()) win.webContents.send("mavin:status", statusNow()); }
@@ -355,11 +468,15 @@ const handlers: Record<string, Handler> = {
     await syncAll(true);
     return r;
   },
+  /** Offline: the local copy of the business (the login's own when complete, else the offline sales copy). */
   query: (a) => {
     const o = a as { sql?: unknown; params?: unknown };
-    if (!mirror) throw new Error("This computer has no offline copy yet. Connect to the internet.");
-    return mirror.query(str(o?.sql, 20000, "query"), Array.isArray(o?.params) ? o.params : []);
+    const m = replica && copyReady(replica.m) ? replica.m : mirror;
+    if (!m) throw new Error("This computer has no offline copy yet. Connect to the internet.");
+    return m.query(str(o?.sql, 20000, "query"), Array.isArray(o?.params) ? o.params : []);
   },
+  /** Online: answered from the local copy when it can be (fast), else the page asks MAVIN.pk. */
+  read: (a) => localRead(a),
   createSale: (a) => {
     const r = device.createSale(saleInput(a));
     overlay();
@@ -409,6 +526,32 @@ async function probe() {
 
 let timers: ReturnType<typeof setInterval>[] = [];
 
+// ── Updates ───────────────────────────────────────────────────────────────
+
+/** Where new versions are published (latest.yml, the installer and its
+ * blockmap): a fixed address on mavin.pk that sends on to the file host. */
+const UPDATE_FEED = "https://www.mavin.pk/downloads/windows/";
+const UPDATE_EVERY_MS = 6 * 3_600_000;
+let update: { version: string; ready: boolean } | null = null;
+
+/** Installed app only: checks for a new version while online, downloads only
+ * the parts that changed (blockmap), and installs it when the app is closed.
+ * Never restarts the app by itself: a sale in progress is never interrupted,
+ * and everything saved is in the database before the app closes. */
+function startUpdates() {
+  if (!app.isPackaged || process.env.MAVIN_NO_UPDATES === "1") return;
+  autoUpdater.setFeedURL({ provider: "generic", url: UPDATE_FEED });
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = { info: () => undefined, warn: (m: unknown) => console.warn("[update]", m), error: (m: unknown) => console.error("[update]", m), debug: () => undefined };
+  autoUpdater.on("update-available", (i) => { update = { version: i.version, ready: false }; pushStatus(); });
+  autoUpdater.on("update-downloaded", (i) => { update = { version: i.version, ready: true }; pushStatus(); });
+  autoUpdater.on("error", (e) => console.error("[update]", e instanceof Error ? e.message : e));
+  const check = () => { if (online !== false && !quitting) autoUpdater.checkForUpdates().catch((e) => console.error("[update]", e instanceof Error ? e.message : e)); };
+  setTimeout(check, 60_000);
+  timers.push(setInterval(check, UPDATE_EVERY_MS));
+}
+
 if (primary) {
   app.whenReady().then(() => {
     protocol.handle("mavin", serveApp);
@@ -417,6 +560,10 @@ if (primary) {
     createWindow();
     timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(() => void probe(), PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
     void probe().then(() => syncAll(false));
+    startUpdates();
+    // The local copy of the business: filled once, then kept up to date.
+    timers.push(setInterval(() => void refreshReplica(), REPLICA_EVERY_MS));
+    setTimeout(() => void refreshReplica(), 5_000);
   });
 
   app.on("second-instance", () => { if (app.isReady()) showWindow(); });
@@ -426,6 +573,7 @@ if (primary) {
     quitting = true;
     for (const t of timers) clearInterval(t);
     try { mirror?.close(); } catch { /* closed */ }
+    try { replica?.m.close(); } catch { /* closed */ }
     try { device?.close(); } catch { /* the saved data is already on disk (WAL) */ }
   };
   app.on("window-all-closed", () => { shutdown(); app.quit(); });

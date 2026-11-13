@@ -7,6 +7,7 @@ import { sqlForServer } from "@/server/subSupersApi";
 import { reconcilePending } from "@/server/payments";
 import { cronAuthorized } from "@/server/seo/cron";
 import { pruneChanges } from "@/server/offline/service";
+import { pruneDataChanges } from "@/server/replica";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,9 @@ export async function GET(req: Request): Promise<Response> {
     const payments = await reconcilePending(sql, 50);
     // Same nightly run: trim the offline desktop change log (45 days kept).
     const offline = await pruneChanges(sql).catch(() => ({ removed: -1 }));
-    return Response.json({ ...payments, offlineChangesRemoved: offline.removed }, { headers: { "Cache-Control": "no-store" } });
+    // And the desktop local copy's change log (45 days kept).
+    const copy = await pruneDataChanges(sql).catch(() => ({ removed: -1 }));
+    return Response.json({ ...payments, offlineChangesRemoved: offline.removed, dataChangesRemoved: copy.removed }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     return jsonError(e);
   }

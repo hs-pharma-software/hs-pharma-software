@@ -381,6 +381,7 @@ const MIGRATIONS = [
   { version: 85, label: 'FBR gateway: fbr_credentials (encrypted tokens), fbr_submissions (one row per attempt, one live per document)', statements: rustSchemaStatements(85) },
   { version: 86, label: 'FBR sandbox scenario testing: fbr_test_sessions, fbr_scenario_tests, fbr_scenario_attempts (sandbox only)', statements: rustSchemaStatements(86) },
   { version: 87, label: 'Offline Tenants: offline_tenants, offline_licenses (standalone desktop licenses)', statements: rustSchemaStatements(87) },
+  { version: 88, label: 'Desktop local copy: data_changes change log (triggers on every business table)', statements: rustSchemaStatementsWithTriggers(88) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

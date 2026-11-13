@@ -39,6 +39,7 @@ export function DesktopSyncPill({ status }: { status: DesktopStatus }) {
         <span className={off ? "text-amber-700" : "text-emerald-700"}>{off ? "Offline" : "Online"}</span>
         {pending > 0 && <span className="rounded-full bg-amber-100 px-1.5 font-semibold text-amber-800" title={`${pending} waiting to sync`}>{pending}</span>}
         {problems > 0 && <span className="rounded-full bg-rose-100 px-1.5 font-semibold text-rose-700" title="Need attention">{problems}</span>}
+        {status.update?.ready && <span className="rounded-full bg-emerald-100 px-1.5 font-semibold text-emerald-800" title={`Version ${status.update.version} installs when you close the app`}>new</span>}
       </button>
       {open && (
         <>
@@ -77,6 +78,19 @@ export function DesktopSyncPill({ status }: { status: DesktopStatus }) {
             ) : (
               <p className="text-neutral-500">Offline sales are not set up on this computer. The business owner sets it up while online.</p>
             )}
+            {status.update && (
+              <p className={status.update.ready ? "text-emerald-700" : "text-neutral-500"}>
+                {status.update.ready
+                  ? `Version ${status.update.version} is ready: it installs when you close the app. Your sales and pending sync are kept.`
+                  : `Downloading version ${status.update.version} (only the changed parts)…`}
+              </p>
+            )}
+            {status.localCopy && (
+              <p className="text-neutral-500">
+                {status.localCopy.note ?? (status.localCopy.ready ? "Fast mode: screens read this computer's copy of your business, kept up to date every few seconds." : "Preparing this computer's copy of your business…")}
+              </p>
+            )}
+            <p className="text-neutral-400">App version {status.appVersion ?? "?"}</p>
             {msg && <p className="text-neutral-700">{msg}</p>}
           </div>
         </>

@@ -1,7 +1,8 @@
 ﻿import { isTauriShell as isTauri } from "./platform";
 import { createClient, type Client } from "@libsql/client/web";
 import { explainMissingTable } from "./dbErrors";
-import { SERVER_DB, serverJson, ServerRequestError } from "./serverMode";
+import { SERVER_DB, serverJson, ServerRequestError, tabBranch } from "./serverMode";
+import { useAuthStore } from "../store/authStore";
 import { desktopBridge, desktopOffline, NeedsInternetError } from "./desktopBridge";
 import { localBridge, unwrap } from "./edition";
 
@@ -12,6 +13,20 @@ async function desktopCopy(sql: string, params: unknown[]): Promise<Record<strin
   return r.value;
 }
 const noConnection = (e: unknown) => e instanceof ServerRequestError && e.status === 0;
+
+/** MAVIN desktop app, online: the local copy's rows for this read, or null
+ * (the copy is not complete, belongs to another login or branch, has not yet
+ * caught up with a save made here, or does not hold one of the tables). */
+async function localCopyRead(sql: string, params: unknown[]): Promise<Record<string, unknown>[] | null> {
+  const b = desktopBridge();
+  if (!b?.read) return null;
+  try {
+    const r = await b.read({ sql, params, userId: useAuthStore.getState().currentUser?.id ?? null, branch: tabBranch() ?? "" });
+    return r.ok && r.value.local ? r.value.rows : null;
+  } catch {
+    return null;
+  }
+}
 
 type ServerResult = { columns: string[]; rows: unknown[][]; rowsAffected: number; lastInsertRowid: number | null };
 
@@ -76,6 +91,9 @@ export async function dbSelect<T = Record<string, unknown>>(sql: string, params:
   if (SERVER_DB) {
     // Desktop app without a connection: the same query on its read-only copy.
     if (desktopBridge() && desktopOffline()) return (await desktopCopy(sql, params)) as T[];
+    // Desktop app online: the local copy of the business answers when it is complete and up to date (fast).
+    const fast = await localCopyRead(sql, params);
+    if (fast) return fast as T[];
     try {
       const [r] = await viaServer([{ sql, args: params }], false);
       return r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, row[i]])) as T);

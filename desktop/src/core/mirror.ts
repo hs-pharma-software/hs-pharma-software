@@ -54,6 +54,8 @@ export class Mirror {
     this.rw.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = OFF;");
     if (fresh) {
       this.rw.exec(schemaSql);
+      // A cache of the server's rows: the server's triggers (change logs) have no job here.
+      for (const t of this.rw.prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger'`).all() as { name: string }[]) this.rw.exec(`DROP TRIGGER IF EXISTS "${t.name}"`);
       this.rw.exec(`CREATE TABLE IF NOT EXISTS mirror_meta (key TEXT PRIMARY KEY, value TEXT)`);
       this.rw.prepare(`INSERT OR REPLACE INTO mirror_meta (key, value) VALUES ('schema', ?)`).run(version);
     }
@@ -67,7 +69,35 @@ export class Mirror {
   meta(key: string): string | null {
     return ((this.rw.prepare(`SELECT value FROM mirror_meta WHERE key = ?`).get(key) as { value?: string } | undefined)?.value) ?? null;
   }
-  private setMeta(key: string, value: string) { this.rw.prepare(`INSERT OR REPLACE INTO mirror_meta (key, value) VALUES (?, ?)`).run(key, value); }
+  setMeta(key: string, value: string) { this.rw.prepare(`INSERT OR REPLACE INTO mirror_meta (key, value) VALUES (?, ?)`).run(key, value); }
+
+  /** The tables this copy's structure has. */
+  tableNames(): Set<string> {
+    return new Set((this.rw.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((r) => r.name.toLowerCase()));
+  }
+
+  /** Server rows into a table, and keys removed from it, in one local transaction (local copy, Phase 1). */
+  applyChanges(upserts: Record<string, Record<string, unknown>[]>, deletes: Record<string, string[]>, keyOf: (table: string) => string, after?: () => void) {
+    const known = this.tableNames();
+    this.tx(() => {
+      for (const [t, rows] of Object.entries(upserts)) if (known.has(t)) this.upsert(t, rows);
+      for (const [t, ids] of Object.entries(deletes)) {
+        if (!known.has(t)) continue;
+        const del = this.rw.prepare(`DELETE FROM ${t} WHERE ${keyOf(t)} = ?`);
+        for (const id of ids) del.run(id);
+      }
+      after?.();
+    });
+  }
+
+  /** Empties a table before its first full copy. */
+  clearTable(table: string) {
+    if (!this.tableNames().has(table)) return;
+    this.tx(() => {
+      this.rw.prepare(`DELETE FROM ${table}`).run();
+      this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ?`).run(table);
+    });
+  }
 
   /** The page's read: one SELECT on the read-only connection. */
   query(sql: string, params: unknown[]): Record<string, unknown>[] {

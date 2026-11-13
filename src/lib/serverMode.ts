@@ -57,7 +57,7 @@ export function desktopToken(): string | null {
 /** A JSON call to the app's own server: with the session cookie on the web,
  * with the desktop's session token from the desktop app. */
 /** This tab's branch (multi-branch businesses), sent with every request; the server checks it. */
-function tabBranch(): string | null {
+export function tabBranch(): string | null {
   try {
     return typeof window === "undefined" ? null : window.sessionStorage.getItem(BRANCH_TAB_KEY);
   } catch {

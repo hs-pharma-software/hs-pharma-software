@@ -25,6 +25,13 @@ const nextConfig: NextConfig = {
         // and so do the public site pages (src/app/site/**/page.server.tsx) and
         // src/proxy.server.ts.
         pageExtensions: ["tsx", "ts", "jsx", "js", "server.ts", "server.tsx"],
+        // The Windows app: a fixed address on mavin.pk (the website button and
+        // the app's own update check use it) sent on to wherever the files are
+        // kept. Moving the files is a change of WINDOWS_DOWNLOAD_BASE only.
+        async redirects() {
+          const base = (process.env.WINDOWS_DOWNLOAD_BASE || "https://download.mavin.pk/windows").replace(/\/+$/, "");
+          return [{ source: "/downloads/windows/:file", destination: `${base}/:file`, permanent: false }];
+        },
         // The Android app (versioned file names, never replaced): saved as a
         // file with the APK type, cached for good.
         async headers() {

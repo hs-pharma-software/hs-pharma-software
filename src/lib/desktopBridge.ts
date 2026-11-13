@@ -24,6 +24,10 @@ export interface DesktopStatus {
   sellBlock?: string | null;
   server?: string;
   appVersion?: string;
+  /** A newer app version: downloading, or ready (installed when the app is closed). */
+  update?: { version: string; ready: boolean } | null;
+  /** The local copy of the business: complete (screens read it), or being copied (note). */
+  localCopy?: { ready: boolean; note: string | null } | null;
 }
 export interface OfflineSaleInput {
   lines: { productId: string; unit: "pack" | "loose"; qty: number; bonusQty: number; discountPct: number }[];
@@ -49,6 +53,8 @@ interface Bridge {
   offlineSignIn(a: { username: string; password: string }): Promise<Res<unknown>>;
   provision(a: { username: string; password: string; name?: string }): Promise<Res<{ deviceCode: string; tenantName: string; branchName: string }>>;
   query(a: { sql: string; params: unknown[] }): Promise<Res<Record<string, unknown>[]>>;
+  /** Online: the local copy's answer when it can give one (same login and branch, up to date), else { local: false }. */
+  read?(a: { sql: string; params: unknown[]; userId: string | null; branch: string }): Promise<Res<{ local: true; rows: Record<string, unknown>[] } | { local: false }>>;
   createSale(a: OfflineSaleInput): Promise<Res<OfflineSaleResult>>;
   syncNow(): Promise<Res<DesktopStatus>>;
   printText(text: string): Promise<Res<boolean>>;
