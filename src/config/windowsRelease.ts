@@ -10,15 +10,16 @@
  * then copy latest.yml LAST (installed apps update from it), and update these values. */
 export const WINDOWS_RELEASE = {
   appName: "MAVIN for Windows",
-  versionName: "0.2.4",
+  versionName: "0.2.5",
   /** Release date shown on the website. */
   releaseDate: "2026-11-13",
-  fileName: "MAVIN-Offline-Setup-0.2.4.exe",
-  sizeBytes: 112_674_709,
-  sha256: "2579E700302D82CDA7AC2BB3E0C94D6C16DFC2A80901BDCD5D6456237A89384F",
+  fileName: "MAVIN-Offline-Setup-0.2.5.exe",
+  sizeBytes: 112_679_186,
+  sha256: "D2C2D64594BFFB5BB6F52611190AD6028B6286BB085CC93A5B4DF6BF44683EA7",
   needs: "Windows 10 or 11 (64-bit)",
-  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.2.4.exe",
+  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.2.5.exe",
   notes: [
+    "Fast screens for every business: your data is copied to this computer once, then only changes sync every few seconds. Every business can also view its data offline.",
     "Updates itself: new versions download in the background (only the parts that changed) and install when you close the app.",
     "Billing continues when the internet is down and syncs when it returns.",
     "Offline now: credit sales on a customer's account, bonus, charges, bill discount and editing invoices.",
