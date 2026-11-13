@@ -1,8 +1,8 @@
 /** The MAVIN desktop app for Windows (MAVIN Offline) offered on www.mavin.pk.
- * The installer is too large for the website itself, so it is attached to a
- * GitHub Release of the repository; size and SHA-256 were taken from the
- * built file. For a new version: build it (desktop: npm run dist), publish a
- * new release with its own tag (never replace an old file), update these values. */
+ * The installer is too large for the website itself, so it is served from
+ * download.mavin.pk (the UpCloud server, /srv/downloads); size and SHA-256 from the
+ * built file. For a new version: build it (desktop: npm run dist), copy it to
+ * /srv/downloads/windows/ under a new name (never replace an old file), update these values. */
 export const WINDOWS_RELEASE = {
   appName: "MAVIN for Windows",
   versionName: "0.2.3",
@@ -12,7 +12,7 @@ export const WINDOWS_RELEASE = {
   sizeBytes: 112_271_613,
   sha256: "1F9AF86C161F0C6D56CD7504E8895F8E448739CEBDB94D0474EBFA1CA441EF9B",
   needs: "Windows 10 or 11 (64-bit)",
-  url: "https://github.com/hs-pharma-software/hs-pharma-software/releases/download/mavin-windows-v0.2.3/MAVIN-Offline-Setup-0.2.3.exe",
+  url: "https://download.mavin.pk/windows/MAVIN-Offline-Setup-0.2.3.exe",
   notes: [
     "Billing continues when the internet is down and syncs when it returns.",
     "Offline now: credit sales on a customer's account, bonus, charges, bill discount and editing invoices.",

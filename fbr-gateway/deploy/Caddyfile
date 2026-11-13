@@ -27,3 +27,29 @@ fbr-api.mavin.pk {
 		format json
 	}
 }
+
+# Downloads (the Windows installer): plain files from /srv/downloads, no folder
+# listing. Needs the DNS record download.mavin.pk -> this server's IP.
+# A new version is a new file name; old files are never replaced (cached as immutable).
+download.mavin.pk {
+	root * /srv/downloads
+	file_server
+	@installer path *.exe
+	header @installer {
+		Content-Type application/octet-stream
+		Content-Disposition attachment
+	}
+	header {
+		Cache-Control "public, max-age=31536000, immutable"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	log {
+		output file /var/log/caddy/download.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format json
+	}
+}
