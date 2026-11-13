@@ -3,6 +3,7 @@ import { withSeoMeta } from "@/config/seoMeta";
 import Link from "next/link";
 import { PRODUCT_GROUPS, SITE_PRODUCTS } from "@/config/siteProducts";
 import { CtaLink, Section, at, siteBase, siteContainer } from "@/components/site/chrome";
+import { WINDOWS_RELEASE, windowsSizeLabel } from "@/config/windowsRelease";
 
 export const metadata: Metadata = withSeoMeta("/", {
   title: { absolute: "MAVIN.pk — Business software for billing, stock and daily operations" },
@@ -34,7 +35,18 @@ export default async function SiteHome() {
             <div className="mt-8 flex flex-wrap gap-3">
               <CtaLink href={at(base, "/demo")}>Book a Demo</CtaLink>
               <CtaLink href={at(base, "/products")} variant="secondary">See the products</CtaLink>
+              <a
+                href={WINDOWS_RELEASE.url}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#0b2a6b] bg-white px-4 py-2.5 text-sm font-semibold text-[#0b2a6b] transition hover:bg-[#eef4fc] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1565c0]"
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4 fill-current"><path d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.8zm7.3 0H16V16l-8.7-1.2z" /></svg>
+                Download for Windows
+              </a>
             </div>
+            <p className="mt-3 text-xs text-slate-500">
+              Windows app {WINDOWS_RELEASE.versionName}, {windowsSizeLabel()}: billing keeps working without internet.{" "}
+              <Link href={at(base, "/download#windows")} className="text-[#1565c0] hover:underline">Install help</Link>
+            </p>
           </div>
           <ul className="grid grid-cols-2 gap-3" aria-label="Product families">
             {PRODUCT_GROUPS.map((g) => (

@@ -2,6 +2,14 @@ import type { Metadata } from "next";
 import { withSeoMeta } from "@/config/seoMeta";
 import { PageIntro, Section } from "@/components/site/chrome";
 import { ANDROID_RELEASE as R, androidReleaseDateLabel, androidSizeLabel } from "@/config/androidRelease";
+import { WINDOWS_RELEASE as W, windowsReleaseDateLabel, windowsSizeLabel } from "@/config/windowsRelease";
+
+const WINDOWS_INSTALL = [
+  ["Download", `Click "Download for Windows". The file is ${windowsSizeLabel()}.`],
+  ["Run the installer", `Open ${W.fileName} from your Downloads folder.`],
+  ["If Windows warns you", "Windows may show \"Windows protected your PC\" for new software. Click More info, check the file name, then click Run anyway."],
+  ["Sign in", "Sign in once with your MAVIN.pk login while online. After that the app also works offline. To update, install the new version over the old one: your data is kept."],
+] as const;
 
 export const metadata: Metadata = withSeoMeta("/download", { alternates: { canonical: "/download" } });
 
@@ -78,6 +86,51 @@ export default function DownloadPage() {
           <p className="break-all rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700">{R.sha256}</p>
         </div>
       </Section>
+
+      <div id="windows" className="scroll-mt-20 border-t border-slate-200">
+        <Section title={`${W.appName}`}>
+          <div className="grid max-w-4xl gap-6 rounded-2xl border border-slate-200 bg-white p-6 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="text-sm text-slate-600">
+                The MAVIN.pk desktop app for Windows. Billing keeps working when the internet is down, and everything syncs to your MAVIN.pk account when it returns.
+              </p>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm text-slate-600">
+                <dt className="text-slate-400">Version</dt><dd>{W.versionName}</dd>
+                <dt className="text-slate-400">Released</dt><dd>{windowsReleaseDateLabel()}</dd>
+                <dt className="text-slate-400">Size</dt><dd>{windowsSizeLabel()}</dd>
+                <dt className="text-slate-400">Needs</dt><dd>{W.needs}; internet for the first sign-in on each computer</dd>
+              </dl>
+            </div>
+            <a
+              href={W.url}
+              className="inline-flex min-h-12 items-center justify-center rounded-lg bg-[#0b2a6b] px-6 py-3 text-base font-semibold text-white hover:bg-[#1565c0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1565c0]"
+            >
+              Download for Windows
+            </a>
+          </div>
+        </Section>
+
+        <Section title="Install on Windows">
+          <ol className="grid max-w-4xl gap-3 sm:grid-cols-2">
+            {WINDOWS_INSTALL.map(([t, d], i) => (
+              <li key={t} className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <p className="font-semibold text-[#0b2a6b]">{i + 1}. {t}</p>
+                <p className="mt-1 text-slate-600">{d}</p>
+              </li>
+            ))}
+          </ol>
+        </Section>
+
+        <Section title={`What's new in ${W.versionName}`}>
+          <ul className="max-w-3xl list-disc space-y-1.5 pl-5 text-sm text-slate-600">
+            {W.notes.map((n) => <li key={n}>{n}</li>)}
+          </ul>
+          <div className="mt-4 max-w-3xl space-y-2 text-sm text-slate-600">
+            <p>{W.fileName}, {W.sizeBytes.toLocaleString("en-US")} bytes. SHA-256 of the file:</p>
+            <p className="break-all rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700">{W.sha256}</p>
+          </div>
+        </Section>
+      </div>
     </>
   );
 }
