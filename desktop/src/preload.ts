@@ -2,7 +2,7 @@
  * a fixed list of calls, plus connection/sync status updates. */
 import { contextBridge, ipcRenderer } from "electron";
 
-const CALLS = ["status", "request", "rememberSession", "offlineSignIn", "provision", "query", "read", "createSale", "syncNow", "printText"] as const;
+const CALLS = ["status", "request", "rememberSession", "offlineSignIn", "provision", "query", "read", "createSale", "moduleCall", "syncNow", "printText"] as const;
 
 contextBridge.exposeInMainWorld("mavinDesktop", {
   ...Object.fromEntries(CALLS.map((c) => [c, (arg?: unknown) => ipcRenderer.invoke(`mavin:${c}`, arg)])),

@@ -20,6 +20,8 @@ export interface Sql {
   execute(sql: string, args?: unknown[]): Promise<{ rows: Record<string, unknown>[]; rowsAffected: number }>;
   /** All statements in one transaction; rows affected per statement. */
   batch(statements: { sql: string; args?: unknown[] }[]): Promise<number[]>;
+  /** Statements one by one in one write transaction: all kept, or none if `fn` throws. */
+  transaction?<T>(fn: (tx: Pick<Sql, "execute">) => Promise<T>): Promise<T>;
 }
 
 /** The platform owner (Super Admin) or a distributor, as resolved from the session. */

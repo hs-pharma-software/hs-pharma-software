@@ -8,10 +8,11 @@ import { isTauriShell } from "@/lib/platform";
 import { restaurantContext } from "@/lib/restaurant";
 import { createDistStore, DistError, DIST_TYPE, type AtlVerifier } from "./store.ts";
 import { serverJson } from "@/lib/serverMode";
+import { offlineCapable } from "@/lib/offline/moduleCalls";
 
 export { DIST_TYPE };
 
-export const dist = createDistStore(
+export const dist = offlineCapable("dist", createDistStore(
   {
     select: dbSelect,
     async execute(sql, params) {
@@ -24,7 +25,7 @@ export const dist = createDistStore(
   },
   // Same session rules as the other modules (tenant + role from the signed-in user).
   restaurantContext
-);
+));
 
 export function errorText(e: unknown): string {
   return e instanceof DistError || e instanceof Error ? e.message : String(e);

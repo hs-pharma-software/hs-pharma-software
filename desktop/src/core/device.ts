@@ -13,6 +13,9 @@ import {
   type GrantPayload, type Operation, type PullCursor, type PullResponse, type PushResult, type SaleLine, type SalePayload, type SignedGrant,
 } from "../../../src/offline/protocol";
 import { allocateBatches } from "../../../src/lib/batchAllocation";
+import { CALL_MODULE_FOR_TYPE, CALL_SCHEMA_VERSION, checkCall, type CallModule, type CallOperation, type CallPayload } from "../../../src/offline/protocol";
+import { callContext, callSummary, idSource, jsonList, localDay, runCall, type CallDb } from "../../../src/offline/calls";
+import type { Mirror } from "./mirror";
 
 // ── Outside world ─────────────────────────────────────────────────────────
 
@@ -48,6 +51,8 @@ export interface SaleInput {
   customerPhone?: string | null;
   /** A customer of the business, from this computer's copy (needed for credit). */
   customerId?: string | null;
+  /** Cloth store: a saved custom size (measurements) from this computer's copy. */
+  measurementId?: string | null;
   /** cash (default): paid in full, tendered covers it. credit: `paid` received now, the rest owed. */
   method?: "cash" | "credit";
   paid?: number;
@@ -366,7 +371,7 @@ export class OfflineDevice {
     return { totals, method } as const;
   }
 
-  private queue(db: LocalDb, op: Operation, at: Date) {
+  private queue(db: LocalDb, op: Operation | CallOperation, at: Date) {
     const seq = Number(db.get<{ m: number }>(`SELECT COALESCE(MAX(seq), 0) AS m FROM outbox`)?.m ?? 0) + 1;
     db.run(`INSERT INTO outbox (op_id, seq, kind, entity_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`, op.opId, seq, op.kind, op.entityId, JSON.stringify(op), at.toISOString());
   }
@@ -391,7 +396,7 @@ export class OfflineDevice {
       const now = this.now();
       const sale: SalePayload = {
         saleId: randomUUID(), offlineRef: `${b.deviceCode}-${String(n).padStart(6, "0")}`, date: localDate(now), occurredAt: now.toISOString(), userId: user.id,
-        customerName: name, customerPhone: phone, customerId: input.customerId || null, lines, totals, payment: { method, amount: totals.paid },
+        customerName: name, customerPhone: phone, customerId: input.customerId || null, ...(input.measurementId ? { measurementId: input.measurementId } : {}), lines, totals, payment: { method, amount: totals.paid },
       };
       const problems = checkSale(sale);
       if (problems.length) throw new Error(`The sale did not pass its checks (${problems.join(", ")}). Nothing was saved.`);
@@ -402,6 +407,55 @@ export class OfflineDevice {
       this.queue(db, op, now);
       return { sale, receipt: receiptText(sale, this.grant()!, user.name) };
     });
+  }
+
+  /** A save in a business module (distribution, electronics) made offline:
+   * the module's own code runs on this login's local copy (the screens show
+   * it at once) and the save is queued for MAVIN.pk, which runs it again as
+   * this login with the same ids and clock. Refused there (stock gone, no
+   * permission ...): held for the owner to review, the copy is re-read. */
+  async moduleCall(copy: Mirror, module: CallModule, fn: string, args: unknown[]): Promise<{ result: unknown; offlineRef: string; callId: string }> {
+    const block = this.sellBlock();
+    if (block) throw new Error(block);
+    const { db, b } = this.need();
+    const g = this.grant()!;
+    const user = this.session!.user;
+    if (CALL_MODULE_FOR_TYPE[g.businessType] !== module) throw new Error("This business does not save that offline.");
+    const read = (sql: string, p: unknown[]) => { try { return copy.query(sql, p)[0] ?? null; } catch { return null; } };
+    const t = read(`SELECT denied_actions FROM tenants WHERE id = ?`, [b.tenantId]);
+    const u = read(`SELECT denied_actions FROM users WHERE id = ?`, [user.id]);
+    const ctx = callContext({
+      tenantId: b.tenantId, businessType: g.businessType, userId: user.id, userName: user.name, role: user.role === "owner" ? "owner" : "staff",
+      tenantDenied: jsonList(t?.denied_actions), userDenied: jsonList(u?.denied_actions),
+    });
+    const now = this.now();
+    const at = now.toISOString();
+    const day = localDay(now);
+    const ids = idSource([], randomUUID);
+    return copy.writeCall(async (cdb: CallDb) => {
+      const result = await runCall(cdb, ctx, { module, fn, args, at, day }, ids.next);
+      const s = callSummary(module, fn, result);
+      // Queued last: a save that failed above leaves nothing here or there.
+      return db.tx(() => {
+        const n = Number(meta.get(db, "receipt_seq") ?? 0) + 1;
+        meta.set(db, "receipt_seq", String(n));
+        const payload: CallPayload = {
+          callId: randomUUID(), offlineRef: `${b.deviceCode}-${String(n).padStart(6, "0")}`, module, fn, args: JSON.parse(JSON.stringify(args)) as unknown[],
+          ids: ids.used, at, day, userId: user.id, label: s.label, amount: s.amount,
+        };
+        const problems = checkCall(payload);
+        if (problems.length) throw new Error(`The save did not pass its checks (${problems.join(", ")}). Nothing was saved.`);
+        const op: CallOperation = { opId: randomUUID(), kind: "call", entityId: payload.callId, schemaVersion: CALL_SCHEMA_VERSION, dependsOn: [], occurredAt: at, userId: user.id, payload };
+        this.queue(db, op, now);
+        return { result, offlineRef: payload.offlineRef, callId: payload.callId };
+      });
+    });
+  }
+
+  /** Module saves this computer made that MAVIN.pk held or refused since `since` (the copy is then read again). */
+  refusedCallsSince(since: string): number {
+    const { db } = this.need();
+    return Number(db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM outbox WHERE kind = 'call' AND status IN ('held', 'rejected') AND acked_at >= ?`, since)?.n ?? 0);
   }
 
   /** Edits a saved invoice offline: the full new bill replaces the old one.
@@ -455,7 +509,7 @@ export class OfflineDevice {
       const now = this.now();
       const sale: SalePayload = {
         saleId: id, offlineRef, date, occurredAt: now.toISOString(), userId: user.id,
-        customerName: name, customerPhone: phone, customerId: input.customerId || null, lines, totals, payment: { method, amount: totals.paid }, edit,
+        customerName: name, customerPhone: phone, customerId: input.customerId || null, ...(input.measurementId ? { measurementId: input.measurementId } : {}), lines, totals, payment: { method, amount: totals.paid }, edit,
       };
       const problems = checkSale(sale);
       if (problems.length) throw new Error(`The edit did not pass its checks (${problems.join(", ")}). Nothing was saved.`);

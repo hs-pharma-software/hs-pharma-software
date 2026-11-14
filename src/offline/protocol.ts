@@ -6,6 +6,7 @@
  * happened"). The server applies each operation exactly once (op_id), never
  * reprices it, and records a stock exception instead of inventing stock. */
 import { createPublicKey, createPrivateKey, sign as edSign, verify as edVerify } from "node:crypto";
+import { callAllowed, type CallModule } from "./callList.ts";
 
 /** Bumped when the request/response shapes change incompatibly. */
 export const PROTOCOL_VERSION = 1;
@@ -16,8 +17,9 @@ export const SALE_SCHEMA_VERSIONS = [1, 2] as const;
 /** Modules a device can be allowed to run offline. Only cash sales exist in the pilot. */
 export const OFFLINE_MODULES = ["sale.cash"] as const;
 export type OfflineModule = (typeof OFFLINE_MODULES)[number];
-/** Business types whose sale screen the pilot reproduces (stock in batches, retail billing). */
-export const OFFLINE_BUSINESS_TYPES = ["retail_pharmacy", "medical_store", "general_store"] as const;
+/** Business types whose sale screen works offline (stock in batches, the shared retail invoice).
+ * Mobile shop handsets (IMEI) still need the internet; their accessories sell offline. */
+export const OFFLINE_BUSINESS_TYPES = ["retail_pharmacy", "medical_store", "general_store", "hospital_pharmacy", "mobile_shop", "cloth_store", "distributor", "electronics_solar"] as const;
 /** Offline allowance limits (hours). */
 export const MIN_OFFLINE_HOURS = 1;
 export const MAX_OFFLINE_HOURS = 14 * 24;
@@ -110,6 +112,8 @@ export interface SalePayload {
   customerPhone: string | null;
   /** A customer of the business (needed for credit). Version 2. */
   customerId?: string | null;
+  /** Cloth store: the customer's saved custom size (measurements) on the bill. Version 2. */
+  measurementId?: string | null;
   lines: SaleLine[];
   /** discountRs: the lines' discounts; billDiscountRs and charges: on the whole bill (version 2). */
   totals: { total: number; discountRs: number; taxRs: number; billDiscountRs?: number; charges?: number; payable: number; paid: number; balance: number; tendered: number; change: number };
@@ -182,6 +186,7 @@ export function checkSale(p: unknown): string[] {
   // An edit of an invoice made online has no offline receipt number.
   if (!(ed != null && s.offlineRef == null) && (!isStr(s.offlineRef, 40) || !/^[A-Z0-9]{3,8}-\d{6,}$/.test(s.offlineRef))) e.push("offlineRef");
   if (s.customerId != null && !isStr(s.customerId, 64)) e.push("customerId");
+  if (s.measurementId != null && !isStr(s.measurementId, 64)) e.push("measurementId");
   if (!isStr(s.date, 10) || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) e.push("date");
   if (!isStr(s.occurredAt, 40) || Number.isNaN(Date.parse(s.occurredAt))) e.push("occurredAt");
   if (!isStr(s.userId)) e.push("userId");
@@ -242,7 +247,7 @@ export function checkOperation(o: unknown): string[] {
   const se = checkSale(op.payload);
   // Only version 2 has the new fields; an edit is a sale.update and says what it changes.
   const p = op.payload;
-  if (op.schemaVersion === 1 && (p?.payment?.method !== "cash" || p.edit != null || p.customerId != null || p.totals?.billDiscountRs || p.totals?.charges || p.lines?.some((l) => l.bonusPacks))) se.push("schemaVersion");
+  if (op.schemaVersion === 1 && (p?.payment?.method !== "cash" || p.edit != null || p.customerId != null || p.measurementId != null || p.totals?.billDiscountRs || p.totals?.charges || p.lines?.some((l) => l.bonusPacks))) se.push("schemaVersion");
   if ((op.kind === "sale.update") !== (p?.edit != null)) se.push("edit");
   if (op.entityId !== op.payload?.saleId) se.push("entityId");
   if (op.userId !== op.payload?.userId) se.push("userId mismatch");
@@ -280,4 +285,77 @@ export interface PushResult {
   exceptions?: number;
   appliedSeq?: number;
   error?: string;
+}
+
+// ── Module call operation (Phase 2: distribution, electronics) ───────────
+
+/** Version of the call operation payload. */
+export const CALL_SCHEMA_VERSION = 1;
+export { OFFLINE_CALLS, CALL_MODULE_FOR_TYPE, callAllowed, type CallModule } from "./callList.ts";
+const MAX_CALL_BYTES = 256_000;
+
+export interface CallPayload {
+  callId: string;
+  /** Receipt number on this computer: <device code>-<6 digits>, as offline sales. */
+  offlineRef: string;
+  module: CallModule;
+  fn: string;
+  args: unknown[];
+  /** The ids the save created on this computer, in order: MAVIN.pk uses the same (the copy then matches). */
+  ids: string[];
+  /** The save's clock (ISO): its dates and times on both sides. */
+  at: string;
+  /** The business day on the computer at that moment (yyyy-mm-dd): "today" for the save on both sides. */
+  day: string;
+  userId: string;
+  /** What the screens show for it (e.g. "Sale invoice", total). */
+  label: string;
+  amount: number | null;
+}
+
+export interface CallOperation {
+  opId: string;
+  kind: "call";
+  entityId: string;
+  schemaVersion: number;
+  dependsOn: string[];
+  occurredAt: string;
+  userId: string;
+  payload: CallPayload;
+}
+export type AnyOperation = Operation | CallOperation;
+
+export function checkCall(p: unknown): string[] {
+  const c = p as CallPayload;
+  if (!c || typeof c !== "object") return ["payload missing"];
+  const e: string[] = [];
+  if (!isStr(c.callId) || !ID.test(c.callId)) e.push("callId");
+  if (!isStr(c.offlineRef, 40) || !/^[A-Z0-9]{3,8}-\d{6,}$/.test(c.offlineRef)) e.push("offlineRef");
+  if (!callAllowed(c.module, c.fn)) e.push("fn");
+  if (!Array.isArray(c.args) || c.args.length > 4) e.push("args");
+  if (!Array.isArray(c.ids) || c.ids.length > 2000 || c.ids.some((x) => !isStr(x, 64) || !ID.test(x)) || new Set(c.ids).size !== c.ids.length) e.push("ids");
+  if (!isStr(c.at, 40) || Number.isNaN(Date.parse(c.at))) e.push("at");
+  if (!isStr(c.day, 10) || !/^\d{4}-\d{2}-\d{2}$/.test(c.day)) e.push("day");
+  if (!isStr(c.userId)) e.push("userId");
+  if (typeof c.label !== "string" || c.label.length > 80) e.push("label");
+  if (c.amount !== null && !isNum(c.amount)) e.push("amount");
+  try { if (JSON.stringify(c.args).length > MAX_CALL_BYTES) e.push("args size"); } catch { e.push("args"); }
+  return e;
+}
+
+export function checkCallOperation(o: unknown): string[] {
+  const op = o as CallOperation;
+  if (!op || typeof op !== "object") return ["operation missing"];
+  const e: string[] = [];
+  if (!isStr(op.opId) || !ID.test(op.opId)) e.push("opId");
+  if (op.kind !== "call") e.push("kind");
+  if (op.schemaVersion !== CALL_SCHEMA_VERSION) e.push("schemaVersion");
+  if (!Array.isArray(op.dependsOn) || op.dependsOn.some((d) => !isStr(d))) e.push("dependsOn");
+  if (!isStr(op.occurredAt, 40)) e.push("occurredAt");
+  if (!isStr(op.userId)) e.push("userId");
+  if (e.length) return e;
+  const ce = checkCall(op.payload);
+  if (op.entityId !== op.payload?.callId) ce.push("entityId");
+  if (op.userId !== op.payload?.userId) ce.push("userId mismatch");
+  return ce;
 }

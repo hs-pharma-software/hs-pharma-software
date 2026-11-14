@@ -17,6 +17,24 @@ export function sqlForServer(): Sql {
       const rs = await db.batch(statements.map((s) => ({ sql: s.sql, args: (s.args ?? []) as never[] })), "write");
       return rs.map((r) => r.rowsAffected);
     },
+    async transaction(fn) {
+      const tx = await db.transaction("write");
+      try {
+        const out = await fn({
+          async execute(sql, args = []) {
+            const r = await tx.execute({ sql, args: args as never[] });
+            return { rows: r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, plain(row[i])]))), rowsAffected: r.rowsAffected };
+          },
+        });
+        await tx.commit();
+        return out;
+      } catch (e) {
+        await tx.rollback().catch(() => undefined);
+        throw e;
+      } finally {
+        tx.close();
+      }
+    },
   };
 }
 

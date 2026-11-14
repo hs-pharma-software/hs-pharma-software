@@ -5,7 +5,7 @@
  * production database, no real money. */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,6 +19,8 @@ import * as off from "@/server/offline/service";
 import { signGrant, verifyGrant, type SignedGrant } from "@/offline/protocol";
 import { OfflineDevice, TransportError, type Transport } from "../../desktop/src/core/device.ts";
 import { Mirror, readOnlySql } from "../../desktop/src/core/mirror.ts";
+import { createDistStore } from "../../src/lib/dist/store.ts";
+import { createElectricStore } from "../../src/lib/electric/store.ts";
 
 const keys = generateKeyPairSync("ed25519");
 const PUB = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
@@ -341,7 +343,7 @@ test("businesses and branches stay apart", async () => {
   // Other business types are not offered offline billing.
   tenant("t3", "lab");
   user("u3", "t3", "lab1");
-  await assert.rejects(off.provisionDevice(sql, LOGINS.lab1.caller, {}), /pharmacies, medical stores and general stores only/);
+  await assert.rejects(off.provisionDevice(sql, LOGINS.lab1.caller, {}), /built for pharmacies/);
   // Without the Super Admin's switch: no device.
   tenant("t4", "general_store", []);
   user("u4", "t4", "gs1");
@@ -829,4 +831,163 @@ test("Super Admin: more than one device per branch; block and unblock; remove an
   const pulled = await d.sync({ manual: true });
   assert.match(String(pulled.error), /removed by MAVIN\.pk/);
   assert.ok((await off.provisionDevice(sql, LOGINS.owner1.caller, { name: "Counter 3" })).deviceId, "the freed place can be used");
+});
+
+test("retail shops sell offline too: a cloth store bill keeps the customer's custom size; a foreign size is never linked", async () => {
+  run(`UPDATE tenants SET business_type = 'cloth_store' WHERE id = 't1'`);
+  serverRow("cloth_measurements", { id: "m1", tenant_id: "t1", customer_name: "Bilal", garment: "Kameez" });
+  serverRow("cloth_measurements", { id: "m2", tenant_id: "t2", customer_name: "Other", garment: "Kameez" });
+  const d = await provisioned();
+  assert.equal(d.status().businessType, "cloth_store");
+  net.down = true;
+  const a = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 1 }], measurementId: "m1", tendered: 100 }).sale;
+  const b = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 1 }], measurementId: "m2", tendered: 100 }).sale;
+  assert.equal(a.measurementId, "m1");
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).applied, 2);
+  assert.equal(inv(a.saleId).measurement_id, "m1");
+  assert.equal(inv(b.saleId).measurement_id, null, "another business's size is not linked");
+});
+
+test("hospital pharmacy and mobile shop can set up an offline device; restaurants cannot yet", async () => {
+  for (const type of ["hospital_pharmacy", "mobile_shop"]) {
+    run(`UPDATE tenants SET business_type = ? WHERE id = 't1'`, type);
+    root = mkdtempSync(join(tmpdir(), "mavin-offline-"));
+    const d = newDevice();
+    await d.provision("owner1", "pass-1234");
+    assert.equal(d.status().businessType, type);
+    d.close();
+    run(`UPDATE offline_devices SET status = 'revoked', deleted_at = ? WHERE tenant_id = 't1'`, T);
+  }
+  run(`UPDATE tenants SET business_type = 'restaurant' WHERE id = 't1'`);
+  root = mkdtempSync(join(tmpdir(), "mavin-offline-"));
+  await assert.rejects(newDevice().provision("owner1", "pass-1234"), /built for pharmacies/);
+});
+
+// ── Phase 2: distribution / electronics saves made offline ───────────────
+
+/** The distributor module on the server's database, as the owner of t1. */
+function serverDist() {
+  const port = {
+    select: async <R,>(q: string, p: unknown[] = []) => (await sql.execute(q, p)).rows as R[],
+    execute: async (q: string, p: unknown[] = []) => ({ changes: (await sql.execute(q, p)).rowsAffected }),
+    outbox: async () => undefined,
+    newId: () => randomUUID(),
+    now: () => new Date(clock),
+  };
+  return createDistStore(port, () => ({ tenantId: "t1", businessType: "distributor", userId: "u1", userName: "Owner", role: "owner", deniedActions: [] }));
+}
+/** A complete local copy of t1 as the desktop would have it (every table it has, the server's rows of t1). */
+function localCopyOfT1(): Mirror {
+  const m = new Mirror(join(root, "copy", "copy.db"), SCHEMA_SQL);
+  mirrors.push(m);
+  const tables = (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'offline_%'`).all() as { name: string }[]).map((r) => r.name);
+  const have = m.tableNames();
+  for (const t of tables) {
+    if (!have.has(t)) continue;
+    const cols = (db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name);
+    const key = t === "settings" ? "key" : "id";
+    if (!cols.includes(key)) continue;
+    const where = t === "tenants" ? `WHERE id = 't1'` : cols.includes("tenant_id") ? `WHERE tenant_id = 't1'` : t === "settings" ? "" : null;
+    if (where === null) continue;
+    m.applyChanges({ [t]: all(`SELECT * FROM ${t} ${where}`) }, {}, (x) => (x === "settings" ? "key" : "id"));
+  }
+  m.setMeta("replica_ready", "1");
+  return m;
+}
+
+test("distributor offline: a bill made on the local copy is booked on MAVIN.pk with the same ids; stock taken once", async () => {
+  run(`UPDATE tenants SET business_type = 'distributor' WHERE id = 't1'`);
+  const s = serverDist();
+  await s.setup("general");
+  const co = await s.saveCompany({ code: "CO", name: "Pak Foods" });
+  const prod = await s.saveProduct({ company_id: co.id, code: "P1", name: "Rice 5kg", trade_price: 1000, cost: 800, sales_tax_rate: 0, openingQty: 50 });
+  const cust = await s.createCustomer({ business_name: "Bilal Store", owner_name: "Bilal", mobile: "03001234567", address: "Lahore" });
+  const d = await provisioned();
+  assert.equal(d.status().businessType, "distributor");
+  const copy = localCopyOfT1();
+  net.down = true;
+  const r = await d.moduleCall(copy, "dist", "createSale", [{ customerId: cust.id, lines: [{ productId: prod.id, qty: 5 }] }]);
+  const doc = (r.result as { doc: { id: string; total: number } }).doc;
+  assert.match(r.offlineRef, /^D[0-9A-F]{4}-000001$/);
+  assert.equal(Number(copy.query(`SELECT stock FROM dist_products WHERE id = ?`, [prod.id])[0].stock), 45, "the copy shows the sale at once");
+  assert.equal(all(`SELECT * FROM dist_docs WHERE id = ?`, doc.id).length, 0, "nothing on the server yet");
+  assert.equal(d.status().provisioned && d.status().pending, 1);
+  net.down = false;
+  const rep = await d.sync({ manual: true });
+  assert.equal(rep.error, null);
+  assert.equal(rep.applied, 1);
+  const srv = one(`SELECT * FROM dist_docs WHERE id = ?`, doc.id);
+  assert.equal(Number(srv.total), Number(doc.total));
+  assert.deepEqual(all(`SELECT id FROM dist_doc_items WHERE doc_id = ? ORDER BY id`, doc.id).map((x) => x.id), copy.query(`SELECT id FROM dist_doc_items WHERE doc_id = ? ORDER BY id`, [doc.id]).map((x) => x.id), "same rows, same ids");
+  assert.equal((await s.getProduct(prod.id)).stock, 45);
+  // The same operation again (a lost reply): one bill.
+  assert.equal((await d.sync({ manual: true })).applied, 0);
+  assert.equal(all(`SELECT * FROM dist_docs WHERE tenant_id = 't1' AND doc_type = (SELECT doc_type FROM dist_docs WHERE id = ?)`, doc.id).length, 1);
+});
+
+test("distributor offline: stock sold online meanwhile, the offline bill is held with nothing half-saved; the owner applies it later", async () => {
+  run(`UPDATE tenants SET business_type = 'distributor' WHERE id = 't1'`);
+  const s = serverDist();
+  await s.setup("general");
+  const co = await s.saveCompany({ code: "CO", name: "Pak Foods" });
+  const prod = await s.saveProduct({ company_id: co.id, code: "P1", name: "Rice 5kg", trade_price: 1000, cost: 800, sales_tax_rate: 0, openingQty: 10 });
+  const cust = await s.createCustomer({ business_name: "Bilal Store", owner_name: "Bilal", mobile: "03001234567", address: "Lahore" });
+  const d = await provisioned();
+  const copy = localCopyOfT1();
+  net.down = true;
+  const r = await d.moduleCall(copy, "dist", "createSale", [{ customerId: cust.id, lines: [{ productId: prod.id, qty: 8 }] }]);
+  const docId = (r.result as { doc: { id: string } }).doc.id;
+  // Online, someone sells 5 of the 10 meanwhile.
+  await s.createSale({ customerId: cust.id, lines: [{ productId: prod.id, qty: 5 }] });
+  net.down = false;
+  const rep = await d.sync({ manual: true });
+  assert.equal(rep.held, 1);
+  assert.equal(all(`SELECT * FROM dist_docs WHERE id = ?`, docId).length, 0, "not booked");
+  assert.equal(all(`SELECT * FROM dist_doc_items WHERE doc_id = ?`, docId).length, 0, "no half-saved lines");
+  assert.equal((await s.getProduct(prod.id)).stock, 5, "stock untouched by the held bill");
+  const held = await off.listHeld(sql, LOGINS.owner1.caller, "t1");
+  assert.equal(held.length, 1);
+  assert.equal(held[0].kind, "call");
+  assert.match(String(held[0].reason), /could not save/);
+  // Stock arrives; the owner applies it.
+  run(`UPDATE dist_products SET stock = stock + 10 WHERE id = ?`, prod.id);
+  const res = await off.decideHeld(sql, LOGINS.owner1.caller, held[0].opId, true, null);
+  assert.equal(res.status, "applied");
+  assert.equal(all(`SELECT * FROM dist_docs WHERE id = ?`, docId).length, 1);
+});
+
+test("a module save that is not on the offline list, or for another business type, is refused", async () => {
+  const d = await provisioned();
+  const copy = localCopyOfT1();
+  await assert.rejects(d.moduleCall(copy, "dist", "createSale", [{}]), /does not save that offline/);
+  run(`UPDATE tenants SET business_type = 'distributor' WHERE id = 't1'`);
+  // A forged operation for a save not on the list never runs.
+  const bad = { opId: randomUUID(), kind: "call", entityId: "x".repeat(10), schemaVersion: 1, dependsOn: [], occurredAt: T, userId: "u1",
+    payload: { callId: "x".repeat(10), offlineRef: "DAAAA-000001", module: "dist", fn: "deleteCustomer", args: [], ids: [], at: T, day: T.slice(0, 10), userId: "u1", label: "x", amount: null } };
+  const dev = one(`SELECT * FROM offline_devices WHERE tenant_id = 't1'`);
+  const [res] = await off.push(sql, dev as never, [bad]);
+  assert.equal(res.status, "rejected");
+  assert.match(String(res.error), /fn/);
+});
+
+test("electronics store offline: a cash bill with a serial is booked on MAVIN.pk the same way", async () => {
+  run(`UPDATE tenants SET business_type = 'electronics_solar' WHERE id = 't1'`);
+  const port = {
+    select: async <R,>(q: string, p: unknown[] = []) => (await sql.execute(q, p)).rows as R[],
+    execute: async (q: string, p: unknown[] = []) => ({ changes: (await sql.execute(q, p)).rowsAffected }),
+    outbox: async () => undefined, newId: () => randomUUID(), now: () => new Date(clock),
+  };
+  const es = createElectricStore(port, () => ({ tenantId: "t1", businessType: "electronics_solar", userId: "u1", userName: "Owner", role: "owner", deniedActions: [] }));
+  const inv = await es.saveProduct({ sku: "INV-5K", name: "Solar Inverter 5kW", product_type: "inverter", unit: "pcs", cost: 150000, price: 185000, tax_rate: 0, opening: { qty: 2, unitCost: 150000, serials: ["SN-1", "SN-2"] } });
+  const d = await provisioned();
+  const copy = localCopyOfT1();
+  net.down = true;
+  const r = await d.moduleCall(copy, "electric", "createSale", [{ customerName: "Walk-in", lines: [{ productId: inv.id, qty: 1, serials: ["SN-2"] }], payments: [{ method: "cash", amount: 185000 }] }]);
+  const docId = (r.result as { doc: { id: string } }).doc.id;
+  net.down = false;
+  assert.equal((await d.sync({ manual: true })).applied, 1);
+  assert.equal(Number(one(`SELECT total FROM es_docs WHERE id = ?`, docId).total), 185000);
+  assert.equal(String(one(`SELECT status FROM es_serials WHERE serial = 'SN-2' AND tenant_id = 't1'`).status), "sold");
+  assert.equal((await es.getProduct(inv.id))!.stock, 1);
 });

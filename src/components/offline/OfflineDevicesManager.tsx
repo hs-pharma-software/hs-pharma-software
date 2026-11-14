@@ -10,7 +10,7 @@ interface Device {
   pendingOnDevice: number | null; failedOnDevice: number | null; held: number; rejected: number; openExceptions: number; appVersion: string | null;
 }
 interface Exception { id: string; kind: string; qty: number; detail: string; status: string; invoiceNo: number | null; offlineRef: string | null; deviceName: string | null; resolution: string | null; createdAt: string }
-interface Held { opId: string; offlineRef: string; date: string; payable: number; lines: number; receivedAt: string }
+interface Held { opId: string; kind?: string; label?: string; offlineRef: string; date: string; payable: number; lines: number; receivedAt: string; reason?: string | null }
 
 const call = <T,>(action: string, body: Record<string, unknown> = {}) => serverJson<{ result: T }>("/api/offline/", { action, ...body }).then((r) => r.result);
 const when = (s: string | null) => (s ? new Date(s).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }) : "never");
@@ -43,7 +43,7 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
   return (
     <div className="space-y-4 text-sm">
       {msg && <p className="rounded-lg bg-neutral-100 px-3 py-2 text-neutral-800">{msg}</p>}
-      {!d.supportedType && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline billing is built for pharmacies, medical stores and general stores only. This business uses MAVIN.pk online.</p>}
+      {!d.supportedType && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline billing is built for pharmacies (retail, medical store, hospital), general, mobile and cloth stores, distributors and electronics / solar stores so far. This business uses MAVIN.pk online; its screens still read from the computer&apos;s own copy.</p>}
       {d.supportedType && !d.allowed && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline Desktop is off for this business{superAdmin ? ": switch it on under Permissions > Offline Desktop." : ". Ask MAVIN.pk to switch it on."}</p>}
       <p className="text-neutral-600">
         Offline checkout computers: {d.perBranch === 1 ? "one per branch" : `up to ${d.perBranch} per branch`}. It sells from its own copy of the branch&apos;s stock, so sales made online or on other counters
@@ -125,7 +125,7 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
           <ul className="divide-y divide-neutral-100">
             {held.map((h) => (
               <li key={h.opId} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span>{h.offlineRef} · {h.date} · Rs {h.payable.toFixed(2)} · {h.lines} lines</span>
+                <span>{h.kind === "call" ? `${h.label} · ` : ""}{h.offlineRef} · {h.date} · Rs {h.payable.toFixed(2)}{h.kind === "call" ? "" : ` · ${h.lines} lines`}{h.reason ? <span className="block text-xs text-neutral-500">{h.reason}</span> : null}</span>
                 <span className="flex gap-2">
                   <Button variant="primary" onClick={() => void act(() => call("decideHeld", { id: h.opId, approve: true }), "Put into the books.")}>Accept sale</Button>
                   <Button onClick={() => { const n = prompt("Why is this sale not accepted?"); if (n) void act(() => call("decideHeld", { id: h.opId, approve: false, note: n }), "Kept out of the books."); }}>Keep out</Button>

@@ -193,6 +193,30 @@ export class Mirror {
     this.setMeta("history_at", now.toISOString());
   }
 
+  /** A save made offline in a business module (Phase 2): the module's code
+   * reads and writes this copy in one transaction, so the screens show it at
+   * once; kept only if `fn` finishes (it queues the save for MAVIN.pk last).
+   * MAVIN.pk makes the same rows (same ids), which then replace these. */
+  async writeCall<T>(fn: (db: { select<R = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<R[]>; execute(sql: string, params?: unknown[]): Promise<{ changes: number }> }) => Promise<T>): Promise<T> {
+    const args = (p: unknown[] = []) => p.map((v) => (v === undefined ? null : typeof v === "boolean" ? (v ? 1 : 0) : v)) as never[];
+    const db = {
+      select: async <R,>(sql: string, params: unknown[] = []) => (this.rw.prepare(sql).all(...args(params)) as R[]).map((r) => ({ ...r }) as R),
+      execute: async (sql: string, params: unknown[] = []) => {
+        if (/^\s*(ATTACH|DETACH|PRAGMA|VACUUM|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE|DROP|ALTER|CREATE)\b/i.test(sql)) throw new Error("Not allowed offline.");
+        return { changes: Number(this.rw.prepare(sql).run(...args(params)).changes) };
+      },
+    };
+    this.rw.exec("BEGIN IMMEDIATE");
+    try {
+      const out = await fn(db);
+      this.rw.exec("COMMIT");
+      return out;
+    } catch (e) {
+      this.rw.exec("ROLLBACK");
+      throw e;
+    }
+  }
+
   private tx(fn: () => void) {
     this.rw.exec("BEGIN IMMEDIATE");
     try {

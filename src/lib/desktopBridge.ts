@@ -35,6 +35,8 @@ export interface OfflineSaleInput {
   customerPhone: string | null;
   /** A customer of the business (needed for credit). */
   customerId: string | null;
+  /** Cloth store: the customer's saved custom size on the bill. */
+  measurementId?: string | null;
   /** cash: paid in full; credit: `paid` received now, the rest on the customer's account. */
   method: "cash" | "credit";
   paid: number;
@@ -56,6 +58,8 @@ interface Bridge {
   /** Online: the local copy's answer when it can give one (same login and branch, up to date), else { local: false }. */
   read?(a: { sql: string; params: unknown[]; userId: string | null; branch: string }): Promise<Res<{ local: true; rows: Record<string, unknown>[] } | { local: false }>>;
   createSale(a: OfflineSaleInput): Promise<Res<OfflineSaleResult>>;
+  /** Offline: a distribution / electronics save made on this computer's copy (desktop 0.3+). */
+  moduleCall?(a: { module: string; fn: string; args: unknown[] }): Promise<Res<{ result: unknown; offlineRef: string; callId: string }>>;
   syncNow(): Promise<Res<DesktopStatus>>;
   printText(text: string): Promise<Res<boolean>>;
   onStatus(cb: (s: DesktopStatus) => void): () => void;
@@ -105,7 +109,7 @@ export function desktopOffline(): boolean {
 /** Thrown for a change that needs the internet while the desktop is offline. */
 export class NeedsInternetError extends Error {
   constructor(what = "This") {
-    super(`${what} needs an internet connection. Offline, only cash sales are saved on this computer.`);
+    super(`${what} needs an internet connection. Offline, sales (and distribution / electronics bills, bookings and payments) are saved on this computer.`);
     this.name = "NeedsInternetError";
   }
 }

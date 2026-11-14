@@ -17,11 +17,12 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import type { Sql } from "../subSupers";
 import { callerCan, type Caller } from "../sqlPolicy";
 import { HttpError } from "../db";
+import { callContext, callSummary, idSource, jsonList as callList, runCall, type CallDb } from "@/offline/calls";
 import { tenantAllows } from "@/lib/tenantFeatures";
 import {
   MAX_OFFLINE_HOURS, MIN_OFFLINE_HOURS, OFFLINE_BUSINESS_TYPES, OFFLINE_MODULES, PROTOCOL_VERSION, STOCK_EPS,
-  checkOperation, signGrant,
-  type GrantPayload, type GrantUser, type Operation, type PullCursor, type PullResponse, type PushResult, type SalePayload, type SignedGrant,
+  CALL_MODULE_FOR_TYPE, checkCallOperation, checkOperation, signGrant,
+  type AnyOperation, type CallOperation, type GrantPayload, type GrantUser, type Operation, type PullCursor, type PullResponse, type PushResult, type SalePayload, type SignedGrant,
 } from "@/offline/protocol";
 
 const iso = () => new Date().toISOString();
@@ -68,7 +69,7 @@ export async function provisionDevice(sql: Sql, caller: Caller, input: { branchI
   const tenantId = caller.tenantId;
   const t = await tenantRow(sql, tenantId);
   if (!offlineAllowed(t)) throw new HttpError(403, "Offline desktop is not enabled for your business. Ask MAVIN.pk.");
-  if (!(OFFLINE_BUSINESS_TYPES as readonly string[]).includes(String(t.business_type))) throw new HttpError(409, "Offline billing is built for pharmacies, medical stores and general stores only. Use MAVIN.pk online.");
+  if (!(OFFLINE_BUSINESS_TYPES as readonly string[]).includes(String(t.business_type))) throw new HttpError(409, "Offline billing is built for pharmacies (retail, medical store, hospital), general, mobile and cloth stores, distributors and electronics / solar stores so far. Use MAVIN.pk online.");
   const branchId = typeof input.branchId === "string" && input.branchId ? input.branchId : `main-${tenantId}`;
   const b = (await sql.execute(`SELECT id, name, status FROM branches WHERE id = ? AND tenant_id = ?`, [branchId, tenantId])).rows[0];
   const branchName = b ? String(b.name) : branchId === `main-${tenantId}` ? "Main branch" : null;
@@ -326,14 +327,15 @@ export async function push(sql: Sql, d: Device, ops: unknown, status?: { pending
     const opId = typeof (raw as Operation)?.opId === "string" ? (raw as Operation).opId : "";
     const prev = opId ? await storedResult(sql, d, opId) : null;
     if (prev) { results.push(prev); continue; }
-    const problems = checkOperation(raw);
+    const isCall = (raw as AnyOperation)?.kind === "call";
+    const problems = isCall ? checkCallOperation(raw) : checkOperation(raw);
     if (problems.length) { results.push({ opId, status: "rejected", error: `Invalid operation: ${problems.slice(0, 5).join(", ")}` }); continue; }
-    const op = raw as Operation;
+    const op = raw as AnyOperation;
     // Dependencies first (the device sends in order; a missing one waits).
     const missingDep = [];
     for (const dep of op.dependsOn) if (!(await sql.execute(`SELECT 1 FROM offline_ops WHERE op_id = ? AND device_id = ? AND status IN ('applied', 'conflict', 'held')`, [dep, d.id])).rows[0]) missingDep.push(dep);
     if (missingDep.length) { results.push({ opId, status: "rejected", error: `Waiting for earlier operation ${missingDep[0]}` }); continue; }
-    results.push(!usable ? await holdOp(sql, d, op) : op.kind === "sale.update" ? await applyEdit(sql, d, op) : await applySale(sql, d, op));
+    results.push(!usable ? await holdOp(sql, d, op) : op.kind === "call" ? await applyCall(sql, d, op) : op.kind === "sale.update" ? await applyEdit(sql, d, op) : await applySale(sql, d, op));
   }
   await touch(sql, d, status, false);
   return results;
@@ -348,7 +350,7 @@ async function storedResult(sql: Sql, d: Device, opId: string): Promise<PushResu
 }
 
 /** Kept on the server, not in the books, for the owner to put in or keep out (the sale is never lost). */
-async function holdOp(sql: Sql, d: Device, op: Operation, reason = "This device was turned off. The sale is kept on the server for the owner to review."): Promise<PushResult> {
+async function holdOp(sql: Sql, d: Device, op: AnyOperation, reason = "This device was turned off. The sale is kept on the server for the owner to review."): Promise<PushResult> {
   const result: PushResult = { opId: op.opId, status: "held", error: reason };
   await sql.execute(
     `INSERT INTO offline_ops (op_id, tenant_id, branch_id, device_id, user_id, kind, entity_id, schema_version, depends_on, payload, occurred_at, received_at, status, result, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'held', ?, ?)
@@ -359,7 +361,7 @@ async function holdOp(sql: Sql, d: Device, op: Operation, reason = "This device 
   return (await storedResult(sql, d, op.opId)) ?? result;
 }
 
-const reject = async (sql: Sql, d: Device, op: Operation, error: string): Promise<PushResult> => {
+const reject = async (sql: Sql, d: Device, op: AnyOperation, error: string): Promise<PushResult> => {
   const result: PushResult = { opId: op.opId, status: "rejected", error };
   await sql.execute(
     `INSERT INTO offline_ops (op_id, tenant_id, branch_id, device_id, user_id, kind, entity_id, schema_version, depends_on, payload, occurred_at, received_at, status, result, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rejected', ?, ?) ON CONFLICT(op_id) DO NOTHING`,
@@ -457,7 +459,7 @@ const exceptionStmt = (d: Device, op: Operation, x: Shortfall, detail: string, n
 });
 
 /** The operation record (primary key = exactly once; a concurrent duplicate fails the whole batch). */
-function opStmt(d: Device, op: Operation, status: PushResult["status"], now: string, decidedBy: string | null): Stmt {
+function opStmt(d: Device, op: AnyOperation, status: PushResult["status"], now: string, decidedBy: string | null): Stmt {
   return {
     sql: `INSERT INTO offline_ops (op_id, tenant_id, branch_id, device_id, user_id, kind, entity_id, schema_version, depends_on, payload, occurred_at, received_at, status, result, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)${decidedBy ? ` ON CONFLICT(op_id) DO UPDATE SET status = excluded.status, result = excluded.result, error = NULL, decided_by = excluded.decided_by, decided_at = excluded.decided_at WHERE offline_ops.status = 'held'` : ""}`,
     args: [op.opId, d.tenant_id, d.branch_id, d.id, op.userId, op.kind, op.entityId, op.schemaVersion, JSON.stringify(op.dependsOn), JSON.stringify(op.payload), op.occurredAt, now, status, JSON.stringify({ opId: op.opId, status }), decidedBy, decidedBy ? now : null],
@@ -500,11 +502,15 @@ async function finish(sql: Sql, d: Device, op: Operation, stmts: Stmt[], firstTa
   return final;
 }
 
+/** A custom size (cloth store) of this business, or nothing: one from elsewhere is never linked. Takes (id, tenant). */
+const MEASUREMENT = `(SELECT id FROM cloth_measurements WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL)`;
+
 /** The invoice's header fields from the sale (as the online invoice form saves them:
  * discount_rs is the bill discount; line discounts stay on the lines). */
 function headerValues(s: SalePayload) {
   const t = s.totals;
   return {
+    measurement_id: s.measurementId || null,
     inv_on: s.payment.method, customer_id: s.customerId || null, customer_name: s.customerName?.trim() || null, customer_phone: s.customerPhone?.trim() || null,
     total: t.total, charges: t.charges ?? 0, discount_rs: t.billDiscountRs ?? 0, payable: t.payable, paid: t.paid, balance: t.balance,
   };
@@ -530,15 +536,61 @@ export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: s
     // The invoice: next number of the business, the device's receipt number kept alongside.
     {
       sql: `INSERT INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_id, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
-              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, created_at, updated_at)
-            VALUES (?, (SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM invoices WHERE tenant_id = ? AND COALESCE(is_quotation, 0) = 0), ?, ?, 'retail', ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)`,
-      args: [s.saleId, T, s.date, h.inv_on, `Offline sale ${s.offlineRef}`, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, T, B, s.offlineRef, now, now],
+              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, measurement_id, created_at, updated_at)
+            VALUES (?, (SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM invoices WHERE tenant_id = ? AND COALESCE(is_quotation, 0) = 0), ?, ?, 'retail', ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, ?, ?, ?, ${MEASUREMENT}, ?, ?)`,
+      args: [s.saleId, T, s.date, h.inv_on, `Offline sale ${s.offlineRef}`, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, T, B, s.offlineRef, h.measurement_id, T, now, now],
     },
     ...lines.items,
   ];
   const firstTake = stmts.length;
   stmts.push(...lines.stock, ...lines.short);
   return finish(sql, d, op, stmts, firstTake, takes, shortfalls.length, status);
+}
+
+/** A save made offline in a business module (distribution, electronics):
+ * the module's own code runs again here as the same login, with the ids and
+ * clock the computer used, all in one transaction with its operation record.
+ * Anything the module refuses now (stock gone, customer blocked, no
+ * permission) changes nothing and is held for the owner to review. */
+export async function applyCall(sql: Sql, d: Device, op: CallOperation, decidedBy: string | null = null): Promise<PushResult> {
+  const c = op.payload;
+  if (!c.offlineRef.startsWith(`${d.device_code}-`)) return reject(sql, d, op, "Receipt number does not belong to this device.");
+  const t = await tenantRow(sql, d.tenant_id);
+  if (CALL_MODULE_FOR_TYPE[String(t.business_type)] !== c.module) return reject(sql, d, op, "This business does not use that module.");
+  const u = (await sql.execute(`SELECT id, username, display_name, role, is_active, denied_actions FROM users WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`, [op.userId, d.tenant_id])).rows[0];
+  if (!u || Number(u.is_active) !== 1 || (u.role !== "owner" && u.role !== "staff")) return holdOp(sql, d, op, "The login that saved this is not active in this business any more. Review it.");
+  const ctx = callContext({
+    tenantId: d.tenant_id, businessType: String(t.business_type), userId: String(u.id), userName: String(u.display_name || u.username || ""),
+    role: u.role === "owner" ? "owner" : "staff", tenantDenied: callList(t.denied_actions), userDenied: callList(u.denied_actions),
+  });
+  const now = iso();
+  const run = async (x: Pick<Sql, "execute">) => {
+    const db: CallDb = {
+      select: async <T,>(q: string, p: unknown[] = []) => (await x.execute(q, p)).rows as T[],
+      execute: async (q: string, p: unknown[] = []) => ({ changes: (await x.execute(q, p)).rowsAffected }),
+    };
+    const ids = idSource(c.ids, randomUUID);
+    const out = await runCall(db, ctx, c, ids.next);
+    const s = callSummary(c.module, c.fn, out);
+    const doc = (out as { doc?: { id?: unknown; doc_no?: unknown } } | null)?.doc;
+    const st = opStmt(d, op, "applied", now, decidedBy);
+    await x.execute(st.sql, st.args);
+    const seq = Number((await x.execute(`SELECT COALESCE(MAX(seq), 0) AS m FROM offline_changes`)).rows[0]?.m ?? 0);
+    const final: PushResult & { docId?: string; docNo?: number; amount?: number | null } = {
+      opId: op.opId, status: "applied", appliedSeq: seq, amount: s.amount,
+      ...(doc?.id ? { docId: String(doc.id) } : {}), ...(doc?.doc_no != null ? { docNo: Number(doc.doc_no) } : {}),
+    };
+    await x.execute(`UPDATE offline_ops SET result = ?, applied_seq = ? WHERE op_id = ?`, [JSON.stringify(final), seq, op.opId]);
+    return final;
+  };
+  try {
+    return sql.transaction ? await sql.transaction(run) : await run(sql);
+  } catch (e) {
+    const again = await storedResult(sql, d, op.opId);
+    if (again && again.status !== "held") return again;
+    const why = e instanceof Error ? e.message : String(e);
+    return holdOp(sql, d, op, `MAVIN.pk could not save ${c.label || "it"} (${c.offlineRef}): ${why.slice(0, 240)}`);
+  }
 }
 
 /** Whether this user may edit invoices (the same rule as online: staff need
@@ -604,8 +656,9 @@ export async function applyEdit(sql: Sql, d: Device, op: Operation, decidedBy: s
     ...[...back].map(([id, qty]) => ({ sql: `UPDATE product_batches SET qty = qty + ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND branch_id = ?`, args: [qty, now, id, T, B] })),
     { sql: `UPDATE invoice_items SET deleted_at = ?, updated_at = ? WHERE invoice_id = ? AND tenant_id = ? AND deleted_at IS NULL`, args: [now, now, s.saleId, T] },
     {
-      sql: `UPDATE invoices SET inv_on = ?, customer_id = ?, customer_name = ?, customer_phone = ?, total = ?, charges = ?, discount_rs = ?, payable = ?, paid = ?, balance = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-      args: [h.inv_on, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, now, s.saleId, T],
+      sql: `UPDATE invoices SET inv_on = ?, customer_id = ?, customer_name = ?, customer_phone = ?, total = ?, charges = ?, discount_rs = ?, payable = ?, paid = ?, balance = ?,
+              measurement_id = CASE WHEN ? IS NULL THEN measurement_id ELSE ${MEASUREMENT} END, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+      args: [h.inv_on, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, h.measurement_id, h.measurement_id, T, now, s.saleId, T],
     },
     ...lines.items,
   ];
@@ -708,6 +761,13 @@ export async function resolveException(sql: Sql, caller: Caller, id: string, not
 export async function listHeld(sql: Sql, caller: Caller, tenantId: string) {
   managerOf(caller, tenantId);
   return (await sql.execute(`SELECT op_id, device_id, kind, payload, received_at, error FROM offline_ops WHERE tenant_id = ? AND status = 'held' ORDER BY received_at`, [tenantId])).rows.map((r) => {
+    if (String(r.kind) === "call") {
+      const c = JSON.parse(String(r.payload)) as CallOperation["payload"];
+      return {
+        opId: String(r.op_id), deviceId: String(r.device_id), kind: "call", label: c.label, offlineRef: c.offlineRef, date: c.at.slice(0, 10), payable: c.amount ?? 0, lines: 0,
+        receivedAt: String(r.received_at), reason: (r.error as string | null) ?? null,
+      };
+    }
     const p = JSON.parse(String(r.payload)) as SalePayload;
     return {
       opId: String(r.op_id), deviceId: String(r.device_id), kind: String(r.kind) === "sale.update" ? "edit" : "sale",
@@ -729,6 +789,12 @@ export async function decideHeld(sql: Sql, caller: Caller, opId: string, approve
     await sql.execute(`UPDATE offline_ops SET status = 'rejected', error = ?, decided_by = ?, decided_at = ? WHERE op_id = ? AND status = 'held'`, [`Not accepted: ${why}`, caller.userId, iso(), opId]);
     await audit(sql, d.tenant_id, caller.userId, "op.held_rejected", { op: opId, note: why });
     return { status: "rejected" };
+  }
+  if (String(r.kind) === "call") {
+    const call: CallOperation = { opId, kind: "call", entityId: String(r.entity_id), schemaVersion: Number(r.schema_version), dependsOn: jsonList(r.depends_on), occurredAt: String(r.occurred_at), userId: String(r.user_id), payload: JSON.parse(String(r.payload)) };
+    const res = await applyCall(sql, d, call, caller.userId);
+    await audit(sql, d.tenant_id, caller.userId, "op.held_approved", { op: opId, status: res.status });
+    return res;
   }
   const kind = String(r.kind) === "sale.update" ? "sale.update" : "sale.create";
   const op: Operation = { opId, kind, entityId: String(r.entity_id), schemaVersion: Number(r.schema_version), dependsOn: jsonList(r.depends_on), occurredAt: String(r.occurred_at), userId: String(r.user_id), payload: JSON.parse(String(r.payload)) };

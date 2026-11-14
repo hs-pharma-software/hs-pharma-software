@@ -1,4 +1,5 @@
 /** App wiring for the Electric / Electronics / Solar store module. */
+import { offlineCapable } from "@/lib/offline/moduleCalls";
 import { invoke } from "@tauri-apps/api/core";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -16,7 +17,7 @@ import { isJameelNoori, readFontNames } from "./fontName.ts";
 
 export const ELECTRIC_TYPE = "electronics_solar";
 
-export const electric = createElectricStore(
+export const electric = offlineCapable("electric", createElectricStore(
   {
     select: dbSelect,
     async execute(sql, params) {
@@ -29,7 +30,7 @@ export const electric = createElectricStore(
   },
   // Same session rules as the restaurant module (tenant, role, denials).
   restaurantContext
-);
+));
 
 export const isElectricSession = () => businessType(useAuthStore.getState().currentTenant?.businessType).id === ELECTRIC_TYPE;
 

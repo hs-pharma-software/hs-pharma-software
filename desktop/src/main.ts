@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import { OfflineDevice, TransportError, type OriginalInvoice, type SaleInput, type SecretStore, type Transport } from "./core/device";
 import { Mirror, readOnlySql } from "./core/mirror";
 import { answerableLocally, copiedTables, copyReady, fillCopy, followCopy } from "./core/replicaSync";
+import { callAllowed, type CallModule } from "../../src/offline/protocol";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
@@ -240,13 +241,26 @@ async function currentReplica() {
   const schemaFile = join(resources, "schema.sql");
   if (!existsSync(schemaFile)) return null;
   try { replica?.m.close(); } catch { /* closed */ }
-  const safe = (s: string) => s.replace(/[^\w-]/g, "_");
-  replica = {
-    m: new Mirror(join(dataRoot, "data", safe(me.tenantId), safe(pageBranch || "default"), "users", safe(me.userId), "copy.db"), readFileSync(schemaFile, "utf8")),
-    userId: me.userId, tenantId: me.tenantId, branch: pageBranch,
-  };
+  replica = { m: new Mirror(copyFile(me.tenantId, pageBranch, me.userId), readFileSync(schemaFile, "utf8")), userId: me.userId, tenantId: me.tenantId, branch: pageBranch };
   caughtUpFrom = 0;
   return replica;
+}
+
+const safeName = (s: string) => s.replace(/[^\w-]/g, "_");
+const copyFile = (tenantId: string, branch: string, userId: string) => join(dataRoot, "data", safeName(tenantId), safeName(branch || "default"), "users", safeName(userId), "copy.db");
+
+/** Offline: the copy of the login signed in on the offline engine (opened
+ * from disk when the app started without internet), if it is complete. */
+function offlineCopy(): Mirror | null {
+  const u = device.user;
+  const ident = device.identity;
+  if (!u || !ident) return null;
+  if (replica) return replica.userId === u.id && replica.tenantId === ident.tenantId && copyReady(replica.m) ? replica.m : null;
+  const file = copyFile(ident.tenantId, "", u.id);
+  const schemaFile = join(resources, "schema.sql");
+  if (!existsSync(file) || !existsSync(schemaFile)) return null;
+  replica = { m: new Mirror(file, readFileSync(schemaFile, "utf8")), userId: u.id, tenantId: ident.tenantId, branch: "" };
+  return copyReady(replica.m) ? replica.m : null;
 }
 
 /** Fills the copy the first time, then brings it up to date (one run at a time). */
@@ -301,7 +315,14 @@ function syncAll(force = false): Promise<void> {
   if (!syncing) {
     syncing = (async () => {
       if (!device?.provisioned || quitting) return;
+      const startedSync = new Date(Date.now() - 1000).toISOString();
       const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
+      // A save from here that MAVIN.pk held or refused: its rows in the copy were never made there; read the copy again.
+      if (r && replica && device.refusedCallsSince(startedSync) > 0) {
+        for (const k of ["replica_ready", "replica_tables", "replica_cursor"]) replica.m.setMeta(k, k === "replica_tables" ? "[]" : "");
+        replica.m.setMeta("replica_fill", "null");
+        void refreshReplica();
+      }
       if (r?.error) console.error("[sync]", r.error);
       const due = force || Date.now() - lastMirror > MIRROR_EVERY_MS;
       if (r && !r.error && mirror && due) {
@@ -404,7 +425,7 @@ function saleInput(v: unknown): SaleInput {
       const x = l as Record<string, unknown>;
       return { productId: str(x.productId, 64, "product"), unit: x.unit === "loose" ? "loose" : "pack", qty: Number(x.qty), bonusQty: num(x.bonusQty), discountPct: num(x.discountPct) };
     }),
-    customerName: optStr(o.customerName, 120), customerPhone: optStr(o.customerPhone, 30), customerId: optStr(o.customerId, 64),
+    customerName: optStr(o.customerName, 120), customerPhone: optStr(o.customerPhone, 30), customerId: optStr(o.customerId, 64), measurementId: optStr(o.measurementId, 64),
     method: o.method === "credit" ? "credit" : "cash", paid: num(o.paid), billDiscountRs: num(o.billDiscountRs), charges: num(o.charges), tendered: Number(o.tendered),
     ...(editId ? { edit: { invoiceId: editId, original: originalInvoice(editId) } } : {}),
   };
@@ -471,7 +492,7 @@ const handlers: Record<string, Handler> = {
   /** Offline: the local copy of the business (the login's own when complete, else the offline sales copy). */
   query: (a) => {
     const o = a as { sql?: unknown; params?: unknown };
-    const m = replica && copyReady(replica.m) ? replica.m : mirror;
+    const m = offlineCopy() ?? (replica && copyReady(replica.m) ? replica.m : mirror);
     if (!m) throw new Error("This computer has no offline copy yet. Connect to the internet.");
     return m.query(str(o?.sql, 20000, "query"), Array.isArray(o?.params) ? o.params : []);
   },
@@ -483,6 +504,20 @@ const handlers: Record<string, Handler> = {
     pushStatus();
     if (online) void syncAll(false);
     return { saleId: r.sale.saleId, offlineRef: r.sale.offlineRef, totals: r.sale.totals, receipt: r.receipt };
+  },
+  /** Offline: a save in the distribution or electronics module, made on this login's local copy and queued for MAVIN.pk. */
+  moduleCall: async (a) => {
+    const o = a as { module?: unknown; fn?: unknown; args?: unknown };
+    const mod = String(o?.module ?? "");
+    const fn = String(o?.fn ?? "");
+    if (!callAllowed(mod, fn)) throw new Error("This cannot be saved offline. Connect to the internet.");
+    const m = offlineCopy();
+    if (!m) throw new Error("This computer has no complete copy of this business for your login yet. Connect to the internet once and let the copy finish.");
+    const r = await device.moduleCall(m, mod as CallModule, fn, Array.isArray(o.args) ? o.args : []);
+    lastWriteAt = Date.now();
+    pushStatus();
+    if (online) void syncAll(false);
+    return r;
   },
   syncNow: async () => { await syncAll(true); return statusNow(); },
   printText: (a) => printReceipt(str(a, 20000, "receipt")),

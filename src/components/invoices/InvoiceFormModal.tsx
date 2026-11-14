@@ -803,6 +803,7 @@ export function InvoiceFormModal({
         customerName: customerName.trim() || null,
         customerPhone: customerPhone.trim() || null,
         customerId: customerId || null,
+        measurementId: isClothStore ? measurement?.id ?? null : null,
         method: credit ? "credit" : "cash",
         paid: Number(paid) || 0,
         billDiscountRs: Number(discountRs) || 0,
