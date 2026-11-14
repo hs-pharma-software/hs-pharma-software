@@ -209,6 +209,7 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     if (t.startsWith("offline_")) return { ok: false, reason: "Offline devices are managed from Settings > Offline desktop." };
     if (t.startsWith("payment_")) return { ok: false, reason: "Online payments are managed from Settings > Online payments." };
     if (t.startsWith("fbr_")) return { ok: false, reason: "FBR records are managed through MAVIN's FBR service." };
+    if (t.startsWith("pra_")) return { ok: false, reason: "PRA records are managed through MAVIN's PRA service." };
     if (!knownTables.has(t)) return { ok: false, reason: `Unknown table ${t}.` };
   }
   // Hospital records are for logins with a hospital section (a pharmacy cashier's login has none).

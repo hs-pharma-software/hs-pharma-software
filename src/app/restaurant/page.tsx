@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
-import { restaurant, pra, errorText } from "@/lib/restaurant";
+import { restaurant, errorText, fiscalize } from "@/lib/restaurant";
 import { tableDisplayStatus, type KitchenStatus, type PayMethod, type TableStatus } from "@/lib/restaurant/engine";
 import type { OrderItemRow, OrderRow } from "@/lib/restaurant/store";
 import { tenantsRepo } from "@/lib/repo/tenants";
@@ -369,8 +369,7 @@ function OrderScreen({ orderId, onClose, onSwitch, printer, business }: { orderI
             // Fiscalise with PRA before printing so the receipt carries the number.
             let final = paid;
             if (paid.pra_status === "pending") {
-              const sub = (await restaurant.praSubmissions()).find((s) => s.order_id === paid.id && s.invoice_type === 1);
-              if (sub) await pra.submit(sub.id).catch(() => undefined);
+              await fiscalize(paid.id);
               final = (await restaurant.getOrder(paid.id)).order;
             }
             const full = await restaurant.getOrder(paid.id);

@@ -11,6 +11,7 @@ export const REPLICA_EXCLUDED = new Set([
   "data_changes", "offline_changes", "sync_outbox", "sync_meta",
   "fbr_credentials", "fbr_submissions", "fbr_test_sessions", "fbr_scenario_tests", "fbr_scenario_attempts",
   "offline_devices", "offline_ops", "offline_exceptions",
+  "pra_accounts", "pra_pos", "pra_submissions", "pra_audit", "pra_tax_rules", "pra_rule_assignments", "pra_platform",
   "payment_merchants", "payment_attempts", "payment_audit", "payment_events", "payment_refunds", "payment_access_requests",
   "business_link_tokens", "backups", "server_audit_log", "catalog_ownership_log", "onboarding_requests",
   "dist_loc_points", "dist_loc_sessions",

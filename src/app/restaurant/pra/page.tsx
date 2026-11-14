@@ -5,7 +5,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable } from "@/components/ui/DataTable";
-import { restaurant, pra, praToken } from "@/lib/restaurant";
+import { restaurant, pra, praToken, praServerManaged } from "@/lib/restaurant";
+import { PraServerStatus, PraSubmissions } from "@/components/pra/PraSubmissions";
+import { useAuthStore } from "@/store/authStore";
 import { REST_SETTINGS } from "@/lib/restaurant/store";
 import { useCan } from "@/lib/actionPermissions";
 import { Badge, Note, PRA_BADGE, RestGuard, money, useAction, useLoad } from "@/components/restaurant/ui";
@@ -13,8 +15,23 @@ import { Badge, Note, PRA_BADGE, RestGuard, money, useAction, useLoad } from "@/
 export default function PraPage() {
   return (
     <RestGuard>
-      <Pra />
+      <PraRoute />
     </RestGuard>
+  );
+}
+
+/** Fiscalised by MAVIN's server (Super Admin > PRA Integration): its status and submissions. Otherwise the desktop setup below. */
+function PraRoute() {
+  const managed = useLoad(() => praServerManaged());
+  const role = useAuthStore((s) => s.currentUser?.role);
+  if (managed.data == null) return null;
+  if (!managed.data) return <Pra />;
+  return (
+    <div className="space-y-4">
+      <PageHeader title="PRA e-Invoicing" />
+      <PraServerStatus />
+      <PraSubmissions canReconcile={role === "owner"} />
+    </div>
   );
 }
 

@@ -1867,6 +1867,160 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v91() -> &'static str {
+    r#"
+    -- PRA (Punjab Revenue Authority) eIMS, server side: a business's access
+    -- (granted by the platform Super Admin), its POS counters mapped to the
+    -- POS IDs PRA issued, every submission (one live per invoice), an audit
+    -- trail, and the tax-rule catalogue with rules assigned to a business.
+    -- Server-only tables (prefix pra_): never readable through /api/db or the
+    -- desktop copy. Separate from FBR DI.
+    CREATE TABLE IF NOT EXISTS pra_accounts (
+        tenant_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'disabled',
+        pntn TEXT,
+        registered_name TEXT,
+        registration_status TEXT NOT NULL DEFAULT 'not_started',
+        sandbox_status TEXT NOT NULL DEFAULT 'not_started',
+        whitelist_status TEXT NOT NULL DEFAULT 'not_requested',
+        whitelist_ip TEXT,
+        live_approved_by TEXT,
+        live_approved_at TEXT,
+        suspended_reason TEXT,
+        notes TEXT,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pra_pos (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        counter TEXT NOT NULL,
+        sector TEXT NOT NULL,
+        environment TEXT NOT NULL DEFAULT 'sandbox',
+        sandbox_pos_id TEXT,
+        production_pos_id TEXT,
+        sandbox_token_enc TEXT,
+        production_token_enc TEXT,
+        sandbox_token_hint TEXT,
+        production_token_hint TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        approved_by TEXT,
+        approved_at TEXT,
+        active_from TEXT,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_pos_counter ON pra_pos (tenant_id, branch_id, counter) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_pra_pos_tenant ON pra_pos (tenant_id, branch_id);
+    CREATE TABLE IF NOT EXISTS pra_submissions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT,
+        pos_row_id TEXT NOT NULL,
+        pos_id TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        usin TEXT NOT NULL,
+        ref_usin TEXT,
+        invoice_type INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        fiscal_invoice_no TEXT,
+        response_code TEXT,
+        response_text TEXT,
+        payload TEXT,
+        payload_hash TEXT,
+        payment_methods TEXT,
+        pra_payment_mode INTEGER,
+        rule_snapshot TEXT,
+        sale_value REAL NOT NULL DEFAULT 0,
+        sales_tax REAL NOT NULL DEFAULT 0,
+        pra_withholding REAL NOT NULL DEFAULT 0,
+        income_tax_withholding REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        blocked_reason TEXT,
+        lock_until TEXT,
+        sent_at TEXT,
+        accepted_at TEXT,
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_submissions_source ON pra_submissions (tenant_id, source_type, source_id, invoice_type, environment);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_submissions_usin ON pra_submissions (pos_id, environment, usin, invoice_type);
+    CREATE INDEX IF NOT EXISTS idx_pra_submissions_status ON pra_submissions (tenant_id, status, created_at);
+    CREATE TABLE IF NOT EXISTS pra_audit (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT,
+        actor_id TEXT,
+        actor_role TEXT,
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pra_audit_tenant ON pra_audit (tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS pra_tax_rules (
+        id TEXT PRIMARY KEY,
+        rule_key TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        sector TEXT NOT NULL,
+        service TEXT NOT NULL,
+        classification_code TEXT,
+        rate_type TEXT NOT NULL DEFAULT 'percent',
+        rate REAL,
+        fixed_amount REAL,
+        fixed_unit TEXT,
+        payment_condition TEXT NOT NULL DEFAULT 'any',
+        alt_rate REAL,
+        input_adjustment TEXT NOT NULL DEFAULT 'unknown',
+        exemptions TEXT,
+        effective_from TEXT NOT NULL,
+        effective_to TEXT,
+        source TEXT NOT NULL,
+        clause TEXT,
+        source_url TEXT,
+        last_verified_at TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        review_notes TEXT,
+        needs_scope_review INTEGER NOT NULL DEFAULT 0,
+        eims_applicable TEXT NOT NULL DEFAULT 'unconfirmed',
+        created_by TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_tax_rules_version ON pra_tax_rules (rule_key, version);
+    CREATE TABLE IF NOT EXISTS pra_rule_assignments (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT,
+        rule_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        contract_note TEXT,
+        assigned_by TEXT,
+        assigned_at TEXT NOT NULL,
+        revoked_by TEXT,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pra_rule_assignments ON pra_rule_assignments (tenant_id, status);
+    CREATE TABLE IF NOT EXISTS pra_platform (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL
+    );
+    "#
+}
+
 fn schema_sql_v90() -> &'static str {
     r#"
     -- Distribution: company schemes on products (buy N get M free / extra %),
@@ -6301,6 +6455,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 90,
             description: "distribution_schemes_delivery",
             sql: schema_sql_v90(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 91,
+            description: "pra_eims_server",
+            sql: schema_sql_v91(),
             kind: MigrationKind::Up,
         },
     ]

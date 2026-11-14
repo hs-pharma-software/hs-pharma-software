@@ -272,6 +272,8 @@ export const REST_SETTINGS = {
   praMode: "pra_mode",
   praEnv: "pra_environment",
   praPosId: "pra_pos_id",
+  /** Set by MAVIN's server (Super Admin > PRA Integration): the server fiscalises; the desktop sender stands down. */
+  praServerManaged: "pra_server_managed",
 } as const;
 
 const json = <T>(v: string | null | undefined, fallback: T): T => {
@@ -1295,7 +1297,9 @@ export function createRestaurantStore(db: RestDb, context: () => RestContext) {
         counted.push({ table: "rest_deals", id: dealLine.dealId!, col: "redemptions" });
       }
 
-      const praOn = (await getSetting(REST_SETTINGS.praEnabled)) === "true";
+      const serverPra = (await getSetting(REST_SETTINGS.praServerManaged)) === "true";
+      const legacyPra = !serverPra && (await getSetting(REST_SETTINGS.praEnabled)) === "true";
+      const praOn = serverPra || legacyPra;
       for (let attempt = 0; attempt < 5; attempt++) {
         const invoiceNo = await nextNumber("invoice_no");
         let changed = 0;
@@ -1342,7 +1346,7 @@ export function createRestaurantStore(db: RestDb, context: () => RestContext) {
         }
         await freeTable(current);
         const order = await owned<OrderRow>("rest_orders", current.id, "Order");
-        if (praOn) await api.queuePra(order, 1, null);
+        if (legacyPra) await api.queuePra(order, 1, null);
         await audit("invoice.finalize", "order", order.id, {
           invoice: invoiceNo,
           total: order.total,
@@ -1448,7 +1452,7 @@ export function createRestaurantStore(db: RestDb, context: () => RestContext) {
           }
           const remaining = billable(await orderItems(original.id)).filter((i) => !i.refunded).length;
           if (!remaining) await update("rest_orders", original.id, { status: "refunded", payment_status: "refunded" }, { sql: "status = 'paid'", params: [] });
-          if (credit.pra_status === "pending") await api.queuePra(credit, 3, String(original.invoice_no));
+          if (credit.pra_status === "pending" && (await getSetting(REST_SETTINGS.praServerManaged)) !== "true") await api.queuePra(credit, 3, String(original.invoice_no));
           await audit("invoice.refund", "order", original.id, { credit: credit.id, creditInvoice: invoiceNo, amount: toRupees(total), reason: input.reason, lines: claimed.length });
           return credit;
         } catch (e) {

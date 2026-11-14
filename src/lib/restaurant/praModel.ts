@@ -183,13 +183,39 @@ export interface PraOutcome {
  * PRA answers failures with 200 too (sandbox, 2026-10-23:
  * {"InvoiceNumber":"Not Available","Code":"104","Response":"You are not authorized to use this service."}).
  * Only Code "100" with a real InvoiceNumber counts as accepted. */
+/** PRA's answer as text, unwrapped when it came as a JSON string holding the
+ * JSON (the eIMS manual v1.0 §6.3 example: "{\"InvoiceNumber\":9000…}"). */
+export function praBodyText(body: string | null): string | null {
+  if (!body) return body;
+  const t = body.trim();
+  if (t.startsWith('"')) {
+    try { const inner = JSON.parse(t); if (typeof inner === "string") return inner; } catch { /* as is */ }
+  }
+  return t;
+}
+
+/** The fiscal invoice number exactly as PRA sent it. PRA may send it as a
+ * bare JSON number of 19-20 digits (manual §6.3), which JSON.parse would
+ * round; it is read from the text instead, digit for digit. Null when absent,
+ * "Not Available", or not a plain number / code. */
+export function fiscalNumberFrom(body: string | null): string | null {
+  const text = praBodyText(body);
+  if (!text) return null;
+  const m = text.match(/"InvoiceNumber"\s*:\s*(?:"([^"]*)"|(-?[0-9][0-9.eE+-]*))/);
+  const v = (m?.[1] ?? m?.[2] ?? "").trim();
+  if (!v || /not\s*available/i.test(v)) return null;
+  return /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/.test(v) ? v : null;
+}
+
 export function mapPraResponse(r: { httpStatus: number | null; body: string | null; networkError?: string | null }): PraOutcome {
   if (r.httpStatus == null) {
     return { status: "retry_pending", praInvoiceNo: null, code: null, message: r.networkError || "No response from PRA (network/timeout)." };
   }
   let json: Record<string, unknown> | null = null;
   try {
-    json = r.body ? (JSON.parse(r.body) as Record<string, unknown>) : null;
+    const text = praBodyText(r.body);
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    if (json && typeof json !== "object") json = null;
   } catch {
     json = null;
   }
@@ -204,10 +230,12 @@ export function mapPraResponse(r: { httpStatus: number | null; body: string | nu
     return { status: "manual_review", praInvoiceNo: null, code: String(r.httpStatus), message: "PRA response could not be read; check the IMS Fiscal Report before retrying." };
   }
   const code = json.Code != null ? String(json.Code) : null;
-  const invNo = json.InvoiceNumber != null ? String(json.InvoiceNumber) : "";
+  const invNo = fiscalNumberFrom(r.body) ?? "";
   const message = String(json.Response ?? json.Errors ?? "");
   if (r.httpStatus >= 400) return { status: "rejected", praInvoiceNo: null, code: code ?? String(r.httpStatus), message: message || `HTTP ${r.httpStatus}` };
-  if (code === "100" && invNo && invNo !== "Not Available") return { status: "accepted", praInvoiceNo: invNo, code, message: message || "Accepted" };
+  if (code === "100" && invNo) return { status: "accepted", praInvoiceNo: invNo, code, message: message || "Accepted" };
+  // "Success" without a usable fiscal number is not acceptance.
+  if (code === "100") return { status: "manual_review", praInvoiceNo: null, code, message: "PRA answered success (100) without a valid fiscal invoice number; check the IMS Fiscal Report." };
   if (code == null) return { status: "manual_review", praInvoiceNo: null, code: null, message: "PRA response had no Code; check the IMS Fiscal Report." };
   return { status: "rejected", praInvoiceNo: null, code, message: message || `PRA code ${code}` };
 }

@@ -17,6 +17,9 @@ export interface GatewayConfig {
   /** Public service that echoes the caller's IP (static outbound IP check). */
   egressCheckUrl: string;
   version: string;
+  /** PRA eIMS route (POST /v1/pra): off unless PRA_ENABLED=1. */
+  praEnabled: boolean;
+  praBaseUrl: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -45,5 +48,7 @@ export function loadConfig(env: Env = process.env): GatewayConfig {
     maxSkewMs: num("MAX_CLOCK_SKEW_MS", 5 * 60_000, env),
     egressCheckUrl: env.EGRESS_CHECK_URL || "https://api.ipify.org",
     version: env.GATEWAY_VERSION || "1.0.0",
+    praEnabled: env.PRA_ENABLED === "1",
+    praBaseUrl: (env.PRA_BASE_URL || "https://ims.pral.com.pk").replace(/\/+$/, ""),
   };
 }

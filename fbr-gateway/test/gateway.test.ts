@@ -205,3 +205,37 @@ test("settings: secrets are required and must be long", () => {
   assert.throws(() => loadConfig({}), /GATEWAY_SECRETS/);
   assert.throws(() => loadConfig({ GATEWAY_SECRETS: "short" }), /32/);
 });
+
+test("PRA route: off unless PRA_ENABLED=1; then only PRA's PostData address, a checked invoice, the business's token", async () => {
+  const praInv = { InvoiceNumber: "", POSID: 123456, USIN: "41", InvoiceType: 1, Items: [{ ItemCode: "K1", PCTCode: "98012000" }] };
+  const body = { environment: "sandbox", token: "pra-tok-1", payload: praInv, tenantRef: "tenant-ref-1" };
+  assert.equal((await call(body, { path: "/v1/pra" })).status, 404, "off by default");
+  const base = `http://127.0.0.1:${(fbr.address() as AddressInfo).port}`;
+  const on = createGateway(loadConfig({ GATEWAY_SECRETS: SECRET, PRA_ENABLED: "1", PRA_BASE_URL: base, FBR_TIMEOUT_MS: "800" }), { logLine: () => undefined });
+  await new Promise<void>((r) => on.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(on.address() as AddressInfo).port}`;
+  const send = async (b: unknown) => {
+    const raw = JSON.stringify(b), ts = String(Date.now()), id = randomUUID();
+    const res = await fetch(`${url}/v1/pra`, { method: "POST", body: raw, headers: { "Content-Type": "application/json", "X-Mavin-Timestamp": ts, "X-Mavin-Request-Id": id, "X-Mavin-Signature": signRequest(SECRET, ts, id, "POST", "/v1/pra", raw) } });
+    return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+  };
+  try {
+    behaviour = "accept";
+    seen.length = 0;
+    const r = await send(body);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.outcome, "response");
+    assert.equal(seen[0].url, "/ims/sandbox/api/Live/PostData");
+    assert.equal(seen[0].auth, "Bearer pra-tok-1");
+    assert.deepEqual(JSON.parse(seen[0].body), praInv);
+    assert.equal((await send({ ...body, environment: "production" })).status, 200);
+    assert.equal(seen[1].url, "/ims/production/api/Live/PostData");
+    for (const bad of [{ ...body, payload: { ...praInv, POSID: "x" } }, { ...body, payload: { ...praInv, Items: [] } }, { ...body, payload: { ...praInv, InvoiceType: 9 } }, { ...body, token: "" }, { ...body, environment: "live" }]) {
+      assert.equal((await send(bad)).status, 400);
+    }
+    assert.equal(seen.length, 2, "refused requests never reach PRA");
+  } finally {
+    on.closeAllConnections();
+    await new Promise((r) => on.close(r));
+  }
+});

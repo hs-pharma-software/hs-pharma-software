@@ -8,7 +8,8 @@ import { newId, nowIso } from "@/lib/id";
 import { isTauriShell } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
-import { createRestaurantStore, RestError, type RestContext } from "./store.ts";
+import { createRestaurantStore, REST_SETTINGS, RestError, type RestContext } from "./store.ts";
+import { serverJson } from "@/lib/serverMode";
 import { createPraService, type PraTransport } from "./praService.ts";
 
 export function restaurantContext(): RestContext {
@@ -96,6 +97,22 @@ const transport: PraTransport = {
 };
 
 export const pra = createPraService(restaurant, transport, () => praToken.get());
+
+/** Is this business fiscalised by MAVIN's server (Super Admin > PRA Integration)? */
+export async function praServerManaged(): Promise<boolean> {
+  return (await restaurant.settings.get(REST_SETTINGS.praServerManaged)) === "true";
+}
+
+/** Checkout: fiscalise a paid bill (or its credit note) before the receipt prints.
+ * MAVIN's server when it manages PRA for the business; otherwise the desktop sender. */
+export async function fiscalize(orderId: string): Promise<void> {
+  if (await praServerManaged()) {
+    await serverJson("/api/pra/", { action: "submit", orderId }).catch(() => undefined);
+    return;
+  }
+  const sub = (await restaurant.praSubmissions()).find((s) => s.order_id === orderId);
+  if (sub) await pra.submit(sub.id).catch(() => undefined);
+}
 
 export function errorText(e: unknown): string {
   return e instanceof RestError || e instanceof Error ? e.message : String(e);

@@ -4,6 +4,8 @@
  *   POST /v1/fbr        signed:  { environment, operation, referencePath?, token, payload?, tenantRef }
  *                                 -> { outcome: "response", status, body } | { outcome: "not_sent" | "uncertain", error }
  *   GET  /v1/egress-ip  signed:  { ip } as FBR would see it (static outbound IP check)
+ *   POST /v1/pra        signed:  { environment, token, payload, tenantRef } -> PRA eIMS cloud PostData
+ *                                 (only when PRA_ENABLED=1), same three outcomes
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -11,6 +13,7 @@ import type { GatewayConfig } from "./config.ts";
 import { ReplayGuard, verifyRequest } from "./auth.ts";
 import { atlPayloadOk, callFbr, fbrPath, type Environment, type Operation } from "./fbr.ts";
 import { log } from "./log.ts";
+import { praPath, praPayloadOk } from "./pra.ts";
 
 export interface GatewayDeps {
   fetchImpl?: typeof fetch;
@@ -70,7 +73,7 @@ export function createGateway(cfg: GatewayConfig, deps: GatewayDeps = {}): Serve
         return send(res, 200, { ok: true, version: cfg.version, uptimeSec: Math.round((now() - started) / 1000) });
       }
       const route = `${req.method} ${url.pathname}`;
-      if (route !== "POST /v1/fbr" && route !== "GET /v1/egress-ip") return send(res, 404, { error: "Not found." });
+      if (route !== "POST /v1/fbr" && route !== "GET /v1/egress-ip" && !(route === "POST /v1/pra" && cfg.praEnabled)) return send(res, 404, { error: "Not found." });
 
       let raw: string;
       try { raw = await readBody(req, cfg.maxBodyBytes); } catch (e) {
@@ -97,6 +100,21 @@ export function createGateway(cfg: GatewayConfig, deps: GatewayDeps = {}): Serve
 
       let b: { environment?: unknown; operation?: unknown; referencePath?: unknown; token?: unknown; payload?: unknown; tenantRef?: unknown };
       try { b = JSON.parse(raw); } catch { return send(res, 400, { error: "Body must be JSON." }); }
+
+      if (route === "POST /v1/pra") {
+        const env = b.environment === "production" ? "production" : b.environment === "sandbox" ? "sandbox" : null;
+        const tenantRef = typeof b.tenantRef === "string" && /^[A-Za-z0-9_-]{4,80}$/.test(b.tenantRef) ? b.tenantRef : null;
+        const token = typeof b.token === "string" ? b.token.trim() : "";
+        if (!env || !tenantRef) return send(res, 400, { error: "environment and tenantRef are required." });
+        if (!token || token.length > 500 || /\s/.test(token)) return send(res, 400, { error: "A valid PRA token is required." });
+        if (!praPayloadOk(b.payload)) return send(res, 400, { error: "payload must be one eIMS invoice (POSID, USIN, InvoiceType, Items)." });
+        if (!rate.allow(`pra:${tenantRef}`, cfg.ratePerTenant, now())) return send(res, 429, { error: "Too many requests for this business. Try again in a minute." });
+        const result = await callFbr({ baseUrl: cfg.praBaseUrl, timeoutMs: cfg.fbrTimeoutMs, fetchImpl: deps.fetchImpl }, praPath(env), token, "POST", JSON.stringify(b.payload));
+        log(result.outcome === "response" ? "info" : "warn", "pra_call", {
+          reqId, tenantRef, env, outcome: result.outcome, status: result.outcome === "response" ? result.status : null, ms: now() - t0,
+        }, out);
+        return send(res, 200, result);
+      }
       const env = b.environment === "production" ? "production" : b.environment === "sandbox" ? "sandbox" : null;
       const op = b.operation === "post" || b.operation === "validate" || b.operation === "reference" || b.operation === "atl" ? (b.operation as Operation) : null;
       const tenantRef = typeof b.tenantRef === "string" && /^[A-Za-z0-9_-]{4,80}$/.test(b.tenantRef) ? b.tenantRef : null;

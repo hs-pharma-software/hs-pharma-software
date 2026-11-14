@@ -44,15 +44,17 @@ export interface PraConfig {
 
 export function createPraService(store: RestaurantStore, transport: PraTransport, getToken: () => Promise<string | null>) {
   async function config(): Promise<PraConfig> {
-    const [enabled, mode, env, posId, pct] = await Promise.all([
+    const [enabled, mode, env, posId, pct, managed] = await Promise.all([
       store.settings.get(REST_SETTINGS.praEnabled),
       store.settings.get(REST_SETTINGS.praMode),
       store.settings.get(REST_SETTINGS.praEnv),
       store.settings.get(REST_SETTINGS.praPosId),
       store.settings.get(REST_SETTINGS.pctCode),
+      store.settings.get(REST_SETTINGS.praServerManaged),
     ]);
     return {
-      enabled: enabled === "true",
+      // MAVIN's server fiscalises this business: the desktop sender never sends (no second fiscal invoice).
+      enabled: enabled === "true" && managed !== "true",
       mode: mode === "cloud" ? "cloud" : "local",
       environment: env === "production" ? "production" : "sandbox",
       posId: (posId ?? "").trim(),

@@ -193,7 +193,7 @@ export function ReceiptView({ data }: { data: ReceiptData }) {
         <div key={i}>{row(`Paid (${p.method})`, Number(p.amount).toFixed(2))}</div>
       ))}
       {!!data.change && data.change > 0 && row("Change", data.change.toFixed(2))}
-      {order.pra_invoice_no ? (
+      {order.pra_invoice_no && order.pra_status === "accepted" ? (
         <div style={{ textAlign: "center", marginTop: 6 }}>
           <div style={{ fontWeight: 700 }}>PRA Invoice No</div>
           <div style={{ wordBreak: "break-all" }}>{order.pra_invoice_no}</div>
@@ -203,7 +203,10 @@ export function ReceiptView({ data }: { data: ReceiptData }) {
           <div style={{ fontSize: 9 }}>Verify at PRA (reg.pra.punjab.gov.pk) or the PRA app</div>
         </div>
       ) : order.pra_status !== "not_required" ? (
-        <div style={{ textAlign: "center", marginTop: 6, fontSize: 10 }}>PRA fiscal number: pending ({order.pra_status.replace("_", " ")})</div>
+        <div style={{ textAlign: "center", marginTop: 6, fontSize: 10, border: "1px dashed #000", padding: 3 }}>
+          <b>NOT A PRA FISCAL INVOICE</b>
+          <div>PRA fiscal number {order.pra_status === "blocked" ? "not issued (held for review)" : order.pra_status === "rejected" ? "not issued (PRA refused)" : "pending"}</div>
+        </div>
       ) : null}
       <div style={{ borderTop: "1px dashed #000", margin: "6px 0 2px" }} />
       <div style={{ textAlign: "center", fontSize: 9 }}>Thank you!</div>
