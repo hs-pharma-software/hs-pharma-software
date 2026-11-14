@@ -1804,7 +1804,9 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
         try { return (await api.balances(type)).reduce((a, r) => toRupees(toPaisa(a) + toPaisa(Math.max(0, r.balance))), 0); } catch { return null; }
       };
       const bookings = await db.select<{ status: string; n: number; total: number }>(`SELECT status, COUNT(*) AS n, COALESCE(SUM(total), 0) AS total FROM dist_bookings WHERE tenant_id = ? AND date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY status`, [tenant(), from, to]);
+      const extra = await dashboardExtras(from, to, targets, settings.cdsl.alertDays);
       return {
+        ...extra,
         month, metric: settings.target.metric,
         now: await totals(month), before: await totals(prev),
         daily,
@@ -1821,6 +1823,82 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       return teamTargets(month);
     },
   };
+
+  // ── Dashboard extras (internal) ──
+  /** Days ahead that count as "near expiry" for stock on the dashboard. */
+  const NEAR_EXPIRY_DAYS = 90;
+  const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+  const dayIndex = (d: string) => Math.round(Date.parse(`${d}T00:00:00Z`) / 864e5);
+  /** Today's sale and bookings, the month's best salesman and retailer (net
+   * sales, returns taken off), stock near expiry and (pharma) CDSL near expiry. */
+  async function dashboardExtras(from: string, to: string, targets: { id: string; pct: number }[], cdslDays: number) {
+    const T = tenant();
+    const { mode } = await cfg();
+    const day = today();
+    const ts = (await db.select<{ n: number; sales: number; returns: number }>(
+      `SELECT COALESCE(SUM(doc_type = 'sale'), 0) AS n, COALESCE(SUM(CASE WHEN doc_type = 'sale' THEN total END), 0) AS sales, COALESCE(SUM(CASE WHEN doc_type = 'sale_return' THEN total END), 0) AS returns
+       FROM dist_docs WHERE tenant_id = ? AND doc_type IN ('sale', 'sale_return') AND date = ? AND deleted_at IS NULL`, [T, day]))[0];
+    const tb = (await db.select<{ n: number; total: number; pending: number }>(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total, COALESCE(SUM(status IN ('submitted', 'pending_approval')), 0) AS pending
+       FROM dist_bookings WHERE tenant_id = ? AND date = ? AND deleted_at IS NULL AND status NOT IN ('draft', 'cancelled', 'rejected')`, [T, day]))[0];
+    const best = (by: "salesman_id" | "party_id") => db.select<{ id: string; amount: number; invoices: number }>(
+      `SELECT ${by} AS id, ROUND(SUM(CASE WHEN doc_type = 'sale' THEN total ELSE -total END), 2) AS amount, COALESCE(SUM(doc_type = 'sale'), 0) AS invoices
+       FROM dist_docs WHERE tenant_id = ? AND doc_type IN ('sale', 'sale_return') AND date BETWEEN ? AND ? AND deleted_at IS NULL AND ${by} IS NOT NULL
+       GROUP BY ${by} HAVING amount > 0 ORDER BY amount DESC LIMIT 5`, [T, from, to]);
+    const sm = new Map((await db.select<{ id: string; name: string; code: string }>(`SELECT id, name, code FROM dist_salesmen WHERE tenant_id = ?`, [T])).map((s) => [s.id, s]));
+    const topSalesmen = (await best("salesman_id")).map((r) => ({
+      id: r.id, name: sm.get(r.id)?.name ?? "-", code: sm.get(r.id)?.code ?? "", amount: Number(r.amount), invoices: Number(r.invoices),
+      targetPct: targets.find((x) => x.id === r.id)?.pct ?? null,
+    }));
+    const cu = new Map((await db.select<{ id: string; business_name: string }>(`SELECT id, business_name FROM dist_customers WHERE tenant_id = ?`, [T])).map((c) => [c.id, c.business_name]));
+    const topRetailers = (await best("party_id")).map((r) => ({ id: r.id, name: cu.get(r.id) ?? "-", amount: Number(r.amount), invoices: Number(r.invoices) }));
+    return {
+      today: {
+        date: day, invoices: Number(ts?.n) || 0, sales: toRupees(toPaisa(Number(ts?.sales) || 0) - toPaisa(Number(ts?.returns) || 0)),
+        bookings: Number(tb?.n) || 0, bookingsTotal: Number(tb?.total) || 0, bookingsPending: Number(tb?.pending) || 0,
+      },
+      bestSalesman: topSalesmen[0] ?? null, topSalesmen,
+      bestRetailer: topRetailers[0] ?? null, topRetailers,
+      nearExpiry: await nearExpiryStock(day, NEAR_EXPIRY_DAYS), nearExpiryDays: NEAR_EXPIRY_DAYS,
+      cdslExpiring: mode === "pharma" ? await cdslExpiring(day, cdslDays) : null, cdslAlertDays: cdslDays,
+      mode,
+    };
+  }
+  /** Stock that has expired or expires within `days`, batch by batch. Stock
+   * is kept per product; what is still on the shelf is taken to be from the
+   * latest purchases (oldest sold first), up to the stock on hand. */
+  async function nearExpiryStock(day: string, days: number) {
+    const limit = addDays(day, days);
+    const rows = await db.select<{ product_id: string; name: string; code: string; stock: number; batch_no: string | null; expiry: string | null; received: number }>(
+      `SELECT p.id AS product_id, p.name, p.code, p.stock, i.batch_no, i.expiry, (i.qty + COALESCE(i.bonus_qty, 0) - COALESCE(i.returned_qty, 0)) AS received
+       FROM dist_products p
+       JOIN dist_doc_items i ON i.product_id = p.id AND i.tenant_id = p.tenant_id AND i.deleted_at IS NULL
+       JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id AND d.doc_type = 'purchase' AND d.deleted_at IS NULL
+       WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND p.stock > 0
+       ORDER BY p.id, d.date DESC, i.created_at DESC`, [tenant()]);
+    const left = new Map(rows.map((r) => [r.product_id, Number(r.stock) || 0]));
+    const out: { productId: string; name: string; code: string; batchNo: string | null; expiry: string; qty: number; daysLeft: number }[] = [];
+    for (const r of rows) {
+      const remaining = left.get(r.product_id) ?? 0;
+      if (remaining <= 0) continue;
+      const qty = Math.min(remaining, Math.max(0, Number(r.received) || 0));
+      left.set(r.product_id, remaining - qty);
+      if (!qty || !r.expiry) continue;
+      // A month-only expiry (yyyy-mm) counts from that month's 28th.
+      const exp = r.expiry.length === 7 ? `${r.expiry}-28` : r.expiry.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp > limit) continue;
+      out.push({ productId: r.product_id, name: r.name, code: r.code, batchNo: r.batch_no, expiry: r.expiry, qty: Math.round(qty * 1000) / 1000, daysLeft: dayIndex(exp) - dayIndex(day) });
+    }
+    return out.sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 100);
+  }
+  /** Active customers whose CDSL (drug sale licence) is missing, expired or expires within `days` (pharma). */
+  async function cdslExpiring(day: string, days: number) {
+    const rows = await db.select<{ id: string; business_name: string; cdsl_no: string | null; cdsl_expiry: string | null; mobile: string | null }>(
+      `SELECT id, business_name, cdsl_no, cdsl_expiry, mobile FROM dist_customers
+       WHERE tenant_id = ? AND deleted_at IS NULL AND status = 'active' AND (cdsl_expiry IS NULL OR cdsl_expiry = '' OR cdsl_expiry <= ?)
+       ORDER BY CASE WHEN cdsl_expiry IS NULL OR cdsl_expiry = '' THEN 0 ELSE 1 END, cdsl_expiry LIMIT 100`, [tenant(), addDays(day, Math.max(0, days))]);
+    return rows.map((c) => ({ id: c.id, name: c.business_name, cdslNo: c.cdsl_no, expiry: c.cdsl_expiry || null, mobile: c.mobile, daysLeft: c.cdsl_expiry ? dayIndex(c.cdsl_expiry.slice(0, 10)) - dayIndex(day) : null }));
+  }
 
   /** Every active salesman's target for a month on the configured metric
    * (one query per measure, not one per salesman). */

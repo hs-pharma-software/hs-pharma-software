@@ -648,3 +648,40 @@ test("leaving: a salesman's account closes with a reason; the last month is pro-
   // Editing does not reopen a closed account.
   assert.equal((await admin.saveSalesman({ ...closed, is_active: 1 })).is_active, 0);
 });
+
+test("dashboard tiles and alerts: today's sale and bookings, best salesman and retailer, near expiry stock and CDSL", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "DX", "pharma");
+  const s = h.as(A.owner);
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const inDays = (n: number) => ymd(new Date(Date.now() + n * 864e5));
+  const today = inDays(0);
+  h.sql.prepare(`INSERT INTO suppliers (id, tenant_id, name, created_at, updated_at) VALUES ('sup1', 'DX', 'Principal', 'x', 'x')`).run();
+  // Two purchases with batches: the older one expires in 20 days, the newer in 400.
+  await s.createPurchase({ supplierId: "sup1", date: inDays(-1), lines: [{ productId: A.product.id, qty: 30, cost: 80, batchNo: "B-NEAR", expiry: inDays(20) }] });
+  await s.createPurchase({ supplierId: "sup1", date: today, lines: [{ productId: A.product.id, qty: 10, cost: 80, batchNo: "B-FAR", expiry: inDays(400) }] });
+  const soon = await s.createCustomer({ business_name: "Soon Medical", owner_name: "Z", mobile: "03001112223", address: "Lahore", cdsl_no: "CDSL-9", cdsl_expiry: inDays(10), location: { lat: 31.52, lng: 74.35, accuracy: 15, source: "device" } });
+  await s.createSale({ customerId: A.customer.id, salesmanId: A.salesman.id, lines: [{ productId: A.product.id, qty: 3 }] });
+  await s.createSale({ customerId: soon.id, lines: [{ productId: A.product.id, qty: 1 }] });
+  await s.createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 2 }] });
+
+  let d = await s.dashboard(today.slice(0, 7));
+  assert.equal(d.today.date, today);
+  assert.equal(d.today.invoices, 2);
+  assert.equal(d.today.sales, 400);
+  assert.equal(d.today.bookings, 0, "a draft booking is not counted");
+  assert.equal(d.bestSalesman?.id, A.salesman.id);
+  assert.equal(d.bestSalesman?.amount, 300);
+  assert.equal(d.bestRetailer?.name, "DX Medical Store", "most business given");
+  assert.equal(d.bestRetailer?.amount, 300);
+  // 1036 on hand: the newest 10 (B-FAR) and 30 of B-NEAR are still held; B-NEAR expires within 90 days.
+  assert.deepEqual(d.nearExpiry.map((x) => [x.batchNo, x.qty, x.daysLeft]), [["B-NEAR", 30, 20]]);
+  assert.deepEqual(d.cdslExpiring?.map((c) => [c.name, c.daysLeft]), [["Soon Medical", 10]]);
+
+  // Sell almost everything: what remains is the newest batch, nothing near expiry.
+  await s.createSale({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 1031 }] });
+  d = await s.dashboard(today.slice(0, 7));
+  assert.equal((await s.getProduct(A.product.id)).stock, 5);
+  assert.deepEqual(d.nearExpiry, []);
+  assert.equal(d.bestRetailer?.name, "DX Medical Store");
+});

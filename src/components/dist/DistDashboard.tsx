@@ -53,15 +53,24 @@ function Delta({ now, before, invert = false }: { now: number; before: number; i
   );
 }
 
-function Tile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
+function Tile({ label, value, sub, big = false }: { label: string; value: React.ReactNode; sub?: React.ReactNode; big?: boolean }) {
   return (
-    <div className="rounded-xl bg-white p-4 ring-1 ring-black/5">
+    <div className={`rounded-xl bg-white ring-1 ring-black/5 ${big ? "p-4" : "p-3"}`}>
       <p className="text-xs text-neutral-500">{label}</p>
-      <p className="mt-1 text-xl font-bold tabular-nums text-neutral-900">{value}</p>
-      {sub && <div className="mt-0.5">{sub}</div>}
+      <p className={`mt-1 truncate font-bold tabular-nums text-neutral-900 ${big ? "text-2xl" : "text-lg"}`}>{value}</p>
+      {sub && <div className="mt-0.5 truncate">{sub}</div>}
     </div>
   );
 }
+
+/** Days left until a date, in words (expired ones too). */
+function daysText(n: number | null) {
+  if (n == null) return "no date";
+  if (n < 0) return `expired ${-n} day${n === -1 ? "" : "s"} ago`;
+  if (n === 0) return "expires today";
+  return `${n} day${n === 1 ? "" : "s"} left`;
+}
+const urgency = (n: number | null) => (n == null || n < 0 ? "text-rose-700 font-semibold" : n <= 30 ? "text-amber-700 font-medium" : "text-neutral-600");
 
 function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -120,7 +129,6 @@ function DailyChart({ month, rows }: { month: string; rows: { day: string; amoun
 function Admin({ c }: { c: DistCtx }) {
   const [month, setMonth] = useState(thisMonth());
   const d = useLoad(() => dist.dashboard(month), [month]);
-  const alerts = useLoad(() => (c.mode === "pharma" && c.can("customers.view") ? dist.cdslAlerts() : Promise.resolve([])), []);
   // Month closing reminder (administrator): on the month's last day, or while last month is still open.
   const closing = useLoad(() => (c.admin ? dist.monthStatus(null) : Promise.resolve(null)), []);
   const [drafting, setDrafting] = useState(false);
@@ -151,23 +159,74 @@ function Admin({ c }: { c: DistCtx }) {
           </div>
         </div>
       )}
-      {!!alerts.data?.length && (
-        <Note tone="amber">
-          CDSL attention needed: {alerts.data.slice(0, 8).map((a) => `${a.business_name} (${a.cdsl_state})`).join(", ")}
-          {alerts.data.length > 8 ? "…" : ""}
-        </Note>
-      )}
       {x && (
         <>
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            <Tile label="Net sales" value={money(x.now.net)} sub={<Delta now={x.now.net} before={x.before.net} />} />
-            <Tile label="Gross profit" value={money(x.now.grossProfit)} sub={<span className="text-[11px] text-neutral-500">margin {x.now.marginPct.toFixed(1)} % · <Delta now={x.now.grossProfit} before={x.before.grossProfit} /></span>} />
-            <Tile label="Collected from customers" value={money(x.now.collected)} sub={<Delta now={x.now.collected} before={x.before.collected} />} />
-            <Tile label="Invoices" value={x.now.invoices.toLocaleString("en-PK")} sub={<span className="text-[11px] text-neutral-500">returns {money(x.now.returns)}</span>} />
-            <Tile label="Customers owe you" value={x.receivable == null ? "—" : money(x.receivable)} sub={<Link href="/dist/ledger" className="text-[11px] text-sky-700 underline">receivables</Link>} />
-            <Tile label="You owe suppliers" value={x.payable == null ? "—" : money(x.payable)} sub={<Link href="/dist/ledger" className="text-[11px] text-sky-700 underline">payables</Link>} />
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <Tile big label="Today's sale" value={money(x.today.sales)} sub={<Link href="/dist/sales" className="text-[11px] text-sky-700 underline">{x.today.invoices} invoice{x.today.invoices === 1 ? "" : "s"} today</Link>} />
+            <Tile big label="Today's bookings" value={x.today.bookings.toLocaleString("en-PK")}
+              sub={<Link href="/dist/bookings" className="text-[11px] text-sky-700 underline">{money(x.today.bookingsTotal)}{x.today.bookingsPending ? ` · ${x.today.bookingsPending} waiting approval` : ""}</Link>} />
+            <Tile big label="Receivables" value={x.receivable == null ? "—" : money(x.receivable)} sub={<Link href="/dist/ledger" className="text-[11px] text-sky-700 underline">customers owe you</Link>} />
+            <Tile big label={`Monthly sales · ${new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })}`} value={money(x.now.net)} sub={<Delta now={x.now.net} before={x.before.net} />} />
+            <Tile big label="Best salesman (month)" value={x.bestSalesman ? x.bestSalesman.name : "—"}
+              sub={<span className="text-[11px] text-neutral-500">{x.bestSalesman ? `${money(x.bestSalesman.amount)}${x.bestSalesman.targetPct != null ? ` · ${x.bestSalesman.targetPct.toFixed(0)} % of target` : ""}` : "no salesman sales yet"}</span>} />
+            <Tile big label="Best retailer (month)" value={x.bestRetailer ? x.bestRetailer.name : "—"}
+              sub={<span className="text-[11px] text-neutral-500">{x.bestRetailer ? `${money(x.bestRetailer.amount)} business · ${x.bestRetailer.invoices} invoice${x.bestRetailer.invoices === 1 ? "" : "s"}` : "no sales yet"}</span>} />
+          </div>
+
+          <div className={`grid gap-4 ${x.cdslExpiring ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+            <Card title={`Near expiry stock${x.nearExpiry.length ? ` (${x.nearExpiry.length})` : ""}`} action={<span className="text-[11px] text-neutral-500">within {x.nearExpiryDays} days</span>}>
+              {x.nearExpiry.length ? (
+                <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto text-xs">
+                  {x.nearExpiry.map((p, i) => (
+                    <li key={`${p.productId}-${i}`} className="flex justify-between gap-2 py-1.5">
+                      <span className="min-w-0 truncate">{p.name} <span className="text-neutral-400">{p.batchNo ? `batch ${p.batchNo}` : p.code}</span></span>
+                      <span className="shrink-0 text-end tabular-nums">
+                        <span className="text-neutral-700">{p.qty} · {p.expiry}</span>
+                        <span className={`block text-[11px] ${urgency(p.daysLeft)}`}>{daysText(p.daysLeft)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="py-3 text-center text-xs text-neutral-400">No stock expiring within {x.nearExpiryDays} days. Enter batch and expiry on purchases to track it.</p>}
+            </Card>
+            {x.cdslExpiring && (
+              <Card title={`Near expiry CDSL${x.cdslExpiring.length ? ` (${x.cdslExpiring.length})` : ""}`} action={<Link href="/dist/customers" className="text-xs text-sky-700 underline">customers</Link>}>
+                {x.cdslExpiring.length ? (
+                  <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto text-xs">
+                    {x.cdslExpiring.map((cu) => (
+                      <li key={cu.id} className="flex justify-between gap-2 py-1.5">
+                        <span className="min-w-0 truncate">{cu.name} <span className="text-neutral-400">{cu.cdslNo || "no CDSL no."}</span></span>
+                        <span className="shrink-0 text-end tabular-nums">
+                          <span className="text-neutral-700">{cu.expiry ?? "—"}</span>
+                          <span className={`block text-[11px] ${urgency(cu.daysLeft)}`}>{cu.expiry ? daysText(cu.daysLeft) : "expiry missing"}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p className="py-3 text-center text-xs text-neutral-400">No CDSL expiring within {x.cdslAlertDays} days.</p>}
+              </Card>
+            )}
+            <Card title={`Low stock alert${x.lowStock.length ? ` (${x.lowStock.length})` : ""}`} action={<Link href="/dist/catalog" className="text-xs text-sky-700 underline">products</Link>}>
+              {x.lowStock.length ? (
+                <ul className="max-h-64 divide-y divide-neutral-100 overflow-y-auto text-xs">
+                  {x.lowStock.map((p) => (
+                    <li key={p.id} className="flex justify-between gap-2 py-1.5">
+                      <span className="truncate">{p.name} <span className="text-neutral-400">{p.code}</span></span>
+                      <span className={`shrink-0 tabular-nums ${p.stock <= 0 ? "font-semibold text-rose-700" : "text-amber-700"}`}>{p.stock <= 0 ? "Out of stock" : `${p.stock} left`} · reorder {p.reorder_level}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="py-3 text-center text-xs text-neutral-400">Nothing below its reorder level.</p>}
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            <Tile label="Gross profit" value={money(x.now.grossProfit)} sub={<span className="text-[11px] text-neutral-500">margin {x.now.marginPct.toFixed(1)} %</span>} />
+            <Tile label="Collected" value={money(x.now.collected)} sub={<Delta now={x.now.collected} before={x.before.collected} />} />
+            <Tile label="Invoices (month)" value={x.now.invoices.toLocaleString("en-PK")} sub={<span className="text-[11px] text-neutral-500">returns {money(x.now.returns)}</span>} />
             <Tile label="Purchases" value={money(x.now.purchases)} sub={<Delta now={x.now.purchases} before={x.before.purchases} invert />} />
-            <Tile label="Withholding tax collected" value={money(x.now.wht)} sub={<span className="text-[11px] text-neutral-500">236G / 236H, net of returns</span>} />
+            <Tile label="You owe suppliers" value={x.payable == null ? "—" : money(x.payable)} sub={<Link href="/dist/ledger" className="text-[11px] text-sky-700 underline">payables</Link>} />
+            <Tile label="Withholding tax" value={money(x.now.wht)} sub={<span className="text-[11px] text-neutral-500">236G / 236H</span>} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
@@ -186,7 +245,7 @@ function Admin({ c }: { c: DistCtx }) {
             <Card title="Top products"><Bars rows={x.products} empty="No sales yet." /></Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card title="Withholding tax by section">
               {x.wht.length ? (
                 <table className="w-full text-xs">
@@ -206,18 +265,6 @@ function Admin({ c }: { c: DistCtx }) {
             </Card>
             <Card title="Bookings this month">
               <Bars rows={x.bookings.map((b) => ({ label: `${BOOKING_LABEL[b.status] ?? b.status} (${b.n})`, amount: b.total }))} empty="No bookings yet." />
-            </Card>
-            <Card title={`Low stock${x.lowStock.length ? ` (${x.lowStock.length})` : ""}`} action={<Link href="/dist/catalog" className="text-xs text-sky-700 underline">products</Link>}>
-              {x.lowStock.length ? (
-                <ul className="max-h-56 divide-y divide-neutral-100 overflow-y-auto text-xs">
-                  {x.lowStock.map((p) => (
-                    <li key={p.id} className="flex justify-between gap-2 py-1.5">
-                      <span className="truncate">{p.name} <span className="text-neutral-400">{p.code}</span></span>
-                      <span className={`shrink-0 tabular-nums ${p.stock <= 0 ? "font-semibold text-rose-700" : "text-amber-700"}`}>{p.stock <= 0 ? "Out" : p.stock} / {p.reorder_level}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="py-3 text-center text-xs text-neutral-400">Nothing below its reorder level.</p>}
             </Card>
           </div>
         </>
