@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Gift, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { dist, errorText } from "@/lib/dist";
-import type { DistMode } from "@/lib/dist/engine";
-import type { DistProduct } from "@/lib/dist/store";
+import { schemeLabel, type DistMode } from "@/lib/dist/engine";
+import type { DistProduct, DistScheme } from "@/lib/dist/store";
 import { DistGuard, Err, Note, PageTitle, money, useLoad } from "@/components/dist/ui";
 import { useCan } from "@/lib/actionPermissions";
 import { buildCsv, downloadCsv as saveCsv } from "@/lib/csv";
@@ -28,6 +28,10 @@ function Catalog({ mode, canManage, canExport }: { mode: DistMode; canManage: bo
   const [companyId, setCompanyId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [editing, setEditing] = useState<Partial<DistProduct> | null>(null);
+  const [schemeFor, setSchemeFor] = useState<DistProduct | null>(null);
+  const schemes = useLoad(() => dist.listSchemes(), []);
+  const offers = new Map<string, string[]>();
+  for (const s of schemes.data ?? []) offers.set(s.product_id, [...(offers.get(s.product_id) ?? []), schemeLabel(s)]);
   const companies = useLoad(() => dist.listCompanies({ includeInactive: true }), []);
   const cats = useLoad(() => dist.listCategories(true), []);
   const list = useLoad(() => dist.listProducts({ search, companyId: companyId || null, categoryId: categoryId || null, includeInactive: true }), [search, companyId, categoryId]);
@@ -107,6 +111,7 @@ function Catalog({ mode, canManage, canExport }: { mode: DistMode; canManage: bo
                 <td className="px-3 py-2">
                   <span className="font-medium">{p.name}</span>
                   {p.is_narcotic === 1 && <span className="ms-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800" title="Sold only to customers with a valid CDSL (Form-9)">Narcotic · Form-9</span>}
+                  {offers.get(p.id)?.map((o) => <span key={o} className="ms-1.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">{o}</span>)}
                   <span className="block text-[11px] text-neutral-500">{[p.generic_name, p.strength, p.dosage_form, p.brand, p.size, `${p.unit}${p.pack_size > 1 ? ` × ${p.pack_size}` : ""}`].filter(Boolean).join(" · ")}</span>
                 </td>
                 <td className="px-3 py-2 text-xs">{p.company_name}</td>
@@ -114,13 +119,17 @@ function Catalog({ mode, canManage, canExport }: { mode: DistMode; canManage: bo
                 <td className="px-3 py-2 text-end">{money(p.trade_price)}</td>
                 <td className="px-3 py-2 text-end text-xs">{p.sales_tax_rate}</td>
                 <td className={`px-3 py-2 text-end ${p.stock <= 0 ? "text-rose-600" : p.reorder_level && p.stock <= p.reorder_level ? "text-amber-600" : ""}`}>{p.stock}</td>
-                <td className="px-3 py-2 text-end">{canManage && <Button variant="ghost" onClick={() => setEditing(p)}><Pencil size={14} /></Button>}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-end">
+                  {canManage && <Button variant="ghost" title="Bonus / extra discount scheme" aria-label={`Schemes for ${p.name}`} onClick={() => setSchemeFor(p)}><Gift size={14} /></Button>}
+                  {canManage && <Button variant="ghost" title="Edit product" onClick={() => setEditing(p)}><Pencil size={14} /></Button>}
+                </td>
               </tr>
             ))}
             {!list.data?.length && <tr><td colSpan={8} className="py-8 text-center text-neutral-400">{list.loading ? "Loading…" : "No content in table"}</td></tr>}
           </tbody>
         </table>
       </div>
+      {schemeFor && <SchemesModal product={schemeFor} onClose={() => { setSchemeFor(null); void schemes.reload(); }} />}
       {editing && (
         <ProductModal mode={mode} value={editing} companies={companies.data ?? []} categories={cats.data ?? []} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void list.reload(); }} />
       )}
@@ -194,6 +203,60 @@ function ProductModal({ mode, value, companies, categories, onClose, onSaved }: 
       <div className="mt-3 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
         <Button variant="primary" onClick={async () => { try { await dist.saveProduct(v); onSaved(); } catch (e) { setError(errorText(e)); } }}>Save</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** A product's company schemes: buy N get M free and / or an extra % on N or more,
+ * applied by themselves on invoices and bookings. */
+function SchemesModal({ product, onClose }: { product: DistProduct; onClose: () => void }) {
+  const list = useLoad(() => dist.listSchemes({ productId: product.id, includeInactive: true }), [product.id]);
+  const blank = { id: "", minQty: "", bonusQty: "", extraDiscPct: "", validFrom: "", validTo: "", note: "" };
+  const [f, setF] = useState(blank);
+  const [error, setError] = useState<string | null>(null);
+  const edit = (s: DistScheme) => setF({ id: s.id, minQty: String(s.min_qty), bonusQty: s.bonus_qty ? String(s.bonus_qty) : "", extraDiscPct: s.extra_disc_pct ? String(s.extra_disc_pct) : "", validFrom: s.valid_from ?? "", validTo: s.valid_to ?? "", note: s.note ?? "" });
+  const run = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try { await fn(); setF(blank); await list.reload(); } catch (e) { setError(errorText(e)); }
+  };
+  return (
+    <Modal title={`Schemes · ${product.name}`} onClose={onClose} width="max-w-2xl">
+      <div className="space-y-3 text-sm">
+        <Note>
+          A company offer on this product, applied by itself when billing or booking: e.g. <b>buy 10 get 2 free</b> (20 bought earns 4 free) or <b>5 % extra on 10 or more</b>.
+          Giving more than the scheme still needs the bonus / discount permission.
+        </Note>
+        <ul className="divide-y divide-neutral-100 rounded-xl ring-1 ring-black/5">
+          {(list.data ?? []).map((s) => (
+            <li key={s.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 ${s.is_active ? "" : "opacity-50"}`}>
+              <span className="min-w-0 flex-1">
+                <b>{schemeLabel(s)}</b>
+                <span className="block text-[11px] text-neutral-500">{s.valid_from || s.valid_to ? `${s.valid_from ?? "…"} to ${s.valid_to ?? "…"}` : "No end date"}{s.note ? ` · ${s.note}` : ""}{s.is_active ? "" : " · off"}</span>
+              </span>
+              <Button variant="ghost" title="Edit" onClick={() => edit(s)}><Pencil size={14} /></Button>
+              <Button variant="ghost" title="Delete" onClick={() => confirm(`Delete "${schemeLabel(s)}"?`) && void run(() => dist.deleteScheme(s.id))}><Trash2 size={14} /></Button>
+            </li>
+          ))}
+          {!list.data?.length && <li className="px-3 py-4 text-center text-xs text-neutral-400">{list.loading ? "Loading…" : "No scheme on this product yet."}</li>}
+        </ul>
+        <div className="grid gap-2 rounded-xl bg-neutral-50 p-3 md:grid-cols-3">
+          <h3 className="text-sm font-semibold md:col-span-3">{f.id ? "Change scheme" : "Add a scheme"}</h3>
+          <Field label="On (quantity)" required><Input type="number" min="0" step="any" value={f.minQty} onChange={(e) => setF({ ...f, minQty: e.target.value })} placeholder="10" /></Field>
+          <Field label="Free (bonus) quantity"><Input type="number" min="0" step="any" value={f.bonusQty} onChange={(e) => setF({ ...f, bonusQty: e.target.value })} placeholder="2" /></Field>
+          <Field label="Extra discount %"><Input type="number" min="0" max="100" step="any" value={f.extraDiscPct} onChange={(e) => setF({ ...f, extraDiscPct: e.target.value })} placeholder="5" /></Field>
+          <Field label="From (optional)"><Input type="date" value={f.validFrom} onChange={(e) => setF({ ...f, validFrom: e.target.value })} /></Field>
+          <Field label="To (optional)"><Input type="date" value={f.validTo} onChange={(e) => setF({ ...f, validTo: e.target.value })} /></Field>
+          <Field label="Note"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="e.g. company offer, Nov" /></Field>
+          <div className="flex justify-end gap-2 md:col-span-3">
+            {f.id && <Button onClick={() => setF(blank)}>Cancel change</Button>}
+            <Button variant="primary" onClick={() => void run(() => dist.saveScheme({
+              id: f.id || null, productId: product.id, minQty: Number(f.minQty), bonusQty: Number(f.bonusQty) || 0, extraDiscPct: Number(f.extraDiscPct) || 0,
+              validFrom: f.validFrom || null, validTo: f.validTo || null, note: f.note || null,
+            }))}>{f.id ? "Save scheme" : "Add scheme"}</Button>
+          </div>
+        </div>
+        <Err error={error} />
       </div>
     </Modal>
   );

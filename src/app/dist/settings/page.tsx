@@ -185,7 +185,23 @@ export default function DistSettingsPage() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.cdsl.required} onChange={(e) => setS({ ...s, cdsl: { ...s.cdsl, required: e.target.checked } })} /> CDSL required (pharma)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.cdsl.blockSaleWhenExpired} onChange={(e) => setS({ ...s, cdsl: { ...s.cdsl, blockSaleWhenExpired: e.target.checked } })} /> Block sales on expired CDSL</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={s.stock.allowNegative} onChange={(e) => setS({ ...s, stock: { allowNegative: e.target.checked } })} /> Allow negative stock</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={s.booking.requireApproval} onChange={(e) => setS({ ...s, booking: { requireApproval: e.target.checked } })} /> Bookings need approval</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={s.booking.requireApproval} onChange={(e) => setS({ ...s, booking: { ...s.booking, requireApproval: e.target.checked } })} /> Bookings need approval</label>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-xl bg-white p-4 ring-1 ring-black/5">
+            <h2 className="text-sm font-semibold">Booking at the customer&apos;s location</h2>
+            <p className="text-sm text-neutral-600">
+              When on, a salesman can submit a booking only while within the distance below of the customer&apos;s pinned location (from the location he shares).
+              Customers without a pin can&apos;t be booked then. Give a user &quot;Book away from the customer&apos;s pinned location&quot; under Permissions to relax it for them.
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                <input type="checkbox" checked={s.booking.atCustomer} onChange={(e) => setS({ ...s, booking: { ...s.booking, atCustomer: e.target.checked } })} /> Book only at the customer&apos;s location
+              </label>
+              <Field label="Allowed distance from the pin (metres)">
+                <Input type="number" min="20" value={s.booking.atCustomerMeters} onChange={(e) => setS({ ...s, booking: { ...s.booking, atCustomerMeters: num(e.target.value) } })} />
+              </Field>
             </div>
           </section>
 

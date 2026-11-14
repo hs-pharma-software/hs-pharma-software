@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Printer, RotateCcw, Wallet } from "lucide-react";
+import { Pencil, Printer, RotateCcw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -16,7 +16,7 @@ import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 const TITLE: Record<string, string> = { sale: "SALES INVOICE", sale_return: "CREDIT NOTE (SALES RETURN)", purchase: "PURCHASE INVOICE", purchase_return: "PURCHASE RETURN" };
 
 /** A finalized document. It can't be edited: corrections are credit notes / returns. */
-export function DocView({ id, onClose }: { id: string; onClose: () => void }) {
+export function DocView({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit?: (d: { doc: DistDoc; items: DistDocItem[] }) => void }) {
   const data = useLoad(() => dist.getDoc(id), [id]);
   const area = useRef<HTMLDivElement>(null);
   const [returning, setReturning] = useState(false);
@@ -31,6 +31,7 @@ export function DocView({ id, onClose }: { id: string; onClose: () => void }) {
             <Button onClick={() => void printDirect("a4", area.current)}><Printer size={14} /> Print</Button>
             {(d.doc_type === "sale" || d.doc_type === "purchase") && <Button onClick={() => setReturning(true)}><RotateCcw size={14} /> {d.doc_type === "sale" ? "Credit note / return" : "Purchase return"}</Button>}
             {d.balance > 0 && <Button onClick={() => setPaying(true)}><Wallet size={14} /> {d.doc_type === "sale" ? "Receive payment" : "Pay supplier"}</Button>}
+            {onEdit && d.doc_type === "purchase" && !data.data.items.some((i) => Number(i.returned_qty) > 0) && <Button onClick={() => onEdit(data.data!)}><Pencil size={14} /> Edit</Button>}
           </div>
           <div className="overflow-x-auto rounded-xl bg-neutral-100 p-3">
             <div ref={area} className="print-area mx-auto w-[190mm] bg-white p-6 text-[12px] text-black">
@@ -136,7 +137,7 @@ function Row({ l, v, bold }: { l: string; v: number; bold?: boolean }) {
   );
 }
 
-function ReturnModal({ doc, items, onClose, onDone }: { doc: DistDoc; items: DistDocItem[]; onClose: () => void; onDone: () => void }) {
+export function ReturnModal({ doc, items, onClose, onDone }: { doc: DistDoc; items: DistDocItem[]; onClose: () => void; onDone: () => void }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);

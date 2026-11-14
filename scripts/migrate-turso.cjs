@@ -383,6 +383,7 @@ const MIGRATIONS = [
   { version: 87, label: 'Offline Tenants: offline_tenants, offline_licenses (standalone desktop licenses)', statements: rustSchemaStatements(87) },
   { version: 88, label: 'Desktop local copy: data_changes change log (triggers on every business table)', statements: rustSchemaStatementsWithTriggers(88) },
   { version: 89, label: 'Distribution: line bonus/discounts/WHT, narcotic products, salesman wages, salaries, month closing; offline devices per branch', statements: rustSchemaStatementsWithTriggers(89) },
+  { version: 90, label: 'Distribution: product schemes (bonus / extra %), booking line bonus and discounts, invoice delivery (collect, deliver, return)', statements: rustSchemaStatementsWithTriggers(90) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

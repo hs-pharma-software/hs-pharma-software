@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Field, Input } from "@/components/ui/Field";
 import { dist } from "@/lib/dist";
-import type { DistDocType } from "@/lib/dist/store";
+import type { DistDoc, DistDocItem, DistDocType } from "@/lib/dist/store";
 import { Badge, Err, money, monthStart, todayYmd, useLoad } from "./ui";
 import { DocView } from "./DocView";
 
-export function DocTable({ type, reloadKey = 0 }: { type: DistDocType; reloadKey?: number }) {
+export function DocTable({ type, reloadKey = 0, onEdit }: { type: DistDocType; reloadKey?: number; onEdit?: (d: { doc: DistDoc; items: DistDocItem[] }) => void }) {
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(todayYmd);
   const [search, setSearch] = useState("");
@@ -54,7 +54,7 @@ export function DocTable({ type, reloadKey = 0 }: { type: DistDocType; reloadKey
           </tbody>
         </table>
       </div>
-      {open && <DocView id={open} onClose={() => { setOpen(null); void list.reload(); }} />}
+      {open && <DocView id={open} onClose={() => { setOpen(null); void list.reload(); }} onEdit={onEdit ? (d) => { setOpen(null); onEdit(d); } : undefined} />}
     </div>
   );
 }

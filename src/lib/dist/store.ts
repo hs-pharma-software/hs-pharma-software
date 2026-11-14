@@ -35,6 +35,9 @@ import {
   canMove,
   cdslState,
   distanceKm,
+  schemeOffer,
+  schemeLabel,
+  type SchemeLike,
   liveState,
   mergeSettings,
   normalizeCnic,
@@ -180,6 +183,8 @@ export interface DistBooking extends Base {
   loc_lng: number | null;
   loc_accuracy: number | null;
   loc_recorded_at: string | null;
+  /** How far from the customer's pin the booking was submitted (metres), when known. */
+  loc_distance_m?: number | null;
   submitted_at: string | null;
   decided_by: string | null;
   decided_at: string | null;
@@ -199,7 +204,17 @@ export interface DistBookingItem extends Base {
   sales_tax_rate: number;
   sales_tax: number;
   line_total: number;
+  bonus_qty?: number;
+  disc_pct?: number;
+  extra_disc_pct?: number;
 }
+/** A company scheme on a product: buy min_qty, get bonus_qty free and / or extra_disc_pct % off. */
+export interface DistScheme extends Base, SchemeLike {
+  product_id: string;
+  note: string | null;
+  created_by: string | null;
+}
+export type DeliveryStatus = "collected" | "delivered" | "returned" | "settled";
 export type DistDocType = "sale" | "sale_return" | "purchase" | "purchase_return";
 export interface DistDoc extends Base {
   doc_type: DistDocType;
@@ -232,6 +247,13 @@ export interface DistDoc extends Base {
   cost_total: number;
   status: string;
   created_by: string | null;
+  /** Delivery by the supply man: none yet (null) → collected → delivered / returned → settled (payment taken). */
+  delivery_status?: DeliveryStatus | null;
+  delivery_by?: string | null;
+  delivery_by_name?: string | null;
+  collected_at?: string | null;
+  delivered_at?: string | null;
+  delivery_note?: string | null;
 }
 export interface DistDocItem extends Base {
   doc_id: string;
@@ -506,10 +528,15 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       if (toPaisa(price) !== toPaisa(p.trade_price)) await need("invoices.edit_price");
       if (p.min_price != null && price < p.min_price && !isAdmin()) throw new DistError("FORBIDDEN", `${p.name} can't be sold below Rs ${p.min_price}.`);
       const rupees = Math.max(0, Number(l.discount) || 0);
-      const discPct = pctOf(l.discPct), extraDiscPct = pctOf(l.extraDiscPct);
-      if (rupees > 0 || discPct > 0 || extraDiscPct > 0) await need("invoices.discount");
-      const bonus = Math.max(0, qty3(l.bonusQty));
-      if (bonus > 0) await need("invoices.bonus");
+      // The company's scheme (buy N get M free, extra % on N+) applies by itself when the line leaves it out;
+      // giving more than the scheme needs the matching permission.
+      const offer = schemeOffer(await schemesOf(p.id), qty, today());
+      const unset = (v: unknown) => v == null || String(v) === "";
+      const discPct = pctOf(l.discPct);
+      const extraDiscPct = unset(l.extraDiscPct) ? offer?.extraPct ?? 0 : pctOf(l.extraDiscPct);
+      if (rupees > 0 || discPct > 0 || extraDiscPct > (offer?.extraPct ?? 0)) await need("invoices.discount");
+      const bonus = unset(l.bonusQty) ? offer?.bonus ?? 0 : Math.max(0, qty3(l.bonusQty));
+      if (bonus > (offer?.bonus ?? 0)) await need("invoices.bonus");
       const discount = toRupees(lineDiscountPaisa(Math.round(toPaisa(price) * qty), discPct, extraDiscPct, rupees));
       prepared.push({ p, qty, bonus, price, discount, discPct, extraDiscPct, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
     }
@@ -1037,6 +1064,19 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
         return { ok: false as const, error: (e as Error).message === "timeout" ? "The verification service did not answer in time. Status left unchanged (unverified)." : `Verification failed: ${(e as Error).message}` };
       }
     },
+    /** FBR's answer for an NTN / CNIC before the customer is saved (nothing is recorded; the form records it on save). */
+    async checkAtlNumber(identifier: string, verifier: AtlVerifier | null, timeoutMs = 15000) {
+      await need("customers.verify");
+      const id = String(identifier ?? "").trim();
+      if (!id) return { ok: false as const, error: "Enter the NTN or CNIC first." };
+      if (!verifier) return { ok: false as const, error: "No ATL verification service is configured." };
+      try {
+        const r = await Promise.race([verifier.check(id), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs))]);
+        return { ok: true as const, status: r.status, source: verifier.name, reference: r.reference ?? null, identifier: id };
+      } catch (e) {
+        return { ok: false as const, error: (e as Error).message === "timeout" ? "FBR did not answer in time. Try again, or check on the ATL portal / SMS 9966." : `FBR check failed: ${(e as Error).message}` };
+      }
+    },
     async taxChecks(customerId: string) {
       await need("customers.view");
       await owned("dist_customers", customerId, "Customer", true);
@@ -1373,7 +1413,11 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       } as never);
       for (const [i, x] of prepared.entries()) {
         const c = calc.lines[i];
-        await insert("dist_booking_items", { booking_id: b.id, product_id: x.p.id, code: x.p.code, name: x.p.name, unit: x.p.unit, qty: x.qty, price: x.price, discount: toRupees(c.discountPaisa), sales_tax_rate: x.p.sales_tax_rate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa) } as never);
+        await insert("dist_booking_items", {
+          booking_id: b.id, product_id: x.p.id, code: x.p.code, name: x.p.name, unit: x.p.unit, qty: x.qty, price: x.price, discount: toRupees(c.discountPaisa),
+          bonus_qty: x.bonus, disc_pct: x.discPct, extra_disc_pct: x.extraDiscPct,
+          sales_tax_rate: x.p.sales_tax_rate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa),
+        } as never);
       }
       await bookingEvent(b.id, null, "draft");
       return api.getBooking(b.id);
@@ -1425,9 +1469,17 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       if (booking.status !== "draft") throw new DistError("CONFLICT", `Only a draft can be submitted (this one is ${booking.status}).`);
       const me = await mySalesman();
       let loc: Record<string, unknown> = {};
-      if (me && settings.location.requiredForBooking) {
+      const atCustomer = !!me && settings.booking.atCustomer && !(await can("bookings.location_relax"));
+      if (me && (settings.location.requiredForBooking || atCustomer)) {
         const p = await requireFreshLocation(me.id, settings);
         loc = { loc_point_id: p.id, loc_lat: p.lat, loc_lng: p.lng, loc_accuracy: p.accuracy, loc_recorded_at: p.recorded_at };
+        const cust = await owned<DistCustomer>("dist_customers", booking.customer_id, "Customer");
+        if (cust.lat != null && cust.lng != null) loc.loc_distance_m = Math.round(distanceKm(p, { lat: cust.lat, lng: cust.lng }) * 1000);
+        if (atCustomer) {
+          if (loc.loc_distance_m == null) throw new DistError("CONFLICT", `${cust.business_name} has no pinned location, so you can't book here. Ask the administrator to pin the shop on the map.`);
+          if (Number(loc.loc_distance_m) > settings.booking.atCustomerMeters)
+            throw new DistError("CONFLICT", `You are ${fmtDistance(Number(loc.loc_distance_m))} from ${cust.business_name}'s pinned location (allowed ${settings.booking.atCustomerMeters} m). Book at the customer's shop.`);
+        }
       }
       const to: BookingStatus = settings.booking.requireApproval ? "pending_approval" : "approved";
       await moveBooking(booking, to, { ...loc, submitted_at: await dbNow() });
@@ -1525,41 +1577,7 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
     },
     async createPurchase(input: { supplierId: string; supplierInvoiceNo?: string | null; date?: string; lines: PurchaseLineIn[]; billDiscount?: number; payments?: PaymentIn[]; description?: string | null; whtRate?: number; whtSection?: string | null }) {
       await need("purchases.create");
-      // Distributors use dist_companies as supplier principals; fall back to the
-      // generic suppliers table so existing records remain accessible.
-      const [company] = await db.select<{ id: string; name: string; address: string | null }>(
-        `SELECT id, name, address FROM dist_companies WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
-        [input.supplierId, tenant()]
-      );
-      const sup: { id: string; name: string; ntn?: string | null; address: string | null } =
-        company ?? (await owned<{ id: string; name: string; ntn?: string | null; address: string | null }>("suppliers", input.supplierId, "Supplier"));
-      if (!input.lines?.length) throw new DistError("INVALID", "Add at least one product.");
-      const prepared = [];
-      for (const l of input.lines) {
-        const p = await owned<DistProduct>("dist_products", l.productId, "Product");
-        const qty = Math.round(Number(l.qty) * 1000) / 1000;
-        if (!(qty > 0)) throw new DistError("INVALID", `Enter a quantity for ${p.name}.`);
-        const cost = Number(l.cost);
-        if (!(cost >= 0)) throw new DistError("INVALID", `Invalid cost for ${p.name}.`);
-        if (p.cost > 0 && toPaisa(cost) !== toPaisa(p.cost)) await need("purchases.edit_price");
-        const rupees = Math.max(0, Number(l.discount) || 0);
-        const discPct = pctOf(l.discPct), extraDiscPct = pctOf(l.extraDiscPct);
-        if (rupees > 0 || discPct > 0 || extraDiscPct > 0) await need("purchases.discount");
-        const taxRate = Math.max(0, Number(l.taxRate) || 0);
-        if (taxRate > 0) await need("purchases.edit_tax");
-        const bonus = Math.max(0, qty3(l.bonusQty));
-        const discount = toRupees(lineDiscountPaisa(Math.round(toPaisa(cost) * qty), discPct, extraDiscPct, rupees));
-        prepared.push({ p, qty, bonus, cost, discount, discPct, extraDiscPct, taxRate, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
-      }
-      if ((Number(input.billDiscount) || 0) > 0) await need("purchases.discount");
-      const calc = calcDoc(prepared.map((x) => ({ qty: x.qty, price: x.cost, discount: x.discount, taxRate: x.taxRate })), Number(input.billDiscount) || 0);
-      // Withholding tax the supplier charged on this purchase (236G / 236H): added to what is owed to them.
-      const whtRate = Math.max(0, Number(input.whtRate) || 0);
-      if (whtRate > 100) throw new DistError("INVALID", "Withholding rate must be 0-100 %.");
-      if (whtRate > 0) await need("purchases.edit_tax");
-      const { settings } = await cfg();
-      const wht = whtAmount(settings, calc, whtRate);
-      const owed = calc.totalPaisa + wht.amountPaisa;
+      const { sup, prepared, calc, whtRate, wht, owed } = await preparePurchase(input);
       const payments = (input.payments ?? []).filter((x) => Number(x.amount) > 0);
       const paid = Math.min(owed, payments.reduce((s, x) => s + toPaisa(x.amount), 0));
       const doc = await insertNumbered<DistDoc>("dist_docs", "doc_no", {
@@ -1600,6 +1618,166 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
         [tenant(), productId, ...args]);
       return { any: (await q("", []))[0] ?? null, supplier: supplierId ? (await q("AND d.party_id = ?", [supplierId]))[0] ?? null : null };
     },
+    /** Edits a purchase: its lines and figures are replaced; stock moves by the difference
+     * (never below what was already sold, unless negative stock is allowed). A purchase
+     * with returns, or paid beyond its new total, can't be edited. */
+    async updatePurchase(id: string, input: PurchaseInput & { reason?: string | null }) {
+      await need("purchases.create");
+      const old = await docWithItems(id);
+      if (old.doc.doc_type !== "purchase") throw new DistError("INVALID", "Only a purchase can be edited here.");
+      if (old.items.some((i) => Number(i.returned_qty) > 0)) throw new DistError("CONFLICT", "Part of this purchase was returned, so it can't be edited. Make another purchase or a purchase return instead.");
+      const { settings } = await cfg();
+      const { sup, prepared, calc, whtRate, wht, owed } = await preparePurchase(input);
+      if (owed < toPaisa(old.doc.paid)) throw new DistError("CONFLICT", `Rs ${old.doc.paid} was already paid on this purchase, more than its new total.`);
+      // Stock: what each product gains or loses by the change.
+      const before = new Map<string, number>();
+      for (const i of old.items) before.set(i.product_id, (before.get(i.product_id) ?? 0) + Number(i.qty) + Number(i.bonus_qty ?? 0));
+      const after = new Map<string, number>();
+      for (const x of prepared) after.set(x.p.id, (after.get(x.p.id) ?? 0) + x.qty + x.bonus);
+      const products = new Set([...before.keys(), ...after.keys()]);
+      for (const pid of products) {
+        const delta = (after.get(pid) ?? 0) - (before.get(pid) ?? 0);
+        if (delta >= 0) continue;
+        const p = await owned<DistProduct>("dist_products", pid, "Product", true);
+        if (!settings.stock.allowNegative && Number(p.stock) + delta < -1e-9)
+          throw new DistError("CONFLICT", `${p.name}: only ${p.stock} in stock, so this purchase can't take away ${Math.round(-delta * 1000) / 1000}. Some of it was already sold.`);
+      }
+      const now = iso(db.now());
+      for (const i of old.items) {
+        await db.execute(`UPDATE dist_doc_items SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, [now, now, i.id, tenant()]);
+        await syncRow("dist_doc_items", i.id);
+      }
+      for (const pid of products) {
+        const delta = Math.round(((after.get(pid) ?? 0) - (before.get(pid) ?? 0)) * 1000) / 1000;
+        if (delta) {
+          await addStock(pid, delta);
+          await stockMove(pid, delta, "purchase_edit", id, null, null, `Purchase #${old.doc.doc_no} edited`);
+        }
+      }
+      const whtLines = splitPaisa(wht.amountPaisa, calc.lines.map((c) => c.totalPaisa));
+      for (const [i, x] of prepared.entries()) {
+        const c = calc.lines[i];
+        await insert<DistDocItem>("dist_doc_items", {
+          doc_id: id, product_id: x.p.id, code: x.p.code, name: x.p.name, unit: x.p.unit, company_id: x.p.company_id, category_id: x.p.category_id, batch_no: x.batchNo, expiry: x.expiry,
+          qty: x.qty, bonus_qty: x.bonus, price: x.cost, discount: toRupees(c.discountPaisa), disc_pct: x.discPct, extra_disc_pct: x.extraDiscPct,
+          sales_tax_rate: x.taxRate, sales_tax: toRupees(c.taxPaisa), line_total: toRupees(c.totalPaisa), cost: x.cost, wht_rate: whtRate, wht_amount: toRupees(whtLines[i]),
+        } as never);
+        await update("dist_products", x.p.id, { cost: x.cost });
+      }
+      await update("dist_docs", id, {
+        date: input.date || old.doc.date, party_id: sup.id, party_name: sup.name, party_address: sup.address,
+        supplier_invoice_no: trimOrNull(input.supplierInvoiceNo), description: trimOrNull(input.description),
+        gross: toRupees(calc.grossPaisa), discount: toRupees(calc.discountPaisa), sales_tax: toRupees(calc.taxPaisa), total: toRupees(calc.totalPaisa),
+        wht_section: whtRate > 0 ? trimOrNull(input.whtSection) ?? "236G" : null, wht_status: whtRate > 0 ? "charged by supplier" : null, wht_rate: whtRate,
+        wht_base: toRupees(wht.basePaisa), wht_amount: toRupees(wht.amountPaisa), balance: toRupees(owed - toPaisa(old.doc.paid)),
+      });
+      await audit("purchase.edit", "doc", id, { old: { total: old.doc.total, lines: old.items.length }, next: { total: toRupees(calc.totalPaisa), lines: prepared.length }, reason: trimOrNull(input.reason) });
+      return docWithItems(id);
+    },
+
+    // ── Company schemes on products ──
+    async listSchemes(opts: { productId?: string | null; includeInactive?: boolean } = {}) {
+      await need("catalog.view");
+      return db.select<DistScheme & { product_name: string; product_code: string }>(
+        `SELECT s.*, p.name AS product_name, p.code AS product_code FROM dist_product_schemes s JOIN dist_products p ON p.id = s.product_id AND p.tenant_id = s.tenant_id
+         WHERE s.tenant_id = ? AND s.deleted_at IS NULL ${opts.includeInactive ? "" : "AND s.is_active = 1"} ${opts.productId ? "AND s.product_id = ?" : ""}
+         ORDER BY p.name, s.min_qty`, opts.productId ? [tenant(), opts.productId] : [tenant()]);
+    },
+    async saveScheme(input: { id?: string | null; productId: string; minQty: number; bonusQty?: number; extraDiscPct?: number; validFrom?: string | null; validTo?: string | null; isActive?: boolean; note?: string | null }) {
+      await need("catalog.manage");
+      const p = await owned<DistProduct>("dist_products", input.productId, "Product");
+      const minQty = qty3(input.minQty), bonusQty = Math.max(0, qty3(input.bonusQty)), extra = pctOf(input.extraDiscPct);
+      if (!(minQty > 0)) throw new DistError("INVALID", "Enter the quantity the scheme starts at (e.g. 10).");
+      if (!(bonusQty > 0) && !(extra > 0)) throw new DistError("INVALID", "Enter the free quantity, the extra discount %, or both.");
+      const from = trimOrNull(input.validFrom), to = trimOrNull(input.validTo);
+      if (from && to && to < from) throw new DistError("INVALID", "The end date is before the start date.");
+      const row = { product_id: p.id, min_qty: minQty, bonus_qty: bonusQty, extra_disc_pct: extra, valid_from: from, valid_to: to, is_active: input.isActive === false ? 0 : 1, note: trimOrNull(input.note) };
+      if (input.id) {
+        await owned<DistScheme>("dist_product_schemes", input.id, "Scheme");
+        await update("dist_product_schemes", input.id, row);
+        await audit("scheme.update", "product", p.id, { next: { ...row, label: schemeLabel(row) } });
+        return owned<DistScheme>("dist_product_schemes", input.id, "Scheme");
+      }
+      const s = await insert<DistScheme>("dist_product_schemes", { ...row, created_by: context().userName } as never);
+      await audit("scheme.create", "product", p.id, { next: { ...row, label: schemeLabel(row) } });
+      return s;
+    },
+    async deleteScheme(id: string) {
+      await need("catalog.manage");
+      const s = await owned<DistScheme>("dist_product_schemes", id, "Scheme");
+      await update("dist_product_schemes", id, { deleted_at: iso(db.now()) });
+      await audit("scheme.delete", "product", s.product_id, { old: { label: schemeLabel(s) } });
+    },
+    /** A product's stock now and the batches it is in (latest purchases first held; the sale form
+     * takes the earliest expiry), with the scheme a quantity would earn. */
+    async productStock(productId: string, qty?: number) {
+      await need("catalog.view");
+      const p = await owned<DistProduct>("dist_products", productId, "Product");
+      const batches = (await heldBatches(productId)).map(({ batchNo, expiry, qty: q }) => ({ batchNo, expiry, qty: q }));
+      batches.sort((x, y) => (x.expiry ?? "9999").localeCompare(y.expiry ?? "9999"));
+      const schemes = await schemesOf(productId);
+      const offer = qty != null ? schemeOffer(schemes, Number(qty) || 0, today()) : null;
+      return { stock: Number(p.stock) || 0, batches, schemes: schemes.map((x) => ({ ...x, label: schemeLabel(x) })), offer: offer ? { bonus: offer.bonus, extraPct: offer.extraPct, label: offer.label } : null };
+    },
+    /** For the booking form: whether this user must be at the customer's shop, and how far they are (from the location they share). */
+    async bookingLocationCheck(customerId: string) {
+      const { settings } = await cfg();
+      const cust = await customerFor(customerId);
+      const me = await mySalesman();
+      const required = !!me && settings.booking.atCustomer && !(await can("bookings.location_relax"));
+      const pinned = cust.lat != null && cust.lng != null;
+      const allowedM = settings.booking.atCustomerMeters;
+      const p = me ? await lastPoint(me.id) : null;
+      const distanceM = p && pinned ? Math.round(distanceKm(p, { lat: cust.lat!, lng: cust.lng! }) * 1000) : null;
+      const ok = !required || (pinned && distanceM != null && distanceM <= allowedM);
+      const reason = !required ? (me ? "Booking away from the shop is allowed for you." : "Location is not checked for your login.")
+        : !pinned ? `${cust.business_name} has no pinned location: ask the administrator to pin the shop.`
+        : distanceM == null ? "No location from you yet: start location sharing (Field Panel)."
+        : distanceM <= allowedM ? `You are ${fmtDistance(distanceM)} from the shop (allowed ${allowedM} m).`
+        : `You are ${fmtDistance(distanceM)} from the shop's pin (allowed ${allowedM} m). Go to the shop to book.`;
+      return { required, pinned, distanceM, allowedM, ok, reason, pointAt: p?.recorded_at ?? null, customer: { lat: cust.lat ?? null, lng: cust.lng ?? null } };
+    },
+
+    // ── Delivery (supply man) ──
+    /** Invoices to deliver and their delivery state (newest first). */
+    async deliveries(opts: { status?: "open" | "all" | DeliveryStatus | "pending"; from?: string; to?: string } = {}) {
+      if (!(await can("deliveries.manage"))) await need("invoices.view");
+      const where = ["d.tenant_id = ?", "d.doc_type = 'sale'", "d.deleted_at IS NULL"];
+      const params: unknown[] = [tenant()];
+      if (opts.from && opts.to) { where.push("d.date BETWEEN ? AND ?"); params.push(opts.from, opts.to); }
+      const st = opts.status ?? "open";
+      if (st === "open") where.push("COALESCE(d.delivery_status, '') <> 'settled'");
+      else if (st === "pending") where.push("d.delivery_status IS NULL");
+      else if (st !== "all") { where.push("d.delivery_status = ?"); params.push(st); }
+      return db.select<DistDoc & { booking_no: number | null; customer_mobile: string | null; returned: number }>(
+        `SELECT d.*, b.booking_no, c.mobile AS customer_mobile,
+                COALESCE((SELECT SUM(r.total) FROM dist_docs r WHERE r.tenant_id = d.tenant_id AND r.ref_doc_id = d.id AND r.doc_type = 'sale_return' AND r.deleted_at IS NULL), 0) AS returned
+         FROM dist_docs d LEFT JOIN dist_bookings b ON b.id = d.booking_id AND b.tenant_id = d.tenant_id
+         LEFT JOIN dist_customers c ON c.id = d.party_id AND c.tenant_id = d.tenant_id
+         WHERE ${where.join(" AND ")} ORDER BY d.date DESC, d.doc_no DESC LIMIT 500`, params);
+    },
+    /** The supply man's steps: collect the goods, then delivered, (return, see createSaleReturn), then settled after the payment. */
+    async deliveryStep(docId: string, step: "collect" | "deliver" | "returned" | "settle", note?: string | null) {
+      await need("deliveries.manage");
+      const d = await owned<DistDoc>("dist_docs", docId, "Invoice");
+      if (d.doc_type !== "sale") throw new DistError("INVALID", "Only a sales invoice is delivered.");
+      const now = await dbNow();
+      const c = context();
+      const from = d.delivery_status ?? null;
+      const flow: Record<typeof step, { from: (DeliveryStatus | null)[]; to: DeliveryStatus; patch: Record<string, unknown> }> = {
+        collect: { from: [null], to: "collected", patch: { delivery_by: c.userId, delivery_by_name: c.userName, collected_at: now } },
+        deliver: { from: ["collected"], to: "delivered", patch: { delivered_at: now } },
+        returned: { from: ["collected", "delivered"], to: "returned", patch: { delivered_at: now } },
+        settle: { from: ["delivered", "returned"], to: "settled", patch: {} },
+      };
+      const f = flow[step];
+      if (!f.from.includes(from)) throw new DistError("CONFLICT", `Invoice #${d.doc_no} is ${from ?? "not collected yet"}: it can't be marked ${f.to}.`);
+      const ok = await update("dist_docs", d.id, { ...f.patch, delivery_status: f.to, ...(note?.trim() ? { delivery_note: note.trim() } : {}) }, from == null ? { sql: "delivery_status IS NULL", params: [] } : { sql: "delivery_status = ?", params: [from] });
+      if (!ok) throw new DistError("CONFLICT", "Someone else updated this delivery; reload.");
+      await audit(`delivery.${step}`, "doc", d.id, { old: from, next: f.to, reason: note ?? null });
+      return owned<DistDoc>("dist_docs", d.id, "Invoice");
+    },
+
     async createPurchaseReturn(input: { purchaseId: string; lines: { itemId: string; qty: number }[]; reason: string; refund?: PaymentIn | null }) {
       await need("purchases.return");
       return returnInternal("purchase", input);
@@ -1608,8 +1786,8 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
     // ── Payments & balances ──
     async receivePayment(input: { partyType: "customer" | "supplier"; partyId: string; amount: number; method: PaymentIn["method"]; docId?: string | null; reference?: string | null; note?: string | null }) {
       await need("payments.receive");
-      const table = input.partyType === "customer" ? "dist_customers" : "suppliers";
-      await owned(table, input.partyId, input.partyType === "customer" ? "Customer" : "Supplier", true);
+      if (input.partyType === "customer") await owned("dist_customers", input.partyId, "Customer", true);
+      else await supplierParty(input.partyId);
       const amount = Number(input.amount);
       if (!(amount > 0)) throw new DistError("INVALID", "Enter an amount.");
       if (input.docId) {
@@ -1631,14 +1809,15 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
                 COALESCE((SELECT SUM(total + wht_amount) FROM dist_docs d WHERE d.tenant_id = p.tenant_id AND d.party_id = p.id AND d.doc_type = '${docIn}' AND d.deleted_at IS NULL), 0) AS billed,
                 COALESCE((SELECT SUM(total + wht_amount) FROM dist_docs d WHERE d.tenant_id = p.tenant_id AND d.party_id = p.id AND d.doc_type = '${docOut}' AND d.deleted_at IS NULL), 0) AS returned,
                 COALESCE((SELECT SUM(amount) FROM dist_payments x WHERE x.tenant_id = p.tenant_id AND x.party_type = '${type}' AND x.party_id = p.id AND x.deleted_at IS NULL), 0) AS paid
-         FROM ${type === "customer" ? "dist_customers" : "suppliers"} p WHERE p.tenant_id = ? ORDER BY name`,
+         FROM ${type === "customer" ? "dist_customers" : SUPPLIER_PARTIES} p WHERE p.tenant_id = ? ORDER BY name`,
         [tenant()]
       );
       return rows.map((r) => ({ ...r, balance: toRupees(toPaisa(r.opening) + toPaisa(r.billed) - toPaisa(r.returned) - toPaisa(r.paid)) })).filter((r) => r.billed || r.paid || r.opening);
     },
     async ledger(type: "customer" | "supplier", id: string) {
       await need(type === "customer" ? "invoices.view" : "purchases.view");
-      await owned(type === "customer" ? "dist_customers" : "suppliers", id, type, true);
+      if (type === "customer") await owned("dist_customers", id, type, true);
+      else await supplierParty(id);
       const docs = await db.select<DistDoc>(`SELECT * FROM dist_docs WHERE tenant_id = ? AND party_type = ? AND party_id = ? AND deleted_at IS NULL ORDER BY date, doc_no`, [tenant(), type, id]);
       const payments = await db.select(`SELECT * FROM dist_payments WHERE tenant_id = ? AND party_type = ? AND party_id = ? AND deleted_at IS NULL ORDER BY date, created_at`, [tenant(), type, id]);
       return { docs, payments };
@@ -1824,6 +2003,85 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
     },
   };
 
+  type PurchaseInput = { supplierId: string; supplierInvoiceNo?: string | null; date?: string; lines: PurchaseLineIn[]; billDiscount?: number; payments?: PaymentIn[]; description?: string | null; whtRate?: number; whtSection?: string | null };
+  /** A purchase's checks and figures (new or edited): the company, each line's permissions, totals and withholding. */
+  async function preparePurchase(input: PurchaseInput) {
+    // Distributors use dist_companies as supplier principals; fall back to the
+    // generic suppliers table so existing records remain accessible.
+    const [company] = await db.select<{ id: string; name: string; address: string | null }>(
+      `SELECT id, name, address FROM dist_companies WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+      [input.supplierId, tenant()]
+    );
+    const sup: { id: string; name: string; ntn?: string | null; address: string | null } =
+      company ?? (await owned<{ id: string; name: string; ntn?: string | null; address: string | null }>("suppliers", input.supplierId, "Supplier"));
+    if (!input.lines?.length) throw new DistError("INVALID", "Add at least one product.");
+    const prepared = [];
+    for (const l of input.lines) {
+      const p = await owned<DistProduct>("dist_products", l.productId, "Product");
+      const qty = Math.round(Number(l.qty) * 1000) / 1000;
+      if (!(qty > 0)) throw new DistError("INVALID", `Enter a quantity for ${p.name}.`);
+      const cost = Number(l.cost);
+      if (!(cost >= 0)) throw new DistError("INVALID", `Invalid cost for ${p.name}.`);
+      if (p.cost > 0 && toPaisa(cost) !== toPaisa(p.cost)) await need("purchases.edit_price");
+      const rupees = Math.max(0, Number(l.discount) || 0);
+      const discPct = pctOf(l.discPct), extraDiscPct = pctOf(l.extraDiscPct);
+      if (rupees > 0 || discPct > 0 || extraDiscPct > 0) await need("purchases.discount");
+      const taxRate = Math.max(0, Number(l.taxRate) || 0);
+      if (taxRate > 0) await need("purchases.edit_tax");
+      const bonus = Math.max(0, qty3(l.bonusQty));
+      const discount = toRupees(lineDiscountPaisa(Math.round(toPaisa(cost) * qty), discPct, extraDiscPct, rupees));
+      prepared.push({ p, qty, bonus, cost, discount, discPct, extraDiscPct, taxRate, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
+    }
+    if ((Number(input.billDiscount) || 0) > 0) await need("purchases.discount");
+    const calc = calcDoc(prepared.map((x) => ({ qty: x.qty, price: x.cost, discount: x.discount, taxRate: x.taxRate })), Number(input.billDiscount) || 0);
+    // Withholding tax the supplier charged on this purchase (236G / 236H): added to what is owed to them.
+    const whtRate = Math.max(0, Number(input.whtRate) || 0);
+    if (whtRate > 100) throw new DistError("INVALID", "Withholding rate must be 0-100 %.");
+    if (whtRate > 0) await need("purchases.edit_tax");
+    const { settings } = await cfg();
+    const wht = whtAmount(settings, calc, whtRate);
+    const owed = calc.totalPaisa + wht.amountPaisa;
+    return { sup, prepared, calc, whtRate, wht, owed };
+  }
+
+  // ── Schemes, stock batches, location (internal) ──
+  async function schemesOf(productId: string) {
+    return db.select<DistScheme>(`SELECT * FROM dist_product_schemes WHERE tenant_id = ? AND product_id = ? AND deleted_at IS NULL AND is_active = 1`, [tenant(), productId]);
+  }
+  const fmtDistance = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+  /** The batches still on the shelf, product by product: stock is kept per
+   * product, so what remains is taken to be from the latest purchases (the
+   * oldest sold first), up to the stock on hand. Stock not covered by a
+   * purchase with a batch (opening stock) is left out. */
+  async function heldBatches(productId?: string) {
+    const rows = await db.select<{ product_id: string; name: string; code: string; stock: number; batch_no: string | null; expiry: string | null; received: number }>(
+      `SELECT p.id AS product_id, p.name, p.code, p.stock, i.batch_no, i.expiry, (i.qty + COALESCE(i.bonus_qty, 0) - COALESCE(i.returned_qty, 0)) AS received
+       FROM dist_products p
+       JOIN dist_doc_items i ON i.product_id = p.id AND i.tenant_id = p.tenant_id AND i.deleted_at IS NULL
+       JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id AND d.doc_type = 'purchase' AND d.deleted_at IS NULL
+       WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND p.stock > 0 ${productId ? "AND p.id = ?" : ""}
+       ORDER BY p.id, d.date DESC, i.created_at DESC`, productId ? [tenant(), productId] : [tenant()]);
+    const left = new Map(rows.map((r) => [r.product_id, Number(r.stock) || 0]));
+    const out: { productId: string; name: string; code: string; batchNo: string | null; expiry: string | null; qty: number }[] = [];
+    for (const r of rows) {
+      const remaining = left.get(r.product_id) ?? 0;
+      if (remaining <= 0) continue;
+      const qty = Math.min(remaining, Math.max(0, Number(r.received) || 0));
+      left.set(r.product_id, remaining - qty);
+      if (qty > 0) out.push({ productId: r.product_id, name: r.name, code: r.code, batchNo: r.batch_no, expiry: r.expiry || null, qty: Math.round(qty * 1000) / 1000 });
+    }
+    return out;
+  }
+
+  // ── Suppliers (internal) ──
+  /** Who purchases are owed to: the companies (principals), and suppliers kept from before. */
+  const SUPPLIER_PARTIES = `(SELECT id, tenant_id, name, phone, 0 AS opening_balance FROM dist_companies
+      UNION ALL SELECT id, tenant_id, name, phone, opening_balance FROM suppliers)`;
+  async function supplierParty(id: string) {
+    const [c] = await db.select<{ id: string; name: string }>(`SELECT id, name FROM dist_companies WHERE id = ? AND tenant_id = ?`, [id, tenant()]);
+    return c ?? owned<{ id: string; name: string }>("suppliers", id, "Supplier", true);
+  }
+
   // ── Dashboard extras (internal) ──
   /** Days ahead that count as "near expiry" for stock on the dashboard. */
   const NEAR_EXPIRY_DAYS = 90;
@@ -1869,27 +2127,15 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
    * latest purchases (oldest sold first), up to the stock on hand. */
   async function nearExpiryStock(day: string, days: number) {
     const limit = addDays(day, days);
-    const rows = await db.select<{ product_id: string; name: string; code: string; stock: number; batch_no: string | null; expiry: string | null; received: number }>(
-      `SELECT p.id AS product_id, p.name, p.code, p.stock, i.batch_no, i.expiry, (i.qty + COALESCE(i.bonus_qty, 0) - COALESCE(i.returned_qty, 0)) AS received
-       FROM dist_products p
-       JOIN dist_doc_items i ON i.product_id = p.id AND i.tenant_id = p.tenant_id AND i.deleted_at IS NULL
-       JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id AND d.doc_type = 'purchase' AND d.deleted_at IS NULL
-       WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND p.stock > 0
-       ORDER BY p.id, d.date DESC, i.created_at DESC`, [tenant()]);
-    const left = new Map(rows.map((r) => [r.product_id, Number(r.stock) || 0]));
     const out: { productId: string; name: string; code: string; batchNo: string | null; expiry: string; qty: number; daysLeft: number }[] = [];
-    for (const r of rows) {
-      const remaining = left.get(r.product_id) ?? 0;
-      if (remaining <= 0) continue;
-      const qty = Math.min(remaining, Math.max(0, Number(r.received) || 0));
-      left.set(r.product_id, remaining - qty);
-      if (!qty || !r.expiry) continue;
+    for (const r of await heldBatches()) {
+      if (!r.expiry) continue;
       // A month-only expiry (yyyy-mm) counts from that month's 28th.
       const exp = r.expiry.length === 7 ? `${r.expiry}-28` : r.expiry.slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(exp) || exp > limit) continue;
-      out.push({ productId: r.product_id, name: r.name, code: r.code, batchNo: r.batch_no, expiry: r.expiry, qty: Math.round(qty * 1000) / 1000, daysLeft: dayIndex(exp) - dayIndex(day) });
+      out.push({ ...r, expiry: r.expiry, daysLeft: dayIndex(exp) - dayIndex(day) });
     }
-    return out.sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 100);
+    return out.sort((x, y) => x.daysLeft - y.daysLeft).slice(0, 100);
   }
   /** Active customers whose CDSL (drug sale licence) is missing, expired or expires within `days` (pharma). */
   async function cdslExpiring(day: string, days: number) {
@@ -2011,7 +2257,10 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
       const b = fromBooking(l);
       if (b) {
         const p = await owned<DistProduct>("dist_products", l.productId, "Product");
-        prepared.push({ p, qty: Math.round(Number(l.qty) * 1000) / 1000, bonus: 0, price: b.price, discount: b.discount, discPct: 0, extraDiscPct: 0, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
+        const q = Math.round(Number(l.qty) * 1000) / 1000;
+        // The booked bonus, for the booked quantity (less if fewer are invoiced).
+        const bonus = Number(b.qty) > 0 ? Math.floor(((Number(b.bonus_qty) || 0) * q) / Number(b.qty) * 1000) / 1000 : 0;
+        prepared.push({ p, qty: q, bonus, price: b.price, discount: b.discount, discPct: Number(b.disc_pct) || 0, extraDiscPct: Number(b.extra_disc_pct) || 0, batchNo: trimOrNull(l.batchNo), expiry: trimOrNull(l.expiry) });
       } else prepared.push(...(await priceLines([l], {})));
     }
     assertNarcotics(customer, prepared.map((x) => x.p), mode);

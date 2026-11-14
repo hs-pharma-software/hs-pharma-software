@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeDist, agePoints } from "./harness.ts";
-import { SALESMAN_PRESET, cdslState, whtTreatment, DEFAULT_SETTINGS, targetProgress, normalizeNtn, liveState } from "../../src/lib/dist/engine.ts";
+import { STOREKEEPER_PRESET, SUPPLYMAN_PRESET, SALESMAN_PRESET, cdslState, whtTreatment, DEFAULT_SETTINGS, targetProgress, normalizeNtn, liveState } from "../../src/lib/dist/engine.ts";
 
 const month = new Date().toISOString().slice(0, 7);
 const LAHORE = { lat: 31.5204, lng: 74.3587 };
@@ -684,4 +684,139 @@ test("dashboard tiles and alerts: today's sale and bookings, best salesman and r
   assert.equal((await s.getProduct(A.product.id)).stock, 5);
   assert.deepEqual(d.nearExpiry, []);
   assert.equal(d.bestRetailer?.name, "DX Medical Store");
+});
+
+// ── Schemes, booking at the shop, store keeper and supply man, purchase edit, payables ──
+
+test("company schemes: buy 10 get 2 free and extra % apply by themselves on invoices and bookings; more needs permission", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "SC", "general");
+  const admin = h.as(A.owner);
+  await admin.saveScheme({ productId: A.product.id, minQty: 10, bonusQty: 2 });
+  await admin.saveScheme({ productId: A.product2.id, minQty: 10, extraDiscPct: 5 });
+  await assert.rejects(() => admin.saveScheme({ productId: A.product.id, minQty: 10 }), /free quantity, the extra discount/);
+  const st = await admin.productStock(A.product.id, 25);
+  assert.deepEqual(st.offer, { bonus: 4, extraPct: 0, label: "Buy 10 get 2 free" });
+  // An invoice that leaves bonus / extra out gets the scheme.
+  const inv = await admin.createSale({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 25 }, { productId: A.product2.id, qty: 10 }] });
+  const l1 = inv.items.find((i) => i.product_id === A.product.id)!;
+  const l2 = inv.items.find((i) => i.product_id === A.product2.id)!;
+  assert.equal(l1.bonus_qty, 4);
+  assert.equal(l2.extra_disc_pct, 5);
+  assert.equal(l2.discount, 25, "5 % of 500");
+  assert.equal((await admin.getProduct(A.product.id)).stock, 1000 - 29, "bonus leaves the shelf too");
+  // A salesman (no bonus / discount permission) books: the scheme comes along, and into the invoice.
+  const sm = h.as(A.sm);
+  const b = await sm.createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 20 }] });
+  assert.equal(b.items[0].bonus_qty, 4);
+  await assert.rejects(() => sm.createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 20, bonusQty: 6 }] }), /invoices\.bonus/);
+  const cur = (await admin.config())!.settings;
+  await admin.saveSettings({ ...cur, location: { ...cur.location, requiredForBooking: false } });
+  await sm.submitBooking(b.booking.id);
+  await admin.decideBooking(b.booking.id, "approved");
+  const conv = await admin.convertBooking(b.booking.id);
+  assert.equal(conv.items[0].bonus_qty, 4);
+});
+
+test("booking at the customer's shop: required by the owner, relaxed per user; the distance is recorded", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "LC", "general");
+  const admin = h.as(A.owner);
+  const cur = (await admin.config())!.settings;
+  await admin.saveSettings({ ...cur, booking: { ...cur.booking, atCustomer: true, atCustomerMeters: 200 } });
+  const s = h.as(A.sm);
+  await s.startSharing("ua");
+  // 2 km away from the shop's pin.
+  await s.reportLocation({ lat: LAHORE.lat + 0.018, lng: LAHORE.lng, accuracy: 15 });
+  let chk = await s.bookingLocationCheck(A.customer.id);
+  assert.equal(chk.required, true);
+  assert.equal(chk.ok, false);
+  assert.match(chk.reason, /2\.0 km from the shop/);
+  const b = await s.createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 1 }] });
+  await assert.rejects(() => s.submitBooking(b.booking.id), /2\.0 km from .*allowed 200 m/);
+  // At the shop (an hour later: no implausible jump).
+  agePoints(h.sql, A.salesman.id, 3600);
+  await s.reportLocation({ lat: LAHORE.lat + 0.0005, lng: LAHORE.lng, accuracy: 15 });
+  chk = await s.bookingLocationCheck(A.customer.id);
+  assert.equal(chk.ok, true);
+  const sub = await s.submitBooking(b.booking.id);
+  assert.ok(sub.booking.loc_distance_m! > 40 && sub.booking.loc_distance_m! < 70);
+  // Relaxed for this salesman: far away is fine.
+  await admin.setPerms(A.sm.userId!, [...SALESMAN_PRESET, "bookings.location_relax"]);
+  agePoints(h.sql, A.salesman.id, 3600);
+  await s.reportLocation({ lat: LAHORE.lat + 0.018, lng: LAHORE.lng, accuracy: 15 });
+  assert.equal((await s.bookingLocationCheck(A.customer.id)).required, false);
+  const b2 = await s.createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 1 }] });
+  assert.equal((await s.submitBooking(b2.booking.id)).booking.status, "pending_approval");
+});
+
+test("store keeper proceeds and invoices; supply man collects, delivers or returns, and takes full or part payment", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "DL", "general");
+  const admin = h.as(A.owner);
+  const staff = (id: string, name: string) => {
+    const now = new Date().toISOString();
+    h.sql.prepare(`INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, created_at, updated_at) VALUES (?, 'DL', ?, 'x', 'x', 'staff', ?, ?, ?)`).run(id, id, name, now, now);
+    return { ...A.owner, userId: id, userName: name, role: "staff" as const };
+  };
+  const keeper = staff("DL-keeper", "Store Keeper");
+  const supply = staff("DL-supply", "Supply Man");
+  await admin.setPerms(keeper.userId, STOREKEEPER_PRESET);
+  await admin.setPerms(supply.userId, SUPPLYMAN_PRESET);
+  const cur = (await admin.config())!.settings;
+  await admin.saveSettings({ ...cur, location: { ...cur.location, requiredForBooking: false } });
+  const sm = h.as(A.sm);
+  const book = async (qty: number) => {
+    const b = await sm.createBooking({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty }] });
+    await sm.submitBooking(b.booking.id);
+    return b.booking.id;
+  };
+  const k = h.as(keeper);
+  const b1 = await book(10);
+  await k.decideBooking(b1, "approved");
+  const inv1 = (await k.convertBooking(b1)).doc;
+  const sup = h.as(supply);
+  assert.deepEqual((await sup.deliveries({ status: "pending" })).map((d) => d.id), [inv1.id]);
+  await assert.rejects(() => sup.deliveryStep(inv1.id, "deliver"), /not collected yet/);
+  await sup.deliveryStep(inv1.id, "collect");
+  assert.equal((await sup.deliveryStep(inv1.id, "deliver")).delivery_status, "delivered");
+  // Part payment: the rest stays on the customer's balance.
+  await sup.receivePayment({ partyType: "customer", partyId: A.customer.id, amount: 400, method: "cash", docId: inv1.id });
+  const closed = await sup.deliveryStep(inv1.id, "settle", "part paid");
+  assert.equal(closed.delivery_status, "settled");
+  assert.equal(closed.balance, Math.round((Number(inv1.balance) - 400) * 100) / 100);
+  // Whole return: stock comes back.
+  const b2 = await book(5);
+  await k.decideBooking(b2, "approved");
+  const inv2 = await k.convertBooking(b2);
+  await sup.deliveryStep(inv2.doc.id, "collect");
+  const before = (await admin.getProduct(A.product.id)).stock;
+  await sup.createSaleReturn({ invoiceId: inv2.doc.id, lines: [{ itemId: inv2.items[0].id, qty: 5 }], reason: "refused" });
+  assert.equal((await sup.deliveryStep(inv2.doc.id, "returned", "refused")).delivery_status, "returned");
+  assert.equal((await admin.getProduct(A.product.id)).stock, before + 5);
+  // The salesman can't run deliveries.
+  await assert.rejects(() => sm.deliveryStep(inv2.doc.id, "settle"), /deliveries\.manage/);
+});
+
+test("purchase edit: lines and totals replaced, stock moves by the difference, never below what was sold; payables show the company", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "PE", "general");
+  const admin = h.as(A.owner);
+  const p = await admin.createPurchase({ supplierId: A.company.id, lines: [{ productId: A.product.id, qty: 50, cost: 80 }] });
+  assert.equal((await admin.getProduct(A.product.id)).stock, 1050);
+  const e = await admin.updatePurchase(p.doc.id, { supplierId: A.company.id, lines: [{ productId: A.product.id, qty: 30, cost: 80 }, { productId: A.product2.id, qty: 10, cost: 40 }], reason: "wrong qty" });
+  assert.equal(e.doc.doc_no, p.doc.doc_no, "same purchase number");
+  assert.equal(e.items.length, 2);
+  assert.equal(e.doc.total, 2400 + 400);
+  assert.equal((await admin.getProduct(A.product.id)).stock, 1030);
+  assert.equal((await admin.getProduct(A.product2.id)).stock, 110);
+  // Sell almost everything of product2, then try to take the purchase's 10 away.
+  await admin.createSale({ customerId: A.customer.id, lines: [{ productId: A.product2.id, qty: 105 }] });
+  await assert.rejects(() => admin.updatePurchase(p.doc.id, { supplierId: A.company.id, lines: [{ productId: A.product.id, qty: 30, cost: 80 }] }), /only 5 in stock/);
+  // Supplier payables list the company with what is owed.
+  const pay = await admin.balances("supplier");
+  assert.equal(pay.find((r) => r.id === A.company.id)?.balance, 2800);
+  await admin.receivePayment({ partyType: "supplier", partyId: A.company.id, amount: 800, method: "cash" });
+  assert.equal((await admin.balances("supplier")).find((r) => r.id === A.company.id)?.balance, 2000);
+  assert.equal((await admin.ledger("supplier", A.company.id)).docs.length, 1);
 });

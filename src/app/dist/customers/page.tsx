@@ -141,6 +141,16 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
   const [loc, setLoc] = useState<{ lat: number; lng: number; accuracy?: number | null; source: "device" | "manual_pin" } | null>(value.lat != null && value.lng != null ? { lat: value.lat, lng: value.lng, accuracy: value.location_accuracy, source: (value.location_source as "device" | "manual_pin") ?? "device" } : null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  /** "Verify ATL" in the form: FBR's answer for the NTN / CNIC typed, recorded when the customer is saved. */
+  const [atl, setAtl] = useState<{ identifier: string; status: "active" | "inactive"; source: string; reference: string | null } | { identifier: string; error: string } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const idNow = (v.ntn || v.cnic || "").trim();
+  const verifyNow = async () => {
+    setVerifying(true);
+    const r = await dist.checkAtlNumber(idNow, fbrAtlVerifier);
+    setAtl(r.ok ? { identifier: r.identifier, status: r.status, source: r.source, reference: r.reference } : { identifier: idNow, error: r.error });
+    setVerifying(false);
+  };
   const salesmen = useLoad(() => (c.admin ? dist.listSalesmen() : Promise.resolve([])), [c.admin]);
   const editable = (f: string) => isNew || c.admin || c.fields.includes(f);
   const t = (k: keyof DistCustomer, label: string, opts: { required?: boolean; type?: string; placeholder?: string } = {}) => (
@@ -163,7 +173,10 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
       }
       // A new NTN / CNIC: FBR is asked at once (ATL decides the withholding rate). No answer: saved anyway, left unverified.
       const idChanged = isNew ? !!(v.ntn || v.cnic) : (v.ntn ?? null) !== (value.ntn ?? null) || (v.cnic ?? null) !== (value.cnic ?? null);
-      if (id && idChanged && (v.ntn || v.cnic) && c.can("customers.verify")) {
+      if (id && atl && "status" in atl && atl.identifier === idNow && c.can("customers.verify")) {
+        // Already asked FBR with "Verify ATL": that answer is recorded.
+        await dist.recordAtlCheck(id, { result: atl.status, source: atl.source, reference: atl.reference }).catch(() => undefined);
+      } else if (id && idChanged && (v.ntn || v.cnic) && c.can("customers.verify")) {
         setChecking(true);
         await dist.verifyAtl(id, fbrAtlVerifier, 10000).catch(() => undefined);
         setChecking(false);
@@ -183,6 +196,14 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
           {t("mobile", "Mobile number", { required: true, placeholder: "03XXXXXXXXX" })}
           {t("ntn", "NTN", { placeholder: "1234567 or 1234567-8" })}
           {t("cnic", "CNIC", { placeholder: "35202-1234567-1" })}
+          {c.can("customers.verify") && (
+            <div className="flex flex-col justify-end gap-1">
+              <Button disabled={!idNow || verifying} onClick={() => void verifyNow()}><ShieldCheck size={14} /> {verifying ? "Asking FBR…" : "Verify ATL"}</Button>
+              {atl && atl.identifier === idNow && ("status" in atl
+                ? <span className={`text-xs font-medium ${atl.status === "active" ? "text-emerald-700" : "text-rose-700"}`}>{atl.status === "active" ? "✓ Active (on FBR's ATL)" : "✗ In-Active (not on the ATL)"} · saved with the customer</span>
+                : <span className="text-xs text-rose-700">{atl.error}</span>)}
+            </div>
+          )}
           {t("phone2", "Other contact")}
           {t("email", "Email")}
           {t("territory", "Territory / area")}

@@ -5329,3 +5329,46 @@
     END;
     
 ;
+-- schema_sql_v90
+
+    -- Distribution: company schemes on products (buy N get M free / extra %),
+    -- bonus and discounts on booking lines, and delivery of invoices
+    -- (collected by the supply man, delivered or returned).
+    CREATE TABLE IF NOT EXISTS dist_product_schemes (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        min_qty REAL NOT NULL,
+        bonus_qty REAL NOT NULL DEFAULT 0,
+        extra_disc_pct REAL NOT NULL DEFAULT 0,
+        valid_from TEXT,
+        valid_to TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        note TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_product_schemes ON dist_product_schemes (tenant_id, product_id);
+    ALTER TABLE dist_booking_items ADD COLUMN bonus_qty REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_booking_items ADD COLUMN disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_booking_items ADD COLUMN extra_disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_bookings ADD COLUMN loc_distance_m REAL;
+    ALTER TABLE dist_docs ADD COLUMN delivery_status TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivery_by TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivery_by_name TEXT;
+    ALTER TABLE dist_docs ADD COLUMN collected_at TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivered_at TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivery_note TEXT;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_product_schemes_ins AFTER INSERT ON dist_product_schemes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_product_schemes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_product_schemes_upd AFTER UPDATE ON dist_product_schemes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_product_schemes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_product_schemes_del AFTER DELETE ON dist_product_schemes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_product_schemes', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;

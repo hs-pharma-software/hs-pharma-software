@@ -77,7 +77,9 @@ export interface DistSettings {
   };
   cdsl: { required: boolean; alertDays: number; blockSaleWhenExpired: boolean };
   stock: { allowNegative: boolean };
-  booking: { requireApproval: boolean };
+  /** atCustomer: a salesman books only within atCustomerMeters of the customer's pinned location
+   * (users with "bookings.location_relax" are exempt). */
+  booking: { requireApproval: boolean; atCustomer: boolean; atCustomerMeters: number };
 }
 
 export const DEFAULT_SETTINGS: DistSettings = {
@@ -97,7 +99,7 @@ export const DEFAULT_SETTINGS: DistSettings = {
   target: { metric: "approved", onTrackRatio: 0.9 },
   cdsl: { required: true, alertDays: 30, blockSaleWhenExpired: true },
   stock: { allowNegative: false },
-  booking: { requireApproval: true },
+  booking: { requireApproval: true, atCustomer: false, atCustomerMeters: 200 },
 };
 
 /** Deep-merges stored settings over the defaults (unknown keys dropped). */
@@ -249,7 +251,7 @@ export function targetProgress(target: number, achieved: number, month: string, 
 export const DIST_PERMS = [
   "customers.view", "customers.add", "customers.edit", "customers.verify",
   "catalog.view", "catalog.manage", "companies.manage",
-  "bookings.create", "bookings.submit", "bookings.approve", "bookings.view_all",
+  "bookings.create", "bookings.submit", "bookings.approve", "bookings.view_all", "bookings.location_relax", "deliveries.manage",
   "invoices.view", "invoices.create", "invoices.edit_lines", "invoices.edit_qty", "invoices.edit_price", "invoices.discount", "invoices.bonus", "invoices.view_cost",
   "invoices.edit_description", "invoices.edit_tax_base", "invoices.edit_wht_rate", "invoices.edit_wht_amount", "invoices.edit_customer", "invoices.return",
   "purchases.view", "purchases.create", "purchases.edit_qty", "purchases.edit_price", "purchases.discount", "purchases.edit_tax", "purchases.return",
@@ -263,5 +265,28 @@ export type AdminAction = (typeof ADMIN_ONLY)[number];
 
 /** Suggested starting set for a salesman login (still applied explicitly). */
 export const SALESMAN_PRESET: DistPerm[] = ["customers.view", "customers.add", "catalog.view", "bookings.create", "bookings.submit", "targets.view"];
+/** Store keeper: sees every booking, prints it, proceeds (approves) and generates the invoice. */
+export const STOREKEEPER_PRESET: DistPerm[] = ["customers.view", "catalog.view", "bookings.view_all", "bookings.approve", "invoices.view", "invoices.create"];
+/** Supply man: collects invoiced orders, delivers or takes returns, and receives the payment. */
+export const SUPPLYMAN_PRESET: DistPerm[] = ["customers.view", "invoices.view", "deliveries.manage", "invoices.return", "payments.receive"];
 
 export const CUSTOMER_FIELDS = ["business_name", "owner_name", "ntn", "cnic", "mobile", "phone2", "email", "address", "territory", "tax_class", "cdsl_no", "cdsl_expiry", "notes", "location"] as const;
+
+// ── Company schemes on products ───────────────────────────────────────
+
+export interface SchemeLike { min_qty: number; bonus_qty: number; extra_disc_pct: number; valid_from: string | null; valid_to: string | null; is_active: number }
+
+/** "Buy 10 get 2 free" / "5 % extra on 10 or more", in words. */
+export const schemeLabel = (s: Pick<SchemeLike, "min_qty" | "bonus_qty" | "extra_disc_pct">) =>
+  [s.bonus_qty > 0 ? `Buy ${s.min_qty} get ${s.bonus_qty} free` : "", s.extra_disc_pct > 0 ? `${s.extra_disc_pct} % extra on ${s.min_qty}+` : ""].filter(Boolean).join(" · ");
+
+/** What a quantity earns under a product's schemes on a day: the scheme with
+ * the largest minimum the quantity reaches. Bonus repeats per full minimum
+ * (buy 10 get 2: 25 bought earns 4 free); the extra discount % applies once reached. */
+export function schemeOffer<T extends SchemeLike>(schemes: T[], qty: number, day: string): { bonus: number; extraPct: number; scheme: T; label: string } | null {
+  const ok = schemes.filter((s) => Number(s.is_active) === 1 && s.min_qty > 0 && qty >= s.min_qty && (!s.valid_from || s.valid_from <= day) && (!s.valid_to || s.valid_to >= day));
+  if (!ok.length) return null;
+  const best = [...ok].sort((a, b) => b.min_qty - a.min_qty)[0];
+  const bonus = best.bonus_qty > 0 ? Math.floor(Math.round((qty / best.min_qty) * 1e6) / 1e6) * best.bonus_qty : 0;
+  return { bonus: Math.round(bonus * 1000) / 1000, extraPct: Math.max(0, Math.min(100, Number(best.extra_disc_pct) || 0)), scheme: best, label: schemeLabel(best) };
+}

@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { dist, errorText } from "@/lib/dist";
-import type { DistProduct } from "@/lib/dist/store";
+import { schemeOffer } from "@/lib/dist/engine";
+import type { DistDoc, DistDocItem, DistProduct, DistScheme } from "@/lib/dist/store";
 import { Err, money, useLoad, type DistCtx } from "./ui";
+import { Combo } from "./Combo";
 import { PurchaseRateBubble } from "@/components/invoices/PurchaseRateBubble";
 
 type LastRates = Awaited<ReturnType<typeof dist.lastPurchaseRates>>;
+type HeldBatch = { batchNo: string | null; expiry: string | null; qty: number };
 
 interface Line {
   key: string;
@@ -25,9 +28,17 @@ interface Line {
   discount: string;
   tax: string;
   last?: LastRates | null;
+  /** Sale lines: stock now, the batches it is in, and the company's schemes. */
+  stock?: number | null;
+  batches?: HeldBatch[];
+  schemes?: DistScheme[];
+  /** Bonus / extra % typed by the user (a scheme no longer fills them). */
+  ownTerms?: boolean;
+  offer?: string | null;
 }
 
 const num = (v: string) => Number(v) || 0;
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** A line's figures as the server works them out: discount %, then extra % on
  * what is left, then rupees; sales tax on the rest. (The server's figure is final.) */
@@ -41,25 +52,24 @@ function lineFigures(l: Line) {
   return { gross, disc, net: Math.round(taxed * 100) / 100 };
 }
 
-function ProductPicker({ onPick }: { onPick: (p: DistProduct) => void }) {
-  const [q, setQ] = useState("");
-  const hits = useLoad(() => (q.trim() ? dist.listProducts({ search: q }) : Promise.resolve([])), [q]);
+/** What the company's scheme gives a line at its quantity (unless the user typed their own terms). */
+function withScheme(l: Line): Line {
+  if (!l.schemes?.length) return { ...l, offer: null };
+  const o = schemeOffer(l.schemes, num(l.qty), ymd(new Date()));
+  if (l.ownTerms) return { ...l, offer: o?.label ?? null };
+  return { ...l, bonus: o?.bonus ? String(o.bonus) : "", extraPct: o?.extraPct ? String(o.extraPct) : "", offer: o?.label ?? null };
+}
+
+/** Active products, searched as you type (↑ / ↓, Enter). */
+export function ProductPicker({ onPick, companyId, autoFocus }: { onPick: (p: DistProduct) => void; companyId?: string | null; autoFocus?: boolean }) {
+  const all = useLoad(() => dist.listProducts(companyId ? { companyId } : {}), [companyId]);
+  const items = useMemo(() => (all.data ?? []).map((p) => ({
+    id: p.id, label: p.name, sub: `${p.code}${p.company_name ? ` · ${p.company_name}` : ""}${p.barcode ? ` · ${p.barcode}` : ""}`,
+    right: `${money(p.trade_price)} · stock ${p.stock}`,
+  })), [all.data]);
   return (
-    <div className="relative">
-      <Input placeholder="Search product name / code / barcode" value={q} onChange={(e) => setQ(e.target.value)} />
-      {!!hits.data?.length && (
-        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl bg-white text-sm shadow-lg ring-1 ring-black/10">
-          {hits.data.slice(0, 15).map((p) => (
-            <li key={p.id}>
-              <button type="button" className="flex w-full justify-between px-3 py-1.5 text-start hover:bg-amber-50" onClick={() => { onPick(p); setQ(""); }}>
-                <span>{p.name} <span className="text-[11px] text-neutral-400">{p.code} · {p.company_name}</span></span>
-                <span className="text-xs">{money(p.trade_price)} · stock {p.stock}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <Combo items={items} clearOnPick autoFocus={autoFocus} loading={all.loading} placeholder="Search product name / code / barcode (↑ ↓ Enter)"
+      onPick={(id) => { const p = all.data?.find((x) => x.id === id); if (p) onPick(p); }} emptyText="No product matches." />
   );
 }
 
@@ -67,15 +77,15 @@ const cell = "px-1 py-1";
 const box = (w: string) => `!${w} !px-1.5 !py-1 text-end`;
 
 /** The shared line grid: Product, Batch, Expiry, Qty, Bonus, Rate, Disc %, Extra %, Disc Rs, ST %, (W.T %), Net. */
-function LineGrid({ lines, patch, remove, can, whtRate, showLast, onQtyFocus }: {
+function LineGrid({ lines, patch, remove, can, whtRate, showLast, onQtyFocus, sale = false }: {
   lines: Line[]; patch: (k: string, v: Partial<Line>) => void; remove: (k: string) => void;
   can: { price: (l: Line) => boolean; discount: boolean; bonus: boolean; tax: boolean };
-  whtRate?: number | null; showLast?: boolean; onQtyFocus?: (k: string | null) => void;
+  whtRate?: number | null; showLast?: boolean; onQtyFocus?: (k: string | null) => void; sale?: boolean;
 }) {
   if (!lines.length) return <p className="rounded-xl bg-neutral-50 py-6 text-center text-xs text-neutral-400">Search a product above to add a line.</p>;
   return (
     <div className="overflow-x-auto rounded-xl ring-1 ring-black/5">
-      <table className="w-full min-w-[980px] text-sm">
+      <table className="w-full min-w-[1000px] text-sm">
         <thead className="bg-neutral-50 text-[11px] text-neutral-500">
           <tr>
             <th className="px-2 py-1.5 text-start font-medium">Product</th>
@@ -89,21 +99,31 @@ function LineGrid({ lines, patch, remove, can, whtRate, showLast, onQtyFocus }: 
         <tbody>
           {lines.map((l) => {
             const f = lineFigures(l);
+            const stock = l.stock ?? l.p.stock;
+            const over = sale && num(l.qty) + num(l.bonus) > Number(stock);
             return (
               <tr key={l.key} className="border-t border-neutral-100 align-top">
-                <td className="max-w-56 px-2 py-1.5">
+                <td className="max-w-60 px-2 py-1.5">
                   <span className="font-medium text-neutral-800">{l.p.name}</span>
-                  <span className="block text-[11px] text-neutral-400">{l.p.code} · stock {l.p.stock}</span>
+                  <span className={`block text-[11px] ${over ? "font-semibold text-rose-700" : "text-neutral-500"}`}>{l.p.code} · available {stock}{over ? " — not enough" : ""}</span>
+                  {l.offer && <span className="block text-[11px] text-emerald-700">Scheme: {l.offer}</span>}
                   {showLast && <LastRate last={l.last} />}
                 </td>
-                <td className={cell}><Input className="!w-24 !px-1.5 !py-1" value={l.batch} onChange={(e) => patch(l.key, { batch: e.target.value })} /></td>
+                <td className={cell}>
+                  {sale && l.batches?.length ? (
+                    <Select className="!w-36 !px-1.5 !py-1 text-xs" value={l.batch} onChange={(e) => { const b = l.batches!.find((x) => (x.batchNo ?? "") === e.target.value); patch(l.key, { batch: e.target.value, expiry: b?.expiry ?? "" }); }}>
+                      <option value="">—</option>
+                      {l.batches.map((b, i) => <option key={i} value={b.batchNo ?? ""}>{b.batchNo ?? "(no batch)"} · {b.qty}</option>)}
+                    </Select>
+                  ) : <Input className="!w-24 !px-1.5 !py-1" value={l.batch} onChange={(e) => patch(l.key, { batch: e.target.value })} />}
+                </td>
                 <td className={cell}><Input className="!w-32 !px-1.5 !py-1" type="date" value={l.expiry} onChange={(e) => patch(l.key, { expiry: e.target.value })} /></td>
                 <td className={cell}><Input className={box("w-16")} type="number" min="0" step="any" value={l.qty} onChange={(e) => patch(l.key, { qty: e.target.value })}
                   onFocus={() => onQtyFocus?.(l.key)} onBlur={() => onQtyFocus?.(null)} /></td>
-                <td className={cell}><Input className={box("w-14")} type="number" min="0" step="any" disabled={!can.bonus} value={l.bonus} onChange={(e) => patch(l.key, { bonus: e.target.value })} /></td>
+                <td className={cell}><Input className={box("w-14")} type="number" min="0" step="any" disabled={!can.bonus} value={l.bonus} onChange={(e) => patch(l.key, { bonus: e.target.value, ownTerms: true })} /></td>
                 <td className={cell}><Input className={box("w-20")} type="number" min="0" step="any" disabled={!can.price(l)} value={l.price} onChange={(e) => patch(l.key, { price: e.target.value })} /></td>
                 <td className={cell}><Input className={box("w-14")} type="number" min="0" max="100" step="any" disabled={!can.discount} value={l.discPct} onChange={(e) => patch(l.key, { discPct: e.target.value })} /></td>
-                <td className={cell}><Input className={box("w-14")} type="number" min="0" max="100" step="any" disabled={!can.discount} value={l.extraPct} onChange={(e) => patch(l.key, { extraPct: e.target.value })} /></td>
+                <td className={cell}><Input className={box("w-14")} type="number" min="0" max="100" step="any" disabled={!can.discount} value={l.extraPct} onChange={(e) => patch(l.key, { extraPct: e.target.value, ownTerms: true })} /></td>
                 <td className={cell}><Input className={box("w-16")} type="number" min="0" step="any" disabled={!can.discount} value={l.discount} onChange={(e) => patch(l.key, { discount: e.target.value })} /></td>
                 <td className={cell}><Input className={box("w-14")} type="number" min="0" step="any" disabled={!can.tax} value={l.tax} onChange={(e) => patch(l.key, { tax: e.target.value })} /></td>
                 {whtRate !== undefined && <td className="px-1 py-2 text-end text-xs tabular-nums text-neutral-600">{whtRate == null ? "—" : `${whtRate} %`}</td>}
@@ -165,22 +185,32 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId, lines]);
-  const patch = (k: string, v: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === k ? { ...l, ...v } : l)));
+  // A new quantity re-applies the company's scheme (unless the user typed their own bonus / extra %).
+  const patch = (k: string, v: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === k ? ("qty" in v ? withScheme({ ...l, ...v }) : { ...l, ...v }) : l)));
   const customer = customers.data?.find((x) => x.id === customerId);
   const appliedRate = whtRate !== "" ? num(whtRate) : preview ? preview.treatment.rate : null;
+  const customerItems = useMemo(() => (customers.data ?? []).map((x) => ({
+    id: x.id, label: x.business_name, sub: `${x.code}${x.owner_name ? ` · ${x.owner_name}` : ""}${x.mobile ? ` · ${x.mobile}` : ""} · ATL ${x.atl_status}`,
+  })), [customers.data]);
+  /** A product picked: its stock, batches (earliest expiry first) and scheme come with it. */
+  const addProduct = (p: DistProduct) => {
+    const l = newLine(p, p.trade_price, p.sales_tax_rate);
+    setLines((ls) => [...ls, l]);
+    void dist.productStock(p.id).then((s) => {
+      const first = s.batches.find((b) => b.qty > 0);
+      setLines((ls) => ls.map((x) => (x.key === l.key ? withScheme({ ...x, stock: s.stock, batches: s.batches, schemes: s.schemes, batch: first?.batchNo ?? "", expiry: first?.expiry ?? "" }) : x)));
+    }).catch(() => undefined);
+  };
   return (
     <Modal title="New sales invoice" onClose={onClose} width="max-w-6xl">
       <div className="space-y-3 text-sm">
         <Field label="Customer" required>
-          <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-            <option value="">Select…</option>
-            {(customers.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.business_name} ({x.code}) · ATL {x.atl_status}</option>)}
-          </Select>
+          <Combo items={customerItems} value={customerId} onPick={setCustomerId} autoFocus loading={customers.loading} placeholder="Search customer name / code / mobile (↑ ↓ Enter)" emptyText="No customer matches." />
           {customer && preview && <span className="text-[11px] text-neutral-500">Withholding {preview.treatment.section}: {preview.treatment.rate} % ({preview.treatment.status === "active" ? "on the Active Taxpayers List" : preview.treatment.status})</span>}
         </Field>
-        <ProductPicker onPick={(p) => setLines((ls) => [...ls, newLine(p, p.trade_price, p.sales_tax_rate)])} />
+        <ProductPicker onPick={addProduct} />
         <LineGrid
-          lines={lines} patch={patch} remove={(k) => setLines((ls) => ls.filter((x) => x.key !== k))}
+          sale lines={lines} patch={patch} remove={(k) => setLines((ls) => ls.filter((x) => x.key !== k))}
           can={{ price: () => c.can("invoices.edit_price"), discount: c.can("invoices.discount"), bonus: c.can("invoices.bonus"), tax: false }}
           whtRate={appliedRate} onQtyFocus={setRateKey}
         />
@@ -235,37 +265,62 @@ export function SaleForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => v
   );
 }
 
-export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () => void; onSaved: (id: string) => void }) {
+/** New purchase, or (with `edit`) a saved one changed. */
+export function PurchaseForm({ c, onClose, onSaved, edit }: { c: DistCtx; onClose: () => void; onSaved: (id: string) => void; edit?: { doc: DistDoc; items: DistDocItem[] } | null }) {
   const companies = useLoad(() => dist.listCompanies({ includeInactive: false }), []);
-  const [supplierId, setSupplierId] = useState("");
-  const [invoiceNo, setInvoiceNo] = useState("");
+  const products = useLoad(() => (edit ? dist.listProducts({ includeInactive: true }) : Promise.resolve([])), [edit?.doc.id]);
+  const [supplierId, setSupplierId] = useState(edit?.doc.party_id ?? "");
+  const [invoiceNo, setInvoiceNo] = useState(edit?.doc.supplier_invoice_no ?? "");
+  const [date, setDate] = useState(edit?.doc.date ?? "");
   const [lines, setLines] = useState<Line[]>([]);
-  const [whtRate, setWhtRate] = useState("");
-  const [whtSection, setWhtSection] = useState("236G");
+  const [whtRate, setWhtRate] = useState(edit && edit.doc.wht_rate ? String(edit.doc.wht_rate) : "");
+  const [whtSection, setWhtSection] = useState(edit?.doc.wht_section ?? "236G");
   const [paid, setPaid] = useState("");
   const [method, setMethod] = useState<"cash" | "bank" | "cheque" | "digital">("cash");
+  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const patch = (k: string, v: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === k ? { ...l, ...v } : l)));
+  // Editing: the saved lines, once the products are known.
+  useEffect(() => {
+    if (!edit || !products.data || lines.length) return;
+    const s = (v: number | null | undefined) => (v ? String(v) : "");
+    setLines(edit.items.flatMap((i) => {
+      const p = products.data!.find((x) => x.id === i.product_id);
+      if (!p) return [];
+      return [{
+        key: crypto.randomUUID(), p, batch: i.batch_no ?? "", expiry: i.expiry ?? "", qty: String(i.qty), bonus: s(i.bonus_qty), price: String(i.price),
+        discPct: s(i.disc_pct), extraPct: s(i.extra_disc_pct), discount: i.disc_pct || i.extra_disc_pct ? "" : s(i.discount), tax: s(i.sales_tax_rate), last: null,
+      }];
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edit, products.data]);
   // Last purchase rate of each line's product (from this company, else from any).
   const loadLast = (key: string, productId: string, sup: string) =>
     void dist.lastPurchaseRates(productId, sup || null).then((last) => patch(key, { last })).catch(() => patch(key, { last: null }));
   useEffect(() => {
+    if (edit) return;
     for (const l of lines) loadLast(l.key, l.p.id, supplierId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supplierId]);
   const goods = lines.reduce((s, l) => s + lineFigures(l).net, 0);
   const wht = Math.round(goods * num(whtRate)) / 100;
+  const companyItems = useMemo(() => (companies.data ?? []).map((s) => ({ id: s.id, label: s.name, sub: s.code || undefined })), [companies.data]);
+  const input = () => ({
+    supplierId, supplierInvoiceNo: invoiceNo || null, whtRate: num(whtRate), whtSection, date: date || undefined,
+    lines: lines.map((l) => ({
+      productId: l.p.id, qty: num(l.qty), cost: num(l.price), discount: num(l.discount), discPct: num(l.discPct), extraDiscPct: num(l.extraPct),
+      bonusQty: num(l.bonus), taxRate: num(l.tax), batchNo: l.batch.trim() || null, expiry: l.expiry || null,
+    })),
+  });
   return (
-    <Modal title="New purchase" onClose={onClose} width="max-w-6xl">
+    <Modal title={edit ? `Edit purchase #${edit.doc.doc_no}` : "New purchase"} onClose={onClose} width="max-w-6xl">
       <div className="space-y-3 text-sm">
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="grid gap-2 md:grid-cols-3">
           <Field label="Company (supplier)" required>
-            <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Select company…</option>
-              {(companies.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ""}</option>)}
-            </Select>
+            <Combo items={companyItems} value={supplierId} onPick={setSupplierId} autoFocus={!edit} loading={companies.loading} placeholder="Search company (↑ ↓ Enter)" />
           </Field>
           <Field label="Supplier invoice #"><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} /></Field>
+          <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         </div>
         <ProductPicker onPick={(p) => {
           const l = newLine(p, p.cost, 0);
@@ -273,7 +328,7 @@ export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () 
           loadLast(l.key, p.id, supplierId);
         }} />
         <LineGrid
-          lines={lines} patch={patch} remove={(k) => setLines((ls) => ls.filter((x) => x.key !== k))} showLast
+          lines={lines} patch={patch} remove={(k) => setLines((ls) => ls.filter((x) => x.key !== k))} showLast={!edit}
           can={{ price: (l) => !(l.p.cost > 0) || c.can("purchases.edit_price"), discount: c.can("purchases.discount"), bonus: true, tax: c.can("purchases.edit_tax") }}
         />
         <div className="grid gap-2 md:grid-cols-3">
@@ -292,7 +347,9 @@ export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () 
             <p className="text-[10px] text-neutral-400">calculated exactly when saved</p>
           </div>
         </div>
-        {c.can("payments.receive") && (
+        {edit ? (
+          <Field label="Reason for the change (audit log)"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. wrong quantity entered" /></Field>
+        ) : c.can("payments.receive") && (
           <div className="grid grid-cols-2 gap-2">
             <Field label="Paid now"><Input type="number" min="0" value={paid} onChange={(e) => setPaid(e.target.value)} /></Field>
             <Field label="Method">
@@ -302,6 +359,7 @@ export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () 
             </Field>
           </div>
         )}
+        {edit && <p className="text-xs text-neutral-500">Stock moves by the difference. Payments already made stay on the purchase.</p>}
         <Err error={error} />
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
@@ -311,21 +369,16 @@ export function PurchaseForm({ c, onClose, onSaved }: { c: DistCtx; onClose: () 
             onClick={async () => {
               setError(null);
               try {
-                const r = await dist.createPurchase({
-                  supplierId, supplierInvoiceNo: invoiceNo || null, whtRate: num(whtRate), whtSection,
-                  lines: lines.map((l) => ({
-                    productId: l.p.id, qty: num(l.qty), cost: num(l.price), discount: num(l.discount), discPct: num(l.discPct), extraDiscPct: num(l.extraPct),
-                    bonusQty: num(l.bonus), taxRate: num(l.tax), batchNo: l.batch.trim() || null, expiry: l.expiry || null,
-                  })),
-                  payments: Number(paid) > 0 ? [{ method, amount: Number(paid) }] : [],
-                });
+                const r = edit
+                  ? await dist.updatePurchase(edit.doc.id, { ...input(), reason: reason || null })
+                  : await dist.createPurchase({ ...input(), payments: Number(paid) > 0 ? [{ method, amount: Number(paid) }] : [] });
                 onSaved(r.doc.id);
               } catch (e) {
                 setError(errorText(e));
               }
             }}
           >
-            Save purchase
+            {edit ? "Save changes" : "Save purchase"}
           </Button>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { dist, errorText } from "@/lib/dist";
-import { CUSTOMER_FIELDS, DIST_PERMS, SALESMAN_PRESET } from "@/lib/dist/engine";
+import { CUSTOMER_FIELDS, DIST_PERMS, SALESMAN_PRESET, STOREKEEPER_PRESET, SUPPLYMAN_PRESET } from "@/lib/dist/engine";
 import { DistGuard, Err, Note, PageTitle, useLoad } from "@/components/dist/ui";
 
 const GROUPS: { title: string; prefix: string }[] = [
@@ -18,6 +18,7 @@ const LABEL: Record<string, string> = {
   "customers.view": "View customers", "customers.add": "Add customers", "customers.edit": "Edit permitted customer fields", "customers.verify": "Record ATL / CDSL verification",
   "catalog.view": "View product catalogs", "catalog.manage": "Manage products & categories", "companies.manage": "Manage companies",
   "bookings.create": "Create bookings", "bookings.submit": "Submit bookings", "bookings.approve": "Approve / reject bookings", "bookings.view_all": "See all salesmen's bookings & customers",
+  "bookings.location_relax": "Book away from the customer's pinned location", "deliveries.manage": "Deliver orders (collect, delivered, return, payment)",
   "invoices.view": "View invoices", "invoices.create": "Create invoices", "invoices.edit_lines": "Change lines when converting a booking", "invoices.edit_qty": "Change quantities", "invoices.edit_price": "Change product prices",
   "invoices.discount": "Apply discounts", "invoices.bonus": "Give bonus (free) quantity", "invoices.view_cost": "See purchase rate while billing", "invoices.edit_description": "Invoice description", "invoices.edit_tax_base": "Change taxable base", "invoices.edit_wht_rate": "Change withholding rate",
   "invoices.edit_wht_amount": "Change withholding amount", "invoices.edit_customer": "Change customer on a transaction", "invoices.return": "Sales returns / credit notes",
@@ -78,6 +79,8 @@ function Permissions() {
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => setPerms(new Set(SALESMAN_PRESET))}>Salesman preset</Button>
+              <Button onClick={() => setPerms(new Set(STOREKEEPER_PRESET))}>Store keeper preset</Button>
+              <Button onClick={() => setPerms(new Set(SUPPLYMAN_PRESET))}>Supply man preset</Button>
               <Button onClick={() => setPerms(new Set())}>Clear all</Button>
             </div>
             {GROUPS.map((g) => (
