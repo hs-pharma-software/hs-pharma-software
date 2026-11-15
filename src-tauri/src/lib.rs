@@ -1867,6 +1867,23 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v92() -> &'static str {
+    r#"
+    -- PRA findings: production whitelisting tracked per PNTN + POS ID (per
+    -- counter); each payment component kept with its reference; a credit
+    -- note keeps the original invoice's PRA fiscal number; the PRA cases a
+    -- submission depends on (each gated until PRA confirms it).
+    ALTER TABLE pra_pos ADD COLUMN whitelist_status TEXT NOT NULL DEFAULT 'not_requested';
+    ALTER TABLE pra_pos ADD COLUMN whitelist_ip TEXT;
+    ALTER TABLE pra_pos ADD COLUMN whitelist_reference TEXT;
+    ALTER TABLE pra_pos ADD COLUMN whitelist_updated_at TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN payment_components TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN ref_fiscal_invoice_no TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN case_keys TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN total_quantity REAL NOT NULL DEFAULT 0;
+    "#
+}
+
 fn schema_sql_v91() -> &'static str {
     r#"
     -- PRA (Punjab Revenue Authority) eIMS, server side: a business's access
@@ -6461,6 +6478,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 91,
             description: "pra_eims_server",
             sql: schema_sql_v91(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 92,
+            description: "pra_findings",
+            sql: schema_sql_v92(),
             kind: MigrationKind::Up,
         },
     ]

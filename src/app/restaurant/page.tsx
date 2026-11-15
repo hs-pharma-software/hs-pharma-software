@@ -9,10 +9,8 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { restaurant, errorText, fiscalize } from "@/lib/restaurant";
 import { tableDisplayStatus, type KitchenStatus, type PayMethod, type TableStatus } from "@/lib/restaurant/engine";
 import type { OrderItemRow, OrderRow } from "@/lib/restaurant/store";
-import { tenantsRepo } from "@/lib/repo/tenants";
-import { useAuthStore } from "@/store/authStore";
 import { useCan } from "@/lib/actionPermissions";
-import { Badge, KITCHEN_BADGE, Note, ORDER_TYPE_LABEL, RestGuard, money, useAction, useLoad, usePrinter, type ReceiptData } from "@/components/restaurant/ui";
+import { Badge, KITCHEN_BADGE, Note, ORDER_TYPE_LABEL, RestGuard, money, useAction, useLoad, usePrinter, useReceiptBusiness, type ReceiptData } from "@/components/restaurant/ui";
 
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   available: { label: "Available", cls: "bg-emerald-50 ring-emerald-300 text-emerald-800" },
@@ -37,16 +35,12 @@ export default function RestaurantPosPage() {
 function Pos() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const printer = usePrinter();
-  const tenant = useAuthStore((s) => s.currentTenant);
-  const [business, setBusiness] = useState<ReceiptData["business"]>({ name: tenant?.name ?? "Restaurant" });
-  useEffect(() => {
-    if (tenant?.id) void tenantsRepo.get(tenant.id).then((t) => t && setBusiness({ name: t.name, address: t.address, phone: t.phone }));
-  }, [tenant?.id]);
+  const { business, pra: praTexts } = useReceiptBusiness();
 
   return (
     <div>
       {orderId ? (
-        <OrderScreen orderId={orderId} onClose={() => setOrderId(null)} onSwitch={setOrderId} printer={printer} business={business} />
+        <OrderScreen orderId={orderId} onClose={() => setOrderId(null)} onSwitch={setOrderId} printer={printer} business={business} praTexts={praTexts} />
       ) : (
         <Floor onOpen={setOrderId} />
       )}
@@ -167,7 +161,7 @@ function Floor({ onOpen }: { onOpen: (orderId: string) => void }) {
 
 type Printer = ReturnType<typeof usePrinter>;
 
-function OrderScreen({ orderId, onClose, onSwitch, printer, business }: { orderId: string; onClose: () => void; onSwitch: (id: string) => void; printer: Printer; business: ReceiptData["business"] }) {
+function OrderScreen({ orderId, onClose, onSwitch, printer, business, praTexts }: { orderId: string; onClose: () => void; onSwitch: (id: string) => void; printer: Printer; business: ReceiptData["business"]; praTexts: ReceiptData["pra"] }) {
   const order = useLoad(() => restaurant.getOrder(orderId), [orderId]);
   const menu = useLoad(async () => {
     const [categories, items, deals, tables] = await Promise.all([restaurant.listCategories(), restaurant.listMenuItems(), restaurant.listDeals(false), restaurant.listTables()]);
@@ -373,7 +367,7 @@ function OrderScreen({ orderId, onClose, onSwitch, printer, business }: { orderI
               final = (await restaurant.getOrder(paid.id)).order;
             }
             const full = await restaurant.getOrder(paid.id);
-            printer.print({ kind: "receipt", data: { order: final, items: full.items, business, tableName, change } });
+            printer.print({ kind: "receipt", data: { order: final, items: full.items, business, pra: praTexts, tableName, change } });
             onClose();
           }}
           onPartial={refresh}

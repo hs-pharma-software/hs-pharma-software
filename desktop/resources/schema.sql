@@ -5525,3 +5525,19 @@
     );
     
 ;
+-- schema_sql_v92
+
+    -- PRA findings: production whitelisting tracked per PNTN + POS ID (per
+    -- counter); each payment component kept with its reference; a credit
+    -- note keeps the original invoice's PRA fiscal number; the PRA cases a
+    -- submission depends on (each gated until PRA confirms it).
+    ALTER TABLE pra_pos ADD COLUMN whitelist_status TEXT NOT NULL DEFAULT 'not_requested';
+    ALTER TABLE pra_pos ADD COLUMN whitelist_ip TEXT;
+    ALTER TABLE pra_pos ADD COLUMN whitelist_reference TEXT;
+    ALTER TABLE pra_pos ADD COLUMN whitelist_updated_at TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN payment_components TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN ref_fiscal_invoice_no TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN case_keys TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN total_quantity REAL NOT NULL DEFAULT 0;
+    
+;

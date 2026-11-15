@@ -83,7 +83,7 @@ export const SEED_RULES: RuleSeed[] = [
     classification_code: "9801.3000", rate_type: "percent", rate: 8, fixed_amount: null, fixed_unit: null, payment_condition: "any", alt_rate: null,
     input_adjustment: "Without input tax adjustment.", exemptions: null, effective_from: "2026-07-01", effective_to: null,
     source: `Second Schedule, Part III Sr. 2, as amended by ${FA2026}(ii) ("Five" → "Eight").`, clause: "Part III Sr. 2: Eight percent without input tax adjustment.",
-    source_url: SCHEDULE_COPY, review_notes: "Ask PRA whether marriage halls report through eIMS POS integration, and when a booking is fiscalised (advance, event day or final bill).", needs_scope_review: 0, eims_applicable: "unconfirmed",
+    source_url: SCHEDULE_COPY, review_notes: "PRA's 2026 eIMS rollout includes marriage and wedding halls: confirm the business's registered service category and its branch / POS enrolment (marquees and banquet venues too). Advances: under PST Act s.18 the tax point is the earliest of delivery, invoice issued or due, or receipt of consideration, so an advance that is part of the price can be a tax point; refundable security deposits are reviewed separately. The payload for an advance and the final invoice is pending PRA (case advance_payments).", needs_scope_review: 0, eims_applicable: "unconfirmed",
   },
   {
     rule_key: "catering-9801.5000", sector: "catering", service: "Catering services, including ancillary / allied services (floral or other decoration, furnishing of space, rental of equipment and accessories)",
@@ -161,47 +161,142 @@ export function approvalProblems(r: Pick<PraRule, "source" | "last_verified_at" 
   return p;
 }
 
+// ── Cases pending PRA confirmation ───────────────────────────────────────
+
+/** What PRA's documents settle and what still needs PRA's written answer.
+ * Each case is implemented; its Sandbox use can be switched off, and
+ * production stays closed until the Super Admin records PRA's confirmation
+ * (reference, date and, where asked, an accepted sample payload). */
+export const PRA_CASES = {
+  mixed_payment: {
+    title: "Mixed payment (e.g. cash + card) on one bill",
+    documented: "eIMS manual v1.0 §6.1: PaymentMode 5 (Mixed) when more than one payment method is used. Each payment is kept separately in MAVIN.",
+    pending: "Whether the whole bill takes one rate (which) or the rate is apportioned by payment; a sample accepted payload.",
+    needsSample: true,
+  },
+  wallet_qr: {
+    title: "Mobile wallet / QR payment",
+    documented: "Second Schedule Part III Sr. 4: payment through mobile wallets or QR scanning qualifies for the 8 % restaurant rate.",
+    pending: "The eIMS PaymentMode code to send (§6.1 lists 1-6 only); a sample accepted payload.",
+    needsSample: true,
+  },
+  bank_transfer: {
+    title: "Bank transfer",
+    documented: "Not among debit / credit card, mobile wallet or QR in the law: taxed at the other-payments rate (16 % for restaurants).",
+    pending: "The eIMS PaymentMode code to send; a sample accepted payload.",
+    needsSample: true,
+  },
+  multiple_partial_credits: {
+    title: "More than one partial credit note for one invoice",
+    documented: "InvoiceType 3 with RefUSIN = the original invoice's USIN (§6.1, §6.2). Cumulative quantity, value and tax are limited to the original.",
+    pending: "Whether PRA accepts several credit notes referencing the same USIN; a sample accepted payload.",
+    needsSample: true,
+  },
+  qr_verifier: {
+    title: "Receipt QR (verification link)",
+    documented: "Technical Specification v1.2: QR = https://reg.pra.punjab.gov.pk/IMSFiscalReport/SearchPOSInvoice_Report.aspx?PRAInvNo=<fiscal number>.",
+    pending: "That the link resolves current (IRIS-era) fiscal invoices, or PRA's current QR format.",
+    needsSample: false,
+  },
+  outage_receipt: {
+    title: "Receipt while PRA can't be reached",
+    documented: "Nothing approved: the bill and its USIN are kept; Pending / Needs reconciliation shown internally only. FBR's outage timeline does not apply.",
+    pending: "Approved customer-facing wording and the deadline to submit.",
+    needsSample: false,
+  },
+  advance_payments: {
+    title: "Advances before the final bill (marriage halls, events)",
+    documented: "PST Act s.18: the tax point is the earliest of delivery, invoice issued / due, or receipt of consideration; an advance that is part of the price can be a tax point. Refundable security deposits are reviewed separately.",
+    pending: "The payload and adjustment workflow for an advance and the final invoice, so no amount is reported twice. Not mapped in MAVIN until confirmed.",
+    needsSample: true,
+  },
+  shared_ip: {
+    title: "One MAVIN gateway IP for several businesses / POS IDs",
+    documented: "Manual §6.4.2: whitelisting needs PNTN, business name, POS ID, server IP and location (tracked per PNTN + POS ID).",
+    pending: "Explicit approval that the shared IP may serve each PNTN / POS ID.",
+    needsSample: false,
+  },
+} as const;
+export type PraCaseKey = keyof typeof PRA_CASES;
+
+/** What the Super Admin has recorded for a case. */
+export interface CaseState {
+  /** Allowed in the Sandbox (default yes). */
+  sandbox?: boolean;
+  sandboxPassedAt?: string | null;
+  /** PRA's written confirmation: production opens only with it. */
+  confirmedAt?: string | null;
+  reference?: string | null;
+  sampleAccepted?: boolean;
+  note?: string | null;
+  /** mixed_payment: the rate a mixed bill takes once confirmed (or for Sandbox tests). */
+  ratePolicy?: "whole_other" | "whole_qualifying" | null;
+  /** wallet_qr / bank_transfer: the PaymentMode to send (1-6). */
+  praMode?: number | null;
+  /** outage_receipt: the customer-facing wording PRA approved. qr_verifier: PRA's current link, with {fiscal}. */
+  text?: string | null;
+}
+export type CaseStates = Partial<Record<PraCaseKey, CaseState>>;
+
+/** Why a case can't be used in an environment (null: it can). */
+export function caseBlock(key: PraCaseKey, states: CaseStates, environment: "sandbox" | "production"): string | null {
+  const st = states[key] ?? {};
+  const c = PRA_CASES[key];
+  if (environment === "sandbox") return st.sandbox === false ? `${c.title}: switched off for the Sandbox.` : null;
+  if (!st.confirmedAt || !st.reference) return `${c.title}: needs PRA's written confirmation before production (${c.pending})`;
+  if (c.needsSample && !st.sampleAccepted) return `${c.title}: needs a sample payload accepted by PRA before production.`;
+  return null;
+}
+
 // ── Payments ─────────────────────────────────────────────────────────────
 
-/** How one of MAVIN's payment methods counts: for the rate (a qualifying
- * digital payment: debit / credit card, mobile wallet or QR) and for PRA's
- * PaymentMode code. `confirmed`: verified with PRA; unconfirmed ones block. */
-export interface MethodRule { taxClass: "qualifying_digital" | "other" | "unknown"; praMode: number | null; confirmed: boolean; note?: string }
-export type MethodMap = Record<string, MethodRule>;
+/** One payment on a bill, kept as it was taken (never replaced by PRA's code). */
+export interface PaymentComponent { method: string; amount: number; reference?: string | null }
 
-/** Defaults: cash and card are documented (eIMS manual v1.0 §6.1: 1 Cash, 2 Card).
- * A mobile wallet / QR has no PaymentMode of its own and a bank transfer is not
- * a listed qualifying payment: both stay unresolved until PRA confirms. */
-export const DEFAULT_METHOD_MAP: MethodMap = {
-  cash: { taxClass: "other", praMode: 1, confirmed: true },
-  card: { taxClass: "qualifying_digital", praMode: 2, confirmed: true },
-  digital: { taxClass: "qualifying_digital", praMode: null, confirmed: false, note: "Mobile wallet / QR: the law lists it as qualifying, but eIMS has no PaymentMode for it. Ask PRA which code to send." },
-  bank: { taxClass: "unknown", praMode: null, confirmed: false, note: "Bank transfer is not among card / mobile wallet / QR in the law. Ask PRA how it is taxed and reported." },
+/** MAVIN's methods: how each counts for the rate (law) and its PaymentMode (eIMS §6.1).
+ * Cash and card are documented; wallet / QR and bank transfer take their code from their case. */
+export const METHOD_CLASS: Record<string, { taxClass: "qualifying_digital" | "other"; praMode: number | null; caseKey: PraCaseKey | null; label: string }> = {
+  cash: { taxClass: "other", praMode: 1, caseKey: null, label: "Cash" },
+  card: { taxClass: "qualifying_digital", praMode: 2, caseKey: null, label: "Debit / credit card" },
+  digital: { taxClass: "qualifying_digital", praMode: null, caseKey: "wallet_qr", label: "Mobile wallet / QR" },
+  bank: { taxClass: "other", praMode: null, caseKey: "bank_transfer", label: "Bank transfer" },
 };
 
 export interface PaymentCheck {
   methods: string[];
+  components: PaymentComponent[];
   taxClass: "qualifying_digital" | "other" | null;
   praMode: number | null;
+  /** The cases this bill depends on (each gated by environment). */
+  cases: PraCaseKey[];
   problems: string[];
 }
 
-/** One bill's payment for PRA. Mixed payments (more than one method) are
- * unresolved: the law does not say which rate a split bill takes. */
-export function checkPayment(methods: string[], map: MethodMap = DEFAULT_METHOD_MAP): PaymentCheck {
-  const distinct = [...new Set(methods.filter(Boolean))];
+/** One bill's payment for PRA: its components kept as taken, the rate class and the PaymentMode. */
+export function checkPayment(components: PaymentComponent[], states: CaseStates = {}): PaymentCheck {
+  const comps = components.filter((p) => p && p.method && Number(p.amount) > 0);
+  const methods = [...new Set(comps.map((p) => p.method))];
   const problems: string[] = [];
-  if (!distinct.length) return { methods: distinct, taxClass: null, praMode: null, problems: ["The bill has no payment recorded."] };
-  if (distinct.length > 1) {
-    return { methods: distinct, taxClass: null, praMode: 5, problems: [`Mixed payment (${distinct.join(" + ")}): which rate a split bill takes, and how it is reported, is not confirmed with PRA.`] };
+  const cases: PraCaseKey[] = [];
+  if (!methods.length) return { methods, components: comps, taxClass: null, praMode: null, cases, problems: ["The bill has no payment recorded."] };
+  for (const m of methods) {
+    const k = METHOD_CLASS[m];
+    if (!k) problems.push(`Payment method "${m}" has no PRA mapping.`);
+    else if (k.caseKey && !cases.includes(k.caseKey)) cases.push(k.caseKey);
   }
-  const m = map[distinct[0]];
-  if (!m) return { methods: distinct, taxClass: null, praMode: null, problems: [`Payment method "${distinct[0]}" has no PRA mapping.`] };
-  if (!m.confirmed) problems.push(m.note ?? `Payment method "${distinct[0]}" is not confirmed with PRA.`);
-  if (m.praMode == null) problems.push(`No PRA PaymentMode for "${distinct[0]}".`);
-  if (m.taxClass === "unknown") problems.push(`How "${distinct[0]}" is taxed is not confirmed.`);
-  return { methods: distinct, taxClass: m.taxClass === "unknown" ? null : m.taxClass, praMode: m.praMode, problems };
+  if (methods.length > 1) {
+    cases.push("mixed_payment");
+    const policy = states.mixed_payment?.ratePolicy ?? null;
+    if (!policy) problems.push(`Mixed payment (${methods.join(" + ")}): which rate the bill takes is pending PRA's confirmation. Choose the rate policy under PRA cases to test it in the Sandbox.`);
+    return { methods, components: comps, taxClass: policy === "whole_qualifying" ? "qualifying_digital" : policy === "whole_other" ? "other" : null, praMode: 5, cases, problems };
+  }
+  const k = METHOD_CLASS[methods[0]];
+  if (!k) return { methods, components: comps, taxClass: null, praMode: null, cases, problems };
+  const mode = k.praMode ?? (k.caseKey ? states[k.caseKey]?.praMode ?? null : null);
+  if (mode == null) problems.push(`${k.label}: the eIMS PaymentMode is pending PRA's confirmation. Set the code to test under PRA cases.`);
+  return { methods, components: comps, taxClass: k.taxClass, praMode: mode, cases, problems };
 }
+
 
 /** The rate a bill must carry under a rule, for its payment class. Null: not a percentage rule. */
 export function expectedRate(rule: Pick<PraRule, "rate_type" | "rate" | "payment_condition" | "alt_rate">, taxClass: PaymentCheck["taxClass"]): number | null {

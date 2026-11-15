@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { serverJson } from "@/lib/serverMode";
-import { PRA_SECTORS, ruleSummary, type MethodMap, type PraRule } from "@/lib/pra/rules";
+import { PRA_SECTORS, ruleSummary, type PraRule } from "@/lib/pra/rules";
 
 type Rule = PraRule & { problems: string[]; approved_at?: string | null };
 const call = <T,>(action: string, body: Record<string, unknown> = {}) => serverJson<{ result: T }>("/api/pra/", { action, ...body }).then((r) => r.result);
@@ -123,40 +123,93 @@ export default function PraRulesPage() {
         </div>
       )}
 
-      <PaymentMethods />
+      <PraCases />
     </div>
   );
 }
 
-/** MAVIN payment method → PRA (rate class and PaymentMode). Only confirmed entries let a bill through. */
-function PaymentMethods() {
-  const [m, setM] = useState<MethodMap | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  useEffect(() => { void call<MethodMap>("methods").then(setM).catch((e) => setMsg(errText(e))); }, []);
-  if (!m) return msg ? <p className="text-sm text-rose-800">{msg}</p> : null;
+interface CaseRow {
+  key: string; title: string; documented: string; pending: string; needsSample: boolean;
+  implemented: boolean; sandboxAllowed: boolean; sandboxPassed: boolean; productionReady: boolean;
+  state: { sandbox?: boolean; sandboxPassedAt?: string | null; confirmedAt?: string | null; reference?: string | null; sampleAccepted?: boolean; note?: string | null; ratePolicy?: string | null; praMode?: number | null; text?: string | null };
+}
+
+/** What PRA's documents settle, what still needs PRA's written answer, and where each case stands:
+ * implemented → Sandbox passed → PRA confirmed (production opens only then). */
+function PraCases() {
+  const [rows, setRows] = useState<CaseRow[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [f, setF] = useState<Record<string, string | boolean>>({});
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(async () => {
+    try { setRows(await call<CaseRow[]>("cases")); } catch (e) { setMsg({ ok: false, text: errText(e) }); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const edit = (r: CaseRow) => {
+    setOpen(r.key);
+    setF({
+      sandbox: r.state.sandbox !== false, sandboxPassedAt: r.state.sandboxPassedAt ?? "", confirmedAt: r.state.confirmedAt ?? "", reference: r.state.reference ?? "",
+      sampleAccepted: !!r.state.sampleAccepted, note: r.state.note ?? "", ratePolicy: r.state.ratePolicy ?? "", praMode: r.state.praMode == null ? "" : String(r.state.praMode), text: r.state.text ?? "",
+    });
+  };
+  const mark = (ok: boolean) => (ok ? <span className="text-emerald-700">✓</span> : <span className="text-neutral-400">—</span>);
   return (
     <section className="space-y-2 rounded-2xl bg-white p-5 text-sm shadow-sm ring-1 ring-black/[0.05]">
-      <h2 className="text-base font-semibold">Payment methods for PRA</h2>
+      <h2 className="text-base font-semibold">PRA cases: implemented, Sandbox, PRA confirmation</h2>
       <p className="text-neutral-600">
-        eIMS PaymentMode (manual v1.0 §6.1): 1 Cash, 2 Card, 3 Gift Voucher, 4 Loyalty Card, 5 Mixed, 6 Cheque. There is no code for a mobile wallet / QR or a bank transfer:
-        confirm with PRA before marking them confirmed. Mixed payments (more than one method on a bill) are always held for review. The actual method stays on the bill.
+        Each case is built. Production opens for a case only with PRA&apos;s written confirmation (reference and date) and, where marked, a sample payload PRA accepted.
+        The actual payment methods and references always stay on the bill; PaymentMode is only what is sent.
       </p>
-      <table className="w-full text-sm">
-        <thead className="text-left text-xs text-neutral-500"><tr><th>MAVIN method</th><th>Counts for the rate as</th><th>PRA PaymentMode</th><th>Confirmed with PRA</th><th>Note</th></tr></thead>
-        <tbody>
-          {Object.entries(m).map(([k, v]) => (
-            <tr key={k} className="border-t border-neutral-100">
-              <td className="py-1.5 font-medium">{k}</td>
-              <td><select className={input} value={v.taxClass} onChange={(e) => setM({ ...m, [k]: { ...v, taxClass: e.target.value as typeof v.taxClass } })}><option value="qualifying_digital">Card / wallet / QR (qualifying)</option><option value="other">Other</option><option value="unknown">Unknown</option></select></td>
-              <td><input className={input} value={v.praMode ?? ""} onChange={(e) => setM({ ...m, [k]: { ...v, praMode: e.target.value === "" ? null : Number(e.target.value) } })} /></td>
-              <td className="text-center"><input type="checkbox" checked={v.confirmed} onChange={(e) => setM({ ...m, [k]: { ...v, confirmed: e.target.checked } })} /></td>
-              <td><input className={input} value={v.note ?? ""} onChange={(e) => setM({ ...m, [k]: { ...v, note: e.target.value } })} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <Button onClick={async () => { try { setM(await call<MethodMap>("save_methods", { map: m })); setMsg("Saved."); } catch (e) { setMsg(errText(e)); } }}>Save mapping</Button>
-      {msg && <p className="text-xs">{msg}</p>}
+      {msg && <p className={`rounded-lg px-3 py-2 ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{msg.text}</p>}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
+          <thead className="text-left text-xs text-neutral-500"><tr><th className="py-1">Case</th><th>Implemented</th><th>Sandbox</th><th>Sandbox passed</th><th>PRA confirmed</th><th>Production</th><th /></tr></thead>
+          <tbody>
+            {(rows ?? []).map((r) => (
+              <tr key={r.key} className="border-t border-neutral-100 align-top">
+                <td className="py-1.5"><b>{r.title}</b><span className="block text-[11px] text-neutral-500">Documented: {r.documented}</span><span className="block text-[11px] text-amber-800">Pending: {r.pending}</span></td>
+                <td className="text-center">{mark(r.implemented)}</td>
+                <td className="text-center text-xs">{r.sandboxAllowed ? "on" : "off"}</td>
+                <td className="text-center text-xs">{r.state.sandboxPassedAt ?? "—"}</td>
+                <td className="text-center text-xs">{r.state.confirmedAt ? `${r.state.confirmedAt}${r.state.reference ? ` · ${r.state.reference}` : ""}` : "—"}</td>
+                <td className="text-center text-xs">{r.productionReady ? <span className="text-emerald-700">open</span> : <span className="text-rose-700">closed</span>}</td>
+                <td><Button variant="ghost" onClick={() => edit(r)}>Record</Button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {open && (
+        <div className="grid gap-2 rounded-xl bg-neutral-50 p-3 md:grid-cols-3">
+          <h3 className="font-semibold md:col-span-3">{rows?.find((r) => r.key === open)?.title}</h3>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!f.sandbox} onChange={(e) => setF({ ...f, sandbox: e.target.checked })} /> Allowed in the Sandbox</label>
+          <label className="text-xs">Sandbox passed on (yyyy-mm-dd)<input className={input} value={String(f.sandboxPassedAt)} onChange={(e) => setF({ ...f, sandboxPassedAt: e.target.value })} /></label>
+          <label className="text-xs">PRA confirmed on (yyyy-mm-dd)<input className={input} value={String(f.confirmedAt)} onChange={(e) => setF({ ...f, confirmedAt: e.target.value })} /></label>
+          <label className="text-xs">PRA reference (email / letter)<input className={input} value={String(f.reference)} onChange={(e) => setF({ ...f, reference: e.target.value })} /></label>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!f.sampleAccepted} onChange={(e) => setF({ ...f, sampleAccepted: e.target.checked })} /> Sample payload accepted by PRA</label>
+          {open === "mixed_payment" && (
+            <label className="text-xs">Rate for a mixed bill<select className={input} value={String(f.ratePolicy)} onChange={(e) => setF({ ...f, ratePolicy: e.target.value })}>
+              <option value="">Pending (bills blocked)</option><option value="whole_other">Whole bill at the other-payments rate (16 %)</option><option value="whole_qualifying">Whole bill at the qualifying rate (8 %)</option>
+            </select></label>
+          )}
+          {(open === "wallet_qr" || open === "bank_transfer") && (
+            <label className="text-xs">PaymentMode to send (1-6)<input className={input} value={String(f.praMode)} onChange={(e) => setF({ ...f, praMode: e.target.value })} placeholder="as PRA confirms" /></label>
+          )}
+          {(open === "outage_receipt" || open === "qr_verifier") && (
+            <label className="text-xs md:col-span-3">{open === "qr_verifier" ? "PRA's current QR link, with {fiscal} (blank = the documented v1.2 link)" : "Customer-facing wording PRA approved (printed only once confirmed)"}
+              <input className={input} value={String(f.text)} onChange={(e) => setF({ ...f, text: e.target.value })} /></label>
+          )}
+          <label className="text-xs md:col-span-3">Note<input className={input} value={String(f.note)} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
+          <div className="flex gap-2 md:col-span-3">
+            <Button variant="primary" onClick={async () => {
+              setMsg(null);
+              try { setRows(await call<CaseRow[]>("save_case", { key: open, ...f, praMode: f.praMode === "" ? null : Number(f.praMode), ratePolicy: f.ratePolicy || null })); setOpen(null); setMsg({ ok: true, text: "Saved." }); }
+              catch (e) { setMsg({ ok: false, text: errText(e) }); }
+            }}>Save</Button>
+            <Button onClick={() => setOpen(null)}>Cancel</Button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

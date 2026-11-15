@@ -4,6 +4,58 @@ Status: built and tested against mock PRA responses only. No sandbox or producti
 invoice has been sent. Live submission is off three ways: per business (Super Admin),
 per server (`PRA_PRODUCTION_ENABLED`), and by route (production needs the static-IP gateway).
 
+## 0. Status after the PRA findings (migration v92)
+
+Sources:
+- PRA / PRAL POS Component and eIMS User Manual v1.0;
+- Technical Specification for Data Sharing through Software Fiscal Device v1.2, in particular §7, §7.1, §7.2.2, FAQ 1–4 and §12;
+- PST Act 2012 s.18 and the Second Schedule as amended by the Punjab Finance Act 2026.
+
+"Sandbox passed" can only be recorded after a run with approved Sandbox credentials. None has been run yet: every case below is tested with mock responses only.
+
+| Case | Implemented | Sandbox passed | PRA confirmed | Production |
+|---|---|---|---|---|
+| Cash (PaymentMode 1), card (2), 8 % / 16 % restaurant rule | Yes | Not yet | Documented (manual §6.1, Schedule Part III Sr. 4) | Opens with the account steps below |
+| Mixed cash + card: PaymentMode 5, each component and reference stored | Yes; rate policy configurable, blocked until chosen | Not yet | **Pending**: rate (one rate or apportioned), sample payload | Closed |
+| Mobile wallet / QR: qualifies for 8 %; method and reference stored | Yes; PaymentMode configurable, blocked until set | Not yet | **Pending**: PaymentMode code, sample payload | Closed |
+| Bank transfer: 16 % (other payment); method and reference stored | Yes; PaymentMode configurable | Not yet | **Pending**: PaymentMode code, sample payload | Closed |
+| Credit note: own USIN, RefUSIN = original USIN, original fiscal number kept, cumulative quantity / value / tax limits | Yes | Not yet | Documented (Tech. Spec. FAQ 1) | Opens with the account steps |
+| More than one partial credit note for one invoice | Yes (recorded as a case) | Not yet | **Pending**: accepted by PRA? Sample payload | Closed |
+| Receipt QR: the documented `SearchPOSInvoice_Report.aspx?PRAInvNo=` link | Yes; a replacement link format can be recorded | Not yet | Documented (FAQ 4); **pending**: that it resolves IRIS-era invoices | Prints on accepted receipts |
+| Receipt contents: business name, branch address, PNTN, local receipt no., items, amount before tax, rate and tax, total, fiscal number and QR | Yes | Not yet | Logo requirement not verified | — |
+| Outage receipt wording and submission deadline | Nothing customer-facing is printed until approved; internal Pending / Needs reconciliation only | — | **Pending** | — |
+| Timeout or unclear answer: Needs reconciliation, never resent automatically; "Not on PRA" only after 2 h and with how it was checked | Yes | Not yet | No lookup API documented; IRIS IMS Fiscal Report / PRA support | — |
+| Fiscal number kept as an opaque string, read losslessly (alphanumeric, leading zeros, 30-digit numbers) | Yes | — | Documented (FAQ 4 example `126983DJCN820607`) | — |
+| Marriage halls, advances (s.18 tax point) | Not mapped; recorded as a case | — | **Pending**: payload and adjustment workflow | Closed |
+| Catering, goods transport, contractors | Rules are drafts with "eIMS unconfirmed"; bills blocked | — | **Pending**: applicable notification | Closed |
+| Whitelisting per PNTN + POS ID | Yes, per counter, with IP and PRA reference | — | Required (servers outside Pakistan: Tech. Spec. §12; gateway is in Singapore) | Needed per counter |
+| One shared gateway IP for several businesses | Recorded as a case | — | **Pending** | Closed until confirmed |
+
+Production opens for a case only when the Super Admin records PRA's written confirmation: the reference and date, plus an accepted sample payload where the case asks for one. This is done under Super Admin › PRA Tax Suggestions › PRA cases. Sandbox use of each case can be switched off there.
+
+### 0.1 Consolidated clarification request
+
+To: eims@pra.punjab.gov.pk · Subject: eIMS cloud integration – clarifications and sample payloads (MAVIN.pk POS)
+
+> Dear eIMS Team,
+>
+> MAVIN.pk is integrating the eIMS cloud API (eIMS User Manual v1.0 §6.4.2; Technical Specification v1.2) for its registered clients. We would be grateful for written guidance, and an **example accepted payload** where marked:
+>
+> 1. **Mixed payments**: a restaurant bill paid partly in cash and partly by card (PaymentMode 5). Is the whole bill taxed at one rate (8 % or 16 %), or is the tax apportioned by payment method? *Please share an example accepted payload.*
+> 2. **Mobile wallets and QR payments**: these qualify for the 8 % restaurant rate. Which PaymentMode code should be sent? *Example payload, please.*
+> 3. **Bank transfers**: which PaymentMode code should be sent? *Example payload, please.*
+> 4. **Partial credit notes**: may several credit notes (InvoiceType 3) reference the same original USIN through RefUSIN? *Example payloads, please.*
+> 5. **Receipt QR**: does `https://reg.pra.punjab.gov.pk/IMSFiscalReport/SearchPOSInvoice_Report.aspx?PRAInvNo=<number>` resolve current (IRIS-era) fiscal invoices? If not, what is the current format? Is the PRA logo required on receipts?
+> 6. **Outage**: when the cloud API cannot be reached, what wording (if any) may appear on the customer's receipt, and within what time must the invoice be submitted?
+> 7. **Lookup after a timeout**: is there an API to check whether an invoice was received, by POS ID and USIN? Or should we use only the IRIS IMS Fiscal Report and PRA support?
+> 8. **Fiscal invoice number**: what is its maximum length in the cloud response? We store it as text and keep every character.
+> 9. **Marriage halls and events**: for an advance received before the event (PST Act s.18), how should the advance and the final invoice be reported so the same amount is not reported twice?
+> 10. **Sector coverage**: are standalone catering, goods transport and service contractors required to report through eIMS, and under which notification?
+> 11. **Shared server IP**: MAVIN.pk sends from one static IP (95.111.192.41, UpCloud, Singapore) for several businesses. Does one whitelist approval cover several PNTN / POS IDs, or is approval needed for each?
+>
+> Regards,
+> [Name], MAVIN.pk · [Phone] · [Email]
+
 ## 1. Phase 1 report
 
 ### 1.1 What existed
@@ -122,7 +174,7 @@ The applied rule is stored with every submission (`rule_snapshot`). Sales tax, P
 
 ## 3. Migration and rollback
 
-- **Apply:** `node scripts/backup-turso-snapshot.cjs`, then `npm run migrate:turso` (v91). New tables only; nothing existing changes.
+- **Apply:** `node scripts/backup-turso-snapshot.cjs`, then `npm run migrate:turso` (v91 new tables; v92 adds columns to `pra_pos` and `pra_submissions` only). Nothing outside PRA changes.
 - **Server variables:**
   - `PRA_TOKEN_KEY`: 32 random bytes, base64. Required to save credentials.
   - `PRA_PRODUCTION_ENABLED=1`: only at go-live.

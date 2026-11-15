@@ -5,7 +5,9 @@ import QRCode from "react-qr-code";
 import { useIsTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
-import { errorText } from "@/lib/restaurant";
+import { errorText, praServerManaged } from "@/lib/restaurant";
+import { tenantsRepo } from "@/lib/repo/tenants";
+import { serverJson } from "@/lib/serverMode";
 import { praVerifyUrl } from "@/lib/restaurant/praModel";
 import { printDirect } from "@/lib/print";
 import type { KotRow, OrderItemRow, OrderRow } from "@/lib/restaurant/store";
@@ -115,7 +117,10 @@ export function useAction() {
 export interface ReceiptData {
   order: OrderRow;
   items: OrderItemRow[];
-  business: { name: string; address?: string | null; phone?: string | null };
+  /** pntn: Punjab sales tax registration number; branchAddress: the branch's (PRA receipt findings). */
+  business: { name: string; address?: string | null; phone?: string | null; pntn?: string | null; branchAddress?: string | null };
+  /** PRA texts once approved: the current QR link (with {fiscal}) and the outage wording. */
+  pra?: { qrTemplate?: string | null; outageText?: string | null } | null;
   tableName: string | null;
   change?: number;
   duplicate?: boolean;
@@ -140,6 +145,30 @@ const mods = (i: OrderItemRow): string[] => {
 
 const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }) : "");
 
+/** The business details a receipt needs: name and phone, the branch's address and the PRA
+ * registration number (PNTN) and texts when MAVIN's server fiscalises for this business. */
+export function useReceiptBusiness(): { business: ReceiptData["business"]; pra: ReceiptData["pra"] } {
+  const tenant = useAuthStore((s) => s.currentTenant);
+  const [v, setV] = useState<{ business: ReceiptData["business"]; pra: ReceiptData["pra"] }>({ business: { name: tenant?.name ?? "Restaurant" }, pra: null });
+  useEffect(() => {
+    if (!tenant?.id) return;
+    let live = true;
+    void (async () => {
+      const t = await tenantsRepo.get(tenant.id).catch(() => null);
+      const s = (await praServerManaged().catch(() => false))
+        ? await serverJson<{ result: { receipt: { pntn: string | null; branchAddress: string | null; qrTemplate: string | null; outageText: string | null } | null } }>("/api/pra/", { action: "status" }).then((r) => r.result.receipt).catch(() => null)
+        : null;
+      if (!live) return;
+      setV({
+        business: { name: t?.name ?? tenant.name ?? "Restaurant", address: t?.address, phone: t?.phone, pntn: s?.pntn ?? null, branchAddress: s?.branchAddress ?? null },
+        pra: s ? { qrTemplate: s.qrTemplate, outageText: s.outageText } : null,
+      });
+    })();
+    return () => { live = false; };
+  }, [tenant?.id, tenant?.name]);
+  return v;
+}
+
 export function ReceiptView({ data }: { data: ReceiptData }) {
   const { order, items, business } = data;
   const lines = items.filter((i) => !i.parent_item_id && i.kitchen_status !== "cancelled");
@@ -157,8 +186,9 @@ export function ReceiptView({ data }: { data: ReceiptData }) {
     <div style={{ width: "74mm", fontFamily: "Arial, sans-serif", fontSize: 11, color: "#000", lineHeight: 1.35 }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{business.name}</div>
-        {business.address && <div>{business.address}</div>}
+        {(business.branchAddress || business.address) && <div>{business.branchAddress || business.address}</div>}
         {business.phone && <div>Ph: {business.phone}</div>}
+        {business.pntn && <div>PRA PNTN: {business.pntn}</div>}
         <div style={{ marginTop: 4, fontWeight: 700, letterSpacing: 1 }}>{credit ? "CREDIT NOTE / REFUND" : "SALES INVOICE"}</div>
         {data.duplicate && <div style={{ fontWeight: 700 }}>*** DUPLICATE ***</div>}
       </div>
@@ -187,6 +217,7 @@ export function ReceiptView({ data }: { data: ReceiptData }) {
       {offers?.manualDiscount ? row("Discount", `-${offers.manualDiscount.toFixed(2)}`) : null}
       {!offers && order.discount > 0 && row("Discount", `-${order.discount.toFixed(2)}`)}
       {order.service_charge > 0 && row("Service charge", order.service_charge.toFixed(2))}
+      {order.tax > 0 && row("Amount before tax", (order.total - order.tax).toFixed(2))}
       {order.tax > 0 && row(`Sales tax (${order.tax_rate}%)`, order.tax.toFixed(2))}
       {row(credit ? "Refund total" : "Grand total", order.total.toFixed(2), true)}
       {pays.map((p, i) => (
@@ -198,15 +229,13 @@ export function ReceiptView({ data }: { data: ReceiptData }) {
           <div style={{ fontWeight: 700 }}>PRA Invoice No</div>
           <div style={{ wordBreak: "break-all" }}>{order.pra_invoice_no}</div>
           <div style={{ display: "inline-block", background: "#fff", padding: 3, marginTop: 3 }}>
-            <QRCode value={praVerifyUrl(order.pra_invoice_no)} size={92} />
+            <QRCode value={data.pra?.qrTemplate ? data.pra.qrTemplate.replace("{fiscal}", encodeURIComponent(order.pra_invoice_no)) : praVerifyUrl(order.pra_invoice_no)} size={92} />
           </div>
-          <div style={{ fontSize: 9 }}>Verify at PRA (reg.pra.punjab.gov.pk) or the PRA app</div>
+          <div style={{ fontSize: 9 }}>Verify at PRA or the FBR Asaan app</div>
         </div>
-      ) : order.pra_status !== "not_required" ? (
-        <div style={{ textAlign: "center", marginTop: 6, fontSize: 10, border: "1px dashed #000", padding: 3 }}>
-          <b>NOT A PRA FISCAL INVOICE</b>
-          <div>PRA fiscal number {order.pra_status === "blocked" ? "not issued (held for review)" : order.pra_status === "rejected" ? "not issued (PRA refused)" : "pending"}</div>
-        </div>
+      ) : order.pra_status !== "not_required" && data.pra?.outageText ? (
+        // Shown only with wording PRA approved; otherwise the receipt carries no PRA claim at all.
+        <div style={{ textAlign: "center", marginTop: 6, fontSize: 10 }}>{data.pra.outageText}</div>
       ) : null}
       <div style={{ borderTop: "1px dashed #000", margin: "6px 0 2px" }} />
       <div style={{ textAlign: "center", fontSize: 9 }}>Thank you!</div>

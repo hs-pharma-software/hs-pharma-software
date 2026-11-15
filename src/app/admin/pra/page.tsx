@@ -14,7 +14,7 @@ import { PRA_SECTORS } from "@/lib/pra/rules";
 import { PRA_STATE_LABEL, PraSubmissions } from "@/components/pra/PraSubmissions";
 
 interface Row { tenantId: string; name: string; businessType: string; pntn: string | null; state: string; counters: number; attention: number }
-interface Counter { id: string; branchId: string; counter: string; sector: string; environment: string; sandboxPosId: string | null; productionPosId: string | null; status: string; approvedAt: string | null; hasSandboxToken: boolean; hasProductionToken: boolean; sandboxTokenHint: string | null; productionTokenHint: string | null }
+interface Counter { id: string; branchId: string; counter: string; sector: string; environment: string; sandboxPosId: string | null; productionPosId: string | null; status: string; approvedAt: string | null; hasSandboxToken: boolean; hasProductionToken: boolean; sandboxTokenHint: string | null; productionTokenHint: string | null; whitelistStatus: string; whitelistIp: string | null; whitelistReference: string | null }
 interface Setup {
   tenant: { id: string; name: string; businessType: string }; state: string;
   account: { status: string; pntn: string | null; registeredName: string | null; registrationStatus: string; sandboxStatus: string; whitelistStatus: string; whitelistIp: string | null; liveApprovedAt: string | null; suspendedReason: string | null; notes: string | null } | null;
@@ -102,7 +102,7 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
     ["A counter approved", s.counters.some((c) => c.status === "approved")],
     ["Approved tax rule assigned", s.assignments.length > 0],
     ["Sandbox test passed", a?.sandboxStatus === "passed"],
-    ["IP whitelisted by PRA", a?.whitelistStatus === "approved"],
+    ["IP whitelisted per PNTN + POS ID", s.counters.some((c) => c.environment === "production") && s.counters.filter((c) => c.environment === "production").every((c) => c.whitelistStatus === "approved")],
     ["Live approved", !!a?.liveApprovedAt],
   ];
   return (
@@ -143,10 +143,10 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">2 · Counters (POS IDs from PRA)</h3>
-          <Button onClick={() => setPos({ branchId: s.branches[0]?.id ?? "", counter: "", sector: "restaurant", environment: "sandbox", sandboxPosId: "", productionPosId: "", sandboxToken: "", productionToken: "" })}>Add counter</Button>
+          <Button onClick={() => setPos({ branchId: s.branches[0]?.id ?? "", counter: "", sector: "restaurant", environment: "sandbox", sandboxPosId: "", productionPosId: "", sandboxToken: "", productionToken: "", whitelistStatus: "not_requested", whitelistIp: "", whitelistReference: "" })}>Add counter</Button>
         </div>
         <table className="w-full text-sm">
-          <thead className="text-left text-xs text-neutral-500"><tr><th>Branch / counter</th><th>Sector</th><th>Env</th><th>Sandbox POS / token</th><th>Production POS / token</th><th>Status</th><th /></tr></thead>
+          <thead className="text-left text-xs text-neutral-500"><tr><th>Branch / counter</th><th>Sector</th><th>Env</th><th>Sandbox POS / token</th><th>Production POS / token</th><th>Whitelist (PNTN + POS ID)</th><th>Status</th><th /></tr></thead>
           <tbody>
             {s.counters.map((c) => (
               <tr key={c.id} className="border-t border-neutral-100">
@@ -155,15 +155,16 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
                 <td className="text-xs">{c.environment}</td>
                 <td className="text-xs">{c.sandboxPosId ?? "—"} · {c.hasSandboxToken ? c.sandboxTokenHint : "no token"}</td>
                 <td className="text-xs">{c.productionPosId ?? "—"} · {c.hasProductionToken ? c.productionTokenHint : "no token"}</td>
+                <td className="text-xs">{c.whitelistStatus}{c.whitelistIp ? ` · ${c.whitelistIp}` : ""}{c.whitelistReference ? <span className="block text-neutral-500">{c.whitelistReference}</span> : null}</td>
                 <td className="text-xs">{c.status}</td>
                 <td className="space-x-1 whitespace-nowrap text-end">
-                  <Button variant="ghost" onClick={() => setPos({ id: c.id, branchId: c.branchId, counter: c.counter, sector: c.sector, environment: c.environment, sandboxPosId: c.sandboxPosId ?? "", productionPosId: c.productionPosId ?? "", sandboxToken: "", productionToken: "" })}>Edit</Button>
+                  <Button variant="ghost" onClick={() => setPos({ id: c.id, branchId: c.branchId, counter: c.counter, sector: c.sector, environment: c.environment, sandboxPosId: c.sandboxPosId ?? "", productionPosId: c.productionPosId ?? "", sandboxToken: "", productionToken: "", whitelistStatus: c.whitelistStatus, whitelistIp: c.whitelistIp ?? "", whitelistReference: c.whitelistReference ?? "" })}>Edit</Button>
                   {c.status !== "approved" && <Button onClick={() => void act(() => call("decide_pos", { tenantId, id: c.id, approve: true }), "Counter approved.")}>Approve</Button>}
                   {c.status === "approved" && <Button onClick={() => { const r = prompt("Revoke this counter. Reason:"); if (r) void act(() => call("decide_pos", { tenantId, id: c.id, approve: false, reason: r }), "Counter revoked."); }}>Revoke</Button>}
                 </td>
               </tr>
             ))}
-            {!s.counters.length && <tr><td colSpan={7} className="py-3 text-center text-xs text-neutral-400">No counter yet.</td></tr>}
+            {!s.counters.length && <tr><td colSpan={8} className="py-3 text-center text-xs text-neutral-400">No counter yet.</td></tr>}
           </tbody>
         </table>
         {pos && (
@@ -176,6 +177,9 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
             <label className="text-xs">Sandbox token (blank = keep)<input className={input} type="password" autoComplete="off" value={pos.sandboxToken} onChange={(e) => setPos({ ...pos, sandboxToken: e.target.value })} /></label>
             <label className="text-xs">Production POS ID<input className={input} value={pos.productionPosId} onChange={(e) => setPos({ ...pos, productionPosId: e.target.value })} /></label>
             <label className="text-xs">Production token (blank = keep)<input className={input} type="password" autoComplete="off" value={pos.productionToken} onChange={(e) => setPos({ ...pos, productionToken: e.target.value })} /></label>
+            <label className="text-xs">IP whitelist for this PNTN + POS ID<select className={input} value={pos.whitelistStatus} onChange={(e) => setPos({ ...pos, whitelistStatus: e.target.value })}>{["not_requested", "requested", "approved", "rejected"].map((v) => <option key={v}>{v}</option>)}</select></label>
+            <label className="text-xs">Whitelisted server IP<input className={input} value={pos.whitelistIp} placeholder="95.111.192.41" onChange={(e) => setPos({ ...pos, whitelistIp: e.target.value })} /></label>
+            <label className="text-xs md:col-span-2">PRA reference (email / ticket)<input className={input} value={pos.whitelistReference} onChange={(e) => setPos({ ...pos, whitelistReference: e.target.value })} /></label>
             <div className="flex gap-2 md:col-span-4">
               <Button variant="primary" onClick={() => void act(async () => {
                 const body: Record<string, unknown> = { tenantId, ...pos };

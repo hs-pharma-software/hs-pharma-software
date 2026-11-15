@@ -31,8 +31,8 @@ import type { Caller } from "@/server/sqlPolicy";
 import type { BranchScope } from "@/server/branches";
 import { buildPraInvoice, mapPraResponse, validatePraInvoice, type PraSourceLine } from "@/lib/restaurant/praModel";
 import {
-  DEFAULT_METHOD_MAP, PRA_SECTORS, SEED_RULES, approvalProblems, checkPayment, expectedRate, pctCodeOf, ruleOn,
-  type MethodMap, type PraRule,
+  PRA_CASES, PRA_SECTORS, SEED_RULES, approvalProblems, caseBlock, checkPayment, expectedRate, pctCodeOf, ruleOn,
+  type CaseState, type CaseStates, type PaymentComponent, type PraCaseKey, type PraRule,
 } from "@/lib/pra/rules";
 import { openPra, praHint, praStorageReady, sealPra } from "./secretBox";
 import { postToPra, praRoute, type PraEnvironment, type PraTransportDeps } from "./transport";
@@ -42,6 +42,8 @@ export interface PraDeps extends PraTransportDeps { now?: () => Date }
 export type SubStatus = "sending" | "queued" | "accepted" | "rejected" | "needs_reconciliation" | "blocked" | "legacy";
 export type AccountState = "disabled" | "setup_required" | "sandbox_ready" | "awaiting_whitelist" | "ready_for_approval" | "live" | "suspended";
 
+/** "Not on PRA" is accepted only this long after the request (a missing report entry right away proves nothing). */
+export const RECONCILE_WAIT_HOURS = 2;
 /** A "sending" record older than this lost its sender (server stopped mid-request): it may have reached PRA. */
 export const SEND_LOCK_MS = 90_000;
 /** How far back the sweep looks for bills that were never handed to PRA. */
@@ -82,7 +84,7 @@ async function audit(sql: Sql, tenantId: string | null, c: Caller | null, action
 // ── Accounts and counters ────────────────────────────────────────────────
 
 interface AccountRow { tenant_id: string; status: string; pntn: string | null; registered_name: string | null; registration_status: string; sandbox_status: string; whitelist_status: string; whitelist_ip: string | null; live_approved_by: string | null; live_approved_at: string | null; suspended_reason: string | null; notes: string | null }
-interface PosRow { id: string; tenant_id: string; branch_id: string; counter: string; sector: string; environment: string; sandbox_pos_id: string | null; production_pos_id: string | null; sandbox_token_enc: string | null; production_token_enc: string | null; sandbox_token_hint: string | null; production_token_hint: string | null; status: string; approved_by: string | null; approved_at: string | null; active_from: string | null }
+interface PosRow { id: string; tenant_id: string; branch_id: string; counter: string; sector: string; environment: string; sandbox_pos_id: string | null; production_pos_id: string | null; sandbox_token_enc: string | null; production_token_enc: string | null; sandbox_token_hint: string | null; production_token_hint: string | null; status: string; approved_by: string | null; approved_at: string | null; active_from: string | null; whitelist_status: string; whitelist_ip: string | null; whitelist_reference: string | null; whitelist_updated_at: string | null }
 
 async function account(sql: Sql, tenantId: string): Promise<AccountRow | null> {
   return ((await sql.execute(`SELECT * FROM pra_accounts WHERE tenant_id = ?`, [tenantId])).rows[0] as unknown as AccountRow) ?? null;
@@ -109,6 +111,7 @@ const showPos = (p: PosRow, c: Caller) => ({
   sandboxPosId: p.sandbox_pos_id, productionPosId: p.production_pos_id, status: p.status, approvedAt: p.approved_at, activeFrom: p.active_from,
   hasSandboxToken: !!p.sandbox_token_enc, hasProductionToken: !!p.production_token_enc,
   sandboxTokenHint: isSuper(c) ? p.sandbox_token_hint : null, productionTokenHint: isSuper(c) ? p.production_token_hint : null,
+  whitelistStatus: p.whitelist_status ?? "not_requested", whitelistIp: p.whitelist_ip, whitelistReference: isSuper(c) ? p.whitelist_reference : null, whitelistUpdatedAt: p.whitelist_updated_at,
 });
 
 /** Super Admin: every business with PRA set up or asked for, and its state. */
@@ -258,6 +261,15 @@ export async function savePos(sql: Sql, c: Caller, input: Record<string, unknown
     if (t && !praStorageReady()) throw new HttpError(503, "PRA credential storage is not set up on the server yet (PRA_TOKEN_KEY).");
     tokens[env] = { enc: t ? sealPra(t) : null, hint: t ? praHint(t) : null, changed: true };
   }
+  // Production IP whitelisting, tracked for this PNTN + POS ID.
+  const wl = {
+    status: pick(input.whitelistStatus ?? cur?.whitelist_status, WHITELIST, "not_requested"),
+    ip: input.whitelistIp === undefined ? cur?.whitelist_ip ?? null : optStr(input.whitelistIp, 45),
+    reference: input.whitelistReference === undefined ? cur?.whitelist_reference ?? null : optStr(input.whitelistReference, 300),
+  };
+  if (wl.ip && !/^[0-9a-f:.]{7,45}$/i.test(wl.ip)) throw new HttpError(400, "Whitelisted IP looks wrong.");
+  if (wl.status === "approved" && (!wl.ip || !wl.reference || !posIds.production)) throw new HttpError(400, "An approved whitelist needs the production POS ID, the IP and PRA's reference.");
+  const wlChanged = !cur || cur.whitelist_status !== wl.status || cur.whitelist_ip !== wl.ip || cur.whitelist_reference !== wl.reference;
   const now = iso(nowOf(deps));
   // A different POS ID, environment, branch or sector is a different registration: approve it again.
   const material = !cur || cur.branch_id !== branchId || cur.sector !== sector || cur.environment !== environment || cur.sandbox_pos_id !== posIds.sandbox || cur.production_pos_id !== posIds.production || tokens.production.changed;
@@ -267,15 +279,17 @@ export async function savePos(sql: Sql, c: Caller, input: Record<string, unknown
     if (cur) {
       await sql.execute(`UPDATE pra_pos SET branch_id = ?, counter = ?, sector = ?, environment = ?, sandbox_pos_id = ?, production_pos_id = ?, sandbox_token_enc = ?, production_token_enc = ?,
           sandbox_token_hint = ?, production_token_hint = ?, status = ?, updated_by = ?, updated_at = ?${material ? ", approved_by = NULL, approved_at = NULL" : ""} WHERE id = ? AND tenant_id = ?`, [...row, cur.id, T]);
+      await sql.execute(`UPDATE pra_pos SET whitelist_status = ?, whitelist_ip = ?, whitelist_reference = ?, whitelist_updated_at = ? WHERE id = ?`, [wl.status, wl.ip, wl.reference, wlChanged ? now : cur.whitelist_updated_at, cur.id]);
     } else {
-      await sql.execute(`INSERT INTO pra_pos (id, tenant_id, branch_id, counter, sector, environment, sandbox_pos_id, production_pos_id, sandbox_token_enc, production_token_enc, sandbox_token_hint, production_token_hint, status, updated_by, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [randomUUID(), T, ...row, now]);
+      await sql.execute(`INSERT INTO pra_pos (id, tenant_id, branch_id, counter, sector, environment, sandbox_pos_id, production_pos_id, sandbox_token_enc, production_token_enc, sandbox_token_hint, production_token_hint, status, updated_by, updated_at, created_at, whitelist_status, whitelist_ip, whitelist_reference, whitelist_updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [randomUUID(), T, ...row, now, wl.status, wl.ip, wl.reference, now]);
     }
   } catch (e) {
     if (/UNIQUE/i.test(String(e))) throw new HttpError(409, "This branch already has a counter with that name.");
     throw e;
   }
   await audit(sql, T, c, cur ? "pos.update" : "pos.create", { branchId, counter, sector, environment, posIds, reapproval: material && !!cur }, deps);
+  if (wlChanged && cur) await audit(sql, T, c, "whitelist.update", { counter, posId: posIds.production, status: wl.status, ip: wl.ip, reference: wl.reference }, deps);
   for (const env of ["sandbox", "production"] as const) if (tokens[env].changed) await audit(sql, T, c, "credential.rotate", { counter, environment: env, set: !!tokens[env].enc }, deps);
   return setup(sql, c, { tenantId: T });
 }
@@ -319,9 +333,11 @@ export async function approveLive(sql: Sql, c: Caller, input: { tenantId?: unkno
   if (a.status !== "enabled") missing.push("PRA access is not enabled");
   if (a.registration_status !== "registered") missing.push("POS registration with PRA is not recorded as done");
   if (a.sandbox_status !== "passed") missing.push("the sandbox test has not passed");
-  if (a.whitelist_status !== "approved") missing.push("PRA has not whitelisted the server IP");
   const prod = (await counters(sql, T)).filter((p) => p.environment === "production" && p.production_pos_id && p.production_token_enc);
   if (!prod.length) missing.push("no counter has production POS ID and token");
+  for (const p of prod) if (p.whitelist_status !== "approved") missing.push(`PRA has not whitelisted the IP for PNTN ${a.pntn ?? "?"} / POS ID ${p.production_pos_id}`);
+  const shared = caseBlock("shared_ip", await caseStates(sql), "production");
+  if (shared) missing.push(shared);
   if (missing.length) throw new HttpError(409, `Not ready to go live: ${missing.join("; ")}.`);
   await sql.execute(`UPDATE pra_accounts SET live_approved_at = ?, live_approved_by = ?, updated_at = ? WHERE tenant_id = ?`, [now, c.userId, now, T]);
   await audit(sql, T, c, "live.approve", null, deps);
@@ -336,7 +352,11 @@ async function allRules(sql: Sql): Promise<PraRule[]> {
 
 /** The starting drafts, once (an empty catalogue). */
 export async function seedRules(sql: Sql, deps: PraDeps = {}) {
-  if ((await sql.execute(`SELECT 1 FROM pra_tax_rules LIMIT 1`)).rows[0]) return 0;
+  if ((await sql.execute(`SELECT 1 FROM pra_tax_rules LIMIT 1`)).rows[0]) {
+    // Starting drafts nobody has touched yet get the latest review notes (approved rules never change).
+    for (const r of SEED_RULES) await sql.execute(`UPDATE pra_tax_rules SET review_notes = ? WHERE rule_key = ? AND version = 1 AND status = 'draft' AND created_by = 'seed' AND COALESCE(review_notes, '') <> ?`, [r.review_notes, r.rule_key, r.review_notes ?? ""]);
+    return 0;
+  }
   const now = iso(nowOf(deps));
   for (const r of SEED_RULES) {
     await sql.execute(
@@ -446,36 +466,72 @@ export async function assignRule(sql: Sql, c: Caller, input: { tenantId?: unknow
   return setup(sql, c, { tenantId: T });
 }
 
-/** Payment method → PRA, platform-wide (Super Admin): only confirmed entries let a bill through. */
-export async function methodMap(sql: Sql): Promise<MethodMap> {
-  const r = (await sql.execute(`SELECT value FROM pra_platform WHERE key = 'payment_methods'`)).rows[0];
-  if (!r) return DEFAULT_METHOD_MAP;
-  try { return { ...DEFAULT_METHOD_MAP, ...(JSON.parse(String(r.value)) as MethodMap) }; } catch { return DEFAULT_METHOD_MAP; }
+// ── PRA cases (what PRA still has to confirm) ─────────────────────────────
+
+/** The Super Admin's record per case (platform-wide). */
+export async function caseStates(sql: Sql): Promise<CaseStates> {
+  const r = (await sql.execute(`SELECT value FROM pra_platform WHERE key = 'cases'`)).rows[0];
+  if (!r) return {};
+  try { return JSON.parse(String(r.value)) as CaseStates; } catch { return {}; }
 }
-export async function saveMethodMap(sql: Sql, c: Caller, input: { map?: unknown }, deps: PraDeps = {}) {
+
+/** Super Admin: the cases with what is documented, what is pending, and their state. */
+export async function listCases(sql: Sql, c: Caller) {
   superOnly(c);
-  const m = input.map as MethodMap;
-  if (!m || typeof m !== "object") throw new HttpError(400, "Send the payment method mapping.");
-  const clean: MethodMap = {};
-  for (const [k, v] of Object.entries(m)) {
-    if (!["cash", "card", "digital", "bank"].includes(k)) continue;
-    const mode = v.praMode == null || (v.praMode as unknown) === "" ? null : Number(v.praMode);
-    if (mode != null && ![1, 2, 3, 4, 5, 6].includes(mode)) throw new HttpError(400, `PaymentMode for ${k} must be 1-6 (eIMS manual §6.1).`);
-    clean[k] = { taxClass: v.taxClass === "qualifying_digital" || v.taxClass === "other" ? v.taxClass : "unknown", praMode: mode, confirmed: v.confirmed === true && mode != null, note: str(v.note, 300) || undefined };
-  }
+  const st = await caseStates(sql);
+  return (Object.keys(PRA_CASES) as PraCaseKey[]).map((key) => ({
+    key, ...PRA_CASES[key], state: st[key] ?? {},
+    implemented: true, sandboxAllowed: st[key]?.sandbox !== false, sandboxPassed: !!st[key]?.sandboxPassedAt,
+    productionReady: caseBlock(key, st, "production") === null,
+  }));
+}
+
+/** Super Admin: record a case (Sandbox on / off, Sandbox passed, PRA's written confirmation, rate policy, PaymentMode, approved text). */
+export async function saveCase(sql: Sql, c: Caller, input: Record<string, unknown>, deps: PraDeps = {}) {
+  superOnly(c);
+  const key = str(input.key, 40) as PraCaseKey;
+  if (!(key in PRA_CASES)) throw new HttpError(400, "Unknown case.");
+  const all = await caseStates(sql);
+  const cur = all[key] ?? {};
+  const date = (v: unknown) => { const s = optStr(v, 10); if (s && !/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new HttpError(400, "Dates are yyyy-mm-dd."); return s; };
+  const mode = input.praMode === undefined ? cur.praMode ?? null : input.praMode === null || input.praMode === "" ? null : Number(input.praMode);
+  if (mode != null && ![1, 2, 3, 4, 5, 6].includes(mode)) throw new HttpError(400, "PaymentMode must be 1-6 (eIMS manual §6.1).");
+  const policy = input.ratePolicy === undefined ? cur.ratePolicy ?? null : input.ratePolicy === "whole_other" || input.ratePolicy === "whole_qualifying" ? input.ratePolicy : null;
+  const next = {
+    sandbox: input.sandbox === undefined ? cur.sandbox !== false : input.sandbox !== false,
+    sandboxPassedAt: input.sandboxPassedAt === undefined ? cur.sandboxPassedAt ?? null : date(input.sandboxPassedAt),
+    confirmedAt: input.confirmedAt === undefined ? cur.confirmedAt ?? null : date(input.confirmedAt),
+    reference: input.reference === undefined ? cur.reference ?? null : optStr(input.reference, 300),
+    sampleAccepted: input.sampleAccepted === undefined ? !!cur.sampleAccepted : input.sampleAccepted === true,
+    note: input.note === undefined ? cur.note ?? null : optStr(input.note, 1000),
+    text: input.text === undefined ? cur.text ?? null : optStr(input.text, 500),
+    ratePolicy: policy as CaseState["ratePolicy"], praMode: mode,
+  } satisfies CaseState;
+  if (next.confirmedAt && !next.reference) throw new HttpError(400, "Record PRA's reference (email or letter) with the confirmation date.");
+  if (key === "qr_verifier" && next.text && !/^https:\/\/[^\s]+\{fiscal\}/.test(next.text)) throw new HttpError(400, "QR link format: https://… with {fiscal} where the fiscal number goes.");
+  all[key] = next;
   const now = iso(nowOf(deps));
-  await sql.execute(`INSERT INTO pra_platform (key, value, updated_by, updated_at) VALUES ('payment_methods', ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`, [JSON.stringify(clean), c.userId, now]);
-  await audit(sql, null, c, "payment_methods.save", clean, deps);
-  return methodMap(sql);
+  await sql.execute(`INSERT INTO pra_platform (key, value, updated_by, updated_at) VALUES ('cases', ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`, [JSON.stringify(all), c.userId, now]);
+  await audit(sql, null, c, "case.save", { key, ...next }, deps);
+  return listCases(sql, c);
 }
 
 // ── Fiscalisation ────────────────────────────────────────────────────────
 
 interface OrderRow { id: string; tenant_id: string; branch_id: string | null; status: string; invoice_no: number | null; invoiced_at: string | null; created_at: string; refund_of: string | null; tax_rate: number; tax: number; service_charge: number; total: number; payments: string | null; customer_name: string | null; customer_phone: string | null }
-interface Prepared { pos: PosRow; environment: PraEnvironment; posId: string; usin: string; refUsin: string | null; invoiceType: 1 | 3; rule: PraRule | null; payload: string | null; methods: string[]; praMode: number | null; problems: string[]; sale: number; tax: number; total: number }
+interface Prepared {
+  pos: PosRow; environment: PraEnvironment; posId: string; usin: string; refUsin: string | null; refFiscal: string | null; invoiceType: 1 | 3; rule: PraRule | null; payload: string | null;
+  methods: string[]; components: PaymentComponent[]; praMode: number | null; cases: PraCaseKey[]; problems: string[]; sale: number; tax: number; total: number; qty: number;
+}
 
 const paise = (n: number) => Math.round((Number(n) || 0) * 100);
 const rupees = (p: number) => Math.round(p) / 100;
+const componentsOf = (raw: unknown): PaymentComponent[] => {
+  try {
+    const v = JSON.parse(String(raw ?? "[]")) as { method?: unknown; amount?: unknown; reference?: unknown; ref?: unknown }[];
+    return Array.isArray(v) ? v.map((p) => ({ method: String(p.method ?? ""), amount: Number(p.amount) || 0, reference: (p.reference ?? p.ref ?? null) as string | null })) : [];
+  } catch { return []; }
+};
 
 async function mainBranch(sql: Sql, T: string): Promise<string | null> {
   return ((await sql.execute(`SELECT id FROM branches WHERE tenant_id = ? ORDER BY is_main DESC, created_at LIMIT 1`, [T])).rows[0]?.id as string | undefined) ?? null;
@@ -490,10 +546,15 @@ async function prepareRestaurant(sql: Sql, T: string, order: OrderRow, deps: Pra
   if (!pos) return { skip: "No approved PRA counter for this branch." };
   if (pos.active_from && (order.invoiced_at ?? order.created_at) < pos.active_from) return { skip: "Billed before PRA was switched on for this counter." };
   const environment: PraEnvironment = pos.environment === "production" ? "production" : "sandbox";
+  const states = await caseStates(sql);
   const problems: string[] = [];
+  const cases: PraCaseKey[] = [];
   if (environment === "production") {
     if (!a.live_approved_at) problems.push("Going live has not been approved by the Super Admin.");
     if (process.env.PRA_PRODUCTION_ENABLED !== "1" && deps.env?.PRA_PRODUCTION_ENABLED !== "1") problems.push("Live PRA submission is switched off on this server (PRA_PRODUCTION_ENABLED).");
+    if (!a.pntn) problems.push("No PNTN recorded.");
+    if (pos.whitelist_status !== "approved") problems.push(`PRA has not whitelisted the server IP for PNTN ${a.pntn ?? "?"} / POS ID ${pos.production_pos_id ?? "?"}.`);
+    cases.push("shared_ip");
   }
   const posId = (environment === "production" ? pos.production_pos_id : pos.sandbox_pos_id) ?? "";
   if (!posId) problems.push(`No ${environment} POS ID for counter "${pos.counter}".`);
@@ -512,35 +573,52 @@ async function prepareRestaurant(sql: Sql, T: string, order: OrderRow, deps: Pra
   if (!rule) problems.push(`No approved PRA tax rule for sector "${pos.sector}" is assigned to this branch for ${day}.`);
   else if (rule.eims_applicable !== "yes") problems.push(`eIMS reporting for "${rule.service}" is not confirmed.`);
 
+  // Lines: the frozen amounts of the bill (as printed), plus service charge.
+  const lineRows = async (orderId: string) => (await sql.execute(`SELECT * FROM rest_order_items WHERE order_id = ? AND tenant_id = ? AND deleted_at IS NULL AND parent_item_id IS NULL AND kitchen_status <> 'cancelled' ORDER BY created_at, id`, [orderId, T])).rows;
+  const items = await lineRows(order.id);
+
   const invoiceType: 1 | 3 = order.refund_of ? 3 : 1;
   let refUsin: string | null = null;
+  let refFiscal: string | null = null;
+  let original: Record<string, unknown> | undefined;
   if (invoiceType === 3) {
-    const orig = (await sql.execute(`SELECT invoice_no FROM rest_orders WHERE id = ? AND tenant_id = ?`, [order.refund_of, T])).rows[0];
-    refUsin = orig?.invoice_no != null ? String(orig.invoice_no) : null;
+    original = (await sql.execute(`SELECT * FROM rest_orders WHERE id = ? AND tenant_id = ?`, [order.refund_of, T])).rows[0];
+    refUsin = original?.invoice_no != null ? String(original.invoice_no) : null;
     if (!refUsin) problems.push("The original invoice of this refund was not found.");
     // A credit note references an invoice PRA has: the original must be accepted first (same environment).
-    const origSub = (await sql.execute(`SELECT status FROM pra_submissions WHERE tenant_id = ? AND source_type = 'rest_order' AND source_id = ? AND invoice_type = 1 AND environment = ?`,
+    const origSub = (await sql.execute(`SELECT status, fiscal_invoice_no FROM pra_submissions WHERE tenant_id = ? AND source_type = 'rest_order' AND source_id = ? AND invoice_type = 1 AND environment = ?`,
       [T, order.refund_of, environment])).rows[0];
     if (!origSub || (origSub.status !== "accepted" && origSub.status !== "legacy")) problems.push("Waiting for PRA to accept the original invoice before its credit note is sent.");
+    refFiscal = (origSub?.fiscal_invoice_no as string | null | undefined) ?? null;
+    // Every credit of this original (this one included) stays within the original's quantity, value and tax.
+    if (original) {
+      const credits = (await sql.execute(`SELECT id FROM rest_orders WHERE refund_of = ? AND tenant_id = ? AND deleted_at IS NULL`, [order.refund_of, T])).rows.map((r) => String(r.id));
+      if (credits.length > 1) cases.push("multiple_partial_credits");
+      const origItems = await lineRows(String(original.id));
+      let q = 0, v = 0, t = 0;
+      for (const id of credits) for (const i of id === order.id ? items : await lineRows(id)) { q += Number(i.qty) || 0; v += paise(Number(i.line_total)) - paise(Number(i.line_discount ?? 0)); t += paise(Number(i.line_tax ?? 0)); }
+      const oq = origItems.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+      const ov = origItems.reduce((s, i) => s + paise(Number(i.line_total)) - paise(Number(i.line_discount ?? 0)), 0);
+      const ot = origItems.reduce((s, i) => s + paise(Number(i.line_tax ?? 0)), 0);
+      if (q > oq + 1e-9 || v > ov || t > ot) problems.push(`Credits for invoice ${refUsin} would exceed the original (quantity ${q}/${oq}, value ${rupees(v)}/${rupees(ov)}, tax ${rupees(t)}/${rupees(ot)}).`);
+    }
   }
 
-  // Payment: actual methods kept as they are; PRA's code and the rate class from the confirmed mapping.
-  const pays = (() => { try { return JSON.parse(order.payments ?? "[]") as { method: string }[]; } catch { return []; } })();
-  const methods = pays.map((p) => p.method);
-  const original = invoiceType === 3 && order.refund_of ? (await sql.execute(`SELECT payments FROM rest_orders WHERE id = ? AND tenant_id = ?`, [order.refund_of, T])).rows[0] : null;
-  // A credit note follows its original's rate (the tax charged then), not how the refund was paid out.
-  const rateMethods = original ? (() => { try { return (JSON.parse(String(original.payments ?? "[]")) as { method: string }[]).map((p) => p.method); } catch { return []; } })() : methods;
-  const pay = checkPayment(rateMethods, await methodMap(sql));
-  problems.push(...pay.problems);
+  // Payment: every component kept as taken; PaymentMode and rate class per the documented / confirmed mapping.
+  const components = componentsOf(order.payments);
+  const own = checkPayment(components, states);
+  // A credit note takes its original's rate (the tax charged then), not how the refund was paid out.
+  const rated = original ? checkPayment(componentsOf(original.payments), states) : own;
+  problems.push(...new Set([...own.problems, ...rated.problems]));
+  for (const k of [...own.cases, ...rated.cases]) if (!cases.includes(k)) cases.push(k);
+  for (const k of cases) { const b = caseBlock(k, states, environment); if (b) problems.push(b); }
   if (rule) {
-    const want = expectedRate(rule, pay.taxClass);
+    const want = expectedRate(rule, rated.taxClass);
     if (rule.rate_type !== "percent") problems.push("A fixed-amount rule can't price a restaurant bill.");
-    else if (want == null) problems.push("The rule's rate for this payment can't be decided.");
+    else if (want == null) problems.push("The rule's rate for this payment is pending (see PRA cases).");
     else if (Math.abs(Number(order.tax_rate) - want) > 1e-9) problems.push(`The bill charged ${order.tax_rate} % sales tax; the approved rule (${rule.rule_key} v${rule.version}) requires ${want} % for this payment. Correct the restaurant's tax settings; the bill is not sent.`);
   }
 
-  // Lines: the frozen amounts of the bill (as printed), plus service charge.
-  const items = (await sql.execute(`SELECT * FROM rest_order_items WHERE order_id = ? AND tenant_id = ? AND deleted_at IS NULL AND parent_item_id IS NULL AND kitchen_status <> 'cancelled' ORDER BY created_at, id`, [order.id, T])).rows;
   const pct = pctCodeOf(rule?.classification_code);
   if (rule && !pct) problems.push("The rule has no 8-digit classification code.");
   const lines: PraSourceLine[] = items.map((i) => ({
@@ -561,26 +639,31 @@ async function prepareRestaurant(sql: Sql, T: string, order: OrderRow, deps: Pra
   const tax = lines.reduce((s, l) => s + l.taxPaisa, 0);
   if (pct && usin && posId && lines.length) {
     const inv = buildPraInvoice({
-      posId, usin, refUsin, invoiceType, at: new Date(order.invoiced_at ?? order.created_at), pctCode: pct, methods,
+      posId, usin, refUsin, invoiceType, at: new Date(order.invoiced_at ?? order.created_at), pctCode: pct, methods: own.methods,
       buyerName: order.customer_name, buyerPhone: order.customer_phone, lines,
     });
-    // PaymentMode from the confirmed mapping (the actual methods stay on the bill and in payment_methods).
-    if (pay.praMode != null) inv.PaymentMode = pay.praMode;
+    // PaymentMode from the documented / confirmed mapping (the actual components stay in payment_components).
+    if (own.praMode != null) inv.PaymentMode = own.praMode;
     problems.push(...validatePraInvoice(inv));
     if (Math.abs(inv.TotalBillAmount - Number(order.total)) > 0.011) problems.push(`The PRA total (${inv.TotalBillAmount}) differs from the bill's total (${order.total}).`);
     payload = JSON.stringify(inv);
   }
-  return { pos, environment, posId, usin, refUsin, invoiceType, rule, payload, methods, praMode: pay.praMode, problems, sale: rupees(sale), tax: rupees(tax), total: Number(order.total) };
+  return {
+    pos, environment, posId, usin, refUsin, refFiscal, invoiceType, rule, payload, methods: own.methods, components, praMode: own.praMode, cases, problems: [...new Set(problems)],
+    sale: rupees(sale), tax: rupees(tax), total: Number(order.total), qty: lines.reduce((s, l) => s + l.qty, 0),
+  };
 }
 
+const json = <T,>(v: unknown, fallback: T): T => { try { return v == null ? fallback : (JSON.parse(String(v)) as T); } catch { return fallback; } };
 const SAFE = (r: Record<string, unknown>) => ({
   id: String(r.id), sourceType: String(r.source_type), sourceId: String(r.source_id), branchId: (r.branch_id as string | null) ?? null,
-  posId: String(r.pos_id), environment: String(r.environment), usin: String(r.usin), refUsin: (r.ref_usin as string | null) ?? null, invoiceType: Number(r.invoice_type),
-  status: String(r.status) as SubStatus, attempts: Number(r.attempts), fiscalInvoiceNo: (r.fiscal_invoice_no as string | null) ?? null,
+  posId: String(r.pos_id), environment: String(r.environment), usin: String(r.usin), refUsin: (r.ref_usin as string | null) ?? null, refFiscalInvoiceNo: (r.ref_fiscal_invoice_no as string | null) ?? null,
+  invoiceType: Number(r.invoice_type), status: String(r.status) as SubStatus, attempts: Number(r.attempts), fiscalInvoiceNo: (r.fiscal_invoice_no as string | null) ?? null,
   responseCode: (r.response_code as string | null) ?? null, responseText: (r.response_text as string | null) ?? null, blockedReason: (r.blocked_reason as string | null) ?? null,
-  saleValue: Number(r.sale_value), salesTax: Number(r.sales_tax), praWithholding: Number(r.pra_withholding), incomeTaxWithholding: Number(r.income_tax_withholding), total: Number(r.total),
-  paymentMethods: (() => { try { return JSON.parse(String(r.payment_methods ?? "[]")) as string[]; } catch { return []; } })(), praPaymentMode: r.pra_payment_mode == null ? null : Number(r.pra_payment_mode),
-  rule: (() => { try { const s = JSON.parse(String(r.rule_snapshot ?? "null")); return s ? { ruleKey: s.rule_key, version: s.version, classification: s.classification_code, summary: s.summary } : null; } catch { return null; } })(),
+  saleValue: Number(r.sale_value), salesTax: Number(r.sales_tax), praWithholding: Number(r.pra_withholding), incomeTaxWithholding: Number(r.income_tax_withholding), total: Number(r.total), quantity: Number(r.total_quantity ?? 0),
+  paymentMethods: json<string[]>(r.payment_methods, []), paymentComponents: json<PaymentComponent[]>(r.payment_components, []), praPaymentMode: r.pra_payment_mode == null ? null : Number(r.pra_payment_mode),
+  cases: json<PraCaseKey[]>(r.case_keys, []),
+  rule: (() => { const s = json<Record<string, unknown> | null>(r.rule_snapshot, null); return s ? { ruleKey: String(s.rule_key), version: Number(s.version), classification: (s.classification_code as string | null) ?? null } : null; })(),
   sentAt: (r.sent_at as string | null) ?? null, acceptedAt: (r.accepted_at as string | null) ?? null, createdAt: String(r.created_at), updatedAt: String(r.updated_at),
 });
 
@@ -612,12 +695,12 @@ export async function fiscalizeOrder(sql: Sql, T: string, orderId: string, actor
     try {
       await sql.execute(
         `INSERT INTO pra_submissions (id, tenant_id, branch_id, pos_row_id, pos_id, environment, source_type, source_id, usin, ref_usin, invoice_type, status, attempts, fiscal_invoice_no, payload, payload_hash,
-           payment_methods, pra_payment_mode, rule_snapshot, sale_value, sales_tax, total, blocked_reason, lock_until, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'rest_order', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           payment_methods, pra_payment_mode, rule_snapshot, sale_value, sales_tax, total, blocked_reason, lock_until, created_at, updated_at, payment_components, ref_fiscal_invoice_no, case_keys, total_quantity)
+         VALUES (?, ?, ?, ?, ?, ?, 'rest_order', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [randomUUID(), T, prep.pos.branch_id, prep.pos.id, prep.posId || "-", prep.environment, orderId, prep.usin || `-${orderId}`, prep.refUsin, prep.invoiceType, status,
           status === "sending" ? 1 : 0, (legacy?.pra_invoice_no as string | null | undefined) ?? null, prep.payload, prep.payload ? sha(prep.payload) : null, JSON.stringify(prep.methods), prep.praMode, snapshot,
           prep.sale, prep.tax, prep.total, status === "blocked" ? prep.problems.join(" ") : status === "legacy" ? "Sent by the desktop PRA sender (Restaurant > PRA)." : null,
-          status === "sending" ? iso(new Date(nowOf(deps).getTime() + SEND_LOCK_MS)) : null, now, now]);
+          status === "sending" ? iso(new Date(nowOf(deps).getTime() + SEND_LOCK_MS)) : null, now, now, JSON.stringify(prep.components), prep.refFiscal, JSON.stringify(prep.cases), prep.qty]);
     } catch (e) {
       if (!/UNIQUE/i.test(String(e))) throw e;
       // Another counter / request recorded it first: theirs stands.
@@ -643,9 +726,9 @@ export async function fiscalizeOrder(sql: Sql, T: string, orderId: string, actor
     }
     const claimed = await sql.execute(
       `UPDATE pra_submissions SET status = 'sending', attempts = attempts + 1, pos_row_id = ?, pos_id = ?, usin = ?, ref_usin = ?, payload = ?, payload_hash = ?, payment_methods = ?, pra_payment_mode = ?, rule_snapshot = ?,
-         sale_value = ?, sales_tax = ?, total = ?, blocked_reason = NULL, lock_until = ?, updated_at = ? WHERE id = ? AND status = 'blocked'`,
+         sale_value = ?, sales_tax = ?, total = ?, blocked_reason = NULL, lock_until = ?, updated_at = ?, payment_components = ?, ref_fiscal_invoice_no = ?, case_keys = ?, total_quantity = ? WHERE id = ? AND status = 'blocked'`,
       [prep.pos.id, prep.posId, prep.usin, prep.refUsin, prep.payload, sha(prep.payload!), JSON.stringify(prep.methods), prep.praMode, JSON.stringify({ ...prep.rule, applied_at: now }),
-        prep.sale, prep.tax, prep.total, iso(new Date(nowOf(deps).getTime() + SEND_LOCK_MS)), now, existing.id]);
+        prep.sale, prep.tax, prep.total, iso(new Date(nowOf(deps).getTime() + SEND_LOCK_MS)), now, JSON.stringify(prep.components), prep.refFiscal, JSON.stringify(prep.cases), prep.qty, existing.id]);
     if (!claimed.rowsAffected) return SAFE((await subRow(sql, "id = ?", [existing.id]))!);
     return send(sql, T, (await subRow(sql, "id = ?", [existing.id]))!, prep, actor, deps);
   }
@@ -761,6 +844,13 @@ export async function reconcile(sql: Sql, c: Caller, input: { tenantId?: unknown
   } else if (input.found === false) {
     // Not on PRA's report: it never arrived, so it may be sent (the same record and payload).
     if (st !== "needs_reconciliation" && st !== "rejected") throw new HttpError(409, "Only a submission waiting for a portal check (or one PRA rejected) can be sent again.");
+    if (st === "needs_reconciliation") {
+      // A missing report entry right after the request proves nothing: wait, and say how it was checked.
+      const waitH = Number((await sql.execute(`SELECT value FROM pra_platform WHERE key = 'reconcile_wait_hours'`)).rows[0]?.value) || RECONCILE_WAIT_HOURS;
+      const sent = Date.parse(String(r.sent_at ?? r.updated_at));
+      if (nowOf(deps).getTime() - sent < waitH * 3_600_000) throw new HttpError(409, `Wait at least ${waitH} hours after the request before deciding PRA has no record of it (sent ${String(r.sent_at ?? "").slice(0, 16).replace("T", " ")} UTC).`);
+      if (!note) throw new HttpError(400, "Say how it was checked (IRIS IMS Fiscal Report by POS ID, USIN and time, or PRA support reference).");
+    }
     await sql.execute(`UPDATE pra_submissions SET status = 'queued', resolved_by = ?, resolved_at = ?, response_text = ?, updated_at = ? WHERE id = ?`, [c.userId, now, `Not on the IRIS report${note ? `: ${note}` : ""}; queued again`, now, r.id]);
     await markOrder(sql, T, String(r.source_id), "queued", null, now);
   } else throw new HttpError(400, "Say whether PRA's report shows the invoice.");
@@ -784,9 +874,22 @@ export async function list(sql: Sql, c: Caller, input: { tenantId?: unknown; sta
 }
 
 /** For the restaurant screens: is this business fiscalised by MAVIN's server (and so the old desktop sender stands down)? */
-export async function status(sql: Sql, c: Caller) {
-  if (isSuper(c) || !c.tenantId) return { managed: false, state: "disabled" as AccountState };
+export async function status(sql: Sql, c: Caller, scope?: BranchScope) {
+  if (isSuper(c) || !c.tenantId) return { managed: false, state: "disabled" as AccountState, receipt: null };
   const a = await account(sql, c.tenantId);
   const pos = a ? await counters(sql, c.tenantId) : [];
-  return { managed: a?.status === "enabled", state: accountState(a, pos) };
+  const branchId = scope?.active ?? (await mainBranch(sql, c.tenantId));
+  const br = branchId ? (await sql.execute(`SELECT name, address FROM branches WHERE id = ? AND tenant_id = ?`, [branchId, c.tenantId])).rows[0] : undefined;
+  const cases = await caseStates(sql);
+  const confirmedText = (k: PraCaseKey) => (cases[k]?.confirmedAt && cases[k]?.text ? cases[k]!.text! : null);
+  return {
+    managed: a?.status === "enabled", state: accountState(a, pos),
+    // What an accepted receipt prints (PRA findings): PNTN, branch address, the verification link format.
+    receipt: a?.status === "enabled" ? {
+      pntn: a.pntn, registeredName: a.registered_name, branchName: (br?.name as string | undefined) ?? null, branchAddress: (br?.address as string | null | undefined) ?? null,
+      qrTemplate: confirmedText("qr_verifier"),
+      /** Customer-facing text while PRA can't be reached: only once PRA approved it (otherwise nothing is printed). */
+      outageText: confirmedText("outage_receipt"),
+    } : null,
+  };
 }

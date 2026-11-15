@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -9,10 +9,8 @@ import { DataTable } from "@/components/ui/DataTable";
 import { restaurant, pra } from "@/lib/restaurant";
 import type { PayMethod } from "@/lib/restaurant/engine";
 import { today, type OrderRow } from "@/lib/restaurant/store";
-import { tenantsRepo } from "@/lib/repo/tenants";
-import { useAuthStore } from "@/store/authStore";
 import { useCan } from "@/lib/actionPermissions";
-import { Badge, Note, ORDER_TYPE_LABEL, PRA_BADGE, RestGuard, money, useAction, useLoad, usePrinter, type ReceiptData } from "@/components/restaurant/ui";
+import { Badge, Note, ORDER_TYPE_LABEL, PRA_BADGE, RestGuard, money, useAction, useLoad, usePrinter, useReceiptBusiness } from "@/components/restaurant/ui";
 
 export default function OrdersPage() {
   return (
@@ -39,15 +37,11 @@ function Orders() {
   const canRefund = useCan("rest.refund");
   const printer = usePrinter();
   const act = useAction();
-  const tenant = useAuthStore((s) => s.currentTenant);
-  const [business, setBusiness] = useState<ReceiptData["business"]>({ name: tenant?.name ?? "Restaurant" });
-  useEffect(() => {
-    if (tenant?.id) void tenantsRepo.get(tenant.id).then((t) => t && setBusiness({ name: t.name, address: t.address, phone: t.phone }));
-  }, [tenant?.id]);
+  const { business, pra: praTexts } = useReceiptBusiness();
 
   const reprint = async (o: OrderRow & { table_name: string | null }) => {
     const full = await restaurant.getOrder(o.id);
-    printer.print({ kind: "receipt", data: { order: full.order, items: full.items, business, tableName: o.table_name, duplicate: true } });
+    printer.print({ kind: "receipt", data: { order: full.order, items: full.items, business, pra: praTexts, tableName: o.table_name, duplicate: true } });
   };
 
   return (
@@ -95,7 +89,7 @@ function Orders() {
             setRefunding(null);
             void pra.processQueue().catch(() => undefined);
             const full = await restaurant.getOrder(creditId);
-            printer.print({ kind: "receipt", data: { order: full.order, items: full.items, business, tableName: null } });
+            printer.print({ kind: "receipt", data: { order: full.order, items: full.items, business, pra: praTexts, tableName: null } });
             void list.reload();
           }}
         />
