@@ -689,7 +689,7 @@ export class OfflineDevice {
 
   /** One page of one table for the screens' read-only copy (device credentials). */
   async mirrorPage(table: string, offset: number, since?: string | null) {
-    const r = await this.cfg.transport.post<{ result: { rows: Record<string, unknown>[]; next: number | null; cutoff?: string | null } }>(
+    const r = await this.cfg.transport.post<{ result: { rows: Record<string, unknown>[]; next: number | null; cutoff?: string | null; syncedAt?: string; changeCursor?: string; reset?: boolean } }>(
       "/api/offline/", { action: "mirror", protocol: PROTOCOL_VERSION, table, offset, ...(since ? { since } : {}) }, this.deviceHeader(),
     );
     return r.result;

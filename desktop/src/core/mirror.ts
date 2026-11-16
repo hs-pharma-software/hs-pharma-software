@@ -13,7 +13,7 @@ import { dirname } from "node:path";
 import type { SalePayload } from "../../../src/offline/protocol";
 
 export interface LocalSale { payload: SalePayload; status: string; serverInvoiceNo: number | null }
-export type FetchPage = (table: string, offset: number, since?: string | null) => Promise<{ rows: Record<string, unknown>[]; next: number | null; cutoff?: string | null }>;
+export type FetchPage = (table: string, offset: number, since?: string | null) => Promise<{ rows: Record<string, unknown>[]; next: number | null; cutoff?: string | null; syncedAt?: string; changeCursor?: string; reset?: boolean }>;
 
 /** History items and the document they belong to (items leave with it). */
 const HISTORY_PARENT: Record<string, { table: string; column: string }> = {
@@ -130,6 +130,9 @@ export class Mirror {
   private async fetchAll(table: string, fetchPage: FetchPage, since?: string | null) {
     const rows: Record<string, unknown>[] = [];
     let cutoff: string | null = null;
+    let syncedAt: string | null = null;
+    let changeCursor: string | null = null;
+    let reset = false;
     for (let offset: number | null = 0; offset !== null;) {
       let page;
       try { page = await fetchPage(table, offset, since); } catch (e) {
@@ -138,20 +141,47 @@ export class Mirror {
       }
       rows.push(...page.rows);
       cutoff = page.cutoff ?? cutoff;
+      // The earliest page start is safe even when a later page takes minutes.
+      if (page.syncedAt && Number.isFinite(Date.parse(page.syncedAt))) {
+        if (!syncedAt || page.syncedAt < syncedAt) syncedAt = page.syncedAt;
+      }
+      if (page.changeCursor && /^seq:\d+$/.test(page.changeCursor)) {
+        if (!changeCursor || Number(page.changeCursor.slice(4)) < Number(changeCursor.slice(4))) changeCursor = page.changeCursor;
+      }
+      reset ||= !!page.reset;
       offset = page.next;
     }
-    return { rows, cutoff };
+    return { rows, cutoff, syncedAt, changeCursor, reset };
   }
 
-  /** Replaces the cached tables with the server's current rows (each table in one go). */
+  /** Changed rows after the first copy; a daily full copy catches hard deletes
+   * and visibility changes. Older servers keep the full-copy behavior. */
   async refresh(tables: string[], fetchPage: FetchPage, now = new Date()) {
     for (const table of tables) {
-      const got = await this.fetchAll(table, fetchPage);
+      const seen = this.meta(`mirror_since:${table}`);
+      const lastFull = this.meta(`mirror_full:${table}`);
+      const full = !seen || !lastFull || now.getTime() - Date.parse(lastFull) >= 24 * 3_600_000;
+      const since = full ? null : this.meta(`mirror_cursor:${table}`) ?? new Date(Date.parse(seen!) - 10 * 60_000).toISOString();
+      const got = await this.fetchAll(table, fetchPage, since);
       if (!got) continue;
+      const seenAt = seen ? Date.parse(seen) : Number.NEGATIVE_INFINITY;
+      const fresh = full || got.reset ? got.rows : got.rows.filter((r) => {
+        const when = typeof r.updated_at === "string" ? Date.parse(r.updated_at) : Number.NaN;
+        return !Number.isFinite(when) || when >= seenAt;
+      });
       this.tx(() => {
-        this.rw.prepare(`DELETE FROM ${table}`).run();
-        this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ?`).run(table);
-        this.upsert(table, got.rows);
+        if (full || got.reset) {
+          this.rw.prepare(`DELETE FROM ${table}`).run();
+          this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ?`).run(table);
+        }
+        const key = table === "settings" ? "key" : "id";
+        const gone = fresh.filter((r) => r.deleted_at != null);
+        for (const r of gone) this.rw.prepare(`DELETE FROM ${table} WHERE ${key} = ?`).run(String(r[key]));
+        this.upsert(table, fresh.filter((r) => r.deleted_at == null));
+        // No watermark means an older server: next time copy in full again.
+        if (got.syncedAt) this.setMeta(`mirror_since:${table}`, got.syncedAt);
+        if (got.changeCursor) this.setMeta(`mirror_cursor:${table}`, got.changeCursor);
+        if (full || got.reset) this.setMeta(`mirror_full:${table}`, now.toISOString());
       });
     }
     this.setMeta("refreshed_at", now.toISOString());
@@ -168,26 +198,32 @@ export class Mirror {
       const lastFull = this.meta(`hist_full:${table}`);
       const seen = this.meta(`hist_since:${table}`);
       const full = !lastFull || !seen || now.getTime() - Date.parse(lastFull) >= fullEvery;
-      const since = full ? null : new Date(Date.parse(seen!) - margin).toISOString();
+      const since = full ? null : this.meta(`hist_cursor:${table}`) ?? new Date(Date.parse(seen!) - margin).toISOString();
       const got = await this.fetchAll(table, fetchPage, since);
       if (!got) continue;
       const cols = new Set(this.info(table).map((c) => c.name));
+      const seenAt = seen ? Date.parse(seen) : Number.NEGATIVE_INFINITY;
+      const fresh = full || got.reset ? got.rows : got.rows.filter((r) => {
+        const when = typeof r.updated_at === "string" ? Date.parse(r.updated_at) : Number.NaN;
+        return !Number.isFinite(when) || when >= seenAt;
+      });
       this.tx(() => {
-        if (full) {
+        if (full || got.reset) {
           this.rw.prepare(`DELETE FROM ${table}`).run();
           this.rw.prepare(`DELETE FROM mirror_overlay WHERE tbl = ?`).run(table);
         }
-        const gone = got.rows.filter((r) => r.deleted_at != null);
+        const gone = fresh.filter((r) => r.deleted_at != null);
         const del = this.rw.prepare(`DELETE FROM ${table} WHERE id = ?`);
         for (const r of gone) del.run(String(r.id));
-        this.upsert(table, got.rows.filter((r) => r.deleted_at == null));
+        this.upsert(table, fresh.filter((r) => r.deleted_at == null));
         if (got.cutoff && cols.has("date")) this.rw.prepare(`DELETE FROM ${table} WHERE date < ?`).run(got.cutoff);
         const parent = HISTORY_PARENT[table];
         if (parent) this.rw.prepare(`DELETE FROM ${table} WHERE ${parent.column} NOT IN (SELECT id FROM ${parent.table})`).run();
-        const newest = got.rows.reduce<string | null>((m, r) => (typeof r.updated_at === "string" && (!m || r.updated_at > m) ? r.updated_at : m), null);
-        const keep = [seen, newest].filter((x): x is string => !!x).sort().pop();
+        const newest = fresh.reduce<string | null>((m, r) => (typeof r.updated_at === "string" && (!m || r.updated_at > m) ? r.updated_at : m), null);
+        const keep = [seen, got.syncedAt, newest].filter((x): x is string => !!x).sort().pop();
         this.setMeta(`hist_since:${table}`, keep ?? new Date(0).toISOString());
-        if (full) this.setMeta(`hist_full:${table}`, now.toISOString());
+        if (got.changeCursor) this.setMeta(`hist_cursor:${table}`, got.changeCursor);
+        if (full || got.reset) this.setMeta(`hist_full:${table}`, now.toISOString());
       });
     }
     this.setMeta("history_at", now.toISOString());

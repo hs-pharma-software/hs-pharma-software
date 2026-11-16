@@ -24,7 +24,7 @@ const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(
 const SYNC_EVERY_MS = 60_000;
 const PROBE_EVERY_MS = 15_000;
 const MIRROR_EVERY_MS = 5 * 60_000;
-/** Copied in full each time (small: catalogue, people, settings). */
+/** Incremental after the initial copy; full refresh once daily. */
 const MIRROR_TABLES = ["tenants", "branches", "settings", "users", "categories", "sub_categories", "uoms", "products", "price_list", "product_batches", "customers", "salesmen", "suppliers"];
 /** Recent history of this branch (the server's window), only what changed. Documents before their items. */
 const HISTORY_TABLES = ["invoices", "invoice_items", "purchases", "purchase_items", "expenses", "cash_register_entries", "ledger_adjustments"];
@@ -178,6 +178,8 @@ let win: BrowserWindow | null = null;
 let quitting = false;
 let lastMirror = 0;
 let lastHistory = 0;
+let mirrorFailures = 0;
+let mirrorRetryAt = 0;
 
 function openMirror() {
   const id = device.identity;
@@ -205,7 +207,9 @@ function overlay() {
 // as the page, and nothing saved from here is still on its way into it;
 // otherwise they read MAVIN.pk as before. Saving always goes to MAVIN.pk.
 
-const REPLICA_EVERY_MS = 15_000;
+const REPLICA_EVERY_MS = 60_000;
+let replicaFailures = 0;
+let replicaRetryAt = 0;
 let replica: { m: Mirror; userId: string; tenantId: string; branch: string } | null = null;
 /** The branch the page last asked for (X-Branch); "" = the login's default. */
 let pageBranch = "";
@@ -270,7 +274,7 @@ function refreshReplica(): Promise<void> {
   if (replicaBusy) { replicaAgain = true; return replicaBusy; }
   {
     replicaBusy = (async () => {
-      if (quitting || online === false) return;
+      if (quitting || online === false || Date.now() < replicaRetryAt) return;
       const startedAt = Date.now();
       try {
         const r = await currentReplica();
@@ -281,8 +285,11 @@ function refreshReplica(): Promise<void> {
         await followCopy(r.m, call);
         overlay();
         replicaNote = null;
+        replicaFailures = 0;
+        replicaRetryAt = 0;
         if (r === replica) caughtUpFrom = startedAt;
       } catch (e) {
+        replicaRetryAt = Date.now() + Math.min(3_600_000, 60_000 * 2 ** Math.min(replicaFailures++, 6));
         console.error("[copy]", e instanceof Error ? e.message : e);
       }
       pushStatus();
@@ -310,11 +317,13 @@ function localRead(a: unknown): { local: true; rows: Record<string, unknown>[] }
 }
 
 let syncing: Promise<void> | null = null;
+let syncFailures = 0;
+let syncRetryAt = 0;
 /** Sends pending sales, downloads changes, and refreshes the copy (at most every few minutes unless forced). */
 function syncAll(force = false): Promise<void> {
   if (!syncing) {
     syncing = (async () => {
-      if (!device?.provisioned || quitting) return;
+      if (!device?.provisioned || quitting || (!force && Date.now() < syncRetryAt)) return;
       const startedSync = new Date(Date.now() - 1000).toISOString();
       const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
       // A save from here that MAVIN.pk held or refused: its rows in the copy were never made there; read the copy again.
@@ -323,21 +332,37 @@ function syncAll(force = false): Promise<void> {
         replica.m.setMeta("replica_fill", "null");
         void refreshReplica();
       }
-      if (r?.error) console.error("[sync]", r.error);
+      if (!r || r.error) {
+        syncRetryAt = Date.now() + Math.min(3_600_000, 60_000 * 2 ** Math.min(syncFailures++, 6));
+        if (r?.error) console.error("[sync]", r.error);
+        pushStatus();
+        return;
+      }
+      syncFailures = 0;
+      syncRetryAt = 0;
       const due = force || Date.now() - lastMirror > MIRROR_EVERY_MS;
-      if (r && !r.error && mirror && due) {
+      if (mirror && due && (force || Date.now() >= mirrorRetryAt)) {
         try {
-          await mirror.refresh(MIRROR_TABLES, (t, off) => device.mirrorPage(t, off));
+          await mirror.refresh(MIRROR_TABLES, (t, off, since) => device.mirrorPage(t, off, since));
           lastMirror = Date.now();
-        } catch (e) { console.error("[mirror] refresh", e instanceof Error ? e.message : e); }
+          mirrorFailures = 0;
+          mirrorRetryAt = 0;
+        } catch (e) {
+          mirrorRetryAt = Date.now() + Math.min(3_600_000, MIRROR_EVERY_MS * 2 ** Math.min(mirrorFailures++, 4));
+          console.error("[mirror] refresh", e instanceof Error ? e.message : e);
+          return;
+        }
       }
       // Recent sales, purchases and cash: on the same rhythm, and at once after
       // sales were sent (they then show from the server's own rows).
-      if (r && !r.error && mirror && (due || r.pushed > 0 || Date.now() - lastHistory > MIRROR_EVERY_MS)) {
+      if (mirror && (force || Date.now() >= mirrorRetryAt) && (due || r.pushed > 0 || Date.now() - lastHistory > MIRROR_EVERY_MS)) {
         try {
           await mirror.refreshHistory(HISTORY_TABLES, (t, off, since) => device.mirrorPage(t, off, since));
           lastHistory = Date.now();
-        } catch (e) { console.error("[mirror] history", e instanceof Error ? e.message : e); }
+        } catch (e) {
+          mirrorRetryAt = Date.now() + Math.min(3_600_000, MIRROR_EVERY_MS * 2 ** Math.min(mirrorFailures++, 4));
+          console.error("[mirror] history", e instanceof Error ? e.message : e);
+        }
       }
       overlay();
       pushStatus();

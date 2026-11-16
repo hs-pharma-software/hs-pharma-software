@@ -20,6 +20,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const setPendingCount = useAppStore((s) => s.setPendingCount);
   const setLastError = useAppStore((s) => s.setLastError);
   const runningRef = useRef(false);
+  const failuresRef = useRef(0);
+  const retryAtRef = useRef(0);
 
   // Only the desktop app keeps a local copy to sync; the web version works on
   // the server database directly and has nothing to sync.
@@ -33,7 +35,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, [setPendingCount]);
 
   const runSync = useCallback(async () => {
-    if (runningRef.current) return;
+    if (runningRef.current || Date.now() < retryAtRef.current) return;
     if (!isTauriShell()) return;
     if (!canSyncNow()) return; // through the server: waits for an online sign-in
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
@@ -43,10 +45,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     let failed = false;
     try {
       await syncNow();
+      failuresRef.current = 0;
+      retryAtRef.current = 0;
       setLastSyncedAt(nowIso());
       setLastError(null);
     } catch (err) {
       failed = true;
+      retryAtRef.current = Date.now() + Math.min(3_600_000, SYNC_INTERVAL_MS * 2 ** Math.min(failuresRef.current++, 6));
       console.error("[sync] failed", err);
       setLastError(err instanceof Error ? err.message : String(err));
       setSyncStatus("error");

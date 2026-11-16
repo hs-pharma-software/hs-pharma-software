@@ -284,10 +284,13 @@ export async function pull(sql: Sql, d: Device, cursorIn: unknown, status?: { pe
     out.more = true;
     if (out.cursor.phase === "live") out.more = false;
   } else {
-    const ch = (await sql.execute(
-      `SELECT seq, tbl, row_id FROM offline_changes WHERE seq > ? AND (tenant_id = ? OR (tbl = 'products' AND tenant_id IS NULL)) AND (tbl != 'product_batches' OR branch_id = ?) ORDER BY seq LIMIT ?`,
-      [cursor.seq, T, B, PAGE],
-    )).rows;
+    // The end of the log now: a device with nothing new moves its cursor here (no re-reading of other businesses' changes).
+    const top = Number((await sql.execute(`SELECT COALESCE(MAX(seq), 0) AS m FROM offline_changes`)).rows[0]?.m ?? 0);
+    // Two index range reads (tenant_id, seq): this business, and shared catalogue products. An OR would scan every business's log.
+    const ch = top <= cursor.seq ? [] : [
+      ...(await sql.execute(`SELECT seq, tbl, row_id FROM offline_changes WHERE tenant_id = ? AND seq > ? AND seq <= ? AND (tbl != 'product_batches' OR branch_id = ?) ORDER BY seq LIMIT ?`, [T, cursor.seq, top, B, PAGE])).rows,
+      ...(await sql.execute(`SELECT seq, tbl, row_id FROM offline_changes WHERE tenant_id IS NULL AND seq > ? AND seq <= ? AND tbl = 'products' ORDER BY seq LIMIT ?`, [cursor.seq, top, PAGE])).rows,
+    ].sort((a, b) => Number(a.seq) - Number(b.seq)).slice(0, PAGE);
     const ids = (tbl: string) => [...new Set(ch.filter((c) => c.tbl === tbl).map((c) => String(c.row_id)))];
     const inList = (n: number) => Array(n).fill("?").join(",");
     const pIds = ids("products"), plIds = ids("price_list"), bIds = ids("product_batches");
@@ -298,8 +301,8 @@ export async function pull(sql: Sql, d: Device, cursorIn: unknown, status?: { pe
     const known = new Set(out.products.map((p) => p.id));
     const missing = [...new Set(out.batches.map((b) => b.productId))].filter((id) => !known.has(id));
     if (missing.length) out.products.push(...(await sql.execute(`SELECT * FROM products WHERE id IN (${inList(missing.length)})`, missing)).rows.map(mapProduct));
-    out.cursor = { phase: "live", seq: ch.length ? Number(ch[ch.length - 1].seq) : cursor.seq };
     out.more = ch.length === PAGE;
+    out.cursor = { phase: "live", seq: out.more ? Number(ch[ch.length - 1].seq) : Math.max(cursor.seq, top) };
   }
   await touch(sql, d, status, !out.more);
   return out;
@@ -869,20 +872,51 @@ export async function mirrorPage(sql: Sql, d: Device, table: unknown, offset: un
   let where: string;
   let args: unknown[];
   let cutoff: string | null = null;
+  // A sequence cursor uses the existing (tenant_id, seq) index, avoiding
+  // scanning every cached row just to discover that updated_at is unchanged.
+  const sequence = typeof since === "string" && /^seq:\d+$/.test(since) ? Number(since.slice(4)) : null;
+  if (!HISTORY[name] && !MIRROR[name]) throw new HttpError(400, "Unknown table.");
+  const top = Number((await sql.execute(`SELECT COALESCE(MAX(seq), 0) AS m FROM data_changes`)).rows[0]?.m ?? 0);
+  const oldest = sequence === null ? 0 : Number((await sql.execute(`SELECT COALESCE(MIN(seq), 0) AS m FROM data_changes`)).rows[0]?.m ?? 0);
+  const reset = sequence !== null && (sequence > top || (sequence > 0 && oldest > sequence + 1));
+  const delta = sequence !== null && !reset;
+  const timestamp = sequence === null && typeof since === "string" && since ? since : null;
   if (HISTORY[name]) {
     cutoff = new Date(now.getTime() - HISTORY_DAYS * 86_400_000).toISOString().slice(0, 10);
     ({ where, args } = HISTORY[name](d.tenant_id, d.branch_id, cutoff));
-    if (typeof since === "string" && since) { where += ` AND updated_at > ?`; args.push(since); }
-    else where += ` AND deleted_at IS NULL`;
+    if (timestamp) { where += ` AND updated_at > ?`; args.push(timestamp); }
+    else if (!delta) where += ` AND deleted_at IS NULL`;
   } else if (MIRROR[name]) {
     const t = await tenantRow(sql, d.tenant_id);
     const { sharedCatalogGroupsFor } = await import("@/lib/catalogAccess");
     ({ where, args } = MIRROR[name](d.tenant_id, d.branch_id, sharedCatalogGroupsFor(String(t.business_type))));
   } else throw new HttpError(400, "Unknown table.");
+  if (MIRROR[name] && (timestamp || delta)) {
+    // Tombstones must reach an incremental cache too.
+    where = where.replace(/ AND deleted_at IS NULL/g, "").replace(/^deleted_at IS NULL AND /, "");
+    if (timestamp) { where += ` AND updated_at > ?`; args.push(timestamp); }
+  }
+  if (delta) {
+    const key = name === "settings" ? "key" : "id";
+    let changed = `
+      SELECT row_id FROM data_changes WHERE tenant_id = ? AND seq > ? AND seq <= ? AND tbl = ?
+      UNION SELECT row_id FROM data_changes WHERE tenant_id IS NULL AND seq > ? AND seq <= ? AND tbl = ?
+    `;
+    args.push(d.tenant_id, sequence, top, name, sequence, top, name);
+    if (name === "products") {
+      // Newly stocked catalogue products become visible through their batch,
+      // even when nobody edited the product itself.
+      changed += ` UNION SELECT product_id FROM product_batches WHERE tenant_id = ? AND branch_id = ? AND id IN (
+        SELECT row_id FROM data_changes WHERE tenant_id = ? AND seq > ? AND seq <= ? AND tbl = 'product_batches'
+      )`;
+      args.push(d.tenant_id, d.branch_id, d.tenant_id, sequence, top);
+    }
+    where += ` AND ${key} IN (${changed})`;
+  }
   const rows = (await sql.execute(`SELECT * FROM ${name} WHERE ${where} ORDER BY rowid LIMIT ? OFFSET ?`, [...args, MIRROR_PAGE + 1, from])).rows;
   const more = rows.length > MIRROR_PAGE;
   const clean = rows.slice(0, MIRROR_PAGE)
     .filter((r) => name !== "settings" || !SECRET_SETTING.test(String(r.key).slice(d.tenant_id.length + 2)))
     .map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !SECRET_COLUMN.test(k))));
-  return { table: name, rows: clean, next: more ? from + MIRROR_PAGE : null, cutoff };
+  return { table: name, rows: clean, next: more ? from + MIRROR_PAGE : null, cutoff, syncedAt: now.toISOString(), changeCursor: `seq:${top}`, reset };
 }

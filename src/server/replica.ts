@@ -100,10 +100,14 @@ export async function replicaChanges(sql: Sql, caller: Caller, info: ReplicaInfo
   // Older than the kept log (a computer switched off for weeks): it copies everything again.
   const oldest = Number((await sql.execute(`SELECT COALESCE(MIN(seq), 0) AS m FROM data_changes`)).rows[0]?.m ?? 0);
   if (from > 0 && oldest > from + 1) return { upserts: {}, deletes: {}, seq: from, more: false, reset: true };
-  const log = (await sql.execute(
-    `SELECT seq, tbl, row_id FROM data_changes WHERE seq > ? AND (tenant_id = ? OR tenant_id IS NULL) ORDER BY seq LIMIT ?`,
-    [from, caller.tenantId, CHANGES_PAGE],
-  )).rows;
+  // The end of the log now: a business with nothing new moves its position here, so the next
+  // check never re-reads other businesses' changes (Turso bills every row scanned).
+  const top = Number((await sql.execute(`SELECT COALESCE(MAX(seq), 0) AS m FROM data_changes`)).rows[0]?.m ?? 0);
+  if (top <= from) return { upserts: {}, deletes: {}, seq: from, more: false, reset: false };
+  // Two index range reads (tenant_id, seq): this business's changes, and shared rows. An OR here would scan every business's log.
+  const own = (await sql.execute(`SELECT seq, tbl, row_id FROM data_changes WHERE tenant_id = ? AND seq > ? AND seq <= ? ORDER BY seq LIMIT ?`, [caller.tenantId, from, top, CHANGES_PAGE])).rows;
+  const shared = (await sql.execute(`SELECT seq, tbl, row_id FROM data_changes WHERE tenant_id IS NULL AND seq > ? AND seq <= ? ORDER BY seq LIMIT ?`, [from, top, CHANGES_PAGE])).rows;
+  const log = [...own, ...shared].sort((a, b) => Number(a.seq) - Number(b.seq)).slice(0, CHANGES_PAGE);
   const byTable = new Map<string, Set<string>>();
   for (const r of log) {
     const t = String(r.tbl);
@@ -127,8 +131,10 @@ export async function replicaChanges(sql: Sql, caller: Caller, info: ReplicaInfo
     const gone = ids.filter((id) => !found.has(id));
     if (gone.length) deletes[t] = gone;
   }
-  const last = log.length ? Number(log[log.length - 1].seq) : from;
-  return { upserts, deletes, seq: last, more: log.length === CHANGES_PAGE, reset: false };
+  // A full page: continue after its last change. Otherwise everything up to `top` has been seen.
+  const more = log.length === CHANGES_PAGE;
+  const last = more ? Number(log[log.length - 1].seq) : top;
+  return { upserts, deletes, seq: last, more, reset: false };
 }
 
 /** Keeps the change log bounded (daily job): entries older than `days` go;

@@ -10,7 +10,7 @@ export interface SiteQuery {
 
 /** Fired with the new unread count after a query is opened, so the badge updates at once. */
 export const UNREAD_EVENT = "mavin-queries-unread";
-const POLL_MS = 30_000;
+const POLL_MS = 5 * 60_000;
 
 export async function queriesCall<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
   return (await serverJson<{ result: T }>("/api/queries/", { action, ...body })).result;
@@ -20,14 +20,28 @@ export function announceUnread(n: number) {
   window.dispatchEvent(new CustomEvent<number>(UNREAD_EVENT, { detail: n }));
 }
 
-/** Unread count for the sidebar badge: refreshed every 30 seconds, when the
+/** Unread count for the sidebar badge: refreshed every five minutes while visible, when the
  * window regains focus, and at once when a query is opened. Null when unknown. */
 export function useUnreadQueries(enabled: boolean): number | null {
   const [n, setN] = useState<number | null>(null);
   useEffect(() => {
     if (!enabled || !subSupersAvailable()) return;
     let alive = true;
-    const refresh = () => void queriesCall<{ unread: number }>("unread").then((r) => alive && setN(r.unread)).catch(() => undefined);
+    let running = false;
+    let failures = 0;
+    let retryAt = 0;
+    const refresh = async () => {
+      if (!alive || running || document.hidden || Date.now() < retryAt) return;
+      running = true;
+      try {
+        const r = await queriesCall<{ unread: number }>("unread");
+        if (alive) setN(r.unread);
+        failures = 0;
+        retryAt = 0;
+      } catch {
+        retryAt = Date.now() + Math.min(3_600_000, POLL_MS * 2 ** Math.min(failures++, 4));
+      } finally { running = false; }
+    };
     const onAnnounce = (e: Event) => setN((e as CustomEvent<number>).detail);
     refresh();
     const timer = setInterval(refresh, POLL_MS);

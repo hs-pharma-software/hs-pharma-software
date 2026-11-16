@@ -118,3 +118,16 @@ test("changes since a point: this business's rows now, removed ones as deletions
   const again = await replicaChanges(sql, owner(), info, BR_A, r.seq, tables);
   assert.deepEqual([again.upserts, again.deletes], [{}, {}], "nothing new");
 });
+
+test("a quiet business moves past other businesses' changes: the next check reads nothing old again", async () => {
+  const { seq } = await replicaTables(sql, owner(), info, BR_A);
+  const tables = new Set((await replicaTables(sql, owner(), info, BR_A)).tables);
+  // Only the other business changes.
+  for (let i = 0; i < 5; i++) db.prepare(`UPDATE products SET name = ? WHERE id = 'p-t2'`).run(`Theirs ${i}`);
+  const top = Number((db.prepare(`SELECT MAX(seq) AS m FROM data_changes`).get() as { m: number }).m);
+  const r = await replicaChanges(sql, owner(), info, BR_A, seq, tables);
+  assert.deepEqual([r.upserts, r.deletes], [{}, {}]);
+  assert.equal(r.seq, top, "position moved to the end of the log, not left behind");
+  const again = await replicaChanges(sql, owner(), info, BR_A, r.seq, tables);
+  assert.equal(again.seq, top);
+});

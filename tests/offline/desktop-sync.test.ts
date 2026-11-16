@@ -479,7 +479,7 @@ async function history(m: Mirror, d: OfflineDevice, o?: { fullEveryMs?: number }
 async function copyOf(d: OfflineDevice) {
   const m = new Mirror(join(root, "mirror", "copy.db"), SCHEMA_SQL);
   mirrors.push(m);
-  await m.refresh(COPY_TABLES, (t, o) => d.mirrorPage(t, o));
+  await m.refresh(COPY_TABLES, (t, o, since) => d.mirrorPage(t, o, since), clock);
   await history(m, d);
   return m;
 }
@@ -492,6 +492,95 @@ function serverRow(table: string, values: Record<string, unknown>) {
   run(`INSERT INTO ${table} (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`, ...keys.map((k) => v[k]));
 }
 const copyQty = (m: Mirror, id: string) => Number(m.query(`SELECT qty FROM product_batches WHERE id = ?`, [id])[0]?.qty);
+
+test("mirror refresh reads only changes when idle, applies tombstones, and reconciles hard deletes daily", async () => {
+  const d = await provisioned();
+  const m = await copyOf(d);
+  const received: Record<string, unknown>[] = [];
+  const fetchPage = async (t: string, offset: number, since?: string | null) => {
+    const page = await d.mirrorPage(t, offset, since);
+    received.push(...page.rows);
+    return page;
+  };
+  clock = new Date(clock.getTime() + 3_600_000);
+  await m.refresh(["products"], fetchPage, clock);
+  // The first incremental request includes a safety overlap, then idle cursors move on.
+  received.length = 0;
+  clock = new Date(clock.getTime() + 3_600_000);
+  await m.refresh(["products"], fetchPage, clock);
+  assert.equal(received.length, 0, "unchanged products are no longer downloaded");
+  assert.equal(m.query(`SELECT COUNT(*) AS n FROM products`, [])[0].n, 4, "an empty delta keeps cached rows");
+  run(`UPDATE products SET name = 'Changed', updated_at = ? WHERE id = 'p1'`, clock.toISOString());
+  run(`UPDATE products SET deleted_at = ?, updated_at = ? WHERE id = 'p2'`, clock.toISOString(), clock.toISOString());
+  received.length = 0;
+  await m.refresh(["products"], fetchPage, clock);
+  assert.deepEqual(received.map((r) => r.id).sort(), ["p1", "p2"]);
+  assert.equal(m.query(`SELECT name FROM products WHERE id = 'p1'`, [])[0].name, "Changed");
+  assert.equal(m.query(`SELECT id FROM products WHERE id = 'p2'`, []).length, 0, "soft deletion reaches the cache");
+  serverRow("products", { id: "pdelete", tenant_id: "t1", name: "Temporary", created_at: clock.toISOString(), updated_at: clock.toISOString() });
+  await m.refresh(["products"], fetchPage, clock);
+  assert.equal(m.query(`SELECT id FROM products WHERE id = 'pdelete'`, []).length, 1);
+  run(`DELETE FROM products WHERE id = 'pdelete'`);
+  clock = new Date(clock.getTime() + 25 * 3_600_000);
+  await m.refresh(["products"], fetchPage, clock);
+  assert.equal(m.query(`SELECT id FROM products WHERE id = 'pdelete'`, []).length, 0, "daily rebuild catches hard deletes");
+});
+
+test("empty history checks advance to server time and failures leave the cursor unchanged", async () => {
+  const d = await provisioned();
+  const m = await copyOf(d);
+  clock = new Date(clock.getTime() + 3_600_000);
+  await m.refreshHistory(["invoices"], (t, offset, since) => d.mirrorPage(t, offset, since), clock);
+  const seen = m.meta("hist_since:invoices");
+  assert.equal(seen, clock.toISOString(), "idle history is not stuck at its last invoice");
+  clock = new Date(clock.getTime() + 3_600_000);
+  await assert.rejects(m.refreshHistory(["invoices"], async () => { throw new Error("quota blocked"); }, clock), /quota blocked/);
+  assert.equal(m.meta("hist_since:invoices"), seen, "a failed fetch must not skip changes");
+});
+
+test("a mirror talking to an older server keeps requesting complete copies", async () => {
+  const m = new Mirror(join(root, "legacy", "copy.db"), SCHEMA_SQL);
+  mirrors.push(m);
+  const requested: (string | null | undefined)[] = [];
+  const fetchPage = async (_t: string, _offset: number, since?: string | null) => {
+    requested.push(since);
+    return { rows: [], next: null };
+  };
+  await m.refresh(["products"], fetchPage, clock);
+  await m.refresh(["products"], fetchPage, clock);
+  assert.deepEqual(requested, [null, null]);
+});
+
+test("mirror sequence reads use the log index, exclude foreign rows, and reset after log retention", async () => {
+  const d = await provisioned();
+  const initial = await d.mirrorPage("products", 0);
+  assert.match(initial.changeCursor ?? "", /^seq:\d+$/);
+  run(`UPDATE products SET name = 'Other business changed' WHERE id = 'q1'`);
+  const execute = sql.execute;
+  const plans: string[] = [];
+  sql = { ...sql, execute: async (query, args = []) => {
+    if (query.startsWith("SELECT * FROM products")) {
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(...args as never[]) as { detail: string }[];
+      plans.push(...plan.map((r) => r.detail));
+    }
+    return execute(query, args);
+  } };
+  const idle = await d.mirrorPage("products", 0, initial.changeCursor);
+  assert.deepEqual(idle.rows, [], "other businesses never enter the delta");
+  assert.ok(plans.some((p) => p.includes("idx_data_changes_tenant")), "change lookup uses the tenant sequence index");
+  assert.ok(!plans.some((p) => /SCAN products\b/.test(p)), plans.join("\n"));
+  batch("new-stock", "q1", "t1", 2, "2027-12-31");
+  const stocked = await d.mirrorPage("products", 0, idle.changeCursor);
+  assert.deepEqual(stocked.rows.map((r) => r.id), ["q1"], "new branch stock brings its product without a product edit");
+  // Keep only new changes, simulating the server's retention job.
+  run(`UPDATE products SET name = 'First' WHERE id = 'p1'`);
+  run(`UPDATE products SET name = 'Second' WHERE id = 'p1'`);
+  const top = Number(one(`SELECT MAX(seq) AS n FROM data_changes`).n);
+  run(`DELETE FROM data_changes WHERE seq < ?`, top);
+  const reset = await d.mirrorPage("products", 0, initial.changeCursor);
+  assert.equal(reset.reset, true);
+  assert.equal(reset.rows.length, 5, "an expired cursor gets a complete replacement");
+});
 
 test("the read-only copy holds only this business's data, never passwords or credentials", async () => {
   // Another business whose id differs only where this one's has "_" (a LIKE wildcard).
@@ -549,7 +638,7 @@ test("offline sales show in the copy at once; after sync its stock stays right e
   assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoice_items WHERE invoice_id = ?`, [sale.saleId])[0].n, 2);
 
   // A full refresh, then history and the overlay: still the same.
-  await m.refresh(COPY_TABLES, (t, o) => d.mirrorPage(t, o));
+  await m.refresh(COPY_TABLES, (t, o, since) => d.mirrorPage(t, o, since), clock);
   await history(m, d);
   assert.deepEqual([copyQty(m, "b1a"), copyQty(m, "b1b")], [0, 18]);
   assert.equal(m.query(`SELECT COUNT(*) AS n FROM invoices`, [])[0].n, 1, "one invoice listed, not two");
@@ -585,7 +674,7 @@ test("recent sales and purchases made online, on other counters or phones are in
   serverRow("invoices", { id: "web2", tenant_id: "t1", branch_id: "main-t1", invoice_no: 103, date: day(0), payable: 70, created_at: later, updated_at: later });
   const asked: (string | null | undefined)[] = [];
   await m.refreshHistory(HIST, (t, o, since) => { if (t === "invoices") asked.push(since); return d.mirrorPage(t, o, since); }, clock);
-  assert.ok(asked[0] && asked[0] < later && asked[0] > T.slice(0, 10), "only changes since the last check (with a margin)");
+  assert.match(asked[0] ?? "", /^seq:\d+$/, "the indexed change log supplies only changes since the last check");
   assert.deepEqual(ids("invoices"), ["web1", "web2"]);
   assert.equal(m.query(`SELECT payable FROM invoices WHERE id = 'web1'`, [])[0].payable, 550);
 
