@@ -144,14 +144,14 @@ export async function requestReset(sql: Sql, identifier: unknown, ip: string | n
   const u = rows[0];
   if (!u.email) return answer;
   const since = new Date(now.getTime() - RATE_WINDOW_MIN * 60_000).toISOString();
-  const recent = Number((await sql.execute(`SELECT COUNT(*) AS n FROM password_resets WHERE user_id = ? AND created_at >= ?`, [u.id, since])).rows[0]?.n ?? 0);
+  const recent = Number((await sql.execute(`SELECT COUNT(*) AS n FROM password_resets WHERE user_id = ? AND channel = 'email' AND created_at >= ?`, [u.id, since])).rows[0]?.n ?? 0);
   if (recent >= CODES_PER_LOGIN) return answer;
 
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const t = now.toISOString();
   await sql.batch([
     // Only the newest code works.
-    { sql: `UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL`, args: [t, u.id] },
+    { sql: `UPDATE password_resets SET used_at = ? WHERE user_id = ? AND channel = 'email' AND used_at IS NULL`, args: [t, u.id] },
     {
       sql: `INSERT INTO password_resets (id, user_id, channel, code_hash, attempts, ip, created_at, expires_at) VALUES (?, ?, 'email', ?, 0, ?, ?, ?)`,
       args: [requestId, u.id, codeHash(requestId, code), ip, t, new Date(now.getTime() + CODE_MINUTES * 60_000).toISOString()],
@@ -177,11 +177,11 @@ export async function completeReset(sql: Sql, requestId: unknown, code: unknown,
   if (pw.length < MIN_PASSWORD) throw new HttpError(400, `The new password must be at least ${MIN_PASSWORD} characters.`);
   const wrong = new HttpError(400, "The code is wrong or has expired. Check the email, or ask for a new code.");
   if (!id) throw wrong;
-  const r = (await sql.execute(`SELECT * FROM password_resets WHERE id = ?`, [id])).rows[0];
+  const r = (await sql.execute(`SELECT * FROM password_resets WHERE id = ? AND channel = 'email'`, [id])).rows[0];
   if (!r || r.used_at || String(r.expires_at) <= now.toISOString() || Number(r.attempts) >= MAX_TRIES) throw wrong;
   if (!sameHash(codeHash(id, c), String(r.code_hash))) {
     const tries = Number(r.attempts) + 1;
-    await sql.execute(`UPDATE password_resets SET attempts = ?${tries >= MAX_TRIES ? ", used_at = ?" : ""} WHERE id = ?`, tries >= MAX_TRIES ? [tries, now.toISOString(), id] : [tries, id]);
+    await sql.execute(`UPDATE password_resets SET attempts = ?${tries >= MAX_TRIES ? ", used_at = ?" : ""} WHERE id = ? AND channel = 'email'`, tries >= MAX_TRIES ? [tries, now.toISOString(), id] : [tries, id]);
     throw tries >= MAX_TRIES ? new HttpError(400, "Too many wrong codes. Ask for a new code.") : wrong;
   }
   const u = (await sql.execute(`SELECT id, username FROM users WHERE id = ? AND deleted_at IS NULL AND is_active = 1`, [r.user_id])).rows[0];
@@ -189,7 +189,7 @@ export async function completeReset(sql: Sql, requestId: unknown, code: unknown,
   const salt = randomBytes(16).toString("hex");
   const t = now.toISOString();
   // Claim the code first so a second request with it cannot also succeed.
-  const claimed = await sql.execute(`UPDATE password_resets SET used_at = ? WHERE id = ? AND used_at IS NULL`, [t, id]);
+  const claimed = await sql.execute(`UPDATE password_resets SET used_at = ? WHERE id = ? AND channel = 'email' AND used_at IS NULL`, [t, id]);
   if (!claimed.rowsAffected) throw wrong;
   await sql.execute(`UPDATE users SET password_hash = ?, password_salt = ?, password_changed_at = ?, updated_at = ? WHERE id = ?`, [passwordHash(pw, salt), salt, t, t, u.id]);
   return { username: String(u.username) };

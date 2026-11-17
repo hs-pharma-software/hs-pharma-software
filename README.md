@@ -5,6 +5,12 @@ A pharmacy / retail management app built with **Next.js** for the UI, packaged a
 the app runs, and **Turso** as the cloud database it syncs to whenever you're online.
 Product/category images are hosted on **Cloudinary**.
 
+> Runtime note: this repository now contains two desktop shells. `desktop/` is the
+> Windows Electron app, which uses the server for online requests and keeps an offline
+> local copy. `src-tauri/` is a separately packaged Tauri app with its own local-SQLite
+> sync path and release workflow. The architecture below describes the Tauri app, not
+> the Electron or Vercel runtime.
+
 Functional spec this is being built against: [`../CLAUDE.md`](../CLAUDE.md) (reverse-engineered
 from screenshots of the reference app, "eSales Analyst").
 

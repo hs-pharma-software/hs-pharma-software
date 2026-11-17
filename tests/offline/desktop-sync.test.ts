@@ -922,6 +922,62 @@ test("Super Admin: more than one device per branch; block and unblock; remove an
   assert.ok((await off.provisionDevice(sql, LOGINS.owner1.caller, { name: "Counter 3" })).deviceId, "the freed place can be used");
 });
 
+test("the owner restores a removed device by email without losing its pending sale", async () => {
+  const sa = { userId: "sa", role: "super_admin", tenantId: null } as Caller;
+  const d = await provisioned();
+  const identity = d.identity!;
+  const secret = secrets.get(`device-secret-${identity.deviceId}`)!;
+  const header = `${identity.deviceId}:${secret}`;
+  run(`UPDATE users SET email = 'owner@example.com' WHERE id = 'u1'`);
+
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p2", unit: "pack", qty: 1 }], tendered: 300 });
+  assert.equal(d.status().pending, 1);
+  net.down = false;
+  await off.blockDevice(sql, sa, identity.deviceId, true, "replaced");
+  await off.deleteDevice(sql, sa, identity.deviceId);
+  const removed = await d.sync({ manual: true });
+  assert.match(String(removed.error), /removed by MAVIN\.pk/);
+  assert.equal(d.status().deviceRemoved, true);
+  assert.equal(d.status().pending, 1);
+
+  let mailedCode = "";
+  const owner = LOGINS.owner1.caller;
+  const send = async (mail: { text: string }) => { mailedCode = /\b(\d{6})\b/.exec(mail.text)?.[1] ?? ""; };
+  const removedDevice = await off.deviceFromAuth(sql, header, true);
+  await assert.rejects(off.requestDeviceReenrolCode(sql, LOGINS.cashier.caller, removedDevice, { now: clock, send }), /Only this business's owner/);
+  const request = await off.requestDeviceReenrolCode(sql, owner, removedDevice, {
+    now: clock,
+    send,
+  });
+  assert.ok(request.email.endsWith("@example.com"));
+  assert.match(mailedCode, /^\d{6}$/);
+  const wrongCode = mailedCode === "000000" ? "111111" : "000000";
+  for (let attempt = 1; attempt < 5; attempt++) {
+    await assert.rejects(off.confirmDeviceReenrolCode(sql, owner, removedDevice, request.requestId, wrongCode, { now: clock }), /wrong or expired/);
+  }
+  await assert.rejects(off.confirmDeviceReenrolCode(sql, owner, removedDevice, request.requestId, wrongCode, { now: clock }), /Too many wrong codes/);
+  await assert.rejects(off.confirmDeviceReenrolCode(sql, owner, removedDevice, request.requestId, mailedCode, { now: clock }), /wrong or expired/);
+
+  const expiredRequest = await off.requestDeviceReenrolCode(sql, owner, removedDevice, { now: new Date(clock.getTime() + 60_000), send });
+  await assert.rejects(off.confirmDeviceReenrolCode(sql, owner, removedDevice, expiredRequest.requestId, mailedCode, { now: new Date(clock.getTime() + 11 * 60_000) }), /wrong or expired/);
+  const freshRequest = await off.requestDeviceReenrolCode(sql, owner, removedDevice, { now: new Date(clock.getTime() + 2 * 60_000), send });
+
+  const restored = await off.confirmDeviceReenrolCode(sql, owner, removedDevice, freshRequest.requestId, mailedCode, { now: new Date(clock.getTime() + 2 * 60_000) });
+  assert.equal(restored.deviceCode, identity.deviceCode);
+  assert.equal(String(one(`SELECT deleted_at FROM offline_devices WHERE id = ?`, identity.deviceId).deleted_at), "null");
+  assert.equal(d.identity?.deviceId, identity.deviceId);
+  d.acceptReenrol(restored.grant);
+  assert.equal(d.status().pending, 1);
+
+  const synced = await d.sync({ manual: true });
+  assert.equal(synced.error, null);
+  assert.equal(synced.applied, 1);
+  assert.equal(invoices()[0].id, sale.saleId);
+  assert.equal(d.status().pending, 0);
+  assert.equal(d.status().deviceRemoved, false);
+});
+
 test("retail shops sell offline too: a cloth store bill keeps the customer's custom size; a foreign size is never linked", async () => {
   run(`UPDATE tenants SET business_type = 'cloth_store' WHERE id = 't1'`);
   serverRow("cloth_measurements", { id: "m1", tenant_id: "t1", customer_name: "Bilal", garment: "Kameez" });

@@ -4,6 +4,7 @@
  * for the business owner (own business) and the Super Admin. */
 import { callerOf, jsonError, HttpError } from "@/server/db";
 import { sqlForServer } from "@/server/subSupersApi";
+import { resendMailer } from "@/server/mailer";
 import * as off from "@/server/offline/service";
 
 export const runtime = "nodejs";
@@ -14,7 +15,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const b = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const sql = sqlForServer();
-    const device = () => off.deviceFromAuth(sql, req.headers.get("x-mavin-device"));
+    const device = (allowRemoved = false) => off.deviceFromAuth(sql, req.headers.get("x-mavin-device"), allowRemoved);
     const status = (b.status ?? undefined) as { pending?: unknown; failed?: unknown; appVersion?: unknown } | undefined;
     let result: unknown;
     switch (b.action) {
@@ -25,6 +26,8 @@ export async function POST(req: Request): Promise<Response> {
       case "pull": off.checkProtocol(b.protocol); result = await off.pull(sql, await device(), b.cursor, status); break;
       case "push": off.checkProtocol(b.protocol); result = { results: await off.push(sql, await device(), b.ops, status) }; break;
       case "mirror": off.checkProtocol(b.protocol); result = await off.mirrorPage(sql, await device(), b.table, b.offset, b.since); break;
+      case "deviceReenrolRequest": off.checkProtocol(b.protocol); result = await off.requestDeviceReenrolCode(sql, await callerOf(req), await device(true), { send: resendMailer() }); break;
+      case "deviceReenrolConfirm": off.checkProtocol(b.protocol); result = await off.confirmDeviceReenrolCode(sql, await callerOf(req), await device(true), b.requestId, b.code); break;
       // Management
       case "devices": result = await off.listDevices(sql, await callerOf(req), await tenantOf(req, b)); break;
       case "revoke": result = await off.revokeDevice(sql, await callerOf(req), str(b.id), b.reason); break;

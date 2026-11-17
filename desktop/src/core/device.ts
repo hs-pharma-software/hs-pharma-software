@@ -89,6 +89,7 @@ export class OfflineDevice {
   private syncing: Promise<SyncReport> | null = null;
   private online: boolean | null = null;
   private lastError: string | null = null;
+  private deviceRemoved = false;
   readonly now: () => Date;
 
   private cfg: DeviceConfig;
@@ -588,8 +589,10 @@ export class OfflineDevice {
       meta.set(db, "last_sync_ok", this.now().toISOString());
       this.online = true;
       this.lastError = null;
+      this.deviceRemoved = false;
     } catch (e) {
       const te = e instanceof TransportError ? e : null;
+      this.deviceRemoved = te?.status === 401 && /device was removed by MAVIN\.pk/i.test(te.message);
       this.online = te ? !te.network : this.online;
       rep.error = te?.network ? "No connection to MAVIN.pk. Sales are saved on this computer and will be sent later." : e instanceof Error ? e.message : String(e);
       this.lastError = rep.error;
@@ -638,6 +641,7 @@ export class OfflineDevice {
     const cursor = meta.get(db, "cursor");
     return {
       provisioned: true as const,
+      deviceRemoved: this.deviceRemoved,
       deviceCode: this.binding.deviceCode,
       tenantName: g?.tenantName ?? null, branchName: g?.branchName ?? null, businessType: g?.businessType ?? null,
       allowanceEndsAt: g?.expiresAt ?? null,
@@ -654,6 +658,18 @@ export class OfflineDevice {
       user: this.session?.user ?? null,
       sellBlock: this.session ? this.sellBlock() : null,
     };
+  }
+
+  /** Applies a server-issued grant after the removed device is confirmed by email. */
+  acceptReenrol(grant: SignedGrant) {
+    const { b } = this.need();
+    const payload = verifyGrant(grant, this.cfg.publicKeyPem);
+    if (!payload || payload.deviceId !== b.deviceId || payload.tenantId !== b.tenantId || payload.branchId !== b.branchId) {
+      throw new Error("The device confirmation did not match this computer. Nothing was changed.");
+    }
+    this.saveGrant(grant);
+    this.deviceRemoved = false;
+    this.lastError = null;
   }
 
   /** Sales on this computer (newest first): this computer's own record, not the business's totals. */

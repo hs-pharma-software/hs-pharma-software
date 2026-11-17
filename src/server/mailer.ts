@@ -1,6 +1,6 @@
 /** Sends the platform's emails (password recovery codes) through Resend's
  * HTTP API. Needs RESEND_API_KEY; the sender is MAIL_FROM (default
- * "MAVIN.pk <no-reply@mavin.pk>", whose domain must be verified in Resend).
+ * "MAVIN.pk <otp@mavin.pk>", whose domain must be verified in Resend).
  * The key stays on the server and is never logged. */
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -12,7 +12,7 @@ export const mailConfigured = (env: Record<string, string | undefined> = process
 export function resendMailer(env: Record<string, string | undefined> = process.env): SendMail | null {
   const key = env.RESEND_API_KEY?.trim();
   if (!key) return null;
-  const from = env.MAIL_FROM?.trim() || "MAVIN.pk <no-reply@mavin.pk>";
+  const from = env.MAIL_FROM?.trim() || "MAVIN.pk <otp@mavin.pk>";
   return async (m) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15_000);
@@ -51,6 +51,23 @@ Never share this code. MAVIN.pk staff will never ask you for it.`;
 <p style="color:#6b7280;font-size:13px">If you did not ask to reset your password, ignore this email: your password stays the same. Never share this code; MAVIN.pk staff will never ask you for it.</p>
 </div>`;
   return { to, subject: `${o.code} is your MAVIN.pk reset code`, text, html };
+}
+
+/** The owner-only code for restoring a previously removed offline device. */
+export function deviceReenrolMail(to: string, o: { code: string; deviceCode: string; minutes: number }): Mail {
+  const text = `Your MAVIN.pk offline device confirmation code is ${o.code}
+
+It is for device ${o.deviceCode} and expires in ${o.minutes} minutes.
+Enter it only in the MAVIN Offline app on the computer being restored.
+If you did not request this, ignore this email. Never share this code.`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:auto;color:#1f2937">
+<p style="font-size:18px;font-weight:bold;color:#0b2a6b">MAVIN.pk</p>
+<p>Your offline device confirmation code is:</p>
+<p style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#0b2a6b;margin:16px 0">${esc(o.code)}</p>
+<p>It is for device <b>${esc(o.deviceCode)}</b> and expires in ${o.minutes} minutes.</p>
+<p>Enter it only in the MAVIN Offline app on the computer being restored. Never share this code.</p>
+</div>`;
+  return { to, subject: `${o.code} is your MAVIN.pk device confirmation code`, text, html };
 }
 
 /** Sent when an email or mobile matches several logins: no code, the usernames instead. */

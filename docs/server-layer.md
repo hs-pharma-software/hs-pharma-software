@@ -75,8 +75,12 @@ exactly as the server does; it must pass before the rules are changed.
   Super Admin's Billori page and delete the old one: the old key was readable
   by every business before.
 
-The desktop app is unchanged. It keeps its local database and its own sync
-token (built in by the release workflow).
+Desktop packaging has two separate paths. The Windows Electron app in `desktop/`
+uses server-mediated requests and keeps an offline local copy plus its offline
+sales queue. The Tauri app in `src-tauri/` uses local SQLite and its own sync
+engine. Neither current release workflow needs a database token embedded in the
+distributed app; the Electron build also blanks public database credentials and
+checks its output for secret values.
 
 ## Rollout order
 
@@ -90,7 +94,8 @@ Do these in order. Each step can be checked before the next.
 3. **Switch on the server layer** (below), redeploy.
 4. **Run the live check** (below).
 5. **Rotate the Turso token** (step 6 below), redeploy, run the live check again.
-6. **Update the desktop installs** to a release built with the new token.
+6. Confirm current desktop releases use the server-mediated flow; older web
+  builds that exposed public tokens must be replaced or have those tokens revoked.
 
 ## Switching it on (Vercel)
 
@@ -106,20 +111,21 @@ Do these in order. Each step can be checked before the next.
    - `SESSION_SECRET`: from step 2;
    - `NEXT_PUBLIC_DB_MODE` = `server`.
 4. **Delete `NEXT_PUBLIC_TURSO_DATABASE_URL` and `NEXT_PUBLIC_TURSO_AUTH_TOKEN`
-   from Vercel.** While they exist, Next.js puts them in the page. Keep them in
-   GitHub Actions secrets and your local `.env.local`; the desktop build needs
-   them.
+  from Vercel.** While they exist, Next.js can put them in the page. Keep
+  `NEXT_PUBLIC_*` database credentials only in local development environments
+  that still require direct Turso access; current desktop releases do not
+  require a bundled database token.
 5. **Redeploy.** Everyone is logged out once and logs in again.
 6. **Rotate the Turso token.** The old one was in every copy of the site served
    so far:
    1. Create a new token in the Turso dashboard.
-   2. Put it in Vercel `TURSO_AUTH_TOKEN`, in the GitHub Actions secret
-      `NEXT_PUBLIC_TURSO_AUTH_TOKEN`, and in your local `.env.local`.
+   2. Put it in Vercel `TURSO_AUTH_TOKEN` and in `.env.local` only if local
+      development still requires direct Turso access.
    3. Redeploy.
    4. Revoke the old token.
 
-   Desktop installs built with the old token stop syncing until they are
-   updated to a release built with the new one.
+    This rotation addresses database credentials exposed by older web builds;
+    current server-mediated desktop releases do not embed the database token.
 
 ### Check it worked
 
@@ -151,34 +157,25 @@ use it only as a short-term fallback.
 
 ## Desktop app through the server
 
-From this release the desktop app holds no database token. It keeps its local
-copy for offline billing and syncs it through `/api/db` with the login's own
-session (sent as `Authorization: Bearer`), so the server's tenant rewrite and
-policy apply to every row it pulls or pushes. Password hashes never leave the
-server: after an online sign-in the desktop stores its own salted check, so
-the next sign-in also works offline.
+The Electron app holds no database token. Its main process keeps the server session;
+the UI sends requests through the Electron bridge, and offline reads use the local copy.
+The Tauri app uses its separate local SQLite/outbox path. Password hashes never leave
+the server, and Electron stores a local password check after its first online sign-in.
 
 Order (each step only after the previous one works):
 
 1. The web server must be running the server layer (the steps above:
    `TURSO_*`, `SESSION_SECRET`, `NEXT_PUBLIC_DB_MODE=server`).
-2. Add the GitHub Actions secret `NEXT_PUBLIC_API_BASE_URL` = the site's
-   address, e.g. `https://mavin.pk` (allowed hosts: mavin.pk, muavin.pk and
-   *.vercel.app, in `src-tauri/capabilities`). The release build refuses to
-   publish without it.
-3. Release a desktop version. Each computer updates, then signs in once while
-   online (offline sign-in keeps working on computers already set up).
-4. When every computer runs the new version, **rotate the Turso token**
-   (step 6 above) and delete the `NEXT_PUBLIC_TURSO_*` GitHub secrets: every
-   installer built before this release contains the old token.
-
-Older desktop copies already downloaded other businesses' login rows. They
-stay in those local files until the app is reinstalled; they are not synced
-back and are no longer refreshed.
+2. The Tauri release workflow requires `NEXT_PUBLIC_API_BASE_URL` for its
+  server sync. The Electron app uses its main-process API address. Keep the
+  Tauri and Electron installers, versions, and update feeds distinct.
+3. Release the appropriate desktop package. Electron users sign in online once
+  to seed offline access; the Tauri app follows its local SQLite sync flow.
 
 ## Local development
 
-`.env.local` keeps `NEXT_PUBLIC_TURSO_*` for the desktop build. To run the web
-version through the server locally, add `SESSION_SECRET=<any 32+ characters>`
-and `NEXT_PUBLIC_DB_MODE=server`. In development the server falls back to the
-`NEXT_PUBLIC_TURSO_*` values; production requires the `TURSO_*` names.
+`.env.local` may keep `NEXT_PUBLIC_TURSO_*` for local development paths that use
+direct Turso access. To run the web version through the server locally, add
+`SESSION_SECRET=<any 32+ characters>` and `NEXT_PUBLIC_DB_MODE=server`. In
+development the server falls back to the `NEXT_PUBLIC_TURSO_*` values; production
+requires the `TURSO_*` names.

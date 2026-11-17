@@ -18,7 +18,8 @@ const env = {
   NEXT_PUBLIC_GEMINI_API_KEY: "",
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: "",
 };
-const r = spawnSync("npx", ["next", "build"], { cwd: root, env, stdio: "inherit", shell: true });
+const nextCli = path.join(root, "node_modules", "next", "dist", "bin", "next");
+const r = spawnSync(process.execPath, [nextCli, "build"], { cwd: root, env, stdio: "inherit" });
 if (r.status !== 0) process.exit(r.status ?? 1);
 
 // Secret check.

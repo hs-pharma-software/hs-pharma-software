@@ -12,23 +12,29 @@
  * no navigation away from the app, a fixed list of validated calls. */
 import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from "electron";
 import { autoUpdater } from "electron-updater";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 import { OfflineDevice, TransportError, type OriginalInvoice, type SaleInput, type SecretStore, type Transport } from "./core/device";
 import { Mirror, readOnlySql } from "./core/mirror";
 import { answerableLocally, copiedTables, copyReady, fillCopy, followCopy } from "./core/replicaSync";
-import { callAllowed, type CallModule } from "../../src/offline/protocol";
+import { callAllowed, PROTOCOL_VERSION, type CallModule } from "../../src/offline/protocol";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
 const PROBE_EVERY_MS = 15_000;
 const MIRROR_EVERY_MS = 5 * 60_000;
+const PIN_HASH_KEY = "app-pin-hash";
+const PIN_USER_KEY = "app-pin-user";
 /** Incremental after the initial copy; full refresh once daily. */
 const MIRROR_TABLES = ["tenants", "branches", "settings", "users", "categories", "sub_categories", "uoms", "products", "price_list", "product_batches", "customers", "salesmen", "suppliers"];
 /** Recent history of this branch (the server's window), only what changed. Documents before their items. */
 const HISTORY_TABLES = ["invoices", "invoice_items", "purchases", "purchase_items", "expenses", "cash_register_entries", "ledger_adjustments"];
 const APP_ORIGIN = "mavin://app";
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MS = 5 * 60_000;
+const PIN_ATTEMPTS_KEY = "app-pin-attempts";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "mavin", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
@@ -110,6 +116,71 @@ const transport: Transport = {
 // ── The page's own server calls (the web app's /api/...), with the session cookie kept here ──
 
 const cookies = new Map<string, string>(Object.entries(JSON.parse(secrets.get("web-cookies") || "{}") as Record<string, string>));
+
+function pinHash(pin: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(pin, salt, 32, { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  return `scrypt$${salt.toString("base64")}$${hash.toString("base64")}`;
+}
+
+function pinAttempts(): { failures: number; lockedUntil: number } {
+  try {
+    const state = JSON.parse(secrets.get(PIN_ATTEMPTS_KEY) ?? "null") as { failures?: unknown; lockedUntil?: unknown } | null;
+    return {
+      failures: Number.isInteger(state?.failures) && Number(state.failures) >= 0 ? Number(state.failures) : 0,
+      lockedUntil: Number.isFinite(state?.lockedUntil) && Number(state.lockedUntil) > 0 ? Number(state.lockedUntil) : 0,
+    };
+  } catch {
+    return { failures: 0, lockedUntil: 0 };
+  }
+}
+
+function assertPinAttemptAllowed() {
+  const { lockedUntil } = pinAttempts();
+  if (lockedUntil > Date.now()) {
+    const minutes = Math.ceil((lockedUntil - Date.now()) / 60_000);
+    throw new Error(`Too many incorrect PIN attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`);
+  }
+  if (lockedUntil) secrets.del(PIN_ATTEMPTS_KEY);
+}
+
+function rejectPinAttempt(): never {
+  const failures = pinAttempts().failures + 1;
+  const lockedUntil = failures >= PIN_MAX_ATTEMPTS ? Date.now() + PIN_LOCKOUT_MS : 0;
+  secrets.set(PIN_ATTEMPTS_KEY, JSON.stringify({ failures, lockedUntil }));
+  if (lockedUntil) throw new Error("Too many incorrect PIN attempts. Try again in 5 minutes.");
+  throw new Error("Incorrect PIN.");
+}
+
+function hasSavedPin(): boolean {
+  return !!(secrets.get(PIN_HASH_KEY) && secrets.get(PIN_USER_KEY));
+}
+
+function setSavedPin(userId: string, pin: string) {
+  if (!/^\d{4}$/.test(pin)) throw new Error("Enter a 4-digit PIN.");
+  secrets.set(PIN_USER_KEY, userId);
+  secrets.set(PIN_HASH_KEY, pinHash(pin));
+  secrets.del(PIN_ATTEMPTS_KEY);
+}
+
+function verifySavedPin(pin: string): string | null {
+  const userId = secrets.get(PIN_USER_KEY);
+  const stored = secrets.get(PIN_HASH_KEY);
+  if (!userId || !stored) return null;
+  const [, salt, hash] = stored.split("$");
+  if (!salt || !hash) return null;
+  const want = Buffer.from(hash, "base64");
+  const got = scryptSync(pin, Buffer.from(salt, "base64"), 32, { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+  if (!timingSafeEqual(want, got)) return null;
+  return userId;
+}
+
+function clearSavedPin() {
+  secrets.del(PIN_USER_KEY);
+  secrets.del(PIN_HASH_KEY);
+  secrets.del(PIN_ATTEMPTS_KEY);
+}
+
 function keepCookies(res: Response) {
   const list = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
   if (!list.length) return;
@@ -176,6 +247,7 @@ let device: OfflineDevice;
 let mirror: Mirror | null = null;
 let win: BrowserWindow | null = null;
 let quitting = false;
+let passwordLoginRequired = false;
 let lastMirror = 0;
 let lastHistory = 0;
 let mirrorFailures = 0;
@@ -219,8 +291,8 @@ let caughtUpFrom = 0;
 let replicaBusy: Promise<void> | null = null;
 let replicaNote: string | null = null;
 
-async function asLogin<T>(path: string, body: unknown): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+async function asLogin<T>(path: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...extraHeaders };
   if (pageBranch) headers["X-Branch"] = pageBranch;
   if (cookies.size) headers.Cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
   const ctrl = new AbortController();
@@ -375,6 +447,7 @@ function statusNow() {
   const s = device ? device.status() : { provisioned: false as const };
   return {
     ...s, online, server: API_BASE, appVersion: app.getVersion(),
+    passwordLoginRequired,
     copyRefreshedAt: (replica && copyReady(replica.m) ? replica.m.meta("replica_followed_at") : null) ?? mirror?.meta("refreshed_at") ?? null,
     /** The local copy of the business: complete (screens read it), or being copied. */
     localCopy: replica ? { ready: copyReady(replica.m), note: replicaNote } : null,
@@ -384,7 +457,79 @@ function statusNow() {
 }
 function pushStatus() { if (win && !win.isDestroyed()) win.webContents.send("mavin:status", statusNow()); }
 
-// ── Window ────────────────────────────────────────────────────────────────
+// ── PIN lock screen ───────────────────────────────────────────────────────
+
+let lockWin: BrowserWindow | null = null;
+
+function createPinWindow() {
+  if (lockWin && !lockWin.isDestroyed()) {
+    lockWin.show();
+    lockWin.focus();
+    return;
+  }
+  lockWin = new BrowserWindow({
+    width: 440,
+    height: 560,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    title: "MAVIN Offline Login",
+    backgroundColor: "#0f172a",
+    frame: false,
+    modal: true,
+    show: false,
+    webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
+  });
+  lockWin.removeMenu();
+  lockWin.on("closed", () => { lockWin = null; });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: Arial, sans-serif; background: radial-gradient(circle at top, #1f2937, #0f172a 55%, #020817); color: #e5e7eb; }
+    body { display: flex; align-items: center; justify-content: center; }
+    .panel { width: 360px; padding: 28px 24px 22px; border-radius: 18px; background: rgba(15,23,42,0.82); border: 1px solid rgba(148,163,184,0.25); box-shadow: 0 18px 42px rgba(15,23,42,0.55); }
+    h1 { margin: 0 0 18px; font-size: 18px; letter-spacing: 0.02em; text-align: center; }
+    .subtitle { margin: 0 0 18px; color: #cbd5e1; text-align: center; font-size: 13px; }
+    .pin-wrap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0 16px; }
+    input { width: 100%; height: 54px; border-radius: 12px; border: 1px solid rgba(148,163,184,0.4); background: rgba(15,23,42,0.7); color: white; text-align: center; font-size: 26px; font-weight: 700; outline: none; }
+    input:focus { border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.3); }
+    .error { min-height: 20px; margin: 0 0 14px; color: #fca5a5; font-size: 12px; text-align: center; }
+    button { width: 100%; border: none; border-radius: 10px; background: linear-gradient(135deg, #2563eb, #38bdf8); color: white; font-weight: 700; padding: 12px 14px; cursor: pointer; }
+    button.secondary { margin-top: 10px; background: rgba(148,163,184,0.12); border: 1px solid rgba(148,163,184,0.25); }
+  </style></head><body><div class="panel"><h1>MAVIN Offline</h1><p class="subtitle">Enter your 4-digit PIN to unlock</p><form id="pin-form"><div class="pin-wrap"><input type="password" inputmode="numeric" maxlength="1" aria-label="Digit 1"><input type="password" inputmode="numeric" maxlength="1" aria-label="Digit 2"><input type="password" inputmode="numeric" maxlength="1" aria-label="Digit 3"><input type="password" inputmode="numeric" maxlength="1" aria-label="Digit 4"></div><div id="error" class="error"></div><button type="submit">Unlock</button><button type="button" class="secondary" id="password-mode">Use password instead</button></form></div><script>
+    const inputs = [...document.querySelectorAll('input')];
+    const error = document.getElementById('error');
+    const form = document.getElementById('pin-form');
+    const collect = () => inputs.map((i) => i.value).join('');
+    const focusNext = (target) => { const idx = inputs.indexOf(target); if (idx < inputs.length - 1) inputs[idx + 1].focus(); }
+    inputs.forEach((input, idx) => {
+      input.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 1); if (e.target.value) focusNext(e.target); });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Backspace' && !e.target.value && idx > 0) inputs[idx - 1].focus(); });
+      input.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 4);
+        text.split('').forEach((d, i) => { if (inputs[i]) inputs[i].value = d; });
+        let last = inputs[0];
+        for (const item of inputs) if (item.value) last = item;
+        last.focus();
+      });
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin = collect();
+      if (!/^\d{4}$/.test(pin)) { error.textContent = 'Enter all 4 digits.'; return; }
+      try {
+        const result = await window.mavinDesktop.unlockPin(pin);
+        if (!result || !result.ok) throw new Error(result?.error || 'Incorrect PIN.');
+      } catch (err) { error.textContent = err && err.message ? String(err.message) : 'Incorrect PIN.'; }
+    });
+    document.getElementById('password-mode').addEventListener('click', async () => {
+      try { await window.mavinDesktop.usePasswordInstead(); } catch { /* no-op */ }
+    });
+    inputs[0].focus();
+  </script></body></html>`;
+  lockWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
 
 function showWindow() {
   if (quitting) return;
@@ -486,17 +631,51 @@ const handlers: Record<string, Handler> = {
   request: (a) => pageRequest(a),
   /** The page signed in online: keep its session for offline sign-in and enrol the login on this device. */
   rememberSession: async (a) => {
-    const o = a as { username?: unknown; password?: unknown; session?: { user?: { id?: unknown } } };
+    const o = a as { username?: unknown; password?: unknown; session?: { user?: { id?: unknown } }; pin?: unknown };
     const username = str(o?.username, 80, "username");
     const password = str(o?.password, 200, "password");
     const userId = String(o?.session?.user?.id ?? "");
     if (!userId) throw new Error("No session.");
     secrets.set(sessionKey(userId), JSON.stringify({ username: username.trim().toLowerCase(), session: o.session }));
+    passwordLoginRequired = false;
+    if (typeof o?.pin === "string" && /^\d{4}$/.test(o.pin.trim())) setSavedPin(userId, o.pin.trim());
     if (device.provisioned) {
       await device.signIn(username, password).catch((e) => console.error("[enrol]", e instanceof Error ? e.message : e));
       void syncAll(true);
     }
     return { provisioned: device.provisioned };
+  },
+  hasSavedPin: () => hasSavedPin(),
+  setPin: (a) => {
+    const o = a as { userId?: unknown; pin?: unknown } | string | null | undefined;
+    const pin = typeof o === "string" ? o : String((o as { pin?: unknown } | null)?.pin ?? "").trim();
+    const userId = typeof o === "string" ? (device?.user?.id ?? secrets.get(PIN_USER_KEY) ?? "") : String((o as { userId?: unknown } | null)?.userId ?? device?.user?.id ?? secrets.get(PIN_USER_KEY) ?? "");
+    if (!userId) throw new Error("No signed-in user to save the PIN for.");
+    setSavedPin(userId, pin);
+    return { ok: true };
+  },
+  unlockPin: async (a) => {
+    const pin = String(a ?? "").trim();
+    assertPinAttemptAllowed();
+    if (!/^\d{4}$/.test(pin)) rejectPinAttempt();
+    const userId = verifySavedPin(pin);
+    if (!userId) rejectPinAttempt();
+    secrets.del(PIN_ATTEMPTS_KEY);
+    if (lockWin && !lockWin.isDestroyed()) lockWin.close();
+    if (!win || win.isDestroyed()) createWindow();
+    showWindow();
+    return { ok: true, userId };
+  },
+  usePasswordInstead: () => {
+    passwordLoginRequired = true;
+    if (lockWin && !lockWin.isDestroyed()) lockWin.close();
+    if (!win || win.isDestroyed()) createWindow();
+    showWindow();
+    return { ok: true };
+  },
+  clearPin: () => {
+    clearSavedPin();
+    return { ok: true };
   },
   /** Sign in without internet: the device checks the password against its saved check, within its offline allowance. */
   offlineSignIn: async (a) => {
@@ -505,6 +684,7 @@ const handlers: Record<string, Handler> = {
     const user = await device.signIn(str(o?.username, 80, "username"), str(o?.password, 200, "password"));
     const saved = secrets.get(sessionKey(user.id));
     if (!saved) throw new Error("Sign in once while online on this computer, then you can sign in offline.");
+    passwordLoginRequired = false;
     return (JSON.parse(saved) as { session: unknown }).session;
   },
   provision: async (a) => {
@@ -513,6 +693,26 @@ const handlers: Record<string, Handler> = {
     openMirror();
     await syncAll(true);
     return r;
+  },
+  requestDeviceReenrol: async () => {
+    const identity = device.identity;
+    if (!identity) throw new Error("This computer has no offline device to restore.");
+    const secret = secrets.get(`device-secret-${identity.deviceId}`);
+    if (!secret) throw new Error("The device key is missing from this Windows account. Contact MAVIN.pk support.");
+    const r = await asLogin<{ result: { requestId: string; email: string } }>("/api/offline/", { action: "deviceReenrolRequest", protocol: PROTOCOL_VERSION }, { "X-Mavin-Device": `${identity.deviceId}:${secret}` });
+    return r.result;
+  },
+  confirmDeviceReenrol: async (a) => {
+    const identity = device.identity;
+    if (!identity) throw new Error("This computer has no offline device to restore.");
+    const secret = secrets.get(`device-secret-${identity.deviceId}`);
+    if (!secret) throw new Error("The device key is missing from this Windows account. Contact MAVIN.pk support.");
+    const r = await asLogin<{ result: { grant: import("../../src/offline/protocol").SignedGrant } }>("/api/offline/", {
+      action: "deviceReenrolConfirm", protocol: PROTOCOL_VERSION, requestId: str(a?.requestId, 32, "request"), code: str(a?.code, 6, "code"),
+    }, { "X-Mavin-Device": `${identity.deviceId}:${secret}` });
+    device.acceptReenrol(r.result.grant);
+    await syncAll(true);
+    return statusNow();
   },
   /** Offline: the local copy of the business (the login's own when complete, else the offline sales copy). */
   query: (a) => {
@@ -617,7 +817,11 @@ if (primary) {
     protocol.handle("mavin", serveApp);
     device = new OfflineDevice({ dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets });
     openMirror();
-    createWindow();
+    if (device.provisioned && hasSavedPin()) {
+      createPinWindow();
+    } else {
+      createWindow();
+    }
     timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(() => void probe(), PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
     void probe().then(() => syncAll(false));
     startUpdates();

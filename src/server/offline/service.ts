@@ -13,10 +13,12 @@
  *   stock exception for anything those batches no longer hold.
  * - A revoked device (or a business whose offline switch was turned off) can
  *   still hand in its sales: they are held for review, not applied. */
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Sql } from "../subSupers";
 import { callerCan, type Caller } from "../sqlPolicy";
 import { HttpError } from "../db";
+import { deviceReenrolMail, type SendMail } from "../mailer";
+import { maskEmail } from "../recovery";
 import { callContext, callSummary, idSource, jsonList as callList, runCall, type CallDb } from "@/offline/calls";
 import { tenantAllows } from "@/lib/tenantFeatures";
 import {
@@ -27,6 +29,11 @@ import {
 
 const iso = () => new Date().toISOString();
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
+const sameHash = (a: string, b: string) => {
+  const x = Buffer.from(a, "hex");
+  const y = Buffer.from(b, "hex");
+  return x.length === y.length && timingSafeEqual(x, y);
+};
 const jsonList = (raw: unknown): string[] => { try { const v = raw ? JSON.parse(String(raw)) : []; return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 const PAGE = 500;
 
@@ -114,14 +121,14 @@ async function deviceById(sql: Sql, id: string) {
 }
 
 /** The device from its X-Mavin-Device header "<id>:<secret>" (a revoked device too: its sales are held). */
-export async function deviceFromAuth(sql: Sql, header: string | null): Promise<Device> {
+export async function deviceFromAuth(sql: Sql, header: string | null, allowRemoved = false): Promise<Device> {
   const m = header && /^([0-9a-f-]{36}):([A-Za-z0-9_-]{20,100})$/.exec(header.trim());
   if (!m) throw new HttpError(401, "This computer is not set up as an offline device.");
   const d = await deviceById(sql, m[1]);
   const a = Buffer.from(sha(m[2]), "hex");
   const b = Buffer.from(String(d?.secret_hash ?? "00"), "hex");
   if (!d || a.length !== b.length || !timingSafeEqual(a, b)) throw new HttpError(401, "This computer is not set up as an offline device.");
-  if (d.deleted_at) throw new HttpError(401, "This offline device was removed by MAVIN.pk. Set the computer up again.");
+  if (d.deleted_at && !allowRemoved) throw new HttpError(401, "This offline device was removed by MAVIN.pk. Confirm it by email to set it up again.");
   return d;
 }
 
@@ -177,6 +184,95 @@ export async function deleteDevice(sql: Sql, caller: Caller, id: string) {
   await sql.execute(`UPDATE offline_devices SET deleted_at = ?, updated_at = ? WHERE id = ?`, [iso(), iso(), id]);
   await audit(sql, d.tenant_id, caller.userId, "device.deleted", { device: id, code: d.device_code });
   return { ok: true };
+}
+
+const REENROL_CODE_MINUTES = 10;
+const REENROL_MAX_TRIES = 5;
+const REENROL_CODES_PER_WINDOW = 3;
+const REENROL_WINDOW_MINUTES = 30;
+
+function requireReenrolOwner(caller: Caller, d: Device) {
+  if (caller.role !== "owner" || caller.tenantId !== d.tenant_id) throw new HttpError(403, "Only this business's owner can restore its offline device.");
+  if (!d.deleted_at) throw new HttpError(409, "This device has not been removed.");
+}
+
+/** Sends an expiring confirmation code to the signed-in owner's saved email. */
+export async function requestDeviceReenrolCode(sql: Sql, caller: Caller, d: Device, deps: { send: SendMail | null; now?: Date }) {
+  requireReenrolOwner(caller, d);
+  if (!deps.send) throw new HttpError(503, "Email confirmation is not configured. Ask MAVIN.pk to set up email delivery.");
+  const account = (await sql.execute(
+    `SELECT username, email FROM users WHERE id = ? AND tenant_id = ? AND role = 'owner' AND is_active = 1 AND deleted_at IS NULL`,
+    [caller.userId, d.tenant_id],
+  )).rows[0];
+  const email = typeof account?.email === "string" ? account.email.trim() : "";
+  if (!email) throw new HttpError(409, "Add a recovery email to the business owner's login before restoring this device.");
+
+  const now = deps.now ?? new Date();
+  const channel = `device_reenrol:${d.id}`;
+  const since = new Date(now.getTime() - REENROL_WINDOW_MINUTES * 60_000).toISOString();
+  const recent = Number((await sql.execute(
+    `SELECT COUNT(*) AS n FROM password_resets WHERE user_id = ? AND channel = ? AND created_at >= ?`,
+    [caller.userId, channel, since],
+  )).rows[0]?.n ?? 0);
+  if (recent >= REENROL_CODES_PER_WINDOW) throw new HttpError(429, "Too many device codes requested. Try again in 30 minutes.");
+
+  const requestId = randomBytes(16).toString("hex");
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const createdAt = now.toISOString();
+  const codeHash = sha(`${requestId}:${code}`);
+  await sql.batch([
+    { sql: `UPDATE password_resets SET used_at = ? WHERE user_id = ? AND channel = ? AND used_at IS NULL`, args: [createdAt, caller.userId, channel] },
+    { sql: `INSERT INTO password_resets (id, user_id, channel, code_hash, attempts, ip, created_at, expires_at) VALUES (?, ?, ?, ?, 0, NULL, ?, ?)`, args: [requestId, caller.userId, channel, codeHash, createdAt, new Date(now.getTime() + REENROL_CODE_MINUTES * 60_000).toISOString()] },
+  ]);
+  try {
+    await deps.send(deviceReenrolMail(email, { code, deviceCode: d.device_code, minutes: REENROL_CODE_MINUTES }));
+  } catch {
+    await sql.execute(`UPDATE password_resets SET used_at = ? WHERE id = ? AND channel = ?`, [createdAt, requestId, channel]);
+    throw new HttpError(502, "The confirmation code could not be emailed. Try again shortly.");
+  }
+  return { requestId, email: maskEmail(email) };
+}
+
+/** Verifies the email code and restores the same device record. */
+export async function confirmDeviceReenrolCode(sql: Sql, caller: Caller, d: Device, requestId: unknown, submittedCode: unknown, deps: { now?: Date } = {}) {
+  requireReenrolOwner(caller, d);
+  const id = typeof requestId === "string" && /^[0-9a-f]{32}$/.test(requestId) ? requestId : "";
+  const code = typeof submittedCode === "string" ? submittedCode.replace(/\s/g, "") : "";
+  const channel = `device_reenrol:${d.id}`;
+  const now = deps.now ?? new Date();
+  const wrong = new HttpError(400, "The code is wrong or expired. Request a new one and try again.");
+  if (!id || !/^\d{6}$/.test(code)) throw wrong;
+  const reset = (await sql.execute(`SELECT * FROM password_resets WHERE id = ? AND user_id = ? AND channel = ?`, [id, caller.userId, channel])).rows[0];
+  if (!reset || reset.used_at || String(reset.expires_at) <= now.toISOString() || Number(reset.attempts) >= REENROL_MAX_TRIES) throw wrong;
+  if (!sameHash(sha(`${id}:${code}`), String(reset.code_hash))) {
+    await sql.execute(
+      `UPDATE password_resets SET attempts = attempts + 1, used_at = CASE WHEN attempts + 1 >= ? THEN ? ELSE used_at END WHERE id = ? AND user_id = ? AND channel = ? AND used_at IS NULL AND attempts < ?`,
+      [REENROL_MAX_TRIES, now.toISOString(), id, caller.userId, channel, REENROL_MAX_TRIES],
+    );
+    const tries = Number((await sql.execute(`SELECT attempts FROM password_resets WHERE id = ? AND user_id = ? AND channel = ?`, [id, caller.userId, channel])).rows[0]?.attempts ?? REENROL_MAX_TRIES);
+    throw tries >= REENROL_MAX_TRIES ? new HttpError(400, "Too many wrong codes. Request a new one.") : wrong;
+  }
+
+  const tenant = await tenantRow(sql, d.tenant_id);
+  if (!offlineAllowed(tenant)) throw new HttpError(403, "Offline Desktop is disabled for this business. Ask MAVIN.pk.");
+  if (!(OFFLINE_BUSINESS_TYPES as readonly string[]).includes(String(tenant.business_type))) throw new HttpError(409, "This business type cannot use Offline Desktop.");
+  const branch = (await sql.execute(`SELECT status FROM branches WHERE id = ? AND tenant_id = ?`, [d.branch_id, d.tenant_id])).rows[0];
+  if (branch && String(branch.status) !== "active") throw new HttpError(409, "This device's branch is not active.");
+  const limit = await devicesPerBranch(sql, d.tenant_id);
+  const active = Number((await sql.execute(`SELECT COUNT(*) AS n FROM offline_devices WHERE tenant_id = ? AND branch_id = ? AND status IN ('active', 'blocked') AND deleted_at IS NULL`, [d.tenant_id, d.branch_id])).rows[0]?.n ?? 0);
+  if (active >= limit) throw new HttpError(409, "This branch already has the maximum number of offline devices. Free a device slot first.");
+
+  const claimed = await sql.execute(`UPDATE password_resets SET used_at = ? WHERE id = ? AND user_id = ? AND channel = ? AND used_at IS NULL AND attempts < ?`, [now.toISOString(), id, caller.userId, channel, REENROL_MAX_TRIES]);
+  if (!claimed.rowsAffected) throw wrong;
+  const updated = await sql.execute(
+    `UPDATE offline_devices SET status = 'active', deleted_at = NULL, revoked_at = NULL, revoked_by = NULL, revoke_reason = NULL, updated_at = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NOT NULL AND (SELECT COUNT(*) FROM offline_devices WHERE tenant_id = ? AND branch_id = ? AND status IN ('active', 'blocked') AND deleted_at IS NULL) < ?`,
+    [now.toISOString(), d.id, d.tenant_id, d.tenant_id, d.branch_id, limit],
+  );
+  if (!updated.rowsAffected) throw new HttpError(409, "The device could not be restored. Check its status and branch device limit, then request a new code.");
+  const restored = (await deviceById(sql, d.id))!;
+  const grant = await grantFor(sql, restored);
+  await audit(sql, d.tenant_id, caller.userId, "device.reenrolled", { device: d.id, code: d.device_code });
+  return { grant, userId: caller.userId, deviceCode: d.device_code };
 }
 
 /** Device still allowed to work offline: active and the business still has the switch. */

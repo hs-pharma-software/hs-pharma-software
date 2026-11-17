@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 
 const failures = new Map<string, { n: number; until: number }>();
 const LIMIT = 8;
+const MAX_FAILURE_KEYS = 5000;
+let failedAttemptsSinceSweep = 0;
 const WINDOW_MS = 15 * 60_000;
 
 export async function POST(req: Request): Promise<Response> {
@@ -29,8 +31,16 @@ export async function POST(req: Request): Promise<Response> {
     const u = rs.rows[0];
     const ok = u ? safeEqual(passwordHash(password, String(u.password_salt)), String(u.password_hash)) : false;
     if (!u || !ok) {
+      const now = Date.now();
+      if ((++failedAttemptsSinceSweep % 128 === 0) || failures.size >= MAX_FAILURE_KEYS) {
+        for (const [k, value] of failures) if (value.until <= now) failures.delete(k);
+      }
       const cur = failures.get(key);
-      failures.set(key, { n: (cur && cur.until > Date.now() ? cur.n : 0) + 1, until: Date.now() + WINDOW_MS });
+      if (!cur && failures.size >= MAX_FAILURE_KEYS) {
+        const oldest = failures.keys().next().value;
+        if (oldest !== undefined) failures.delete(oldest);
+      }
+      failures.set(key, { n: (cur && cur.until > now ? cur.n : 0) + 1, until: now + WINDOW_MS });
       throw new HttpError(401, "Incorrect username or password.");
     }
     if (!Number(u.is_active)) throw new HttpError(403, "This account has been deactivated. Contact the administrator.");

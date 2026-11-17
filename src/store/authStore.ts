@@ -1,6 +1,6 @@
 ﻿import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { SERVER_DB } from "../lib/serverMode";
+import { desktopViaServer, SERVER_DB, serverJson, setDesktopSession } from "../lib/serverMode";
 import { localBridge, localSession, setLocalSession } from "@/lib/edition";
 
 export type UserRole = "super_admin" | "owner" | "staff";
@@ -75,8 +75,11 @@ export const useAuthStore = create<AuthState>()(
       updateCurrentUserAccess: (access) =>
         set((s) => (s.currentUser ? { currentUser: { ...s.currentUser, ...access } } : {})),
       logout: () => {
-        // Web version through the server: end the server session (httpOnly cookie) too.
-        if (SERVER_DB && typeof window !== "undefined") void fetch("/api/auth/logout/", { method: "POST", credentials: "same-origin" }).catch(() => undefined);
+        // End the server session through Electron's bridge when there is no browser origin.
+        if ((SERVER_DB || desktopViaServer()) && typeof window !== "undefined") {
+          void serverJson("/api/auth/logout/", {}).catch(() => undefined);
+          if (desktopViaServer()) setDesktopSession(null);
+        }
         // Mavin Pharmacy Offline: end the local session in the desktop too.
         const local = localBridge();
         if (local) { void local.logout({ session: localSession() }).catch(() => undefined); setLocalSession(null); }

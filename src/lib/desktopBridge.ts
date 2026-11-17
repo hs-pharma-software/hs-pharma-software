@@ -26,6 +26,9 @@ export interface DesktopStatus {
   appVersion?: string;
   /** A newer app version: downloading, or ready (installed when the app is closed). */
   update?: { version: string; ready: boolean } | null;
+  /** Password login is required before restoring the persisted renderer session. */
+  passwordLoginRequired?: boolean;
+  deviceRemoved?: boolean;
   /** The local copy of the business: complete (screens read it), or being copied (note). */
   localCopy?: { ready: boolean; note: string | null } | null;
 }
@@ -54,6 +57,8 @@ interface Bridge {
   rememberSession(a: { username: string; password: string; session: unknown }): Promise<Res<{ provisioned: boolean }>>;
   offlineSignIn(a: { username: string; password: string }): Promise<Res<unknown>>;
   provision(a: { username: string; password: string; name?: string }): Promise<Res<{ deviceCode: string; tenantName: string; branchName: string }>>;
+  requestDeviceReenrol(): Promise<Res<{ requestId: string; email: string }>>;
+  confirmDeviceReenrol(a: { requestId: string; code: string }): Promise<Res<DesktopStatus>>;
   query(a: { sql: string; params: unknown[] }): Promise<Res<Record<string, unknown>[]>>;
   /** Online: the local copy's answer when it can give one (same login and branch, up to date), else { local: false }. */
   read?(a: { sql: string; params: unknown[]; userId: string | null; branch: string }): Promise<Res<{ local: true; rows: Record<string, unknown>[] } | { local: false }>>;

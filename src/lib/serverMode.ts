@@ -14,7 +14,7 @@ const inDesktopShell = () => typeof window !== "undefined" && "__TAURI_INTERNALS
 /** The desktop app with a server address: logins, accounts and sync go through
  * the server with the login's session; the app holds no database token. */
 export function desktopViaServer(): boolean {
-  return inDesktopShell() && Boolean(API_BASE);
+  return Boolean(desktopBridge()) || (inDesktopShell() && Boolean(API_BASE));
 }
 
 /** Fired on window when the server says the session has ended; AuthGate logs out. */

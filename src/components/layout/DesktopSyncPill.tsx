@@ -15,6 +15,8 @@ export function DesktopSyncPill({ status }: { status: DesktopStatus }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const [reenrolRequest, setReenrolRequest] = useState<{ requestId: string; email: string } | null>(null);
+  const [reenrolCode, setReenrolCode] = useState("");
   const user = useAuthStore((s) => s.currentUser);
   const pending = status.pending ?? 0;
   const problems = (status.conflicts ?? 0) + (status.held ?? 0) + (status.rejected ?? 0);
@@ -47,7 +49,47 @@ export function DesktopSyncPill({ status }: { status: DesktopStatus }) {
           <div className="absolute right-0 top-10 z-20 w-72 space-y-1.5 rounded-xl border border-neutral-200 bg-white p-3 text-xs shadow-xl ring-1 ring-black/5">
             <p className="font-medium text-neutral-800">{off ? "Offline" : "Online"} · {pending ? `${pending} sale${pending === 1 ? "" : "s"} saved on this device, waiting to sync` : "nothing waiting to sync"}</p>
             {problems > 0 && <p className="text-rose-700">{problems} need attention (see Settings &gt; Offline Desktop online).</p>}
-            {status.provisioned ? (
+            {status.provisioned && status.deviceRemoved ? (
+              <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                <p className="font-medium text-amber-900">This device was removed by MAVIN.pk.</p>
+                <p className="text-amber-800">The computer&apos;s local data and pending sales are still here. The business owner can confirm this device by email to restore it.</p>
+                {pending > 0 && <p className="font-medium text-rose-700">{pending} sale{pending === 1 ? "" : "s"} still need to sync. Reconnect before using another computer.</p>}
+                {user?.role !== "owner" ? <p className="text-amber-800">Sign in as the business owner to request the confirmation code.</p>
+                  : off ? <p className="text-amber-800">Connect to the internet to restore this device.</p>
+                  : !reenrolRequest ? (
+                    <button type="button" disabled={busy} onClick={async () => {
+                      setBusy(true); setMsg(null);
+                      try {
+                        const r = await desktopCall((b) => b.requestDeviceReenrol());
+                        setReenrolRequest(r);
+                        setReenrolCode("");
+                        setMsg(`A confirmation code was emailed to ${r.email}.`);
+                      } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+                      setBusy(false);
+                    }} className="rounded-md bg-neutral-900 px-3 py-1.5 font-medium text-white disabled:opacity-50">
+                      {busy ? "Sending…" : "Email confirmation code"}
+                    </button>
+                  ) : (
+                    <form className="space-y-2" onSubmit={async (e) => {
+                      e.preventDefault(); setBusy(true); setMsg(null);
+                      try {
+                        await desktopCall((b) => b.confirmDeviceReenrol({ requestId: reenrolRequest.requestId, code: reenrolCode }));
+                        setReenrolRequest(null); setReenrolCode("");
+                        setMsg("Device restored. Syncing pending sales and refreshing this computer.");
+                      } catch (err) { setMsg(err instanceof Error ? err.message : String(err)); }
+                      setBusy(false);
+                    }}>
+                      <label className="block text-amber-900">Email code
+                        <input required inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={reenrolCode} onChange={(e) => setReenrolCode(e.target.value.replace(/\D/g, "").slice(0, 6))} className="mt-1 w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-neutral-900" />
+                      </label>
+                      <div className="flex gap-2">
+                        <button type="submit" disabled={busy || reenrolCode.length !== 6} className="rounded-md bg-neutral-900 px-3 py-1.5 font-medium text-white disabled:opacity-50">{busy ? "Confirming…" : "Restore device"}</button>
+                        <button type="button" disabled={busy} onClick={() => setReenrolRequest(null)} className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-neutral-700 disabled:opacity-50">Cancel</button>
+                      </div>
+                    </form>
+                  )}
+              </section>
+            ) : status.provisioned ? (
               <>
                 <p className="text-neutral-500">Last synced: {when(status.lastSyncOk)}</p>
                 {status.lastError && !off && <p className="text-rose-700">Last sync failed: {status.lastError}</p>}

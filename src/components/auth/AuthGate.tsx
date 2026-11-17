@@ -12,6 +12,7 @@ import { localBridge, localSession, unwrap } from "@/lib/edition";
 import { LoginScreen } from "./LoginScreen";
 import { usePublicPage } from "./usePublicPage";
 import { SERVER_DB, SESSION_EXPIRED_EVENT, desktopViaServer, serverJson } from "@/lib/serverMode";
+import { desktopBridge } from "@/lib/desktopBridge";
 
 type GateState = "checking" | "setup" | "login" | "offline";
 
@@ -27,8 +28,29 @@ type GateState = "checking" | "setup" | "login" | "offline";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const publicPage = usePublicPage();
   const currentUser = useAuthStore((s) => s.currentUser);
+  const logout = useAuthStore((s) => s.logout);
   const [state, setState] = useState<GateState>("checking");
+  const [desktopUnlockChecked, setDesktopUnlockChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const bridge = desktopBridge();
+    if (!bridge) {
+      setDesktopUnlockChecked(true);
+      return;
+    }
+    let active = true;
+    void bridge.status().then((result) => {
+      if (!active) return;
+      if (!result.ok || result.value.passwordLoginRequired !== false) logout();
+      setDesktopUnlockChecked(true);
+    }).catch(() => {
+      if (!active) return;
+      logout();
+      setDesktopUnlockChecked(true);
+    });
+    return () => { active = false; };
+  }, [logout]);
 
   const check = useCallback(async () => {
     setState("checking");
@@ -77,7 +99,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Web version through the server: a session the server ended (expired, login
   // deactivated) logs out here, and a remembered session is checked on load.
-  const logout = useAuthStore((s) => s.logout);
   useEffect(() => {
     if (!SERVER_DB) return;
     const onExpired = () => logout();
@@ -111,7 +132,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  if (state === "checking") {
+  if (!desktopUnlockChecked || state === "checking") {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-neutral-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-amber-500 border-t-transparent" />

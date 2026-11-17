@@ -1,10 +1,8 @@
 import type { NextConfig } from "next";
 
-// When building for the Tauri desktop shell (TAURI_BUILD=1), produce a fully
-// static export — no Node server, data goes through the local SQLite plugin.
-// When deploying to Vercel (no TAURI_BUILD), let Next.js run normally so
-// server features (ISR, image optimisation, etc.) stay available and the
-// browser talks to Turso directly via @libsql/client/web.
+// Desktop builds use a static export (TAURI_BUILD=1). Tauri uses local SQLite;
+// the Electron package builds this same UI in server mode and handles requests
+// through its main process. Vercel runs Next.js normally with server features.
 const isTauriBuild = process.env.TAURI_BUILD === "1";
 
 const nextConfig: NextConfig = {
