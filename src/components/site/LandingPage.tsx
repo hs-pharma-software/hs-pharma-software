@@ -210,12 +210,7 @@ export function LandingPage() {
               letterSpacing:"-.04em",
               color:"#0f172a",
             }}>
-              Your Business Deserves{" "}<br/>
-              <span style={{display:"inline-flex",alignItems:"center",gap:"0.25em",flexWrap:"wrap",justifyContent:"center"}}>
-                <span className="shimmer-text">a Smart</span>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/muawin-logo.png" alt="معاون" width={800} height={322} style={{height:"1.25em",width:"auto",display:"inline-block",verticalAlign:"middle"}} />
-              </span>
+              POS and business software for billing, stock and daily operations in Pakistan.
             </h1>
 
             {/* subtext */}
