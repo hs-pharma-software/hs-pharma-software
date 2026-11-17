@@ -91,6 +91,14 @@ test("search and autocomplete are tenant-specific", async () => {
   assert.equal((await searchProductsByNameOrBarcode("Burger"))[0]?.id, A.product.id);
 });
 
+test("pharmacy products can be found by generic name stored in description", async () => {
+  as(PH);
+  await productsRepo.update(P.product.id, { description: "Paracetamol" });
+  assert.equal((await searchProductsByNameOrBarcode("Paracetamol"))[0]?.id, P.product.id);
+  const row = (await listProductsForGrid()).find((p) => p.id === P.product.id);
+  assert.equal(row?.description, "Paracetamol");
+});
+
 test("direct id access to another tenant's product returns nothing", async () => {
   as(RA);
   assert.equal(await productsRepo.get(B.product.id), null);

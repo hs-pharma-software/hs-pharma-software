@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PackagePlus } from "lucide-react";
 import { addProductStock } from "@/lib/repo/stock";
 import { businessType } from "@/config/businessTypes";
+import { isPharmacyFamilyType } from "@/lib/catalogAccess";
 import { useAuthStore } from "@/store/authStore";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ProductFormModal } from "@/components/products/ProductFormModal";
@@ -33,6 +34,7 @@ export default function ProductsPage() {
 
   // Contractors top up stock by hand per item, here as on the Stock page.
   const sessionTenant = useAuthStore((s) => s.currentTenant);
+  const isPharmacyTenant = isPharmacyFamilyType(sessionTenant?.businessType);
   const canTopUp = businessType(sessionTenant?.businessType).id === "contractor" && !sessionTenant?.sourceTenantId;
   const [topUp, setTopUp] = useState<ProductListRow | null>(null);
   const [topUpQty, setTopUpQty] = useState("");
@@ -79,6 +81,7 @@ export default function ProductsPage() {
     return (
       !term ||
       r.name.toLowerCase().includes(term) ||
+      (r.description ?? "").toLowerCase().includes(term) ||
       (r.barcode ?? "").toLowerCase().includes(term) ||
       (r.company_name ?? "").toLowerCase().includes(term)
     );
@@ -117,7 +120,9 @@ export default function ProductsPage() {
     { header: "Product Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { header: "Company", render: (r) => r.company_name ?? "—" },
     { header: "Category", render: (r) => r.category_name ?? "—" },
-    { header: "Sub Category", render: (r) => r.sub_category_name ?? "—" },
+    ...(isPharmacyTenant
+      ? [{ header: "Generic Name / Description", render: (r: ProductListRow) => r.description ?? "—" }]
+      : [{ header: "Sub Category", render: (r: ProductListRow) => r.sub_category_name ?? "—" }]),
     { header: "UOM", render: (r) => r.base_unit_name ?? "—" },
     {
       header: "Avail Qty",
@@ -168,11 +173,11 @@ export default function ProductsPage() {
             </Button>
             {canCsv && <Button className="max-sm:hidden"
               onClick={() => {
-                const PROD_HEADERS = ["Barcode","Product Name","Company","Category","Sub Category","UOM","Avail Qty","Sale Price","HS Code"];
+                const PROD_HEADERS = ["Barcode","Product Name","Company","Category",isPharmacyTenant ? "Generic Name / Description" : "Sub Category","UOM","Avail Qty","Sale Price","HS Code"];
                 exportCsv(
                   `products-${new Date().toISOString().slice(0,10)}.csv`,
                   PROD_HEADERS,
-                  filtered.map((r) => [r.barcode, r.name, r.company_name, r.category_name, r.sub_category_name, r.base_unit_name, r.avail_qty, r.sale_price, r.hs_code])
+                  filtered.map((r) => [r.barcode, r.name, r.company_name, r.category_name, isPharmacyTenant ? r.description : r.sub_category_name, r.base_unit_name, r.avail_qty, r.sale_price, r.hs_code])
                 );
               }}
             >
@@ -200,7 +205,7 @@ export default function ProductsPage() {
 
       <div className="mb-3 flex items-center gap-2 rounded-xl bg-white px-2 py-2 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] sm:rounded-2xl sm:px-4 sm:py-2.5">
         <Input
-          placeholder="Search by product, barcode or company..."
+          placeholder={isPharmacyTenant ? "Search by product, generic name, barcode or company..." : "Search by product, barcode or company..."}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"

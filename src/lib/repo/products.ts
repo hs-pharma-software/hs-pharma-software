@@ -157,6 +157,7 @@ export interface ProductListRow {
   id: string;
   barcode: string | null;
   name: string;
+  description: string | null;
   company_name: string | null;
   category_name: string | null;
   sub_category_name: string | null;
@@ -207,6 +208,7 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
       p.id,
       p.barcode,
       p.name,
+      p.description,
       p.company_name,
       p.catalog_group,
       p.product_classification,
@@ -297,14 +299,14 @@ export async function searchProductsByNameOrBarcode(term: string): Promise<Produ
       `SELECT * FROM products
        WHERE deleted_at IS NULL
          AND (tenant_id = ? OR (tenant_id IS NULL AND catalog_group IN (${placeholders})))
-         AND (name LIKE ? OR barcode LIKE ?)
+         AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?)
        ORDER BY name ASC LIMIT 25`,
-      [tenantId, ...sharedGroups, like, like]
+      [tenantId, ...sharedGroups, like, like, like]
     );
   }
   return dbSelect<Product>(
-    `SELECT * FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND (name LIKE ? OR barcode LIKE ?) ORDER BY name ASC LIMIT 25`,
-    [tenantId, like, like]
+    `SELECT * FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?) ORDER BY name ASC LIMIT 25`,
+    [tenantId, like, like, like]
   );
 }
 
@@ -316,9 +318,9 @@ export async function searchSharedCatalog(term: string, group: SharedCatalogGrou
   return dbSelect<Product>(
     `SELECT * FROM products
      WHERE deleted_at IS NULL AND tenant_id IS NULL AND catalog_group = ?
-       AND (name LIKE ? OR barcode LIKE ?)
+       AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?)
      ORDER BY name ASC LIMIT 25`,
-    [group, like, like]
+    [group, like, like, like]
   );
 }
 
