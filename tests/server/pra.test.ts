@@ -91,6 +91,10 @@ test("the fiscal number is an opaque string: every digit of a JSON number, lette
   assert.equal(fiscalNumberFrom(`{"InvoiceNumber":123456789012345678901234567890,"Code":"100"}`), "123456789012345678901234567890", "30 digits, no rounding");
   assert.equal(fiscalNumberFrom(JSON.stringify(`{"InvoiceNumber":90000520191112000369,"Code":"100"}`)), "90000520191112000369");
   assert.equal(fiscalNumberFrom(`{"InvoiceNumber":"Not Available","Code":"104"}`), null);
+  // Real PRA Sandbox answer (2026-11-18, test POS 821651): asterisks are part of the number.
+  assert.equal(fiscalNumberFrom(`{"InvoiceNumber":"821651FKLK41348851*test*","Code":"100","Response":"Invoice received successfully"}`), "821651FKLK41348851*test*");
+  assert.equal(mapPraResponse({ httpStatus: 200, body: `{"InvoiceNumber":"821651FKLK41348851*test*","Code":"100"}` }).status, "accepted");
+  assert.equal(fiscalNumberFrom(`{"InvoiceNumber":9.0005e19,"Code":"100"}`), null, "a number PRA rounded is not trusted");
   assert.equal(mapPraResponse({ httpStatus: 200, body: `{"InvoiceNumber":"126983DJCN820607","Code":"100"}` }).praInvoiceNo, "126983DJCN820607");
   assert.equal(mapPraResponse({ httpStatus: 200, body: `{"InvoiceNumber":"Not Available","Code":"100"}` }).status, "manual_review", "success without a number is not acceptance");
   assert.equal(praVerifyUrl("126983DJCN820607"), "https://reg.pra.punjab.gov.pk/IMSFiscalReport/SearchPOSInvoice_Report.aspx?PRAInvNo=126983DJCN820607");
@@ -160,18 +164,16 @@ test("a counter needs its POS ID and token to be approved; one approved counter 
   assert.ok(String(one(`SELECT sandbox_token_enc FROM pra_pos WHERE id = ?`, p.id).sandbox_token_enc).startsWith("v1."), "stored encrypted");
 });
 
-test("going live: whitelisting per PNTN + POS ID, the shared gateway IP confirmed; production stays off without the server switch", async () => {
+test("going live: whitelisting per PNTN + POS ID (PRA's approval for the shared gateway IP); production stays off without the server switch", async () => {
   await ready();
   await pra.saveAccount(sql, SUPER, { tenantId: "t1", pntn: "1234567-8", registrationStatus: "registered", sandboxStatus: "passed" }, deps);
   const p = one(`SELECT id FROM pra_pos WHERE tenant_id = 't1'`);
   await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, environment: "production", productionPosId: "555", productionToken: "prod-token-abc-0001" }, deps);
   await pra.decidePos(sql, SUPER, { tenantId: "t1", id: p.id, approve: true }, { ...deps, now: () => new Date("2026-11-01T00:00:00Z") });
-  await assert.rejects(pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps), /whitelisted the IP for PNTN 1234567-8 \/ POS ID 555.*One MAVIN gateway IP/);
+  await assert.rejects(pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps), /whitelisted the IP for PNTN 1234567-8 \/ POS ID 555/);
   await assert.rejects(pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, whitelistStatus: "approved" }, deps), /production POS ID, the IP and PRA's reference/);
   await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, whitelistStatus: "approved", whitelistIp: "95.111.192.41", whitelistReference: "PRA email 2026-11-20" }, deps);
   assert.equal(one(`SELECT status FROM pra_pos WHERE id = ?`, p.id).status, "approved", "whitelisting does not need the counter approved again");
-  await assert.rejects(pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps), /One MAVIN gateway IP/);
-  await pra.saveCase(sql, SUPER, { key: "shared_ip", confirmedAt: "2026-11-20", reference: "PRA email 2026-11-20" }, deps);
   await pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps);
   assert.equal((await pra.setup(sql, SUPER, { tenantId: "t1" })).state, "live");
   order("o1", { no: 1 });
@@ -413,4 +415,95 @@ test("rules need verification before approval and a contract note when scope mat
   const v2 = await pra.saveRule(sql, SUPER, { ruleKey: "restaurant-9801.2000", sector: "restaurant", service: "Restaurants", classificationCode: "9801.2000", rate: 8, altRate: 16, paymentCondition: "digital_split", effectiveFrom: "2027-07-01", source: "Finance Act 2027" }, deps);
   assert.equal(v2.version, 2);
   assert.equal(one(`SELECT status FROM pra_tax_rules WHERE rule_key = 'restaurant-9801.2000' AND version = 2`).status, "draft");
+});
+
+// ── Contractor / service invoices (the shared invoices table) ────────────────
+
+/** t1 as a contractor: counter in the contractor sector; the 16 % contractor rule approved with eIMS = yes and assigned. */
+async function contractorReady() {
+  run(`UPDATE tenants SET business_type = 'contractor' WHERE id = 't1'`);
+  await pra.saveAccount(sql, SUPER, { tenantId: "t1", pntn: "7308865", registeredName: "Contractor Co", registrationStatus: "registered" }, deps);
+  await pra.setAccess(sql, SUPER, { tenantId: "t1", access: "enabled" }, deps);
+  await pra.savePos(sql, SUPER, { tenantId: "t1", branchId: "b1", counter: "OWNER LAPTOP", sector: "contractor", environment: "sandbox", sandboxPosId: "821651", sandboxToken: "sandbox-token-xyz-0009" }, deps);
+  await pra.decidePos(sql, SUPER, { tenantId: "t1", id: one(`SELECT id FROM pra_pos`).id, approve: true }, { ...deps, now: () => new Date("2026-11-01T00:00:00Z") });
+  await pra.listRules(sql, SUPER, {}, deps);
+  // PRA enrolled this business for eIMS: a version of the contractor rule with eIMS = yes.
+  await pra.saveRule(sql, SUPER, { ruleKey: "contractor-general-16", sector: "contractor", service: "Construction and contractor services (others)", classificationCode: "9824.0000", rate: 16, paymentCondition: "any", effectiveFrom: "2026-07-01", source: "Second Schedule Part III Sr. 6", lastVerifiedAt: "2026-11-15", eimsApplicable: "yes", needsScopeReview: true }, deps);
+  const v2 = one(`SELECT id FROM pra_tax_rules WHERE rule_key = 'contractor-general-16' AND version = 2`);
+  await pra.decideRule(sql, SUPER, { id: v2.id, decision: "approve", lastVerifiedAt: "2026-11-15" }, deps);
+  await pra.assignRule(sql, SUPER, { tenantId: "t1", ruleKey: "contractor-general-16", contractNote: "Electrical works for a private client" }, deps);
+  run(`INSERT INTO products (id, tenant_id, name, barcode, created_at, updated_at) VALUES ('svc', 't1', 'Wiring work', 'WIRE-1', ?, ?)`, T, T);
+}
+/** A contractor invoice: lines of Rs 500 each at `rate` with a Rs 100 line discount, cash or on credit. */
+function invoice(id: string, o: { no: number; rate?: number; credit?: boolean; type?: string; billDiscount?: number; isReturn?: boolean; original?: string; qty?: number; quotation?: boolean }) {
+  const rate = o.rate ?? 16, qty = o.qty ?? 2, price = 500, gross = price * qty, disc = o.isReturn ? 0 : 100;
+  const tax = o.isReturn ? 0 : Math.round((gross - disc) * rate) / 100;
+  const total = gross - disc + tax;
+  run(`INSERT INTO invoices (id, tenant_id, branch_id, invoice_no, date, inv_on, invoice_type, total, charges, discount_rs, payable, paid, balance, is_return, is_memorized, is_quotation, original_invoice_id, customer_name, created_at, updated_at)
+       VALUES (?, 't1', 'b1', ?, '2026-11-10', ?, ?, ?, 0, ?, ?, 0, 0, ?, 0, ?, ?, 'WAPDA Office', ?, ?)`,
+    id, o.no, o.credit ? "credit" : "cash", o.type ?? "general", gross, o.billDiscount ?? 0, total - (o.billDiscount ?? 0), o.isReturn ? 1 : 0, o.quotation ? 1 : 0, o.original ?? null, T, T);
+  run(`INSERT INTO invoice_items (id, tenant_id, branch_id, invoice_id, product_id, qty, sale_price, tax_pct, tax_rs, discount_rs, total, created_at, updated_at)
+       VALUES (?, 't1', 'b1', ?, 'svc', ?, ?, ?, ?, ?, ?, ?, ?)`, `${id}-l`, id, qty, price, o.isReturn ? 0 : rate, tax, disc, total, T, T);
+}
+const fiscal = (id: string) => pra.fiscalizeSource(sql, "t1", "invoice", id, OWNER, deps) as Promise<{ status: string; blockedReason: string; fiscalInvoiceNo: string; cases: string[] }>;
+
+test("contractor invoice at 16 %, cash: accepted with PCT 98240000 and PaymentMode 1; never sent twice", async () => {
+  await contractorReady();
+  invoice("i1", { no: 501 });
+  answers = [ok("90000520191112009001")];
+  const r = await fiscal("i1");
+  assert.equal(r.status, "accepted");
+  const b = posted[0].body as { USIN: string; PaymentMode: number; InvoiceType: number; TotalSaleValue: number; TotalTaxCharged: number; Discount: number; TotalBillAmount: number; Items: { PCTCode: string; TaxRate: number; ItemCode: string; ItemName: string }[] };
+  assert.deepEqual([b.USIN, b.PaymentMode, b.InvoiceType, b.Items[0].PCTCode, b.Items[0].TaxRate, b.Items[0].ItemCode, b.Items[0].ItemName], ["501", 1, 1, "98240000", 16, "WIRE-1", "Wiring work"]);
+  assert.deepEqual([b.TotalSaleValue, b.TotalTaxCharged, b.Discount, b.TotalBillAmount], [900, 144, 100, 1044]);
+  assert.equal((await pra.forSource(sql, OWNER, { sourceType: "invoice", sourceId: "i1" }))?.fiscalInvoiceNo, "90000520191112009001");
+  await fiscal("i1");
+  await pra.sweep(sql, deps);
+  assert.equal(posted.length, 1, "never twice");
+});
+
+test("contractor invoices: on credit waits for its PaymentMode; Medicine (goods) and quotations are not PRA invoices; a bill discount or a wrong rate is held", async () => {
+  await contractorReady();
+  invoice("c1", { no: 502, credit: true });
+  invoice("m1", { no: 503, type: "medicine" });
+  invoice("q1", { no: 504, quotation: true });
+  invoice("d1", { no: 505, billDiscount: 50 });
+  invoice("w1", { no: 506, rate: 5 });
+  assert.match((await fiscal("c1")).blockedReason, /On credit \(paid later\): the eIMS PaymentMode is pending/);
+  assert.equal((await fiscal("m1")).status, "not_required");
+  assert.equal((await fiscal("q1")).status, "not_required");
+  assert.match((await fiscal("d1")).blockedReason, /bill discount/);
+  assert.match((await fiscal("w1")).blockedReason, /other than the approved rule.s 16 %/);
+  assert.equal(posted.length, 0);
+  await pra.saveCase(sql, SUPER, { key: "credit_invoice", praMode: 1, note: "Sandbox only until PRA answers" }, deps);
+  answers = [ok("90000520191112009002")];
+  assert.equal((await fiscal("c1")).status, "accepted");
+});
+
+test("contractor return: a credit note (type 3, RefUSIN = original) reversing the original's tax in proportion to the quantity returned", async () => {
+  await contractorReady();
+  invoice("i1", { no: 601, qty: 4 });
+  invoice("r1", { no: 602, isReturn: true, original: "i1", qty: 1 });
+  assert.match((await fiscal("r1")).blockedReason, /original invoice/);
+  answers = [ok("90000520191112009101"), ok("90000520191112009102")];
+  await fiscal("i1");
+  assert.equal((await fiscal("r1")).status, "accepted");
+  const c = posted[1].body as { InvoiceType: number; RefUSIN: string; USIN: string; TotalSaleValue: number; TotalTaxCharged: number; Discount: number; Items: { TaxRate: number }[] };
+  // Original: 4 x 500 = 2000, discount 100, tax 16 % of 1900 = 304. One of four returned: a quarter of each.
+  assert.deepEqual([c.InvoiceType, c.RefUSIN, c.USIN, c.Items[0].TaxRate, c.TotalSaleValue, c.TotalTaxCharged, c.Discount], [3, "601", "602", 16, 475, 76, 25]);
+  assert.equal(one(`SELECT ref_fiscal_invoice_no FROM pra_submissions WHERE source_id = 'r1'`).ref_fiscal_invoice_no, "90000520191112009101");
+  invoice("r2", { no: 603, isReturn: true, original: "i1", qty: 4 });
+  assert.match((await fiscal("r2")).blockedReason, /would exceed the original \(quantity 5\/4/);
+});
+
+test("going live with a counter still on sandbox: told to switch it; the counter's PRA whitelist approval is enough (no separate shared-IP step)", async () => {
+  await contractorReady();
+  await pra.saveAccount(sql, SUPER, { tenantId: "t1", pntn: "7308865", registrationStatus: "registered", sandboxStatus: "passed" }, deps);
+  const p = one(`SELECT id FROM pra_pos`);
+  await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, productionPosId: "198627", productionToken: "prod-token-abc-0009", whitelistStatus: "approved", whitelistIp: "95.111.192.41", whitelistReference: "PRA email 2026-11-17" }, deps);
+  await assert.rejects(pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps), /switch counter "OWNER LAPTOP" to the production environment/);
+  await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, environment: "production" }, deps);
+  await pra.decidePos(sql, SUPER, { tenantId: "t1", id: p.id, approve: true }, deps);
+  await pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps);
+  assert.equal((await pra.setup(sql, SUPER, { tenantId: "t1" })).state, "live");
 });

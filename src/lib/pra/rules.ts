@@ -186,6 +186,12 @@ export const PRA_CASES = {
     pending: "The eIMS PaymentMode code to send; a sample accepted payload.",
     needsSample: true,
   },
+  credit_invoice: {
+    title: "Invoice issued on credit (paid later)",
+    documented: "eIMS §6.1 PaymentMode lists 1 Cash, 2 Card, 3 Gift Voucher, 4 Loyalty Card, 5 Mixed, 6 Cheque: none for an invoice on account (contractors, distributors).",
+    pending: "The PaymentMode to send for an invoice issued on credit; a sample accepted payload.",
+    needsSample: true,
+  },
   multiple_partial_credits: {
     title: "More than one partial credit note for one invoice",
     documented: "InvoiceType 3 with RefUSIN = the original invoice's USIN (§6.1, §6.2). Cumulative quantity, value and tax are limited to the original.",
@@ -213,7 +219,7 @@ export const PRA_CASES = {
   shared_ip: {
     title: "One MAVIN gateway IP for several businesses / POS IDs",
     documented: "Manual §6.4.2: whitelisting needs PNTN, business name, POS ID, server IP and location (tracked per PNTN + POS ID).",
-    pending: "Explicit approval that the shared IP may serve each PNTN / POS ID.",
+    pending: "Answered per business: record PRA's whitelist approval (IP and reference) on each counter. Going live checks that, not this case.",
     needsSample: false,
   },
 } as const;
@@ -260,6 +266,7 @@ export const METHOD_CLASS: Record<string, { taxClass: "qualifying_digital" | "ot
   card: { taxClass: "qualifying_digital", praMode: 2, caseKey: null, label: "Debit / credit card" },
   digital: { taxClass: "qualifying_digital", praMode: null, caseKey: "wallet_qr", label: "Mobile wallet / QR" },
   bank: { taxClass: "other", praMode: null, caseKey: "bank_transfer", label: "Bank transfer" },
+  credit: { taxClass: "other", praMode: null, caseKey: "credit_invoice", label: "On credit (paid later)" },
 };
 
 export interface PaymentCheck {

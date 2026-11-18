@@ -25,6 +25,7 @@ export async function POST(req: Request): Promise<Response> {
       case "submit": result = await pra.submit(sql, caller, b, await scope()); break;
       case "list": result = await pra.list(sql, caller, b, pra.isSuper(caller) ? undefined : await scope()); break;
       case "reconcile": result = await pra.reconcile(sql, caller, b); break;
+      case "for_source": result = await pra.forSource(sql, caller, b); break;
       case "process": {
         // The business's own bills (any login of it), or every business (Super Admin).
         if (!pra.isSuper(caller) && !caller.tenantId) throw new HttpError(403, "Not allowed.");

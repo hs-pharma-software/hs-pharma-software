@@ -46,6 +46,8 @@ export interface PrintData {
   /** Medicine invoices: the drug-sale warranty, printed in the note section. */
   warranty?: string | null;
   fbrInvoiceNo: string | null;
+  /** PRA eIMS (Punjab services): only once PRA accepted the invoice. qrUrl: the verification link (Tech. Spec. v1.2 FAQ 4). */
+  pra?: { fiscalNo: string; qrUrl: string; pntn?: string | null } | null;
 }
 
 export interface EditorHooks {
@@ -538,9 +540,23 @@ export function InvoicePrintLayout({
         ) : null;
       }
       case "fbr": {
-        if (!data.fbrInvoiceNo) return null;
-        // FBR Digital Invoicing logo and the invoice QR, same size, side by side.
         const size = thermal ? 64 : template.paper === "a5" ? 72 : 84;
+        // PRA eIMS fiscal number and verification QR (shown only when PRA accepted the invoice).
+        const praPanel = data.pra ? (
+          <div style={{ ...font(blk), display: "flex", gap: 10, alignItems: "center", justifyContent: thermal || blk.align === "center" ? "center" : "flex-start", marginTop: data.fbrInvoiceNo ? 6 : 0, flexDirection: thermal ? "column" : "row" }}>
+            <div style={{ background: "#fff", padding: 3, borderRadius: 4, lineHeight: 0 }}>
+              <QRCode value={data.pra.qrUrl} size={size - 6} style={{ width: size - 6, height: size - 6 }} viewBox="0 0 256 256" />
+            </div>
+            <div style={{ textAlign: thermal || blk.align === "center" ? "center" : "left", minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>PRA Fiscal Invoice No</div>
+              <div style={{ marginTop: 2, wordBreak: "break-all" }}><b>{data.pra.fiscalNo}</b></div>
+              {data.pra.pntn && <div style={{ fontSize: "0.85em" }}>PRA PNTN: {data.pra.pntn}</div>}
+              <div style={{ fontSize: "0.8em", color: "#666" }}>Verify at PRA or the FBR Asaan app</div>
+            </div>
+          </div>
+        ) : null;
+        if (!data.fbrInvoiceNo) return praPanel;
+        // FBR Digital Invoicing logo and the invoice QR, same size, side by side.
         const logo = (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={FBR_LOGO_SRC} alt="FBR Digital Invoicing" width={size} height={size} style={{ display: "block", borderRadius: 6 }} />
@@ -562,6 +578,7 @@ export function InvoicePrintLayout({
         const panel: CSSProperties = colored ? { border: `1px solid ${tint(P, 0.25)}`, borderRadius: 8, padding: 8 } : {};
         if (thermal || blk.align === "center") {
           return (
+            <>
             <div style={{ ...font(blk), ...panel, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 {logo}
@@ -569,9 +586,12 @@ export function InvoicePrintLayout({
               </div>
               {text}
             </div>
+            {praPanel}
+            </>
           );
         }
         return (
+          <>
           <div
             style={{
               ...font(blk),
@@ -586,6 +606,8 @@ export function InvoicePrintLayout({
             <div style={{ flex: 1 }}>{text}</div>
             {qr}
           </div>
+          {praPanel}
+          </>
         );
       }
       case "thanks":

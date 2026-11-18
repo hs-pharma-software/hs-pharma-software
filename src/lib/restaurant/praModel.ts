@@ -196,15 +196,23 @@ export function praBodyText(body: string | null): string | null {
 
 /** The fiscal invoice number exactly as PRA sent it. PRA may send it as a
  * bare JSON number of 19-20 digits (manual §6.3), which JSON.parse would
- * round; it is read from the text instead, digit for digit. Null when absent,
- * "Not Available", or not a plain number / code. */
+ * round; it is read from the text instead, digit for digit. As a string it is
+ * opaque: every character is kept (the Sandbox answers e.g.
+ * "821651FKLK41348851*test*"). Null when absent, "Not Available", a number
+ * PRA itself rounded (decimal / exponent), or not a single printable token. */
 export function fiscalNumberFrom(body: string | null): string | null {
   const text = praBodyText(body);
   if (!text) return null;
-  const m = text.match(/"InvoiceNumber"\s*:\s*(?:"([^"]*)"|(-?[0-9][0-9.eE+-]*))/);
+  const m = text.match(/"InvoiceNumber"\s*:\s*(?:"((?:[^"\\]|\\.)*)"|(-?[0-9][0-9.eE+-]*))/);
+  if (m?.[2] != null && !/^[0-9]+$/.test(m[2])) return null;
   const v = (m?.[1] ?? m?.[2] ?? "").trim();
   if (!v || /not\s*available/i.test(v)) return null;
-  return /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/.test(v) ? v : null;
+  return isFiscalNumber(v) ? v : null;
+}
+
+/** A fiscal invoice number as PRA issues it: one printable token (no spaces, quotes or control characters), up to 64 characters. */
+export function isFiscalNumber(v: string): boolean {
+  return /^[\x21-\x7e]{1,64}$/.test(v) && !/["\\]/.test(v);
 }
 
 export function mapPraResponse(r: { httpStatus: number | null; body: string | null; networkError?: string | null }): PraOutcome {

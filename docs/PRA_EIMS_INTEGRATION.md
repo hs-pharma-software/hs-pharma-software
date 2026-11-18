@@ -33,6 +33,28 @@ Sources:
 
 Production opens for a case only when the Super Admin records PRA's written confirmation: the reference and date, plus an accepted sample payload where the case asks for one. This is done under Super Admin › PRA Tax Suggestions › PRA cases. Sandbox use of each case can be switched off there.
 
+### 0.0 Sandbox results (2026-11-18)
+
+- **Setup:** test POS 821651, the public Sandbox token (Tech. Spec. v1.2 §7.2.2), payloads built by MAVIN's `buildPraInvoice`. PRA whitelisted the gateway IP 95.111.192.41 on 2026-11-17.
+
+| Test | Result |
+|---|---|
+| Contractor service invoice: 2 × Rs 500, Rs 100 discount, 16 %, PCT 98240000, cash | **Code 100**, `821651FKLK41348851*test*` |
+| Mixed payment (PaymentMode 5) | **Code 100**, `821651FKLK4458429*test*`. The payload format is accepted; the tax rate for a mixed bill is still for PRA to confirm. |
+| Credit note (InvoiceType 3, RefUSIN = original USIN) | **Code 100**, `821651FKLK4415401*test*` |
+| Second partial credit note on the same original | **Code 100**, `821651FKLK4415215*test*`. The Sandbox accepts it; production still needs PRA's confirmation. |
+| The same USIN sent again | **Code 100** with a *new* fiscal number. PRA does not reject duplicates, so MAVIN's own one-record-per-bill rule is what prevents a second fiscal invoice. |
+
+- **Findings acted on:**
+  1. Sandbox fiscal numbers contain `*`. MAVIN now keeps any printable token up to 64 characters; before this fix it would have sent these accepted invoices to reconciliation.
+  2. Contractor invoices (the shared invoices table) are now fiscalised, not only restaurant bills:
+     - Medicine (goods) invoices and quotations are excluded.
+     - Returns become credit notes whose tax comes from the original's lines.
+     - Bill-level discounts and charges are held pending PRA guidance.
+     - An invoice on credit waits for the `credit_invoice` PaymentMode.
+  3. Each counter's whitelist approval (IP and PRA reference) now answers the shared-IP question; going live no longer needs a separate step.
+  4. A counter with production details but still on sandbox gets a clear "switch the counter to production" message.
+
 ### 0.1 Consolidated clarification request
 
 To: eims@pra.punjab.gov.pk · Subject: eIMS cloud integration – clarifications and sample payloads (MAVIN.pk POS)

@@ -29,6 +29,7 @@ import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 import { InvoiceShareButtons } from "./InvoiceShare";
 import { invoiceLabel } from "@/lib/invoiceLabel";
 import { invoicePrintItems } from "@/lib/invoicePrintItems";
+import { praPrint, praRecord, type PraRecord } from "@/lib/praClient";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -74,6 +75,13 @@ export function InvoiceViewModal({
     void measurementsRepo.get(id).then((m) => setCustomSize(m ? `Custom size (${m.garment}, ${m.customer_name}): ${measurementSummary(m)}` : null)).catch(() => setCustomSize(null));
   }, [row.invoice.measurement_id]);
   const [fbrError, setFbrError] = useState<string | null>(null);
+  // PRA eIMS: this invoice's record with PRA (fiscal number printed only once accepted).
+  const [praRec, setPraRec] = useState<PraRecord | null>(null);
+  useEffect(() => {
+    let live = true;
+    void praRecord("invoice", row.invoice.id).then((r) => { if (live) setPraRec(r); });
+    return () => { live = false; };
+  }, [row.invoice.id]);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -210,6 +218,7 @@ export function InvoiceViewModal({
     note: [inv.description, customSize].filter(Boolean).join("\n") || null,
     warranty,
     fbrInvoiceNo,
+    pra: praPrint(praRec, companyProfile?.pra || null),
   };
 
   const printArea =
@@ -257,6 +266,13 @@ export function InvoiceViewModal({
         </div>
       </div>
 
+      {praRec && praRec.status !== "accepted" && (
+        <div className="mb-3 rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          <b>PRA:</b> {praRec.status === "blocked" ? "not sent" : praRec.status.replace(/_/g, " ")}
+          {(praRec.blockedReason || praRec.responseText) && <span> · {praRec.blockedReason ?? praRec.responseText}</span>}
+          <span className="block text-amber-800">Not a PRA fiscal invoice yet: the PRA number prints once PRA accepts it.</span>
+        </div>
+      )}
       {(fbrError || printError) && (
         <div className="mb-3 whitespace-pre-line break-words rounded-xl bg-rose-50 px-4 py-2.5 text-xs leading-relaxed text-rose-700 ring-1 ring-rose-200">
           <p className="font-semibold">{fbrError ? "FBR Error" : "Print Error"}</p>

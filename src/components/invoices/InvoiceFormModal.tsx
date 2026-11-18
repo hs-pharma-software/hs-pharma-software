@@ -1,5 +1,6 @@
 "use client";
 
+import { fiscalizeInvoice, praEditBlock } from "@/lib/praClient";
 import { useEffect, useRef, useState } from "react";
 import { STANDALONE } from "@/lib/edition";
 import { Modal } from "@/components/ui/Modal";
@@ -722,6 +723,13 @@ export function InvoiceFormModal({
       await saveOffline();
       return;
     }
+    if (isEdit && invoice) {
+      const praBlock = await praEditBlock(invoice.id);
+      if (praBlock) {
+        setError(praBlock);
+        return;
+      }
+    }
     setSaving(true);
     setError(null);
     try {
@@ -762,6 +770,8 @@ export function InvoiceFormModal({
       if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
       // Billed from a website order: link it once, so it is not billed twice and its stock hold ends.
       if (webOrderId && !invoice && !isDraft) await serverJson("/api/web/manage/", { action: "linkInvoice", id: webOrderId, invoiceId }).catch(() => undefined);
+      // PRA eIMS (businesses MAVIN's server fiscalises): recorded before sending, never twice; billing doesn't wait on it.
+      if (!isDraft) await fiscalizeInvoice(invoiceId);
       onSaved(isDraft ? undefined : { id: invoiceId, no: savedNo });
     } catch (err) {
       // Desktop app: the connection dropped during the save. Part of it may be on the server already.

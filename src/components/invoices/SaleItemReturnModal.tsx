@@ -1,5 +1,6 @@
 "use client";
 
+import { fiscalizeInvoice } from "@/lib/praClient";
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input } from "@/components/ui/Field";
@@ -164,6 +165,8 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
       }
       const backImeis = activeLines.flatMap((l) => l.returnImeis ?? []);
       if (backImeis.length) await returnSoldImeis(backImeis, `Returned on bill #${invoiceNo}`);
+      // PRA eIMS: the credit note (RefUSIN = the original invoice), sent once the original is accepted.
+      await fiscalizeInvoice(returnInvoice.id);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

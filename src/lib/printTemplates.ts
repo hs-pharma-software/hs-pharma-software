@@ -146,7 +146,7 @@ export const BLOCK_LABELS: Record<BlockId, string> = {
   items: "Items",
   totals: "Totals",
   note: "Invoice note",
-  fbr: "FBR invoice no & QR",
+  fbr: "FBR / PRA invoice no & QR",
   thanks: "Thank-you message",
 };
 
