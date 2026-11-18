@@ -5541,3 +5541,12 @@
     ALTER TABLE pra_submissions ADD COLUMN total_quantity REAL NOT NULL DEFAULT 0;
     
 ;
+-- schema_sql_v93
+
+    -- Structured ultrasound reports (the values the doctor fills in, JSON) and
+    -- the random key of a radiology report's online copy (its QR code).
+    ALTER TABLE hospital_imaging_orders ADD COLUMN structured_report TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN public_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hospital_imaging_public_token ON hospital_imaging_orders (public_token) WHERE public_token IS NOT NULL;
+    
+;

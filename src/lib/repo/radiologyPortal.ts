@@ -10,6 +10,8 @@ import { canProcess, reportImaging } from "./hospitalOpd";
 import { machineWorklist, modalityCodeFor, newMachineKey, sha256Hex, keyHint, type MachineRow, type ModalityRef, type WorklistOrder } from "../dicomApi";
 import { STANDARD_MODALITIES, DICOM_MODALITY_CODES, parseExam, validateExam, type ExamData } from "../../config/radiologyPortal";
 import { RADIOLOGY_ADMIN_ROLES, TECHNOLOGIST_ROLES, TECHNOLOGIST_ASSIGN_ROLES } from "../../config/hospitalStaff";
+import { findingsText, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
+import { newRadiologyToken } from "../radiologyReportDocument";
 import type { HospitalImagingOrder, HospitalPatient } from "../types-hospital";
 
 export interface RadiologyModality extends TenantRow {
@@ -584,8 +586,29 @@ export async function listForReporting(view: "to_report" | "unexamined" | "repor
   return view === "unexamined" ? rows.filter((r) => canProcess(r)) : rows;
 }
 
-/** Writes the report; the radiologist is the logged-in user unless named. */
-export async function reportStudy(orderId: string, r: { findings: string | null; impression: string; radiologist?: string | null }): Promise<void> {
+/** Writes the report; the radiologist is the logged-in user unless named. A
+ * structured ultrasound is checked, and its findings written out as text for
+ * the screens that show a report as text. Every report gets its online copy's key. */
+export async function reportStudy(orderId: string, r: { findings: string | null; impression: string; radiologist?: string | null; structured?: StructuredReport | null }): Promise<void> {
   const a = await currentActor();
-  await reportImaging(orderId, { findings: r.findings, impression: r.impression, radiologist: clean(r.radiologist) ?? (a.designation ? `${a.name}, ${a.designation}` : a.name) });
+  const order = await hospitalImagingRepo.get(orderId) as (HospitalImagingOrder & { public_token?: string | null }) | null;
+  if (!order) throw new Error("Order not found in this hospital.");
+  if (!canProcess(order)) throw new Error("The fee for this study is not paid yet. Reception must take the fee first.");
+  if (!r.impression.trim()) throw new Error("Enter the conclusion.");
+  let findings = r.findings;
+  let structured: StructuredReport | null = null;
+  if (r.structured) {
+    const template = ultrasoundTemplate(r.structured.template);
+    if (!template) throw new Error("Choose the report pattern.");
+    const patient = await hospitalPatientsRepo.get(order.patient_id);
+    const ctx = { gender: patient?.gender ?? null, reportDate: localDate() };
+    const errors = validateUltrasound(template, r.structured.values, ctx);
+    if (errors.length) throw new Error(errors.join(" "));
+    findings = findingsText(template, r.structured.values, ctx);
+    structured = { template: template.id, values: r.structured.values, recommendation: clean(r.structured.recommendation), note: clean(r.structured.note) };
+  }
+  await hospitalImagingRepo.update(orderId, {
+    structured_report: structured ? JSON.stringify(structured) : null, public_token: order.public_token ?? newRadiologyToken(),
+  } as Partial<HospitalImagingOrder>);
+  await reportImaging(orderId, { findings, impression: r.impression, radiologist: clean(r.radiologist) ?? (a.designation ? `${a.name}, ${a.designation}` : a.name) });
 }

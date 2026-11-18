@@ -386,6 +386,7 @@ const MIGRATIONS = [
   { version: 90, label: 'Distribution: product schemes (bonus / extra %), booking line bonus and discounts, invoice delivery (collect, deliver, return)', statements: rustSchemaStatementsWithTriggers(90) },
   { version: 91, label: 'PRA eIMS (server): accounts, POS counters, submissions, audit, tax-rule catalogue and assignments', statements: rustSchemaStatementsWithTriggers(91) },
   { version: 92, label: 'PRA findings: whitelist per PNTN + POS ID, payment components, original fiscal number on credits, case keys', statements: rustSchemaStatementsWithTriggers(92) },
+  { version: 93, label: 'Radiology: structured ultrasound reports and the online report key (QR code)', statements: rustSchemaStatementsWithTriggers(93) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

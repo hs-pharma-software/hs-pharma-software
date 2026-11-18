@@ -12,6 +12,9 @@ import {
 } from "@/lib/repo/radiologyPortal";
 import { parseExam, SAFETY_CHECKS } from "@/config/radiologyPortal";
 import { Panel, Tabs, PriorityPill, StatusPill, ageGender, errMsg, openImages, imagesMissingReason, useAutoRefresh } from "@/components/hospital/radiology/common";
+import { UltrasoundReportForm } from "@/components/hospital/radiology/UltrasoundReportForm";
+import { ULTRASOUND_TEMPLATES, isUltrasoundStudy, templateForStudy, ultrasoundTemplate, type UsValues } from "@/config/ultrasoundReports";
+import { localDate } from "@/lib/localDate";
 
 type View = "to_report" | "unexamined" | "reported";
 
@@ -91,6 +94,20 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
   const [radiologist, setRadiologist] = useState(order.radiologist ?? "");
   const [saving, setSaving] = useState(false);
   const reported = order.status === "reported";
+  // Ultrasound: the doctor fills in the scan's values instead of writing the findings.
+  const ultrasound = isUltrasoundStudy(order);
+  const [patternId, setPatternId] = useState(templateForStudy(order)?.id ?? "");
+  const [values, setValues] = useState<UsValues>({});
+  const [recommendation, setRecommendation] = useState("");
+  const [note, setNote] = useState("");
+  const pattern = reported ? null : ultrasoundTemplate(patternId);
+  const usCtx = { gender: order.gender, reportDate: localDate() };
+
+  function changePattern(id: string) {
+    if (Object.keys(values).length && !window.confirm("Change the report pattern? The values entered so far will be cleared.")) return;
+    setValues({});
+    setPatternId(id);
+  }
 
   useEffect(() => { void templatesFor(order).then(setTemplates).catch(() => setTemplates([])); }, [order]);
 
@@ -105,7 +122,10 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
   async function save() {
     setSaving(true);
     try {
-      await reportStudy(order.id, { findings: findings.trim() || null, impression, radiologist });
+      await reportStudy(order.id, {
+        findings: findings.trim() || null, impression, radiologist,
+        structured: pattern ? { template: pattern.id, values, recommendation, note } : null,
+      });
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${errMsg(e)}`);
@@ -142,7 +162,15 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
       </Panel>
       <Panel title="Report" actions={reported ? <Button variant="secondary" onClick={onPrint}><Printer size={14} />Print</Button> : undefined}>
         <div className="flex flex-col gap-3">
-          {!reported && (
+          {!reported && ultrasound && (
+            <Field label="Report pattern">
+              <Select id="rep-pattern" value={patternId} onChange={(e) => changePattern(e.target.value)}>
+                {ULTRASOUND_TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                <option value="">Write the findings as text</option>
+              </Select>
+            </Field>
+          )}
+          {!reported && !pattern && (
             <Field label="Template">
               <Select id="rep-template" value="" onChange={(e) => applyTemplate(e.target.value)}>
                 <option value="">{templates.length ? "— Fill from a template —" : "No templates for this study (Radiology › Templates)"}</option>
@@ -150,8 +178,12 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
               </Select>
             </Field>
           )}
-          <Field label="Findings"><Textarea id="rep-findings" rows={8} value={findings} readOnly={reported} onChange={(e) => setFindings(e.target.value)} /></Field>
-          <Field label="Impression" required><Textarea id="rep-impression" rows={3} value={impression} readOnly={reported} onChange={(e) => setImpression(e.target.value)} /></Field>
+          {pattern
+            ? <UltrasoundReportForm template={pattern} values={values} onChange={setValues} ctx={usCtx} />
+            : <Field label="Findings"><Textarea id="rep-findings" rows={8} value={findings} readOnly={reported} onChange={(e) => setFindings(e.target.value)} /></Field>}
+          <Field label={pattern ? "Conclusion" : "Impression"} required><Textarea id="rep-impression" rows={3} value={impression} readOnly={reported} onChange={(e) => setImpression(e.target.value)} /></Field>
+          {pattern && <Field label="Recommendation"><Textarea id="rep-recommendation" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} /></Field>}
+          {pattern && <Field label="Note"><Textarea id="rep-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>}
           <Field label="Radiologist"><Input id="rep-radiologist" value={radiologist} readOnly={reported} onChange={(e) => setRadiologist(e.target.value)} placeholder="Blank = your name and designation" /></Field>
           {!reported && (
             <div className="flex justify-end">

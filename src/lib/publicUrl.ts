@@ -8,6 +8,13 @@ export function publicReportUrl(token: string | null | undefined): string | null
   return base ? `${base}/report/?t=${encodeURIComponent(token)}` : null;
 }
 
+/** Web address of the online copy of a radiology report (its QR code). */
+export function publicRadiologyReportUrl(token: string | null | undefined): string | null {
+  if (!token) return null;
+  const base = publicSiteUrl();
+  return base ? `${base}/report/?r=${encodeURIComponent(token)}` : null;
+}
+
 /** The web version's address (report links, the DICOM machine API), or null when unknown. */
 export function publicSiteUrl(): string | null {
   const configured = (process.env.NEXT_PUBLIC_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "");

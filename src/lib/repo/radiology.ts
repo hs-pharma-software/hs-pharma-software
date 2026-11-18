@@ -1,11 +1,11 @@
 /** Radiology: the studies the department performs with their fees (Performing
  * Images), orders from the radiology counter, and the report search / print. */
-import { dbSelect } from "../db";
+import { dbExecute, dbSelect } from "../db";
 import { requireCurrentTenantId } from "./base";
 import { localDate, localDateTime } from "../localDate";
 import { useAuthStore } from "../../store/authStore";
 import { hasPermission } from "../moduleAccess";
-import { getSetting } from "./settings";
+import { assembleRadiologyReport, newRadiologyToken, type RadiologyReport } from "../radiologyReportDocument";
 import { hospitalEpisodesRepo, hospitalImagingRepo, hospitalPatientsRepo, hospitalServicesRepo, nextEpisodeNo } from "./hospital";
 import { listOpenVisits, orderInvestigation } from "./hospitalOpd";
 import { modalityCodeOfStudy } from "./radiologyPortal";
@@ -204,46 +204,21 @@ export async function searchRadiologyReports(query: string, limit = 50): Promise
   );
 }
 
-export interface RadiologyReport {
-  order: HospitalImagingOrder;
-  hospital: { name: string; address: string | null; phone: string | null; registration: string | null };
-  patient: { name: string; mrNo: string; age: string | null; gender: string | null };
-  episodeNo: string | null;
-  referringDoctor: string | null;
-}
+export type { RadiologyReport };
 
-/** A reported study for viewing / printing. Only a reported study prints. */
+/** A reported study for viewing / printing. Only a reported study prints. A
+ * report released before online copies existed gets its key the first time it is opened. */
 export async function getRadiologyReport(orderId: string): Promise<RadiologyReport> {
   if (!canSearchReports()) throw new Error("You do not have permission to open radiology reports.");
-  const order = await hospitalImagingRepo.get(orderId);
+  const order = await hospitalImagingRepo.get(orderId) as (HospitalImagingOrder & { public_token?: string | null; structured_report?: string | null }) | null;
   if (!order) throw new Error("Radiology order not found.");
   if (order.status !== "reported") throw new Error("This study is not reported yet.");
-  const patient = await hospitalPatientsRepo.get(order.patient_id);
-  const ep = order.episode_id ? await hospitalEpisodesRepo.get(order.episode_id) : null;
-  const doctor = ep?.doctor_id
-    ? (await dbSelect<{ name: string }>(`SELECT name FROM staff WHERE id = ? AND tenant_id = ?`, [ep.doctor_id, requireCurrentTenantId()]))[0]?.name ?? null
-    : null;
-  let profile: { name?: string; address?: string; phone?: string; registration_no?: string; city?: string } = {};
-  try {
-    profile = JSON.parse((await getSetting("hospital.profile")) ?? "{}");
-  } catch {
-    profile = {};
+  let publicToken = order.public_token ?? null;
+  if (!publicToken) {
+    publicToken = newRadiologyToken();
+    await hospitalImagingRepo.update(orderId, { public_token: publicToken } as Partial<HospitalImagingOrder>);
   }
-  return {
-    order,
-    hospital: {
-      name: profile.name || useAuthStore.getState().currentTenant?.name || "Hospital",
-      address: [profile.address, profile.city].filter(Boolean).join(", ") || null,
-      phone: profile.phone || null,
-      registration: profile.registration_no || null,
-    },
-    patient: {
-      name: patient?.name ?? "—",
-      mrNo: patient?.mr_no ?? "—",
-      age: patient?.age_years != null ? `${patient.age_years} y` : patient?.dob ?? null,
-      gender: patient?.gender ?? null,
-    },
-    episodeNo: ep?.episode_no ?? null,
-    referringDoctor: order.ordered_by ?? doctor,
-  };
+  return assembleRadiologyReport(requireCurrentTenantId(), { ...order, public_token: publicToken }, useAuthStore.getState().currentTenant?.name || "Hospital", {
+    select: (sql, params) => dbSelect(sql, params), execute: (sql, params) => dbExecute(sql, params),
+  });
 }

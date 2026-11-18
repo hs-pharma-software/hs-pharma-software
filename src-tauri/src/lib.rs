@@ -1867,6 +1867,16 @@ fn schema_sql_v80() -> &'static str {
     "#
 }
 
+fn schema_sql_v93() -> &'static str {
+    r#"
+    -- Structured ultrasound reports (the values the doctor fills in, JSON) and
+    -- the random key of a radiology report's online copy (its QR code).
+    ALTER TABLE hospital_imaging_orders ADD COLUMN structured_report TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN public_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hospital_imaging_public_token ON hospital_imaging_orders (public_token) WHERE public_token IS NOT NULL;
+    "#
+}
+
 fn schema_sql_v92() -> &'static str {
     r#"
     -- PRA findings: production whitelisting tracked per PNTN + POS ID (per
@@ -6484,6 +6494,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 92,
             description: "pra_findings",
             sql: schema_sql_v92(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 93,
+            description: "ultrasound_structured_reports",
+            sql: schema_sql_v93(),
             kind: MigrationKind::Up,
         },
     ]
