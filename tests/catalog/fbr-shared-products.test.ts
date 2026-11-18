@@ -75,3 +75,30 @@ test("a contractor product's FBR article name is sent instead of its invoice nam
   const item = (posted as { items: { productDescription: string }[] }).items[0];
   assert.equal(item.productDescription, "Blood transfusion set, sterile");
 });
+
+test("batch-split invoice rows with identical FBR identity are submitted as one DI item", async () => {
+  db.prepare(`INSERT INTO products (id, tenant_id, name, packing, hs_code, fbr_sale_type, fbr_sale_rate, fbr_uom, created_at, updated_at)
+    VALUES ('smoke', ?, 'Smoke Detector', 1, '3004.9099', 'Goods at standard rate (default)', 18, 'Numbers, pieces, units', 'x', 'x')`).run(T);
+  const inv = await invoicesRepo.create({
+    invoice_no: 3, date: "2026-11-17", inv_on: "credit", invoice_type: "general", description: null, salesman_id: null, customer_id: null,
+    customer_name: "Customer", total: 157500, charges: 0, discount_pct: 0, discount_rs: 0, tax_pct: 0, payable: 185850, paid: 0, balance: 185850,
+    is_return: 0, is_memorized: 0, converted_invoice_id: null, buyer_province: "Punjab", buyer_registration_type: "Unregistered",
+  } as never);
+  for (const qty of [20, 5, 5]) {
+    const gross = qty * 5250;
+    const tax = gross * 0.18;
+    await invoiceItemsRepo.create({
+      invoice_id: inv.id, product_id: "smoke", batch_no: null, packing: 1, uom_id: null, avail_qty: null, qty, bonus_qty: 0,
+      purchase_price: 3000, sale_price: 5250, tax_pct: 18, further_tax_pct: 0, tax_rs: tax, discount_pct: 0, discount_rs: 0, total: gross + tax,
+    } as never);
+  }
+
+  const result = await submitInvoiceToFbrById(inv.id, settings);
+  assert.equal(result.error, null);
+  const items = (posted as { items: { quantity: number; valueSalesExcludingST: number; salesTaxApplicable: number; totalValues: number }[] }).items;
+  assert.equal(items.length, 1);
+  assert.equal(items[0].quantity, 30);
+  assert.equal(items[0].valueSalesExcludingST, 157500);
+  assert.equal(items[0].salesTaxApplicable, 28350);
+  assert.equal(items[0].totalValues, 185850);
+});

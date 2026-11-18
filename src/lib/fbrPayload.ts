@@ -33,6 +33,32 @@ export interface FbrBuyer {
 const VALID_HS = new Set(FBR_HS_CODES.map((h) => h.code));
 const round = (n: number, dp: number) => Math.round(n * 10 ** dp) / 10 ** dp;
 
+/** Batch allocation can create multiple saved rows for one FBR item. DI API
+ * should receive one line per identical tax/product identity, with totals added. */
+function mergeDuplicateFbrItems(items: FbrInvoiceItem[]): FbrInvoiceItem[] {
+  const merged = new Map<string, FbrInvoiceItem>();
+  for (const item of items) {
+    const key = JSON.stringify([
+      item.hsCode, item.productDescription, item.rate, item.uoM,
+      item.salesTaxWithheldAtSource, item.extraTax, item.furtherTax, item.sroScheduleNo,
+      item.fedPayable, item.saleType, item.sroItemSerialNo,
+    ]);
+    const current = merged.get(key);
+    if (!current) {
+      merged.set(key, { ...item });
+      continue;
+    }
+    current.quantity = round(current.quantity + item.quantity, 4);
+    current.totalValues = round(current.totalValues + item.totalValues, 2);
+    current.valueSalesExcludingST = round(current.valueSalesExcludingST + item.valueSalesExcludingST, 2);
+    current.fixedNotifiedValueOrRetailPrice = round(current.fixedNotifiedValueOrRetailPrice + item.fixedNotifiedValueOrRetailPrice, 2);
+    current.salesTaxApplicable = round(current.salesTaxApplicable + item.salesTaxApplicable, 2);
+    current.furtherTax = round(current.furtherTax + item.furtherTax, 2);
+    current.discount = round(current.discount + item.discount, 2);
+  }
+  return Array.from(merged.values());
+}
+
 /** FBR's server crashes (error 500, reported as a "timeout") on backslashes. */
 export function fbrText(s: string | null | undefined): string {
   return (s ?? "")
@@ -90,7 +116,7 @@ export function buildFbrPayload(
     scenarioId = findSaleType(saleTypes[0])!.scenario(buyer.registered, settings.retailer);
   }
 
-  const fbrItems: FbrInvoiceItem[] = items.map((i) => {
+  const fbrItems = mergeDuplicateFbrItems(items.map((i) => {
     const saleType = findSaleType(i.fbr_sale_type)!;
     const rate = i.fbr_sale_rate ?? saleType.defaultRate;
     const gross = round(i.sale_price * i.qty, 2);
@@ -118,7 +144,7 @@ export function buildFbrPayload(
       saleType: saleType.value,
       sroItemSerialNo: fbrText(i.sro_item_serial_no),
     };
-  });
+  }));
 
   return {
     payload: {
