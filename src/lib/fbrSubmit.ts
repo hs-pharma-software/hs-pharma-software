@@ -4,6 +4,7 @@ import { invoicesRepo } from "./repo/invoices";
 import { customersRepo } from "./repo/customers";
 import { activeToken, fetchFbrHsUoms, submitInvoiceToFbr, type FbrSettings, type FbrSubmitResult } from "./fbr";
 import { buildFbrPayload, type FbrItemRow } from "./fbrPayload";
+import { isPraInvoice } from "./pra/services";
 
 /** Loads the invoice, its buyer snapshot and per-product FBR data, submits it,
  * and stores the returned FBR invoice number on success. */
@@ -12,6 +13,7 @@ export async function submitInvoiceToFbrById(invoiceId: string, settings: FbrSet
 
   const invoice = await invoicesRepo.get(invoiceId);
   if (!invoice) return fail("Invoice not found.");
+  if (isPraInvoice(invoice.invoice_type)) return fail("A PRA Invoice is reported to PRA, not FBR.");
   if (invoice.fbr_invoice_no) {
     return { success: true, fbrInvoiceNo: invoice.fbr_invoice_no, error: null, rawResponse: null };
   }

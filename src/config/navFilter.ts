@@ -83,9 +83,12 @@ const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospit
 export function visibleNavFor(
   businessTypeValue: string | null | undefined,
   allowedModules: string[] | null,
-  userPermissions: string[] | null
+  userPermissions: string[] | null,
+  /** Integrations this business has: entries that require one stay hidden without it. */
+  integrations: { pra?: boolean } = {}
 ): NavItem[] {
   const typeId = businessType(businessTypeValue).id;
+  const integrated = (x: { requires?: "pra" }) => !x.requires || integrations[x.requires] === true;
   const has = (key: string) => userPermissions === null || userPermissions.includes(key);
   const inPlan = (key: string) => key.startsWith("hospital_") || !allowedModules || allowedModules.length === 0 || allowedModules.includes(key);
 
@@ -97,7 +100,9 @@ export function visibleNavFor(
   };
 
   const items: NavItem[] = [];
-  for (const item of NAV) {
+  for (const entry of NAV) {
+    if (!integrated(entry)) continue;
+    const item = entry.children?.some((c) => c.requires) ? { ...entry, children: entry.children.filter(integrated) } : entry;
     if (item.onlyFor) {
       if (!item.onlyFor.includes(typeId)) continue;
     } else {

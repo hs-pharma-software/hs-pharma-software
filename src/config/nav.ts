@@ -73,6 +73,8 @@ export interface NavChild {
   moduleKey?: string;
   /** Third level: the pages inside this child. The child then only expands. */
   children?: NavChild[];
+  /** Only shown when the business has this integration (config/navFilter.ts). */
+  requires?: "pra";
 }
 
 export interface NavItem {
@@ -87,6 +89,8 @@ export interface NavItem {
   onlyFor?: string[];
   /** i18n key (lib/i18n/dict.ts) for translated menus. */
   labelKey?: string;
+  /** Only shown when the business has this integration (config/navFilter.ts). */
+  requires?: "pra";
 }
 
 const BASE_NAV: NavItem[] = [
@@ -123,6 +127,7 @@ const BASE_NAV: NavItem[] = [
     moduleKey: "products",
     children: [
       { label: "Product Detail", href: "/products" },
+      { label: "Services", href: "/products/services", onlyFor: ["contractor"], requires: "pra" },
       { label: "Price List", href: "/products/price-list" },
       { label: "UOM Details", href: "/products/uom" },
       { label: "Categories Details", href: "/products/categories" },
@@ -132,6 +137,7 @@ const BASE_NAV: NavItem[] = [
     ],
   },
   { label: "Stock", href: "/stock", icon: Boxes, moduleKey: "stock" },
+  { label: "PRA e-Invoicing", href: "/pra", icon: ShieldCheck, moduleKey: "contractor_pra", onlyFor: ["contractor"], requires: "pra" },
   {
     label: "Customers",
     href: "/customers",

@@ -29,7 +29,8 @@ import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 import { InvoiceShareButtons } from "./InvoiceShare";
 import { invoiceLabel } from "@/lib/invoiceLabel";
 import { invoicePrintItems } from "@/lib/invoicePrintItems";
-import { praPrint, praRecord, type PraRecord } from "@/lib/praClient";
+import { invoiceAuthority, praPrint, praRecord, type PraRecord } from "@/lib/praClient";
+import { isPraInvoice } from "@/lib/pra/services";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -43,7 +44,7 @@ interface InvoiceViewRow {
 /** Contractor invoices: a Medicine invoice always prints its batch column, a
  * General one never does. */
 function contractorTemplate(template: PrintTemplate, invoiceType: string | null | undefined): PrintTemplate {
-  if (invoiceType !== "medicine" && invoiceType !== "general") return template;
+  if (invoiceType !== "medicine" && invoiceType !== "general" && invoiceType !== "pra") return template;
   return { ...template, columns: { ...template.columns, batch: invoiceType === "medicine" } };
 }
 
@@ -160,7 +161,9 @@ export function InvoiceViewModal({
         address: companyProfile?.address || tenantInfo?.address || "",
       })
     : null;
-  const isContractorGeneral = sessionTenant?.businessType === "contractor" && inv.invoice_type === "general";
+  const isContractor = sessionTenant?.businessType === "contractor";
+  const isPra = isPraInvoice(inv.invoice_type);
+  const isContractorGeneral = isContractor && (inv.invoice_type === "general" || isPra);
   const printData: PrintData = {
     business: {
       name: companyProfile ? printedBusinessName(companyProfile, accountName) : accountName,
@@ -177,7 +180,7 @@ export function InvoiceViewModal({
     returnOf: inv.is_return && originalInvoiceNo ? `#${originalInvoiceNo}` : null,
     date: inv.date,
     payment: inv.inv_on === "credit" ? "Credit" : "Cash",
-    invoiceType: inv.invoice_type === "medicine" ? "Medicine" : inv.invoice_type === "general" ? "General" : inv.invoice_type ?? null,
+    invoiceType: inv.invoice_type === "medicine" ? "Medicine" : inv.invoice_type === "general" ? "General" : isPra ? "PRA Invoice" : inv.invoice_type ?? null,
     salesman: row.salesmanName,
     customer: {
       name: inv.customer_name || row.customerName,
@@ -191,7 +194,7 @@ export function InvoiceViewModal({
         productId: item.product_id,
         name: item.product_name,
         hsCode: item.hs_code ?? null,
-        batch: inv.invoice_type === "general" ? null : item.line_batch || item.batch_no || null,
+        batch: inv.invoice_type === "general" || isPra ? null : item.line_batch || item.batch_no || null,
         qty: item.qty,
         bonusQty: item.bonus_qty,
         packing: item.packing,
@@ -219,6 +222,7 @@ export function InvoiceViewModal({
     warranty,
     fbrInvoiceNo,
     pra: praPrint(praRec, companyProfile?.pra || null),
+    authority: isContractor ? invoiceAuthority({ isPra, fbrInvoiceNo, fbrEnabled: Boolean(fbrSettings), pra: praRec }) : null,
   };
 
   const printArea =
@@ -249,7 +253,7 @@ export function InvoiceViewModal({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <InvoiceShareButtons invoiceId={inv.id} size="sm" />
-          {fbrSettings && !fbrInvoiceNo && !inv.is_return && canFbr && (
+          {fbrSettings && !fbrInvoiceNo && !inv.is_return && !isPra && canFbr && (
             <Button
               variant="secondary"
               disabled={fbrSubmitting}

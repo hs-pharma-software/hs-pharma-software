@@ -11,6 +11,7 @@ import {
   type PrintTemplate,
 } from "@/lib/printTemplates";
 import type { RegNumber } from "@/lib/companyProfile";
+import type { InvoiceAuthority } from "@/lib/praClient";
 
 export interface PrintItem {
   id: string;
@@ -48,6 +49,27 @@ export interface PrintData {
   fbrInvoiceNo: string | null;
   /** PRA eIMS (Punjab services): only once PRA accepted the invoice. qrUrl: the verification link (Tech. Spec. v1.2 FAQ 4). */
   pra?: { fiscalNo: string; qrUrl: string; pntn?: string | null } | null;
+  /** Contractors: the tax authority this invoice is for, shown as a band above the title. */
+  authority?: InvoiceAuthority | null;
+}
+
+/** FBR green, PRA blue; on a thermal receipt the band is black and the wording tells them apart. */
+function AuthorityBand({ a, thermal }: { a: InvoiceAuthority; thermal: boolean }) {
+  const color = thermal ? "#000000" : a.kind === "fbr" ? "#006633" : "#1d4ed8";
+  const exact: CSSProperties = { WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" };
+  return (
+    <div style={{ ...exact, display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "6px 10px", border: `1.5px solid ${color}`, borderLeft: `7px solid ${color}`, borderRadius: 6, background: thermal ? "#fff" : tint(color, 0.06) }}>
+      <div style={{ flex: "none", width: 44, height: 44, borderRadius: "50%", border: `2px solid ${color}`, outline: `1px solid ${color}`, outlineOffset: 2, color, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", transform: "rotate(-10deg)", lineHeight: 1, fontWeight: 800 }}>
+        <span style={{ fontSize: 13, letterSpacing: 0.5 }}>{a.kind === "fbr" ? "FBR" : "PRA"}</span>
+        <span style={{ fontSize: 10, marginTop: 2 }}>{a.confirmed ? "✓" : "…"}</span>
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ color, fontWeight: 800, fontSize: "1.1em", textTransform: "uppercase", letterSpacing: 0.6 }}>{a.title}</div>
+        <div style={{ fontSize: "0.86em", color: "#444" }}>{a.tax}</div>
+      </div>
+      <div style={{ ...exact, flex: "none", maxWidth: "42%", textAlign: "center", padding: "3px 8px", borderRadius: 999, fontSize: "0.8em", fontWeight: 700, color: a.confirmed ? "#fff" : color, background: a.confirmed ? color : "transparent", border: `1px solid ${color}` }}>{a.status}</div>
+    </div>
+  );
 }
 
 export interface EditorHooks {
@@ -468,7 +490,7 @@ export function InvoicePrintLayout({
           {row(tx(blk, "total"), money(t.total))}
           {t.discount > 0 && row(tx(blk, "discount"), `-${money(t.discount)}`)}
           {/* Tax always shows before the grand total (thermal included). */}
-          {t.tax > 0 && row(tx(blk, "tax"), money(t.tax))}
+          {t.tax > 0 && row(data.authority ? (data.authority.kind === "pra" ? "PST" : "GST") : tx(blk, "tax"), money(t.tax))}
           {t.charges > 0 && row(tx(blk, "charges"), money(t.charges))}
           {row(tx(blk, "grand"), money(t.payable), true, grand)}
           {row(tx(blk, "paid"), money(t.paid))}
@@ -492,7 +514,12 @@ export function InvoicePrintLayout({
       case "business":
         return renderBusiness(blk);
       case "title":
-        return renderTitle(blk);
+        return (
+          <>
+            {data.authority && <AuthorityBand a={data.authority} thermal={thermal} />}
+            {renderTitle(blk)}
+          </>
+        );
       case "meta":
         return (
           <div style={{ textAlign: blk.align, ...font(blk), ...(colored ? infoBox(blk) : {}) }}>

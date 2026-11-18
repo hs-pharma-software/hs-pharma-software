@@ -34,6 +34,7 @@ import {
   PRA_CASES, PRA_SECTORS, SEED_RULES, approvalProblems, caseBlock, checkPayment, expectedRate, pctCodeOf, ruleOn,
   type CaseState, type CaseStates, type PaymentComponent, type PraCaseKey, type PraRule,
 } from "@/lib/pra/rules";
+import { PRA_INVOICE_TYPE, isPraInvoice } from "@/lib/pra/services";
 import { openPra, praHint, praStorageReady, sealPra } from "./secretBox";
 import { postToPra, praRoute, type PraEnvironment, type PraTransportDeps } from "./transport";
 
@@ -681,6 +682,25 @@ interface InvoiceRow { id: string; tenant_id: string; branch_id: string | null; 
 /** Sectors whose bills are restaurant orders; every other sector bills through the shared invoice. */
 const RESTAURANT_SECTORS = ["restaurant", "hotel"];
 
+/** The owner's switch (PRA e-Invoicing page): off holds PRA invoices, on sends them. Nothing is lost while it is off. */
+const SENDING_OFF = "PRA sending is switched off for this business. This invoice is sent when it is switched on again.";
+async function sendingOn(sql: Sql, T: string): Promise<boolean> {
+  return (await sql.execute(`SELECT value FROM settings WHERE key = ?`, [`${T}::pra_sending`])).rows[0]?.value !== "off";
+}
+
+/** The owner (or Super Admin) switches sending PRA invoices on or off. */
+export async function setSending(sql: Sql, c: Caller, input: { tenantId?: unknown; enabled?: unknown }, deps: PraDeps = {}) {
+  const T = tenantFor(c, input);
+  ownerOrSuper(c, T);
+  if (typeof input.enabled !== "boolean") throw new HttpError(400, "Say whether PRA sending is on or off.");
+  if ((await account(sql, T))?.status !== "enabled") throw new HttpError(409, "PRA is not enabled for this business.");
+  const now = iso(nowOf(deps));
+  await sql.execute(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [`${T}::pra_sending`, input.enabled ? "on" : "off", now]);
+  await audit(sql, T, c, input.enabled ? "sending.on" : "sending.off", null, deps);
+  return { sending: input.enabled };
+}
+
 /** Everything needed to send one service invoice (contractor and others), or why it can't be sent. Nothing is written. */
 async function prepareInvoice(sql: Sql, T: string, inv: InvoiceRow, deps: PraDeps): Promise<Prepared | { skip: string }> {
   if (Number(inv.is_quotation) === 1 || Number(inv.is_memorized) === 1) return { skip: "Quotations and drafts are not fiscal invoices." };
@@ -693,12 +713,15 @@ async function prepareInvoice(sql: Sql, T: string, inv: InvoiceRow, deps: PraDep
   const pos = (await counters(sql, T)).find((p) => p.branch_id === branchId && p.status === "approved");
   if (!pos) return { skip: "No approved PRA counter for this branch." };
   if (RESTAURANT_SECTORS.includes(pos.sector)) return { skip: "This counter fiscalises restaurant bills." };
+  // A contractor chooses per invoice: PRA Invoice goes to PRA; General and Medicine are FBR's.
+  if (pos.sector === "contractor" && !isPraInvoice(inv.invoice_type)) return { skip: "Only a PRA Invoice is reported to PRA." };
   const at = inv.created_at;
   if (pos.active_from && at < pos.active_from) return { skip: "Issued before PRA was switched on for this counter." };
   const environment: PraEnvironment = pos.environment === "production" ? "production" : "sandbox";
   const states = await caseStates(sql);
   const problems: string[] = [];
   const cases: PraCaseKey[] = [];
+  if (!(await sendingOn(sql, T))) problems.push(SENDING_OFF);
   if (environment === "production") {
     if (!a.live_approved_at) problems.push("Going live has not been approved by the Super Admin.");
     if (process.env.PRA_PRODUCTION_ENABLED !== "1" && deps.env?.PRA_PRODUCTION_ENABLED !== "1") problems.push("Live PRA submission is switched off on this server (PRA_PRODUCTION_ENABLED).");
@@ -713,21 +736,21 @@ async function prepareInvoice(sql: Sql, T: string, inv: InvoiceRow, deps: PraDep
   const day = (inv.date || at).slice(0, 10);
   const assigned = (await sql.execute(`SELECT rule_key FROM pra_rule_assignments WHERE tenant_id = ? AND status = 'active' AND (branch_id = ? OR branch_id IS NULL) ORDER BY (branch_id IS NULL)`, [T, branchId])).rows;
   const rules = await allRules(sql);
-  let rule: PraRule | null = null;
+  // Every approved rule assigned to this branch: a service is matched to the rule of its PCT code.
+  const inForce: PraRule[] = [];
   for (const x of assigned) {
     const r = ruleOn(rules, String(x.rule_key), day);
-    if (r && r.sector === pos.sector) { rule = r; break; }
+    if (r && r.sector === pos.sector && !inForce.some((y) => y.id === r.id)) inForce.push(r);
   }
-  if (!rule) problems.push(`No approved PRA tax rule for sector "${pos.sector}" is assigned to this branch for ${day}.`);
-  else if (rule.eims_applicable !== "yes") problems.push(`eIMS reporting for "${rule.service}" is not confirmed (approve a rule version with eIMS = yes once PRA enrolled this business).`);
-  if (rule && rule.rate_type !== "percent") problems.push("A fixed-amount rule can't price this invoice yet.");
+  const defaultRule = inForce[0] ?? null;
+  if (!defaultRule) problems.push(`No approved PRA tax rule for sector "${pos.sector}" is assigned to this branch for ${day}.`);
 
   // A bill discount or extra charges come after tax on MAVIN's invoice: how PRA wants them reported is not settled.
   if (Math.abs(Number(inv.discount_rs) || 0) > 0.004) problems.push("The invoice has a bill discount (after tax); how PRA wants it reported is pending. Put discounts on the lines.");
   if (Math.abs(Number(inv.charges) || 0) > 0.004) problems.push("The invoice has extra charges; how PRA wants them reported is pending.");
 
   const lineRows = async (id: string) => (await sql.execute(
-    `SELECT i.*, p.name AS product_name, p.barcode AS product_code FROM invoice_items i LEFT JOIN products p ON p.id = i.product_id
+    `SELECT i.*, p.name AS product_name, p.barcode AS product_code, p.pct_code AS product_pct FROM invoice_items i LEFT JOIN products p ON p.id = i.product_id
      WHERE i.invoice_id = ? AND i.deleted_at IS NULL ORDER BY i.created_at, i.id`, [id])).rows;
   const isReturn = Number(inv.is_return) === 1;
   const saved = await lineRows(inv.id);
@@ -741,17 +764,38 @@ async function prepareInvoice(sql: Sql, T: string, inv: InvoiceRow, deps: PraDep
     const ratio = (Number(i.qty) || 0) / Number(o.qty);
     return { ...i, sale_price: o.sale_price, tax_pct: o.tax_pct, discount_rs: Number(o.discount_rs ?? 0) * ratio, tax_rs: Number(o.tax_rs ?? 0) * ratio };
   });
-  const pct = pctCodeOf(rule?.classification_code);
-  if (rule && !pct) problems.push("The rule has no 8-digit classification code.");
-  if (rule?.rate_type === "percent") {
-    const off = items.filter((i) => Math.abs((Number(i.tax_pct) || 0) - Number(rule!.rate)) > 1e-9);
-    if (off.length) problems.push(`${off.length} line(s) charge a sales tax rate other than the approved rule's ${rule.rate} % (${rule.rule_key} v${rule.version}). Correct the lines; the invoice is not sent.`);
+  // Each line under an approved rule: a service by its own PCT code and rate, any other item under the branch's rule.
+  const ruleOfLine = (i: Record<string, unknown>): PraRule | null => {
+    if (!i.product_pct) return defaultRule;
+    const code = pctCodeOf(String(i.product_pct));
+    const same = inForce.filter((r) => code && pctCodeOf(r.classification_code) === code);
+    return same.find((r) => Math.abs(Number(r.rate) - (Number(i.tax_pct) || 0)) <= 1e-9) ?? same[0] ?? null;
+  };
+  const used = new Map<string, { rule: PraRule; off: number }>();
+  for (const i of items) {
+    const r = ruleOfLine(i);
+    if (!r) {
+      if (i.product_pct) problems.push(`Service "${String(i.product_name ?? i.product_id)}": PCT code ${String(i.product_pct)} has no approved PRA tax rule assigned to this business.`);
+      continue;
+    }
+    const u = used.get(r.id) ?? { rule: r, off: 0 };
+    if (r.rate_type === "percent" && Math.abs((Number(i.tax_pct) || 0) - Number(r.rate)) > 1e-9) u.off += 1;
+    used.set(r.id, u);
   }
+  for (const { rule: r, off } of used.values()) {
+    if (r.eims_applicable !== "yes") problems.push(`eIMS reporting for "${r.service}" is not confirmed (approve a rule version with eIMS = yes once PRA enrolled this business).`);
+    if (r.rate_type !== "percent") problems.push("A fixed-amount rule can't price this invoice yet.");
+    if (!pctCodeOf(r.classification_code)) problems.push("The rule has no 8-digit classification code.");
+    if (off) problems.push(`${off} line(s) charge a sales tax rate other than the approved rule's ${r.rate} % (${r.rule_key} v${r.version}). Correct the lines; the invoice is not sent.`);
+  }
+  const rule = [...used.values()][0]?.rule ?? defaultRule;
+  const pct = pctCodeOf(rule?.classification_code);
   const lines: PraSourceLine[] = items.map((i) => {
     const gross = paise((Number(i.qty) || 0) * (Number(i.sale_price) || 0));
     return {
       code: String(i.product_code || String(i.product_id).slice(0, 12)), name: String(i.product_name ?? "Service"), qty: Number(i.qty) || 0,
       grossPaisa: gross, discountPaisa: paise(Number(i.discount_rs ?? 0)), taxPaisa: paise(Number(i.tax_rs ?? 0)), taxRate: Number(i.tax_pct) || 0,
+      pctCode: pctCodeOf(ruleOfLine(i)?.classification_code),
     };
   });
   if (!lines.length) problems.push("The invoice has no lines.");
@@ -887,8 +931,9 @@ export async function fiscalizeSource(sql: Sql, T: string, kind: SourceKind, ord
     if (!claimed.rowsAffected) return SAFE((await subRow(sql, "id = ?", [existing.id]))!);
     return send(sql, T, (await subRow(sql, "id = ?", [existing.id]))!, prep, actor, deps);
   }
-  // Queued (never reached PRA): send the stored payload again, exactly as recorded.
+  // Queued (never reached PRA): send the stored payload again, exactly as recorded (held while the owner has sending off).
   if (st === "queued") {
+    if (prep.problems.includes(SENDING_OFF)) return SAFE(existing);
     const claimed = await sql.execute(`UPDATE pra_submissions SET status = 'sending', attempts = attempts + 1, lock_until = ?, updated_at = ? WHERE id = ? AND status = 'queued'`,
       [iso(new Date(nowOf(deps).getTime() + SEND_LOCK_MS)), now, existing.id]);
     if (!claimed.rowsAffected) return SAFE((await subRow(sql, "id = ?", [existing.id]))!);
@@ -977,10 +1022,13 @@ export async function sweep(sql: Sql, deps: PraDeps = {}, onlyTenant?: string) {
         counts[r.status] = (counts[r.status] ?? 0) + 1;
       } catch { counts.error = (counts.error ?? 0) + 1; }
     }
-    if (pos.some((p) => !RESTAURANT_SECTORS.includes(p.sector))) {
+    const invoiceCounters = pos.filter((p) => !RESTAURANT_SECTORS.includes(p.sector));
+    if (invoiceCounters.length && (await sendingOn(sql, T))) {
+      // Contractors: only PRA invoices are due, so their General and Medicine invoices never fill the batch.
+      const onlyPra = invoiceCounters.every((p) => p.sector === "contractor");
       const invs = (await sql.execute(
         `SELECT i.id FROM invoices i WHERE i.tenant_id = ? AND i.invoice_no IS NOT NULL AND i.deleted_at IS NULL AND COALESCE(i.is_quotation, 0) = 0 AND COALESCE(i.is_memorized, 0) = 0
-           AND i.created_at >= ? AND i.created_at >= ?
+           AND i.created_at >= ? AND i.created_at >= ?${onlyPra ? ` AND LOWER(COALESCE(i.invoice_type, '')) = '${PRA_INVOICE_TYPE}'` : ""}
            AND NOT EXISTS (SELECT 1 FROM pra_submissions s WHERE s.tenant_id = i.tenant_id AND s.source_type = 'invoice' AND s.source_id = i.id AND s.status NOT IN ('queued', 'blocked'))
          ORDER BY COALESCE(i.is_return, 0), i.created_at LIMIT 50`, [T, since, from])).rows;
       for (const o of invs) {
@@ -1060,7 +1108,7 @@ export async function status(sql: Sql, c: Caller, scope?: BranchScope) {
   const cases = await caseStates(sql);
   const confirmedText = (k: PraCaseKey) => (cases[k]?.confirmedAt && cases[k]?.text ? cases[k]!.text! : null);
   return {
-    managed: a?.status === "enabled", state: accountState(a, pos),
+    managed: a?.status === "enabled", state: accountState(a, pos), sending: await sendingOn(sql, c.tenantId),
     // What an accepted receipt prints (PRA findings): PNTN, branch address, the verification link format.
     receipt: a?.status === "enabled" ? {
       pntn: a.pntn, registeredName: a.registered_name, branchName: (br?.name as string | undefined) ?? null, branchAddress: (br?.address as string | null | undefined) ?? null,

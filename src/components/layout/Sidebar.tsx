@@ -11,6 +11,7 @@ import { useAppStore } from "@/store/appStore";
 import { businessType } from "@/config/businessTypes";
 import { visibleNavFor } from "@/config/navFilter";
 import { translate, useLang } from "@/lib/i18n";
+import { usePraContractor } from "@/lib/praClient";
 
 /** Strips trailing slashes so routes compare consistently regardless of
  * Next's `trailingSlash: true` static-export setting. */
@@ -60,7 +61,8 @@ export function Sidebar() {
   const sidebarMobileOpen = useAppStore((s) => s.sidebarMobileOpen);
   const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const label = (x: { label: string; labelKey?: string }) => (x.labelKey ? translate(x.labelKey, lang) : x.label);
-  const visibleNav = visibleNavFor(typeId, allowedModules, userPermissions);
+  const pra = usePraContractor();
+  const visibleNav = visibleNavFor(typeId, allowedModules, userPermissions, { pra: pra.integrated });
   const activeHref = findActiveHref(pathname, visibleNav);
   const activeTop = visibleNav.find((item) => containsHref(item, activeHref));
   const [openLabel, setOpenLabel] = useState<string | null>(activeTop?.label ?? null);

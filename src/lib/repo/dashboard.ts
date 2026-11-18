@@ -2,6 +2,7 @@
 import { useAuthStore } from "../../store/authStore";
 import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../catalogAccess";
 import { localDate } from "../localDate";
+import { notServiceSql, splitYearTax, type YearTaxReturn, type YearTaxSale } from "../pra/services";
 
 function currentTenantId(): string | null {
   return useAuthStore.getState().currentTenant?.id ?? null;
@@ -44,7 +45,7 @@ export async function getLowStockProducts(limit = 8): Promise<LowStockRow[]> {
              COALESCE((SELECT SUM(qty) FROM product_batches WHERE product_id = p.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS avail_qty,
              p.max_stock_qty
       FROM products p
-      WHERE p.deleted_at IS NULL AND (${clause})
+      WHERE p.deleted_at IS NULL AND (${clause}) AND ${notServiceSql("p")}
     )
     WHERE avail_qty <= COALESCE(max_stock_qty * 0.2, 10)
     ORDER BY avail_qty ASC
@@ -154,7 +155,7 @@ export async function getInventoryByUnitType(): Promise<InventoryUnitRow[]> {
     LEFT JOIN uoms u  ON u.id  = p.base_unit_id
     LEFT JOIN product_batches pb
            ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL AND (${clause})
+    WHERE p.deleted_at IS NULL AND (${clause}) AND ${notServiceSql("p")}
     GROUP BY COALESCE(su.name, u.name, 'Other')
     ORDER BY product_count DESC
     LIMIT 8
@@ -185,7 +186,7 @@ export async function getInventoryByCategory(): Promise<InventoryCategoryRow[]> 
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN product_batches pb
            ON pb.product_id = p.id AND pb.tenant_id = ? AND pb.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL AND (${clause})
+    WHERE p.deleted_at IS NULL AND (${clause}) AND ${notServiceSql("p")}
     GROUP BY COALESCE(c.name, 'Uncategorized')
     ORDER BY product_count DESC
     LIMIT 8
@@ -199,10 +200,35 @@ export async function countProducts(): Promise<number> {
   const tenantId = currentTenantId() ?? "";
   const { clause, params } = productScopeClause(tenantId);
   const rows = await dbSelect<{ n: number }>(
-    `SELECT COUNT(*) as n FROM products WHERE deleted_at IS NULL AND (${clause})`,
+    `SELECT COUNT(*) as n FROM products WHERE deleted_at IS NULL AND (${clause}) AND ${notServiceSql()}`,
     params
   );
   return rows[0]?.n ?? 0;
+}
+
+/** Contractors with PRA: the sales tax of a calendar year, net of returns.
+ * GST = General and Medicine invoices (FBR); PST = PRA invoices. */
+export async function getYearTaxTotals(year: number = new Date().getFullYear()): Promise<{ gst: number; pst: number }> {
+  const t = currentTenantId();
+  const range = [t, t, `${year}-01-01`, `${year + 1}-01-01`];
+  const billed = `i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND ii.tenant_id = ? AND COALESCE(i.is_memorized, 0) = 0
+    AND COALESCE(i.is_quotation, 0) = 0 AND i.date >= ? AND i.date < ?`;
+  const [sales, returns] = await Promise.all([
+    dbSelect<YearTaxSale>(
+      `SELECT i.invoice_type, COALESCE(SUM(ii.tax_rs), 0) AS tax FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
+       WHERE ${billed} AND COALESCE(i.is_return, 0) = 0 GROUP BY i.invoice_type`,
+      range
+    ),
+    dbSelect<YearTaxReturn>(
+      `SELECT i.invoice_type, ii.qty,
+              (SELECT SUM(o.tax_rs) FROM invoice_items o WHERE o.invoice_id = i.original_invoice_id AND o.product_id = ii.product_id AND o.deleted_at IS NULL) AS orig_tax,
+              (SELECT SUM(o.qty) FROM invoice_items o WHERE o.invoice_id = i.original_invoice_id AND o.product_id = ii.product_id AND o.deleted_at IS NULL) AS orig_qty
+       FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
+       WHERE ${billed} AND COALESCE(i.is_return, 0) = 1`,
+      range
+    ),
+  ]);
+  return splitYearTax(sales, returns);
 }
 
 export interface TodaySummary {

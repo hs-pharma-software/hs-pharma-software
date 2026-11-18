@@ -29,6 +29,8 @@ import { Select } from "@/components/ui/Field";
 import { markInvoicePaid } from "@/lib/repo/invoicePayments";
 import type { PaymentMethod } from "@/lib/types-hospital";
 import { useInvoiceShare, WhatsAppShareDialog } from "@/components/invoices/InvoiceShare";
+import { usePraContractor } from "@/lib/praClient";
+import { isPraInvoice } from "@/lib/pra/services";
 import { fetchInvoicePdf, saveBlob } from "@/lib/invoiceShare";
 
 const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
@@ -36,7 +38,13 @@ const isClinicVisit = (r: InvoiceListRow) => r.invoice_type === "clinic_visit";
 /** Billed from services (surgery, clinic visit): opened in their own view, not edited as product invoices. */
 const isServiceBill = (r: InvoiceListRow) => isSurgery(r) || isClinicVisit(r);
 
+/** Contractors with PRA: which tax authority an invoice is for. */
+function AuthorityPill({ pra }: { pra: boolean }) {
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${pra ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800"}`}>{pra ? "PRA" : "FBR"}</span>;
+}
+
 export default function InvoicesPage() {
+  const praContractor = usePraContractor();
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
   const openNewTab = useFormTabs((s) => s.openNew);
   const openNewFromRxTab = useFormTabs((s) => s.openNewFromRx);
@@ -190,9 +198,10 @@ export default function InvoicesPage() {
     { header: "Total Bill", render: (r) => r.total.toFixed(2) },
     { header: "Paid", render: (r) => r.paid.toFixed(2) },
     { header: "Balance", render: (r) => r.balance.toFixed(2) },
+    ...(praContractor.integrated ? [{ header: "Invoice For", render: (r: InvoiceListRow) => <AuthorityPill pra={isPraInvoice(r.invoice_type)} /> }] : []),
     ...(fbrSettings ? [{
       header: "FBR",
-      render: (r: InvoiceListRow) => isServiceBill(r) ? <span className="text-xs text-neutral-400">—</span> : (
+      render: (r: InvoiceListRow) => isServiceBill(r) || isPraInvoice(r.invoice_type) ? <span className="text-xs text-neutral-400">—</span> : (
         <FbrCell
           row={r}
           submitting={submittingIds.has(r.id)}
@@ -326,6 +335,7 @@ export default function InvoicesPage() {
             meta: (
               <>
                 <span>{shortDate(r.date)}</span>
+                {praContractor.integrated && <AuthorityPill pra={isPraInvoice(r.invoice_type)} />}
                 {isServiceBill(r) && <span className="rounded-full bg-violet-100 px-1.5 text-[10px] font-medium text-violet-700">{isSurgery(r) ? "Surgery" : "Clinic visit"}</span>}
                 {r.balance > 0.005 && <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">Due Rs {r.balance.toFixed(2)}</span>}
                 {r.fbr_invoice_no && <span className="rounded-full bg-emerald-100 px-1.5 text-[10px] font-medium text-emerald-800">FBR</span>}

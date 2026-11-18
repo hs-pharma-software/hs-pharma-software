@@ -3,6 +3,7 @@ import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
 import type { OrderRow, OrderItem } from "../types2";
 import { settlingCreate } from "./docNumbers";
+import { notServiceSql } from "../pra/services";
 
 /** Purchase orders; two saved at the same moment never share an order number. */
 export const ordersRepo = settlingCreate(createTenantRepo<OrderRow>("orders"), "orders", "order_no", { regenerate: () => nextOrderNo() });
@@ -58,7 +59,7 @@ export async function getLowStockForOrder(limit = 100): Promise<LowStockOrderRow
              COALESCE((SELECT SUM(qty) FROM product_batches WHERE product_id = p.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS avail_qty,
              p.max_stock_qty
       FROM products p
-      WHERE p.deleted_at IS NULL AND p.tenant_id = ?
+      WHERE p.deleted_at IS NULL AND p.tenant_id = ? AND ${notServiceSql("p")}
     )
     WHERE avail_qty <= COALESCE(max_stock_qty * 0.2, 10)
     ORDER BY avail_qty ASC

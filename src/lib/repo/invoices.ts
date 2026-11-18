@@ -1,7 +1,7 @@
 import { dbSelect } from "../db";
 import { createTenantRepo, LINE_REFS } from "./base";
 import { useAuthStore } from "../../store/authStore";
-import { receiveStock, deductStock, listAvailableBatches } from "./stock";
+import { receiveStock, deductStock, listAvailableBatches, serviceProductIds } from "./stock";
 import { imeiTrackedIds, releaseInvoiceImeis } from "./imei";
 import { STOCK_EPS } from "../batchAllocation";
 import { INVOICE_NUMBERS, nextDocNo, settleCode, settleDocNo } from "./docNumbers";
@@ -333,7 +333,9 @@ export async function listItemsForInvoice(invoiceId: string): Promise<InvoiceIte
  * product_id+batch_no if it no longer exists) \u2014 used when editing or
  * deleting an invoice so stock stays correct either way. */
 export async function restoreInvoiceStock(items: InvoiceItem[]): Promise<void> {
+  const services = await serviceProductIds(items.map((i) => i.product_id));
   for (const item of items) {
+    if (services.has(item.product_id)) continue;
     await receiveStock({
       productId: item.product_id,
       batchNo: item.batch_no,
@@ -454,11 +456,14 @@ export async function editSaleReturn(returnId: string, edit: SaleReturnEdit): Pr
   const paid = Math.max(0, Number(edit.paid) || 0);
   if (paid > total + 1e-9) throw new Error(`Paid back can't be more than the return total (${total.toFixed(2)}).`);
 
+  const services = await serviceProductIds(items.map((i) => i.product_id));
   for (const i of items) {
     const qty = want.get(i.id) ?? Number(i.qty);
     const delta = qty - Number(i.qty);
     if (Math.abs(delta) < 1e-9) continue;
-    if (delta > 0) {
+    if (services.has(i.product_id)) {
+      // A service holds no stock: only the quantity on the return changes.
+    } else if (delta > 0) {
       await receiveStock({ productId: i.product_id, batchNo: i.batch_no, qty: delta, purchasePrice: i.purchase_price, expiryDate: null, location: null });
     } else {
       const batches = await listAvailableBatches(i.product_id);

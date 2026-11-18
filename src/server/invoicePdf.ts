@@ -13,6 +13,8 @@
 import { randomUUID } from "node:crypto";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import qrcode from "qrcode-generator";
+import { isPraInvoice } from "@/lib/pra/services";
+import { praVerifyUrl } from "@/lib/restaurant/praModel";
 import type { Sql } from "./subSupers";
 import { callerCan, type Caller } from "./sqlPolicy";
 import { HttpError } from "./db";
@@ -201,7 +203,8 @@ export async function buildInvoicePdf(sql: Sql, inv: InvoiceForShare, origin: st
   const regLine = regs.filter(Boolean).join("   ");
   if (regLine) { for (const l of wrap(regLine, font, 8, 300)) { text(l, left, hy, 8, font, grey); hy -= 10; } }
   if (branch) { text(`Branch: ${branch.name} (${branch.code})${branch.address ? `, ${branch.address}` : ""}`, left, hy, 8, font, grey); hy -= 10; }
-  const title = inv.isReturn ? "RETURN INVOICE" : "INVOICE";
+  const isPra = isPraInvoice(head.invoice_type as string | null);
+  const title = `${isPra ? "PRA " : ""}${inv.isReturn ? "RETURN INVOICE" : "INVOICE"}`;
   right(title, W - M, y - 14, 16, bold);
   right(`No. ${inv.no ?? "-"}`, W - M, y - 30, 10, bold);
   right(`Date: ${String(head.date).slice(0, 10)}`, W - M, y - 43, 9);
@@ -231,7 +234,7 @@ export async function buildInvoicePdf(sql: Sql, inv: InvoiceForShare, origin: st
     return {
       n: String(i + 1),
       name: String(it.product_name ?? "Item"),
-      batch: head.invoice_type === "general" ? "" : String(it.line_batch || it.batch_no || ""),
+      batch: head.invoice_type === "general" || isPra ? "" : String(it.line_batch || it.batch_no || ""),
       qty: `${qtyText(qty)}${unit}${bq > 0 ? ` +${qtyText(bq)}` : ""}`,
       price: money(frac ? Number(it.sale_price) / packing : Number(it.sale_price)),
       disc: Number(it.discount_pct) ? `${qtyText(Number(it.discount_pct))}%` : "",
@@ -283,7 +286,7 @@ export async function buildInvoicePdf(sql: Sql, inv: InvoiceForShare, origin: st
   const totals: [string, number, boolean][] = [
     ["Total", Number(head.total) || 0, false],
     ...(lineDisc + (Number(head.discount_rs) || 0) ? [["Discount", lineDisc + (Number(head.discount_rs) || 0), false] as [string, number, boolean]] : []),
-    ...(tax ? [["Sales tax", tax, false] as [string, number, boolean]] : []),
+    ...(tax ? [[isPra ? "PST" : "Sales tax", tax, false] as [string, number, boolean]] : []),
     ...(Number(head.charges) ? [["Charges", Number(head.charges), false] as [string, number, boolean]] : []),
     ["Payable", Number(head.payable) || 0, true],
     ["Paid", Number(head.paid) || 0, false],
@@ -299,15 +302,19 @@ export async function buildInvoicePdf(sql: Sql, inv: InvoiceForShare, origin: st
     right(`Rs ${money(value)}`, W - M, y, 9.5, strong ? bold : font);
     y -= 14;
   }
-  // FBR number and QR (only when the invoice was reported to FBR).
-  if (fbrNo) {
+  // The fiscal number and QR: FBR's when reported to FBR, PRA's once PRA accepted the invoice.
+  const praNo = isPra
+    ? ((await sql.execute(`SELECT fiscal_invoice_no FROM pra_submissions WHERE tenant_id = ? AND source_type = 'invoice' AND source_id = ? AND status = 'accepted' ORDER BY (environment = 'production') DESC LIMIT 1`, [t, inv.id])).rows[0]?.fiscal_invoice_no as string | undefined) ?? null
+    : null;
+  const fiscalNo = fbrNo ?? praNo;
+  if (fiscalNo) {
     const qr = qrcode(0, "M");
-    qr.addData(fbrNo);
+    qr.addData(fbrNo ?? praVerifyUrl(fiscalNo));
     qr.make();
     const n = qr.getModuleCount(), size = 72, cell = size / n, qx = M, qy = ty - size + 8;
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) page.drawRectangle({ x: qx + c * cell, y: qy + (n - 1 - r) * cell, width: cell + 0.05, height: cell + 0.05, color: ink });
-    text("FBR Invoice No.", qx + size + 8, ty, 8, bold, grey);
-    for (const [i, l] of wrap(fbrNo, font, 8.5, 170).entries()) text(l, qx + size + 8, ty - 11 - i * 10, 8.5);
+    text(fbrNo ? "FBR Invoice No." : "PRA Fiscal Invoice No.", qx + size + 8, ty, 8, bold, grey);
+    for (const [i, l] of wrap(fiscalNo, font, 8.5, 170).entries()) text(l, qx + size + 8, ty - 11 - i * 10, 8.5);
     y = Math.min(y, qy - 8);
   }
   if (head.description) {

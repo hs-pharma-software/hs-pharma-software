@@ -18,8 +18,10 @@ export const ProductPicker = forwardRef<
     onSelect: (product: Product) => void;
     placeholder?: string;
     autoFocus?: boolean;
+    /** Lists a PRA contractor's services instead of products. */
+    services?: boolean;
   }
->(function ProductPicker({ onSelect, placeholder = "Type to search...", autoFocus }, ref) {
+>(function ProductPicker({ onSelect, placeholder = "Type to search...", autoFocus, services = false }, ref) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Product[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -37,13 +39,13 @@ export const ProductPicker = forwardRef<
       return;
     }
     const t = setTimeout(() => {
-      void searchProductsByNameOrBarcode(query).then((r) => {
+      void searchProductsByNameOrBarcode(query, { services }).then((r) => {
         setResults(r);
         setActiveIdx(-1);
       });
     }, 200);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [query, services]);
 
   // Scroll highlighted item into view whenever activeIdx changes.
   useEffect(() => {
@@ -104,6 +106,7 @@ export const ProductPicker = forwardRef<
               }`}
             >
               {p.name} {p.barcode ? `(${p.barcode})` : ""}
+              {services && p.pct_code ? <span className="ml-2 font-mono text-xs text-neutral-500">PCT {p.pct_code}</span> : null}
             </button>
           ))}
         </div>

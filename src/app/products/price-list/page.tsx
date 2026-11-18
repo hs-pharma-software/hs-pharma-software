@@ -11,6 +11,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { dbSelect } from "@/lib/db";
 import { priceListRepo } from "@/lib/repo/products";
 import { useAuthStore } from "@/store/authStore";
+import { notServiceSql } from "@/lib/pra/services";
 import type { Product } from "@/lib/types";
 
 interface PriceListRow {
@@ -43,7 +44,7 @@ export default function PriceListPage() {
         SELECT pl.id, p.barcode, p.name AS product_name, pl.batch_no, pl.sale_price, pl.wholesale_price, pl.mrp, pl.comment
         FROM price_list pl
         JOIN products p ON p.id = pl.product_id AND (p.tenant_id = pl.tenant_id OR p.tenant_id IS NULL)
-        WHERE pl.deleted_at IS NULL AND pl.tenant_id = ?
+        WHERE pl.deleted_at IS NULL AND pl.tenant_id = ? AND ${notServiceSql("p")}
         ORDER BY pl.created_at DESC
       `,
         [useAuthStore.getState().currentTenant?.id ?? null]

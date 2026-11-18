@@ -13,6 +13,7 @@ import type { Caller } from "@/server/sqlPolicy";
 import * as pra from "@/server/pra/service";
 import { fiscalNumberFrom, mapPraResponse, praVerifyUrl } from "@/lib/restaurant/praModel";
 import { caseBlock, checkPayment, ruleOn, pctCodeOf } from "@/lib/pra/rules";
+import { formatPctCode, splitYearTax } from "@/lib/pra/services";
 import { authorize, analyzeSql } from "@/server/sqlPolicy";
 
 process.env.PRA_TOKEN_KEY = randomBytes(32).toString("base64");
@@ -441,7 +442,7 @@ function invoice(id: string, o: { no: number; rate?: number; credit?: boolean; t
   const total = gross - disc + tax;
   run(`INSERT INTO invoices (id, tenant_id, branch_id, invoice_no, date, inv_on, invoice_type, total, charges, discount_rs, payable, paid, balance, is_return, is_memorized, is_quotation, original_invoice_id, customer_name, created_at, updated_at)
        VALUES (?, 't1', 'b1', ?, '2026-11-10', ?, ?, ?, 0, ?, ?, 0, 0, ?, 0, ?, ?, 'WAPDA Office', ?, ?)`,
-    id, o.no, o.credit ? "credit" : "cash", o.type ?? "general", gross, o.billDiscount ?? 0, total - (o.billDiscount ?? 0), o.isReturn ? 1 : 0, o.quotation ? 1 : 0, o.original ?? null, T, T);
+    id, o.no, o.credit ? "credit" : "cash", o.type ?? "pra", gross, o.billDiscount ?? 0, total - (o.billDiscount ?? 0), o.isReturn ? 1 : 0, o.quotation ? 1 : 0, o.original ?? null, T, T);
   run(`INSERT INTO invoice_items (id, tenant_id, branch_id, invoice_id, product_id, qty, sale_price, tax_pct, tax_rs, discount_rs, total, created_at, updated_at)
        VALUES (?, 't1', 'b1', ?, 'svc', ?, ?, ?, ?, ?, ?, ?, ?)`, `${id}-l`, id, qty, price, o.isReturn ? 0 : rate, tax, disc, total, T, T);
 }
@@ -478,6 +479,68 @@ test("contractor invoices: on credit waits for its PaymentMode; Medicine (goods)
   await pra.saveCase(sql, SUPER, { key: "credit_invoice", praMode: 1, note: "Sandbox only until PRA answers" }, deps);
   answers = [ok("90000520191112009002")];
   assert.equal((await fiscal("c1")).status, "accepted");
+});
+
+test("contractor: only a PRA Invoice goes to PRA; General and Medicine stay with FBR, even in the sweep", async () => {
+  await contractorReady();
+  invoice("g1", { no: 701, type: "general" });
+  invoice("m1", { no: 702, type: "medicine" });
+  invoice("p1", { no: 703 });
+  assert.equal((await fiscal("g1")).status, "not_required");
+  answers = [ok("90000520191112009201")];
+  await pra.sweep(sql, deps);
+  assert.deepEqual(posted.map((p) => p.body.USIN), ["703"]);
+  assert.equal(all(`SELECT id FROM pra_submissions`).length, 1);
+});
+
+test("a service is reported under its own PCT code; a PCT code or rate without an approved rule is held", async () => {
+  await contractorReady();
+  run(`UPDATE products SET pct_code = '9824.0000', product_classification = 'pra_service' WHERE id = 'svc'`);
+  invoice("s1", { no: 711 });
+  answers = [ok("90000520191112009211")];
+  assert.equal((await fiscal("s1")).status, "accepted");
+  assert.equal((posted[0].body as { Items: { PCTCode: string }[] }).Items[0].PCTCode, "98240000");
+  invoice("s2", { no: 712, rate: 5 });
+  assert.match((await fiscal("s2")).blockedReason, /other than the approved rule.s 16 %/);
+  run(`UPDATE products SET pct_code = '9814.2000' WHERE id = 'svc'`);
+  invoice("s3", { no: 713 });
+  assert.match((await fiscal("s3")).blockedReason, /PCT code 9814\.2000 has no approved PRA tax rule/);
+  assert.equal(posted.length, 1);
+});
+
+test("the owner's switch: off holds PRA invoices (nothing sent, nothing lost); on sends them once; staff can't change it", async () => {
+  await contractorReady();
+  await assert.rejects(pra.setSending(sql, STAFF_B, { enabled: false }, deps), /owner/);
+  await pra.setSending(sql, OWNER, { enabled: false }, deps);
+  invoice("h1", { no: 721 });
+  assert.match((await fiscal("h1")).blockedReason, /switched off/);
+  await pra.sweep(sql, deps);
+  assert.equal(posted.length, 0);
+  await pra.setSending(sql, OWNER, { enabled: true }, deps);
+  answers = [ok("90000520191112009221")];
+  await pra.sweep(sql, deps);
+  await pra.sweep(sql, deps);
+  assert.equal(posted.length, 1);
+  assert.equal(one(`SELECT status FROM pra_submissions WHERE source_id = 'h1'`).status, "accepted");
+});
+
+test("a send that never left stays queued while sending is off", async () => {
+  await contractorReady();
+  invoice("q1", { no: 731 });
+  answers = [() => { const e = new TypeError("fetch failed") as Error & { cause: unknown }; e.cause = { code: "ECONNREFUSED" }; throw e; }];
+  assert.equal((await fiscal("q1")).status, "queued");
+  await pra.setSending(sql, OWNER, { enabled: false }, deps);
+  assert.equal((await fiscal("q1")).status, "queued");
+  assert.equal(posted.length, 1, "not sent again while off");
+});
+
+test("the year's tax: PRA invoices are PST, the rest GST; a return takes back its share of the original's tax", () => {
+  const sales = [{ invoice_type: "general", tax: 1800 }, { invoice_type: "medicine", tax: 200 }, { invoice_type: "pra", tax: 1600 }];
+  const returns = [{ invoice_type: "pra", qty: 1, orig_tax: 304, orig_qty: 4 }, { invoice_type: "general", qty: 2, orig_tax: 180, orig_qty: 10 }, { invoice_type: "general", qty: 1, orig_tax: null, orig_qty: null }];
+  assert.deepEqual(splitYearTax(sales, returns), { gst: 1964, pst: 1524 });
+  assert.equal(formatPctCode("98240000"), "9824.0000");
+  assert.equal(formatPctCode("9824.0000"), "9824.0000");
+  assert.equal(formatPctCode("9824"), null);
 });
 
 test("contractor return: a credit note (type 3, RefUSIN = original) reversing the original's tax in proportion to the quantity returned", async () => {

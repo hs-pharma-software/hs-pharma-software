@@ -1,6 +1,7 @@
 "use client";
 
-import { fiscalizeInvoice, praEditBlock } from "@/lib/praClient";
+import { fiscalizeInvoice, praEditBlock, usePraContractor } from "@/lib/praClient";
+import { isPraService } from "@/lib/pra/services";
 import { useEffect, useRef, useState } from "react";
 import { STANDALONE } from "@/lib/edition";
 import { Modal } from "@/components/ui/Modal";
@@ -146,7 +147,7 @@ export function InvoiceFormModal({
   const [invoiceDate, setInvoiceDate] = useState(invoice?.date ?? localToday());
   const [invoiceType, setInvoiceType] = useState(
     base
-      ? ({ wholesale: "Wholesale", medicine: "Medicine", general: "General" } as Record<string, string>)[base.invoice_type ?? ""] ??
+      ? ({ wholesale: "Wholesale", medicine: "Medicine", general: "General", pra: "PRA" } as Record<string, string>)[base.invoice_type ?? ""] ??
           (isContractor ? "General" : "Retail")
       : isContractor ? "General" : "Retail"
   );
@@ -154,6 +155,9 @@ export function InvoiceFormModal({
   // the Super Admin) take a batch written on each line, printed on the invoice.
   const medicineAllowed = useAuthStore((s) => s.currentTenant?.medicineInvoiceAllowed === true);
   const contractorKind = isContractor ? (invoiceType === "Medicine" ? "medicine" : "general") : null;
+  // Contractors integrated with PRA: a PRA Invoice bills services and goes to PRA.
+  const pra = usePraContractor();
+  const isPra = invoiceType === "PRA";
   const [description, setDescription] = useState(base?.description ?? "");
 
   const [customerName, setCustomerName] = useState(base?.customer_name ?? "");
@@ -323,10 +327,25 @@ export function InvoiceFormModal({
     if (buyerRegType === "Registered" && !buyerNtn.trim()) {
       return "A registered buyer needs an NTN/CNIC for FBR.";
     }
-    if (fbrEnabled && !buyerProvince) {
+    if (fbrEnabled && !isPra && !buyerProvince) {
       return "Buyer province is required for FBR digital invoicing.";
     }
     return null;
+  }
+
+  /** Products and services never share an invoice: changing to or from PRA starts the lines again. */
+  function changeInvoiceType(next: string) {
+    if ((next === "PRA") !== isPra && lines.length > 0) {
+      if (!window.confirm(next === "PRA" ? "A PRA Invoice bills services only. Remove the products on this invoice?" : "Remove the services on this invoice?")) return;
+      setLines([]);
+    }
+    if (next === "PRA") {
+      // How PRA wants a bill discount or extra charges reported is not settled: discounts go on the lines.
+      setDiscountRs("0");
+      setCharges("0");
+    }
+    setError(null);
+    setInvoiceType(next);
   }
 
   function unitName(id: string | null) {
@@ -506,6 +525,14 @@ export function InvoiceFormModal({
   async function onProductSelected(p: Product) {
     setError(null);
     const existingIdx = lines.findIndex((l) => l.product.id === p.id);
+    // A service holds no stock: its price and tax come from the service.
+    if (isPraService(p)) {
+      if (existingIdx >= 0) return updateLine(existingIdx, { qty: lines[existingIdx].qty + 1 });
+      const price = await getLatestPrice(p.id);
+      const batch: ProductBatchOption = { id: `service:${p.id}`, batch_no: null, expiry_date: null, qty: 0, purchase_price: 0 };
+      setLines((prev) => [...prev, { product: p, batch, batches: [], extraAvail: 0, qty: 1, bonusQty: 0, salePrice: price?.salePrice ?? 0, taxPct: p.gst_rate_pct ?? 0, discountPct: 0, extraPct: 0, unit: "base" }]);
+      return;
+    }
     const batches = await listAvailableBatches(p.id);
     const batch = batches[0];
     if (!batch) {
@@ -584,6 +611,15 @@ export function InvoiceFormModal({
     const used = new Map<string, number>();
     const fresh = new Map<string, ProductBatchOption[]>();
     for (const l of lines) {
+      if (isPraService(l.product)) {
+        const m = saleLineMath(l.salePrice, l.qty, l.discountPct, extraOf(l), l.taxPct);
+        await invoiceItemsRepo.create({
+          invoice_id: invoiceId, product_id: l.product.id, batch_no: null, line_batch: null, packing: 1, uom_id: l.product.base_unit_id,
+          avail_qty: null, qty: l.qty, bonus_qty: 0, purchase_price: 0, sale_price: l.salePrice, tax_pct: l.taxPct, further_tax_pct: 0,
+          tax_rs: m.tax, discount_pct: l.discountPct, discount_rs: m.discountRs, extra_disc_pct: extraOf(l), total: m.total,
+        });
+        continue;
+      }
       if (!fresh.has(l.product.id)) fresh.set(l.product.id, await listAvailableBatches(l.product.id));
       const batches = fresh.get(l.product.id)!;
       const isSecondary = l.unit === "secondary";
@@ -642,6 +678,7 @@ export function InvoiceFormModal({
   function stockProblem(): string | null {
     const need = new Map<string, { name: string; qty: number; avail: number }>();
     for (const l of lines) {
+      if (isPraService(l.product)) continue;
       const isSecondary = l.unit === "secondary";
       const packing = l.product.packing || 1;
       const q = toBaseUnitQty(l.qty, isSecondary, packing) + toBaseUnitQty(l.bonusQty, isSecondary, packing);
@@ -789,7 +826,9 @@ export function InvoiceFormModal({
    * MAVIN.pk once when the internet returns. */
   async function saveOffline() {
     const credit = invOn.toLowerCase() === "credit";
-    const block = uncertainSave
+    const block = isPra
+      ? "A PRA Invoice needs an internet connection."
+      : uncertainSave
       ? "The last save may already be on MAVIN.pk. Reconnect and check Sales before saving this bill offline."
       : isDraft ? "Memorized drafts need an internet connection."
       : invOn.toLowerCase() !== "cash" && !credit ? "Offline, Inv On must be Cash or Credit."
@@ -830,6 +869,10 @@ export function InvoiceFormModal({
   }
 
   async function handleDraft() {
+    if (isPra) {
+      setError("A PRA Invoice can't be kept as a draft: save it when it is ready to go to PRA.");
+      return;
+    }
     if (lines.length === 0) {
       setError("Add at least one product line.");
       return;
@@ -914,11 +957,12 @@ export function InvoiceFormModal({
             </Field>
           )}
           <Field label="Invoice Type">
-            <Select value={invoiceType} onChange={(e) => setInvoiceType(e.target.value)}>
+            <Select value={invoiceType} onChange={(e) => changeInvoiceType(e.target.value)} disabled={isEdit && isPra}>
               {isContractor ? (
                 <>
                   <option value="General">General</option>
                   {(medicineAllowed || invoiceType === "Medicine") && <option value="Medicine">Medicine</option>}
+                  {((pra.sending && !isEdit) || isPra) && <option value="PRA">PRA Invoice</option>}
                 </>
               ) : (
                 <>
@@ -984,9 +1028,9 @@ export function InvoiceFormModal({
             aria-expanded={buyerShown}
             className="flex w-full items-center gap-2 text-left sm:pointer-events-none sm:mb-2"
           >
-            {!STANDALONE && <div className="flex h-5 w-7 shrink-0 items-center justify-center rounded bg-[#006633] text-[9px] font-bold text-white">FBR</div>}
+            {!STANDALONE && <div className={`flex h-5 w-7 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white ${isPra ? "bg-blue-700" : "bg-[#006633]"}`}>{isPra ? "PRA" : "FBR"}</div>}
             <span className="text-xs font-semibold text-neutral-700">{STANDALONE ? "Customer Details" : "Customer & Buyer Details"}</span>
-            {fbrEnabled && <span className="hidden text-[11px] text-neutral-400 sm:inline">Sent to FBR with this invoice</span>}
+            {(isPra || fbrEnabled) && <span className="hidden text-[11px] text-neutral-400 sm:inline">Sent to {isPra ? "PRA" : "FBR"} with this invoice</span>}
             <span className="ml-auto min-w-0 truncate text-[11px] text-neutral-500 sm:hidden">
               {buyerShown ? "Hide" : `${customerName.trim() || "Walk-in"} · ${buyerRegType}${buyerProvince ? ` · ${buyerProvince}` : ""}`}
             </span>
@@ -1086,8 +1130,8 @@ export function InvoiceFormModal({
           </div>
         </div>
 
-        <Field label="Barcode/Product Name">
-          <ProductPicker ref={pickerRef} onSelect={(p) => void onProductSelected(p)} autoFocus />
+        <Field label={isPra ? "Service Name / PCT Code" : "Barcode/Product Name"}>
+          <ProductPicker ref={pickerRef} key={isPra ? "services" : "products"} services={isPra} placeholder={isPra ? "Type a service..." : undefined} onSelect={(p) => void onProductSelected(p)} autoFocus />
         </Field>
 
         <div className="overflow-x-auto rounded-xl ring-1 ring-black/[0.06]">
@@ -1121,10 +1165,14 @@ export function InvoiceFormModal({
                   const availInLineUnit = Math.round(fromBaseUnitQty(lineAvail(l), isSecondary, l.product.packing || 1) * 1000) / 1000;
                   const pk = l.product.packing || 1;
                   const usesBatches = batchLabel(l.batches, toBaseUnitQty(l.qty, isSecondary, pk), toBaseUnitQty(l.bonusQty, isSecondary, pk));
+                  const service = isPraService(l.product);
                   return (
                   <tr key={idx} className="border-b border-neutral-100 last:border-0">
                     <td data-label="Product" className="rt-title px-2 py-1.5">
                       {l.product.name}
+                      {service && l.product.pct_code && (
+                        <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-blue-800">PCT {l.product.pct_code}</span>
+                      )}
                       {Boolean(l.product.is_narcotic) && (
                         <span className="ml-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
                           NARCOTIC
@@ -1169,13 +1217,13 @@ export function InvoiceFormModal({
                         />
                       </td>
                     ) : !isClothStore && contractorKind !== "general" && <td data-label="Batch" className="px-2 py-1.5" title={l.batches.length > 1 ? `${l.batches.length} batches in stock` : undefined}>{usesBatches}</td>}
-                    <td data-label="Avail" className="px-2 py-1.5">{availInLineUnit}</td>
+                    <td data-label="Avail" className="px-2 py-1.5">{service ? "—" : availInLineUnit}</td>
                     <td data-label="Qty" className="px-2 py-1.5">
                       <input
                         ref={(el) => setLineRef(idx, COL_QTY, el)}
                         type="number"
-                        min="1"
-                        max={availInLineUnit - l.bonusQty}
+                        min={service ? "0.01" : "1"}
+                        max={service ? undefined : availInLineUnit - l.bonusQty}
                         step="any"
                         value={l.qty}
                         onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
@@ -1192,6 +1240,7 @@ export function InvoiceFormModal({
                         min="0"
                         step="any"
                         value={l.bonusQty}
+                        disabled={service}
                         onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_BONUS)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -1218,8 +1267,8 @@ export function InvoiceFormModal({
                         min="0"
                         step="any"
                         value={l.taxPct}
-                        disabled={offline}
-                        title={offline ? "Offline, the product's tax rate is used" : undefined}
+                        disabled={offline || service}
+                        title={service ? "Set on the service (Products > Services)" : offline ? "Offline, the product's tax rate is used" : undefined}
                         onChange={(e) => updateLine(idx, { taxPct: Number(e.target.value) })}
                         onKeyDown={(e) => handleLineEnter(e, idx, COL_TAX)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -1299,10 +1348,10 @@ export function InvoiceFormModal({
             <Input value={total.toFixed(2)} disabled />
           </Field>
           <Field label={isClothStore && measurement ? "Charges (incl. custom)" : "Charges"}>
-            <Input type="number" min="0" step="any" value={charges} onChange={(e) => setCharges(e.target.value)} />
+            <Input type="number" min="0" step="any" value={charges} disabled={isPra} title={isPra ? "Not available on a PRA Invoice" : undefined} onChange={(e) => setCharges(e.target.value)} />
           </Field>
           <Field label="Discount Rs (F12)">
-            <Input type="number" min="0" step="any" value={discountRs} onChange={(e) => setDiscountRs(e.target.value)} />
+            <Input type="number" min="0" step="any" value={discountRs} disabled={isPra} title={isPra ? "On a PRA Invoice, give the discount on the line (Disc %)" : undefined} onChange={(e) => setDiscountRs(e.target.value)} />
           </Field>
           <Field label="Tax">
             <Input value={taxTotal.toFixed(2)} disabled />
@@ -1337,8 +1386,8 @@ export function InvoiceFormModal({
             <Button
               type="button"
               onClick={() => void handleDraft()}
-              disabled={saving || lines.length === 0}
-              title="Ctrl+D"
+              disabled={saving || lines.length === 0 || isPra}
+              title={isPra ? "A PRA Invoice can't be kept as a draft" : "Ctrl+D"}
               className="max-sm:px-3"
             >
               Draft

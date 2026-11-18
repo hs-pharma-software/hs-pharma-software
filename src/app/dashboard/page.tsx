@@ -17,6 +17,7 @@ import {
   getInventoryByUnitType,
   getInventoryByCategory,
   countProducts,
+  getYearTaxTotals,
   type LowStockRow,
   type ExpiringBatchRow,
   type RecentInvoiceRow,
@@ -34,6 +35,7 @@ import { ElectricDashboard } from "@/components/electric/ElectricDashboard";
 import { ELECTRIC_TYPE } from "@/lib/electric";
 import { DistDashboard } from "@/components/dist/DistDashboard";
 import { useFormTabs, canOpenKind } from "@/store/formTabsStore";
+import { usePraContractor } from "@/lib/praClient";
 import { FileText, ShoppingCart } from "lucide-react";
 
 interface DashboardStats {
@@ -493,6 +495,12 @@ function GeneralDashboard() {
   const { openNew } = useFormTabs();
   const sessionTenant = useAuthStore((s) => s.currentTenant);
   const tenantId = sessionTenant?.id ?? null;
+  // Contractors with PRA: this year's GST (FBR invoices) and PST (PRA invoices).
+  const praIntegrated = usePraContractor().integrated;
+  const [yearTax, setYearTax] = useState({ gst: 0, pst: 0 });
+  useEffect(() => {
+    if (praIntegrated && isTauri()) void getYearTaxTotals().then(setYearTax).catch((e) => console.error("Dashboard: year tax failed", e));
+  }, [praIntegrated, tenantId]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -589,6 +597,14 @@ function GeneralDashboard() {
         <KpiCard label="Products"    value={stats.products}                 delay={0.24} />
         <KpiCard label="Expenses"    value={today.expenses}          money delay={0.28} accent="#f43f5e" />
       </div>
+
+      {/* ── Contractors with PRA: the year's sales tax by authority ── */}
+      {praIntegrated && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <KpiCard label={`GST of ${now.getFullYear()}`} value={yearTax.gst} money delay={0.32} accent="#006633" sub="FBR: General and Medicine invoices, after returns" />
+          <KpiCard label={`PST of ${now.getFullYear()}`} value={yearTax.pst} money delay={0.36} accent="#1d4ed8" sub="PRA: PRA invoices, after returns" />
+        </div>
+      )}
 
       {/* ── Main content ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

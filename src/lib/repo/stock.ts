@@ -4,6 +4,7 @@ import { recordOutbox } from "../sync/outbox";
 import { productBatchesRepo } from "./products";
 import { useAuthStore } from "../../store/authStore";
 import { STOCK_EPS } from "../batchAllocation";
+import { PRA_SERVICE } from "../pra/services";
 import type { ProductBatch } from "../types";
 
 function currentTenantId(): string | null {
@@ -30,6 +31,18 @@ async function changeBatchQty(batchId: string, change: number, extra: { purchase
   const row = await productBatchesRepo.get(batchId);
   if (row) await recordOutbox("product_batches", batchId, "update", row as unknown as Record<string, unknown>);
   return true;
+}
+
+/** Which of these products are PRA services: a service holds no stock, so
+ * returning or un-selling one puts nothing back. */
+export async function serviceProductIds(productIds: string[]): Promise<Set<string>> {
+  const ids = [...new Set(productIds)];
+  if (!ids.length) return new Set();
+  const rows = await dbSelect<{ id: string }>(
+    `SELECT id FROM products WHERE product_classification = ? AND id IN (${ids.map(() => "?").join(", ")})`,
+    [PRA_SERVICE, ...ids]
+  );
+  return new Set(rows.map((r) => r.id));
 }
 
 /** Adds received stock to a batch \u2014 reuses an existing batch row for the

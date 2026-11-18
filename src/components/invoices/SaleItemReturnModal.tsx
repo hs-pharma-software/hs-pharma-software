@@ -15,7 +15,7 @@ import {
   type InvoiceListRow,
   type InvoiceItemWithProduct,
 } from "@/lib/repo/invoices";
-import { receiveStock } from "@/lib/repo/stock";
+import { receiveStock, serviceProductIds } from "@/lib/repo/stock";
 import { imeisOfInvoice, returnSoldImeis } from "@/lib/repo/imei";
 import type { Invoice } from "@/lib/types2";
 import { localDate } from "@/lib/localDate";
@@ -135,8 +135,10 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
         original_invoice_id: originalInvoice.id,
       });
 
+      // A PRA service holds no stock: nothing goes back.
+      const services = await serviceProductIds(activeLines.map((l) => l.item.product_id));
       for (const l of activeLines) {
-        await receiveStock({
+        if (!services.has(l.item.product_id)) await receiveStock({
           productId: l.item.product_id,
           batchNo: l.item.batch_no,
           qty: l.returnQty,

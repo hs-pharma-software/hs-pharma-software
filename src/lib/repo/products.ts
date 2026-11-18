@@ -5,6 +5,7 @@ import { sharedCatalogGroupsFor, sharedCatalogWhereClause, type SharedCatalogGro
 import { newId, nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
 import { sharedUnitFor } from "./uoms";
+import { PRA_SERVICE, notServiceSql } from "../pra/services";
 import type { Product, ProductBatch, PriceListEntry } from "../types";
 
 /** Products belong to one tenant (v29; before that the catalog was shared by
@@ -201,6 +202,8 @@ export async function listProductsForGrid(): Promise<ProductListRow[]> {
     productWhere = "p.deleted_at IS NULL AND p.tenant_id = ?";
     productParams = [tenantId];
   }
+  // PRA services have their own screen (Products > Services).
+  productWhere += ` AND ${notServiceSql("p")}`;
 
   return dbSelect<ProductListRow>(
     `
@@ -287,10 +290,18 @@ export async function getCurrentRates(productId: string): Promise<CurrentRates> 
 }
 
 /** Searches the tenant's own products and, for pharmacy-family tenants, the
- * shared pharma/general-store catalog as well. */
-export async function searchProductsByNameOrBarcode(term: string): Promise<Product[]> {
+ * shared pharma/general-store catalog as well. PRA services are found only
+ * when asked for (`services`: a PRA invoice lists services and nothing else). */
+export async function searchProductsByNameOrBarcode(term: string, opts: { services?: boolean } = {}): Promise<Product[]> {
   const like = `%${term}%`;
   const tenantId = currentTenantId();
+  if (opts.services) {
+    return dbSelect<Product>(
+      `SELECT * FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND product_classification = ?
+         AND (name LIKE ? OR barcode LIKE ? OR pct_code LIKE ?) ORDER BY name ASC LIMIT 25`,
+      [tenantId, PRA_SERVICE, like, like, like]
+    );
+  }
   const sharedGroups = sharedCatalogGroupsFor(currentBusinessType());
 
   if (sharedGroups.length) {
@@ -299,13 +310,14 @@ export async function searchProductsByNameOrBarcode(term: string): Promise<Produ
       `SELECT * FROM products
        WHERE deleted_at IS NULL
          AND (tenant_id = ? OR (tenant_id IS NULL AND catalog_group IN (${placeholders})))
+         AND ${notServiceSql()}
          AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?)
        ORDER BY name ASC LIMIT 25`,
       [tenantId, ...sharedGroups, like, like, like]
     );
   }
   return dbSelect<Product>(
-    `SELECT * FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?) ORDER BY name ASC LIMIT 25`,
+    `SELECT * FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND ${notServiceSql()} AND (name LIKE ? OR barcode LIKE ? OR description LIKE ?) ORDER BY name ASC LIMIT 25`,
     [tenantId, like, like, like]
   );
 }

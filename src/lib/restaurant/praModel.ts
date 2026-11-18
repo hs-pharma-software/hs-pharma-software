@@ -63,6 +63,8 @@ export interface PraSourceLine {
   discountPaisa: number;
   taxPaisa: number;
   taxRate: number;
+  /** This line's own PCT code (a contractor's service); otherwise the invoice's. */
+  pctCode?: string | null;
 }
 
 export interface PraSource {
@@ -97,7 +99,7 @@ export function buildPraInvoice(src: PraSource): PraInvoice {
     return {
       ItemCode: l.code.slice(0, 50),
       ItemName: l.name.slice(0, 150),
-      PCTCode: src.pctCode,
+      PCTCode: l.pctCode || src.pctCode,
       Quantity: l.qty,
       TaxRate: l.taxRate,
       SaleValue: toRupees(sale),
