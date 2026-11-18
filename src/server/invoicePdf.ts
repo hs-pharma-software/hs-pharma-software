@@ -144,7 +144,7 @@ export async function buildInvoicePdf(sql: Sql, inv: InvoiceForShare, origin: st
      WHERE i.id = ? AND i.tenant_id = ?`, [inv.id, t])).rows[0];
   if (!head) throw new HttpError(404, "Invoice not found.");
   const items = (await sql.execute(
-    `SELECT ii.*, p.name AS product_name, COALESCE(p.packing, 1) AS packing, p.secondary_unit_id, su.name AS secondary_unit_name
+    `SELECT ii.*, p.name AS product_name, p.pct_code, COALESCE(p.packing, 1) AS packing, p.secondary_unit_id, su.name AS secondary_unit_name
      FROM invoice_items ii LEFT JOIN products p ON p.id = ii.product_id AND (p.tenant_id = ii.tenant_id OR p.tenant_id IS NULL)
      LEFT JOIN uoms su ON su.id = p.secondary_unit_id
      WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL ORDER BY ii.created_at, ii.id`, [inv.id, t])).rows;
@@ -233,7 +233,7 @@ export async function buildInvoicePdf(sql: Sql, inv: InvoiceForShare, origin: st
     const qty = frac ? q * packing : q, bq = frac ? bonus * packing : bonus;
     return {
       n: String(i + 1),
-      name: String(it.product_name ?? "Item"),
+      name: `${String(it.product_name ?? "Item")}${isPra && it.pct_code ? ` (PCT ${String(it.pct_code)})` : ""}`,
       batch: head.invoice_type === "general" || isPra ? "" : String(it.line_batch || it.batch_no || ""),
       qty: `${qtyText(qty)}${unit}${bq > 0 ? ` +${qtyText(bq)}` : ""}`,
       price: money(frac ? Number(it.sale_price) / packing : Number(it.sale_price)),

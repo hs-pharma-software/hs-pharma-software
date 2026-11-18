@@ -392,7 +392,7 @@ export function InvoicePrintLayout({
         <thead>
           <tr style={headRow}>
             <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{tx(blk, "product")}</th>
-            {showHs && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{tx(blk, "hsCode")}</th>}
+            {showHs && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{data.authority?.kind === "pra" ? "PCT Code" : tx(blk, "hsCode")}</th>}
             {template.columns.batch && <th style={{ ...headCell(), ...(skin.thead === "gradient" ? { background: "transparent" } : {}) }}>{tx(blk, "batch")}</th>}
             {[
               ["qty", true],

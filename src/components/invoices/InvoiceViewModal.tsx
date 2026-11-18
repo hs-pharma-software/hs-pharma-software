@@ -42,9 +42,11 @@ interface InvoiceViewRow {
  * Only `.print-area` is visible in print CSS (globals.css). With `autoPrint`
  * nothing is shown: the invoice goes straight to the printer, then closes. */
 /** Contractor invoices: a Medicine invoice always prints its batch column, a
- * General one never does. */
+ * General one never does. A PRA Invoice bills services: its PCT code always
+ * prints, and services have no batch or bonus. */
 function contractorTemplate(template: PrintTemplate, invoiceType: string | null | undefined): PrintTemplate {
-  if (invoiceType !== "medicine" && invoiceType !== "general" && invoiceType !== "pra") return template;
+  if (isPraInvoice(invoiceType)) return { ...template, columns: { ...template.columns, batch: false, bonus: false, hsCode: true } };
+  if (invoiceType !== "medicine" && invoiceType !== "general") return template;
   return { ...template, columns: { ...template.columns, batch: invoiceType === "medicine" } };
 }
 
@@ -193,7 +195,7 @@ export function InvoiceViewModal({
         id: item.id,
         productId: item.product_id,
         name: item.product_name,
-        hsCode: item.hs_code ?? null,
+        hsCode: (isPra ? item.pct_code : item.hs_code) ?? null,
         batch: inv.invoice_type === "general" || isPra ? null : item.line_batch || item.batch_no || null,
         qty: item.qty,
         bonusQty: item.bonus_qty,
