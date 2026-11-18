@@ -7,6 +7,7 @@ import { fullSchemaDb } from "./fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { invoicesRepo, invoiceItemsRepo, listItemsForInvoice } from "@/lib/repo/invoices";
+import { invoicePrintItems } from "@/lib/invoicePrintItems";
 
 const T = "con-a";
 let db: DatabaseSync;
@@ -36,4 +37,33 @@ test("a Medicine invoice line keeps its written batch apart from the stock batch
   assert.equal(item.line_batch, "AT-2611");
   assert.equal(item.batch_no, null);
   assert.equal((await invoicesRepo.get(inv.id))?.invoice_type, "medicine");
+});
+
+test("contractor general invoice print combines identical batch-split product rows", () => {
+  const rows = [20, 5, 5].map((qty, index) => ({
+    id: `line-${index}`,
+    productId: "smoke-detector",
+    name: "Smoke Detector",
+    hsCode: "8531.1000",
+    batch: null,
+    qty,
+    bonusQty: 0,
+    packing: 1,
+    secondaryUnitId: null,
+    secondaryUnitName: null,
+    salePrice: 5250,
+    discountPct: 0,
+    taxPct: 18,
+    extraDiscountPct: 0,
+    taxRs: qty * 5250 * 0.18,
+    total: qty * 5250 * 1.18,
+  }));
+
+  const merged = invoicePrintItems(rows, true);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].qty, "30");
+  assert.equal(merged[0].taxRs, 28350);
+  assert.equal(merged[0].total, 185850);
+  assert.equal(invoicePrintItems(rows, false).length, 3, "non-contractor and batch-visible invoices stay split");
+  assert.equal(invoicePrintItems(rows.map((row, i) => ({ ...row, taxPct: i === 0 ? 18 : 15 })), true).length, 2, "different tax rates stay separate");
 });

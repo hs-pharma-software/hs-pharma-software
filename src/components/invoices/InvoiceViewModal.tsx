@@ -28,6 +28,7 @@ import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 import { InvoiceShareButtons } from "./InvoiceShare";
 import { invoiceLabel } from "@/lib/invoiceLabel";
+import { invoicePrintItems } from "@/lib/invoicePrintItems";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -141,7 +142,6 @@ export function InvoiceViewModal({
 
   const inv = row.invoice;
 
-  const fmtQty = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(2));
   const accountName = tenantInfo?.name ?? sessionTenant?.name ?? "Business";
   const noteBlock = template?.blocks.find((b) => b.id === "note");
   // Medicine invoices (contractor) carry the drug-sale warranty.
@@ -152,6 +152,7 @@ export function InvoiceViewModal({
         address: companyProfile?.address || tenantInfo?.address || "",
       })
     : null;
+  const isContractorGeneral = sessionTenant?.businessType === "contractor" && inv.invoice_type === "general";
   const printData: PrintData = {
     business: {
       name: companyProfile ? printedBusinessName(companyProfile, accountName) : accountName,
@@ -177,27 +178,24 @@ export function InvoiceViewModal({
       address: inv.buyer_address ? `${inv.buyer_address}${inv.buyer_province ? `, ${inv.buyer_province}` : ""}` : null,
     },
     // Lines sold in the secondary unit are shown in that unit.
-    items: items.map((item) => {
-      const packing = item.packing || 1;
-      const hasSecondary = !!item.secondary_unit_id && packing > 1;
-      const isFractional = hasSecondary && Math.abs(item.qty - Math.round(item.qty)) > 0.001;
-      const unit = isFractional && item.secondary_unit_name ? ` ${item.secondary_unit_name}` : "";
-      const qty = isFractional ? item.qty * packing : item.qty;
-      const bonus = isFractional ? item.bonus_qty * packing : item.bonus_qty;
-      return {
+    items: invoicePrintItems(items.map((item) => ({
         id: item.id,
+        productId: item.product_id,
         name: item.product_name,
         hsCode: item.hs_code ?? null,
         batch: inv.invoice_type === "general" ? null : item.line_batch || item.batch_no || null,
-        qty: `${fmtQty(qty)}${unit}`,
-        bonus: bonus > 0 ? `${fmtQty(bonus)}${unit}` : null,
-        price: isFractional ? item.sale_price / packing : item.sale_price,
+        qty: item.qty,
+        bonusQty: item.bonus_qty,
+        packing: item.packing,
+        secondaryUnitId: item.secondary_unit_id,
+        secondaryUnitName: item.secondary_unit_name,
+        salePrice: item.sale_price,
         discountPct: item.discount_pct,
+        extraDiscountPct: item.extra_disc_pct,
         taxPct: item.tax_pct || 0,
         taxRs: item.tax_rs || 0,
         total: item.total,
-      };
-    }),
+      })), isContractorGeneral),
     // Same arithmetic as the invoice form: payable = total - line discounts
     // - bill discount + sales tax + charges.
     totals: {
