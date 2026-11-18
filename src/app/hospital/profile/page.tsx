@@ -27,6 +27,7 @@ const EMPTY: Profile = { name: "", registration_no: "", ntn: "", phone: "", emai
 
 /** The hospital's own configuration, saved in the hospital database. */
 export default function HospitalProfilePage() {
+  const isCentre = useAuthStore((s) => s.currentTenant?.businessType === "radiology_center");
   const tenantName = useAuthStore((s) => s.currentTenant?.name ?? "");
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
   const [p, setP] = useState<Profile>({ ...EMPTY, name: tenantName });
@@ -63,15 +64,15 @@ export default function HospitalProfilePage() {
   return (
     <div>
       <PageHeader
-        title="Hospital"
+        title={isCentre ? "Centre Profile" : "Hospital"}
         actions={<Button variant="primary" onClick={() => void save()} disabled={saving || !p.name.trim()}>{saving ? "Saving…" : "Save"}</Button>}
       />
       <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Field label="Hospital Name *"><Input value={p.name} onChange={set("name")} /></Field>
+          <Field label={isCentre ? "Centre Name *" : "Hospital Name *"}><Input value={p.name} onChange={set("name")} /></Field>
           <Field label="Registration / PHC No"><Input value={p.registration_no} onChange={set("registration_no")} /></Field>
           <Field label="NTN"><Input value={p.ntn} onChange={set("ntn")} /></Field>
-          <Field label="Total Beds"><Input type="number" min="0" value={p.total_beds} onChange={set("total_beds")} /></Field>
+          {!isCentre && <Field label="Total Beds"><Input type="number" min="0" value={p.total_beds} onChange={set("total_beds")} /></Field>}
           <Field label="Phone"><Input value={p.phone} onChange={set("phone")} /></Field>
           <Field label="Email"><Input type="email" value={p.email} onChange={set("email")} /></Field>
           <Field label="City"><Input value={p.city} onChange={set("city")} /></Field>
@@ -82,7 +83,7 @@ export default function HospitalProfilePage() {
         </div>
         {savedAt && <p className="mt-3 text-xs text-emerald-600">Saved at {savedAt}.</p>}
       </div>
-      <div className="mt-4"><LinkedPharmacyCard /></div>
+      {!isCentre && <div className="mt-4"><LinkedPharmacyCard /></div>}
     </div>
   );
 }

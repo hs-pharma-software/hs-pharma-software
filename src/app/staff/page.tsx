@@ -12,13 +12,14 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import type { Staff } from "@/lib/types";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
+import { usesHospitalStaff } from "@/config/hospitalStaff";
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
-  const isHospital = useAuthStore((st) => businessType(st.currentTenant?.businessType).id === "hospital");
+  const isHospital = useAuthStore((st) => usesHospitalStaff(businessType(st.currentTenant?.businessType).id));
   // Only the owner or a full-access login may change what other logins can open.
   const canSetPermissions = useAuthStore((st) => st.currentUser?.role !== "staff" || st.currentUser?.permissions === null);
   const [permsFor, setPermsFor] = useState<Staff | null>(null);

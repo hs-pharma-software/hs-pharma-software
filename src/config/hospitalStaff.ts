@@ -131,6 +131,15 @@ export function designation(key: string | null | undefined): Designation | null 
   return DESIGNATIONS.find((d) => d.key === key) ?? null;
 }
 
+/** Business types whose staff have designations, licences and role-based logins. */
+export const usesHospitalStaff = (typeId: string | null | undefined) => typeId === "hospital" || typeId === "radiology_center";
+
+const RADIOLOGY_CENTER_ROLES = ["radiology_admin", "radiology_receptionist", "radiographer", "radiologist", "accountant", "admin"];
+
+/** The designations a business of this type can give its staff. */
+export const designationsFor = (typeId: string | null | undefined): Designation[] =>
+  typeId === "radiology_center" ? DESIGNATIONS.filter((d) => RADIOLOGY_CENTER_ROLES.includes(d.key)) : DESIGNATIONS;
+
 export const LICENSE_LABEL: Record<LicenseKind, string> = {
   PMDC: "PMDC No",
   PNC: "PNC No",

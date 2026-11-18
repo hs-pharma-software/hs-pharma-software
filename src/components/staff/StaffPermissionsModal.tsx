@@ -21,7 +21,8 @@ export function StaffPermissionsModal({ staff, onClose, onSaved }: { staff: Staf
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
   const defaults = designation(staff.staff_category)?.pages ?? null;
-  const menu = visibleNavFor("hospital", allowedModules, null);
+  const typeId = useAuthStore((s) => s.currentTenant?.businessType ?? "hospital");
+  const menu = visibleNavFor(typeId, allowedModules, null);
 
   useEffect(() => {
     if (!staff.user_id) return;

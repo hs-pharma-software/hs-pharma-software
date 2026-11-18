@@ -48,8 +48,10 @@ export function hasModuleAccess(moduleKey: string | null): boolean {
   if (moduleKey !== "dashboard" && currentUser?.role === "staff" && currentUser.permissions && !hasPermission(currentUser.permissions, moduleKey)) return false;
   // A key may also belong to a sub-tab of a business-type group (Labs > Lab Reports).
   const inside = (children: NavChild[] | undefined): boolean => Boolean(children?.some((c) => c.moduleKey === moduleKey || inside(c.children)));
-  const item = NAV.find((n) => n.moduleKey === moduleKey) ?? NAV.find((n) => n.onlyFor && inside(n.children));
-  if (item?.onlyFor) return item.onlyFor.includes(businessType(currentTenant.businessType).id);
+  // Business types may share a section (a Radiology Centre uses the hospital's radiology screens).
+  const direct = NAV.filter((n) => n.moduleKey === moduleKey);
+  const owners = direct.some((n) => !n.onlyFor) ? direct : [...direct, ...NAV.filter((n) => n.onlyFor && inside(n.children))];
+  if (owners.length && owners.every((n) => n.onlyFor)) return owners.some((n) => n.onlyFor!.includes(businessType(currentTenant.businessType).id));
   if (!moduleAllowedForType(currentTenant.businessType, moduleKey)) return false;
   return currentTenant.allowedModules.includes(moduleKey);
 }

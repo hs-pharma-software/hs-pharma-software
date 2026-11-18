@@ -11,6 +11,7 @@ import type { UserAccount } from "@/lib/types2";
 import type { Staff } from "@/lib/types";
 import { useAuthStore } from "@/store/authStore";
 import { businessType } from "@/config/businessTypes";
+import { usesHospitalStaff } from "@/config/hospitalStaff";
 import { HospitalStaffFormModal } from "./HospitalStaffFormModal";
 import { localDate } from "@/lib/localDate";
 
@@ -23,7 +24,7 @@ export function StaffFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const isHospital = useAuthStore((st) => businessType(st.currentTenant?.businessType).id === "hospital");
+  const isHospital = useAuthStore((st) => usesHospitalStaff(businessType(st.currentTenant?.businessType).id));
   if (isHospital) return <HospitalStaffFormModal staff={staff} onClose={onClose} onSaved={onSaved} />;
   return <GeneralStaffForm staff={staff} onClose={onClose} onSaved={onSaved} />;
 }

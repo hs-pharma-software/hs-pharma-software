@@ -25,7 +25,7 @@ function useLinks() {
 /** Icon and accent per business type (tiles in the Solutions section). */
 const TYPE_ICON: Record<string, string> = {
   retail_pharmacy: "💊", medical_store: "🩺", hospital_pharmacy: "🏥", general_store: "🛒", contractor: "🧾", restaurant: "🍽️",
-  electronics_solar: "☀️", distributor: "🚚", mobile_shop: "📱", cloth_store: "👔", clinic: "👨‍⚕️", lab: "🧪", hospital: "🏨", banquet_hall: "🎉",
+  electronics_solar: "☀️", distributor: "🚚", mobile_shop: "📱", cloth_store: "👔", clinic: "👨‍⚕️", lab: "🧪", radiology_center: "🩻", hospital: "🏨", banquet_hall: "🎉",
 };
 const GROUP_COLOR: Record<ProductGroup, string> = {
   Pharmacy: "#0b2a6b", Retail: "#1e88e5", Distribution: "#7c3aed", Healthcare: "#0d9488", "Food & Events": "#ea580c", "Contractor Billing": "#475569",

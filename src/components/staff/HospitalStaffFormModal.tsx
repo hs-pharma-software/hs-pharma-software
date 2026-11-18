@@ -9,7 +9,9 @@ import { hospitalDepartmentsRepo, type HospitalDepartment } from "@/lib/repo/hos
 import { createStaffLogin } from "@/lib/hospitalLogins";
 import { listCollectionCenters } from "@/lib/repo/labReports";
 import type { CollectionCenter } from "@/lib/types-hospital";
-import { DESIGNATIONS, LICENSE_LABEL, designation as findDesignation } from "@/config/hospitalStaff";
+import { LICENSE_LABEL, designation as findDesignation, designationsFor } from "@/config/hospitalStaff";
+import { businessType } from "@/config/businessTypes";
+import { useAuthStore } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
 import type { Staff } from "@/lib/types";
 
@@ -18,6 +20,7 @@ import type { Staff } from "@/lib/types";
  * pages of that role. */
 export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Staff | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = Boolean(staff);
+  const designations = designationsFor(businessType(useAuthStore((s) => s.currentTenant?.businessType)).id);
   const [category, setCategory] = useState(staff?.staff_category ?? "");
   const [otherTitle, setOtherTitle] = useState(staff?.staff_category === "other" ? staff?.designation ?? "" : "");
   const [name, setName] = useState(staff?.name ?? "");
@@ -93,7 +96,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
           <Field label="Designation" required>
             <Select value={category} onChange={(e) => setCategory(e.target.value)} required>
               <option value="">— Select designation —</option>
-              {DESIGNATIONS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+              {designations.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
             </Select>
           </Field>
           <Field label="Employee ID (automatic)">

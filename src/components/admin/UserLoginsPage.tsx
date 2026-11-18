@@ -14,7 +14,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { SERVER_DB } from "@/lib/serverMode";
 import { RecoveryContact } from "@/components/auth/RecoveryContact";
 import { useAuthStore } from "@/store/authStore";
-import { NAV } from "@/config/nav";
+import { NAV, uniqueNavItems } from "@/config/nav";
 import { visibleNavFor } from "@/config/navFilter";
 import { ACTION_PERMISSIONS as ALL_ACTIONS, parseDeniedActions, staffAllows, toggleStaffAction, staffListFor, restrictedCount, tenantAllows } from "@/lib/actionPermissions";
 import { businessType, moduleAllowedForType } from "@/config/businessTypes";
@@ -97,7 +97,7 @@ export function UserLoginsPage({
 
   /** NAV items that are relevant to the tenant whose user is being edited. */
   function visibleNavForUser(u: UserAccount | null) {
-    if (!u) return NAV;
+    if (!u) return uniqueNavItems(NAV);
     const tenant = u.tenant_id == null
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);

@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { subscriptionPlansRepo, parseAllowedModules } from "@/lib/repo/subscriptionPlans";
-import { NAV } from "@/config/nav";
+import { NAV, uniqueNavItems } from "@/config/nav";
 import type { SubscriptionPlan } from "@/lib/types2";
 import { BUSINESS_TYPES } from "@/config/businessTypes";
 import { visibleNavFor } from "@/config/navFilter";
@@ -61,9 +61,9 @@ export function SubscriptionPlanFormModal({
 
   // Modules of the ticked business types only (none ticked: every module).
   const shownModules = useMemo(() => {
-    if (!types.size) return NAV;
+    if (!types.size) return uniqueNavItems(NAV);
     const keys = new Set([...types].flatMap((t) => visibleNavFor(t, null, null).map((n) => n.moduleKey)));
-    return NAV.filter((n) => keys.has(n.moduleKey));
+    return uniqueNavItems(NAV.filter((n) => keys.has(n.moduleKey)));
   }, [types]);
   const yearly = annualPrice(Number(price) || 0, Number(durationDays) || 30, Number(annualPct));
 

@@ -70,7 +70,13 @@ export const DISTRIBUTOR_NAV_ORDER = [
   "staff", "tasks", "dist_settings", "utilities", "settings",
 ];
 
-const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER, lab: LAB_NAV_ORDER, banquet_hall: BANQUET_NAV_ORDER, distributor: DISTRIBUTOR_NAV_ORDER };
+/** Radiology Centre sidebar, top to bottom: the patient's path through the centre, then the money and set-up. */
+export const RADIOLOGY_CENTER_NAV_ORDER = [
+  "hospital_radiology_orders", "hospital_radiology_tech", "hospital_radiology_reporting", "hospital_radiology_reports", "hospital_patients", "hospital_finance",
+  "hospital_radiology", "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings",
+];
+
+const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospital: HOSPITAL_NAV_ORDER, lab: LAB_NAV_ORDER, banquet_hall: BANQUET_NAV_ORDER, distributor: DISTRIBUTOR_NAV_ORDER, radiology_center: RADIOLOGY_CENTER_NAV_ORDER };
 
 /** Top-level sidebar entries for a tenant: business-type sections follow the
  * type, shared sections follow the plan, and sub-users only see what they were

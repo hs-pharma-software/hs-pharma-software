@@ -16,6 +16,11 @@ import {
 import type { WorklistOrder } from "@/lib/dicomApi";
 import type { HospitalPatient, HospitalService, OrderPriority } from "@/lib/types-hospital";
 import { Tabs, Panel, StatTile, StatusPill, PriorityPill, FeePill, ageGender, errMsg } from "@/components/hospital/radiology/common";
+import { ReceiptModal } from "@/app/hospital/reception/ReceiptModal";
+import { useAuthStore } from "@/store/authStore";
+
+/** A Radiology Centre has no separate hospital reception: this counter takes the fee itself. */
+const useIsCentre = () => useAuthStore((s) => s.currentTenant?.businessType === "radiology_center");
 
 type Tab = "dashboard" | "orders" | "worklist" | "create";
 
@@ -59,6 +64,8 @@ function Orders() {
   const [f, setF] = useState<OrderFilter>({ status: "pending", sort: "newest", page: 1, perPage: 20 });
   const [data, setData] = useState<{ rows: PortalOrderRow[]; total: number }>({ rows: [], total: 0 });
   const [loading, setLoading] = useState(false);
+  const isCentre = useIsCentre();
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const set = (p: Partial<OrderFilter>) => setF((x) => ({ ...x, page: 1, ...p }));
 
   async function load() {
@@ -113,7 +120,7 @@ function Orders() {
           <Button variant="secondary" disabled={(f.page ?? 1) >= pages} onClick={() => setF((x) => ({ ...x, page: (x.page ?? 1) + 1 }))}>Next</Button>
         </div>
       </div>
-      {!loading && data.rows.length === 0 && <Panel><p className="text-sm text-neutral-500">No orders match. New orders are placed on the Create Order tab or by doctors from the OPD.</p></Panel>}
+      {!loading && data.rows.length === 0 && <Panel><p className="text-sm text-neutral-500">{isCentre ? "No orders match. New orders are placed on the Create Order tab." : "No orders match. New orders are placed on the Create Order tab or by doctors from the OPD."}</p></Panel>}
       {data.rows.map((o) => (
         <Panel key={o.id}>
           <div className="flex flex-wrap items-start justify-between gap-2">
@@ -134,11 +141,17 @@ function Orders() {
             <span><span className="font-medium">{o.modality}</span>{o.body_part ? ` · ${o.body_part}` : ""}{o.machine_name ? ` · ${o.machine_name}` : ""}</span>
             <span className="flex items-center gap-2">
               <span className="font-semibold tabular-nums text-emerald-700">Rs {Number(o.fee ?? 0).toFixed(0)}</span>
+              {isCentre && o.episode_id && o.status !== "cancelled" && (
+                <Button variant={Number(o.fee) > 0 && Number(o.paid) !== 1 ? "primary" : "secondary"} onClick={() => setReceiptFor(o.episode_id)}>
+                  {Number(o.fee) > 0 && Number(o.paid) !== 1 ? "Take fee" : "Receipt"}
+                </Button>
+              )}
               {o.status === "pending" && <Button variant="ghost" onClick={() => void cancel(o)}>Cancel order</Button>}
             </span>
           </div>
         </Panel>
       ))}
+      {receiptFor && <ReceiptModal episodeId={receiptFor} scope="imaging" onClose={() => setReceiptFor(null)} onChanged={() => void load()} />}
     </div>
   );
 }
@@ -210,6 +223,7 @@ function CreateOrder({ onCreated }: { onCreated: () => void }) {
   const [orderedBy, setOrderedBy] = useState("");
   const [history, setHistory] = useState("");
   const [saving, setSaving] = useState(false);
+  const isCentre = useIsCentre();
 
   useEffect(() => { if (isTauri()) void listImagingStudies().then(setStudies).catch(() => setStudies([])); }, []);
   const study = studies.find((s) => s.id === studyId);
@@ -223,7 +237,7 @@ function CreateOrder({ onCreated }: { onCreated: () => void }) {
     setSaving(true);
     try {
       const { order } = await orderImaging({ patientId: patient.id, serviceId: studyId, bodyPart, priority, orderedBy, clinicalHistory: history });
-      window.alert(`Order ${order.order_no} placed.${Number(order.fee) > 0 ? ` Fee Rs ${Number(order.fee).toFixed(0)} is on the patient's bill; the patient joins the machine's queue once it is paid.` : ""}`);
+      window.alert(`Order ${order.order_no} placed.${Number(order.fee) > 0 ? ` Fee Rs ${Number(order.fee).toFixed(0)} is on the patient's bill; ${isCentre ? "click Take fee on the order. The patient then joins the machine's queue." : "the patient joins the machine's queue once it is paid."}` : ""}`);
       onCreated();
     } catch (e) {
       window.alert(`Could not place the order: ${errMsg(e)}`);

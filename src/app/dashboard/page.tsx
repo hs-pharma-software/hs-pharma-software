@@ -187,7 +187,7 @@ export default function DashboardPage() {
   if (tenant && businessType(tenant.businessType).id === "lab") return <RedirectTo href="/lab" />;
   if (tenant && businessType(tenant.businessType).id === "banquet_hall") return <RedirectTo href="/banquet" />;
   if (tenant && businessType(tenant.businessType).id === "clinic") return <RedirectTo href="/clinic" />;
-  if (tenant && businessType(tenant.businessType).id === "hospital") return <HospitalLanding />;
+  if (tenant && ["hospital", "radiology_center"].includes(businessType(tenant.businessType).id)) return <HospitalLanding />;
   return <GeneralDashboard />;
 }
 

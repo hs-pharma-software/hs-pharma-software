@@ -95,6 +95,26 @@ export interface NavItem {
 
 const BASE_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, moduleKey: "dashboard", labelKey: "nav.dashboard" },
+  // ── Radiology Centre: the hospital's radiology department as a business of its own (same screens, same login roles) ──
+  { label: "Reception", href: "/hospital/radiology", icon: ClipboardList, moduleKey: "hospital_radiology_orders", onlyFor: ["radiology_center"] },
+  { label: "Technologist", href: "/hospital/radiology/technologist", icon: ScanLine, moduleKey: "hospital_radiology_tech", onlyFor: ["radiology_center"] },
+  { label: "Reporting", href: "/hospital/radiology/reporting", icon: FileHeart, moduleKey: "hospital_radiology_reporting", onlyFor: ["radiology_center"] },
+  { label: "Radiology Reports", href: "/hospital/radiology/reports", icon: FileCheck2, moduleKey: "hospital_radiology_reports", onlyFor: ["radiology_center"] },
+  {
+    label: "Radiology Setup",
+    href: "/hospital/radiology/studies",
+    icon: Cog,
+    moduleKey: "hospital_radiology",
+    onlyFor: ["radiology_center"],
+    children: [
+      { label: "Performing Images (Tests)", href: "/hospital/radiology/studies" },
+      { label: "Templates", href: "/hospital/radiology/templates" },
+      { label: "Modalities", href: "/hospital/radiology/modalities" },
+      { label: "Machines", href: "/hospital/radiology/machines" },
+      { label: "PACS / Orthanc", href: "/hospital/radiology/pacs" },
+      { label: "Centre Profile", href: "/hospital/profile", moduleKey: "hospital_profile" },
+    ],
+  },
   {
     label: "Invoices",
     href: "/invoices",
@@ -564,7 +584,7 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Admission Requests", href: "/hospital/admissions", moduleKey: "hospital_admissions" },
     ],
   },
-  { label: "Patient", href: "/hospital/patients", icon: UserRoundPlus, moduleKey: "hospital_patients", onlyFor: ["hospital"] },
+  { label: "Patient", href: "/hospital/patients", icon: UserRoundPlus, moduleKey: "hospital_patients", onlyFor: ["hospital", "radiology_center"] },
   {
     label: "Episodes & Billing",
     href: "/hospital/episodes",
@@ -653,7 +673,7 @@ const HOSPITAL_NAV: NavItem[] = [
     href: "/hospital/finance",
     icon: Landmark,
     moduleKey: "hospital_finance",
-    onlyFor: ["hospital"],
+    onlyFor: ["hospital", "radiology_center"],
     children: [
       { label: "Overview", href: "/hospital/finance" },
       { label: "Collections", href: "/hospital/finance/collections" },
@@ -690,4 +710,7 @@ const HOSPITAL_NAV: NavItem[] = [
 
 export const NAV: NavItem[] = [...BASE_NAV, ...HOSPITAL_NAV];
 
-export const ALL_MODULE_KEYS = NAV.map((item) => item.moduleKey);
+export const ALL_MODULE_KEYS = [...new Set(NAV.map((item) => item.moduleKey))];
+
+/** One entry per section, for lists across business types (two types may share a section's key). */
+export const uniqueNavItems = (items: NavItem[]): NavItem[] => items.filter((n, i) => items.findIndex((x) => x.moduleKey === n.moduleKey) === i);

@@ -9,6 +9,7 @@ const PREFERRED: Record<string, [string, string][]> = {
   restaurant: [["restaurant_pos", "POS"], ["restaurant_kitchen", "Kitchen"], ["restaurant_menu", "Menu"], ["restaurant_reports", "Reports"]],
   clinic: [["clinic_dashboard", "Clinic"], ["clinic_appointments", "Appointments"], ["clinic_patients", "Patients"], ["clinic_consultations", "Consult"]],
   lab: [["lab_dashboard", "Home"], ["lab_reception", "Reception"], ["lab_samples", "Samples"], ["lab_reports", "Reports"]],
+  radiology_center: [["hospital_radiology_orders", "Reception"], ["hospital_radiology_tech", "Scan"], ["hospital_radiology_reporting", "Report"], ["hospital_patients", "Patients"]],
   hospital: [["hospital_dashboard", "Home"], ["hospital_reception", "Reception"], ["hospital_patients", "Patients"], ["hospital_doctor_desk", "Doctor"]],
   banquet_hall: [["banquet_dashboard", "Home"], ["banquet_bookings", "Bookings"], ["banquet_calendar", "Calendar"], ["banquet_reports", "Reports"]],
   electronics_solar: [["dashboard", "Home"], ["es_sales", "Sales"], ["es_products", "Products"], ["es_reports", "Reports"]],

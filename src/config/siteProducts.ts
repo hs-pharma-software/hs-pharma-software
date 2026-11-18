@@ -162,6 +162,16 @@ export const SITE_PRODUCTS: SiteProduct[] = [
     ],
   },
   {
+    slug: "radiology-centre-software", typeId: "radiology_center", name: "Radiology Centre Software", group: "Healthcare", cta: "demo",
+    headline: "From reception to signed report for imaging centres.",
+    intro: "For X-ray, ultrasound, CT and MRI centres: reception registers the patient, study and fee; the technologist performs the scan; the radiologist fills in the report and signs it; the patient gets it on paper or online by QR code.",
+    setup: [...COMMON_SETUP, "Your studies with their fees", "Your machines and modalities", FBR_SETUP],
+    faqs: [
+      { q: "Can patients open reports online?", a: "Yes. Each signed report prints with a QR code that opens its online copy." },
+      FBR_FAQ,
+    ],
+  },
+  {
     slug: "hospital-management", typeId: "hospital", name: "Hospital Management", group: "Healthcare", cta: "pilot",
     headline: "Patient-episode billing for hospitals, delivered as a pilot.",
     intro: "For hospitals that bill OPD, emergency and admissions against each patient's episode, with an attached pharmacy. Episodes, wards and beds, and lab and imaging orders are still being completed, so Hospital Management runs as its own pilot release.",
