@@ -74,7 +74,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <LanguageSync />
       <Topbar />
       <SchemaBanner />
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      {/* overflow-clip, not hidden: a focused element can never scroll this frame out of view. */}
+      <div className="relative flex min-h-0 flex-1 overflow-clip">
         {/* Mobile overlay — closes sidebar when tapped outside */}
         {sidebarMobileOpen && (
           <div

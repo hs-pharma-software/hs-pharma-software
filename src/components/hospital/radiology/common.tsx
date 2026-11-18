@@ -73,35 +73,48 @@ export function StatTile({ label, value, icon, tone = "neutral" }: { label: stri
   );
 }
 
-/** Reloads every `seconds` while on; shows the last refresh and a manual button. */
-export function useAutoRefresh(load: () => Promise<void>, seconds = 30) {
+/** The countdown lives here on its own: its tick every second redraws this bar, never the page (or a report being typed). */
+function RefreshBar({ seconds, paused, refresh, doneRef }: { seconds: number; paused: boolean; refresh: () => Promise<void>; doneRef: React.RefObject<(() => void) | null> }) {
   const [auto, setAuto] = useState(true);
   const [last, setLast] = useState<Date | null>(null);
   const [left, setLeft] = useState(seconds);
-  const loadRef = useRef(load);
-  useEffect(() => { loadRef.current = load; }, [load]);
-  const refresh = useCallback(async () => {
-    await loadRef.current();
-    setLast(new Date());
-    setLeft(seconds);
-  }, [seconds]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  const leftRef = useRef(seconds);
   useEffect(() => {
-    if (!auto) return;
-    const t = setInterval(() => setLeft((n) => {
-      if (n <= 1) { void refresh(); return seconds; }
-      return n - 1;
-    }), 1000);
+    doneRef.current = () => { leftRef.current = seconds; setLeft(seconds); setLast(new Date()); };
+    return () => { doneRef.current = null; };
+  }, [doneRef, seconds]);
+  useEffect(() => {
+    if (!auto || paused) return;
+    const t = setInterval(() => {
+      leftRef.current -= 1;
+      if (leftRef.current <= 0) { leftRef.current = seconds; void refresh(); }
+      setLeft(leftRef.current);
+    }, 1000);
     return () => clearInterval(t);
-  }, [auto, refresh, seconds]);
-  const bar = (
+  }, [auto, paused, refresh, seconds]);
+  return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-500">
       {last && <span>Last refresh {last.toLocaleTimeString()}</span>}
-      {auto && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />next in {left}s</span>}
+      {auto && !paused && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />next in {left}s</span>}
       <Button variant="secondary" onClick={() => setAuto((a) => !a)} aria-pressed={auto}>{auto ? "Auto ON" : "Auto OFF"}</Button>
       <Button variant="secondary" onClick={() => void refresh()}><RefreshCw size={14} />Refresh</Button>
     </div>
   );
+}
+
+/** Reloads every `seconds` while on; shows the last refresh and a manual button.
+ * `initial: false`: the page does the first load itself. `paused`: no automatic reloads (while a report is open). */
+export function useAutoRefresh(load: () => Promise<void>, seconds = 30, opts: { initial?: boolean; paused?: boolean } = {}) {
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; }, [load]);
+  const doneRef = useRef<(() => void) | null>(null);
+  const refresh = useCallback(async () => {
+    await loadRef.current();
+    doneRef.current?.();
+  }, []);
+  const initial = opts.initial !== false;
+  useEffect(() => { if (initial) void refresh(); }, [refresh, initial]);
+  const bar = <RefreshBar seconds={seconds} paused={Boolean(opts.paused)} refresh={refresh} doneRef={doneRef} />;
   return { refresh, bar };
 }
 

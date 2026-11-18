@@ -10,7 +10,7 @@ import { canProcess, reportImaging } from "./hospitalOpd";
 import { machineWorklist, modalityCodeFor, newMachineKey, sha256Hex, keyHint, type MachineRow, type ModalityRef, type WorklistOrder } from "../dicomApi";
 import { STANDARD_MODALITIES, DICOM_MODALITY_CODES, parseExam, validateExam, type ExamData } from "../../config/radiologyPortal";
 import { RADIOLOGY_ADMIN_ROLES, TECHNOLOGIST_ROLES, TECHNOLOGIST_ASSIGN_ROLES } from "../../config/hospitalStaff";
-import { findingsText, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
+import { findingsText, isUltrasoundStudy, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
 import { newRadiologyToken } from "../radiologyReportDocument";
 import type { HospitalImagingOrder, HospitalPatient } from "../types-hospital";
 
@@ -570,20 +570,30 @@ export async function completeExam(orderId: string, data: ExamData, confirmWarni
 
 // ── Reporting ─────────────────────────────────────────────────────────────
 
-/** The radiologist's list: examined studies waiting for a report (or, with
- * "unexamined", also paid studies not yet examined), or reported ones. */
+/** Only what the worklist shows: findings, the examination record and the saved report load when a study is opened. */
+const WORKLIST_SELECT = `SELECT o.id, o.order_no, o.patient_id, o.episode_id, o.modality, o.modality_code, o.body_part, o.priority, o.status, o.fee, o.paid,
+    o.ordered_at, o.performed_at, o.reported_at, o.images_received_at, o.images_count, p.name AS patient_name, p.mr_no
+  FROM hospital_imaging_orders o
+  JOIN hospital_patients p ON p.id = o.patient_id`;
+
+/** The radiologist's list. To report: examined studies, and paid ultrasounds (the
+ * doctor scans the patient, so no technologist step comes first). Not examined
+ * yet: other paid studies the technologist has not completed. Or reported ones. */
 export async function listForReporting(view: "to_report" | "unexamined" | "reported", search = ""): Promise<PortalOrderRow[]> {
-  const status = view === "reported" ? ["reported"] : view === "unexamined" ? ["pending", "in_progress"] : ["performed"];
+  const status = view === "reported" ? ["reported"] : view === "unexamined" ? ["pending", "in_progress"] : ["performed", "pending", "in_progress"];
   const where = [`o.tenant_id = ?`, `o.deleted_at IS NULL`, `o.status IN (${status.map(() => "?").join(",")})`];
   const args: unknown[] = [requireCurrentTenantId(), ...status];
+  if (view === "to_report") where.push(`(o.status = 'performed' OR o.modality_code = 'US' OR LOWER(o.modality) LIKE '%ultra%' OR LOWER(o.modality) LIKE '%usg%' OR LOWER(o.modality) LIKE '%sonogra%')`);
   const q = search.trim().toLowerCase();
   if (q) {
     where.push(`(LOWER(o.order_no) LIKE ? OR LOWER(p.name) LIKE ? OR LOWER(p.mr_no) LIKE ? OR LOWER(o.modality) LIKE ?)`);
     args.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
   const order = view === "reported" ? "o.reported_at DESC" : "CASE o.priority WHEN 'stat' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END, COALESCE(o.performed_at, o.ordered_at) ASC";
-  const rows = await dbSelect<PortalOrderRow>(`${ORDER_SELECT} WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT 200`, args);
-  return view === "unexamined" ? rows.filter((r) => canProcess(r)) : rows;
+  const rows = await dbSelect<PortalOrderRow>(`${WORKLIST_SELECT} WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT 200`, args);
+  if (view === "unexamined") return rows.filter((r) => canProcess(r) && !isUltrasoundStudy(r));
+  if (view === "to_report") return rows.filter((r) => r.status === "performed" || (canProcess(r) && isUltrasoundStudy(r)));
+  return rows;
 }
 
 /** Writes the report; the radiologist is the logged-in user unless named. A
@@ -609,6 +619,8 @@ export async function reportStudy(orderId: string, r: { findings: string | null;
   }
   await hospitalImagingRepo.update(orderId, {
     structured_report: structured ? JSON.stringify(structured) : null, public_token: order.public_token ?? newRadiologyToken(),
+    // An ultrasound the doctor scanned without a technologist step.
+    ...(!order.performed_at && isUltrasoundStudy(order) ? { performed_at: localDateTime(), performed_by_name: a.name } : {}),
   } as Partial<HospitalImagingOrder>);
   await reportImaging(orderId, { findings, impression: r.impression, radiologist: clean(r.radiologist) ?? (a.designation ? `${a.name}, ${a.designation}` : a.name) });
 }

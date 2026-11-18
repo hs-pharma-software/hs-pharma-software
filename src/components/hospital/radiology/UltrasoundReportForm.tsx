@@ -21,7 +21,8 @@ function YesNo({ id, label, value, onChange, disabled }: { id: string; label: st
       <legend className="text-xs font-medium text-neutral-600">{label}</legend>
       <div className="mt-1 flex gap-1">
         {["No", "Yes"].map((o) => (
-          <label key={o} className={`flex min-h-9 flex-1 cursor-pointer items-center justify-center rounded-lg px-3 text-sm ring-1 ${value === o ? "bg-violet-700 font-semibold text-white ring-violet-700" : "bg-white text-neutral-700 ring-neutral-200"}`}>
+          // relative: keeps the hidden radio inside the scrolling page, so choosing it can never scroll the app's frame.
+          <label key={o} className={`relative flex min-h-9 flex-1 cursor-pointer items-center justify-center rounded-lg px-3 text-sm ring-1 focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-violet-500 ${value === o ? "bg-violet-700 font-semibold text-white ring-violet-700" : "bg-white text-neutral-700 ring-neutral-200"}`}>
             <input type="radio" className="sr-only" name={id} checked={value === o} disabled={disabled} onChange={() => onChange(o)} />{o}
           </label>
         ))}
@@ -39,7 +40,8 @@ function ColumnInput({ c, value, onChange, disabled, label }: { c: UsColumn; val
       </Select>
     );
   }
-  return <Input aria-label={label} type={c.type === "number" ? "number" : "text"} min="0" step="any" inputMode={c.type === "number" ? "decimal" : undefined} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />;
+  // Text with a number keypad: a number box can change its value when the page is scrolled over it.
+  return <Input aria-label={label} type="text" inputMode={c.type === "number" ? "decimal" : undefined} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />;
 }
 
 function ListField({ f, values, onChange, disabled }: { f: UsField; values: UsValues; onChange: (rows: UsRow[]) => void; disabled: boolean }) {
@@ -105,8 +107,7 @@ export function UltrasoundReportForm({ template, values, onChange, ctx, disabled
               const hint = f.type === "number" ? rangeText(f) : null;
               return (
                 <Field key={f.key} label={f.unit ? `${f.label} (${f.unit})` : f.label}>
-                  <Input type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"} min={f.type === "number" ? "0" : undefined} step={f.type === "number" ? "any" : undefined}
-                    inputMode={f.type === "number" ? "decimal" : undefined} value={value} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} />
+                  <Input type={f.type === "date" ? "date" : "text"} inputMode={f.type === "number" ? "decimal" : undefined} value={value} disabled={disabled} onChange={(e) => set(f.key, e.target.value)} />
                   {(hint || rangeFlag(value, f)) && <span className="flex justify-between gap-2 text-[11px] text-neutral-500"><span>{hint}</span><Flag flag={f.type === "number" ? rangeFlag(value, f) : null} /></span>}
                 </Field>
               );

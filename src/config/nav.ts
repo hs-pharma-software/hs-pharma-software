@@ -605,11 +605,18 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Technologist", href: "/hospital/radiology/technologist", moduleKey: "hospital_radiology_tech" },
       { label: "Reporting", href: "/hospital/radiology/reporting", moduleKey: "hospital_radiology_reporting" },
       { label: "Radiology Reports", href: "/hospital/radiology/reports", moduleKey: "hospital_radiology_reports" },
-      { label: "Modalities", href: "/hospital/radiology/modalities" },
-      { label: "Machines", href: "/hospital/radiology/machines" },
-      { label: "Performing Images (Tests)", href: "/hospital/radiology/studies" },
-      { label: "Templates", href: "/hospital/radiology/templates" },
-      { label: "PACS / Orthanc", href: "/hospital/radiology/pacs" },
+      // Set up once: kept out of the way of the daily work above.
+      {
+        label: "Radiology Setup",
+        href: "/hospital/radiology/studies",
+        children: [
+          { label: "Performing Images (Tests)", href: "/hospital/radiology/studies" },
+          { label: "Templates", href: "/hospital/radiology/templates" },
+          { label: "Modalities", href: "/hospital/radiology/modalities" },
+          { label: "Machines", href: "/hospital/radiology/machines" },
+          { label: "PACS / Orthanc", href: "/hospital/radiology/pacs" },
+        ],
+      },
     ],
   },
   { label: "Surgery", href: "/hospital/surgery", icon: Scissors, moduleKey: "hospital_surgery", onlyFor: ["hospital"] },

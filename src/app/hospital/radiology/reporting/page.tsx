@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ExternalLink, FileText, Printer, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ExternalLink, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal";
 import { isTauri } from "@/lib/platform";
 import { getRadiologyReport, type RadiologyReport } from "@/lib/repo/radiology";
 import {
-  listForReporting, templatesFor, reportStudy, getPacs, imagesUrl, type PortalOrderRow, type RadiologyTemplate, type RadiologyPacs,
+  listForReporting, getPortalOrder, templatesFor, reportStudy, getPacs, imagesUrl, type PortalOrderRow, type RadiologyTemplate, type RadiologyPacs,
 } from "@/lib/repo/radiologyPortal";
 import { parseExam, SAFETY_CHECKS } from "@/config/radiologyPortal";
 import { Panel, Tabs, PriorityPill, StatusPill, ageGender, errMsg, openImages, imagesMissingReason, useAutoRefresh } from "@/components/hospital/radiology/common";
@@ -18,13 +18,32 @@ import { localDate } from "@/lib/localDate";
 
 type View = "to_report" | "unexamined" | "reported";
 
-/** The radiologist's worklist: examined studies waiting for a report, the
- * technologist's record beside the report form, and report templates. */
+interface ReportDraft { patternId: string; values: UsValues; findings: string; impression: string; recommendation: string; note: string }
+
+/** What the doctor has typed, kept in this browser tab until the report is signed. */
+const draftKey = (orderId: string) => `radiology-report-draft:${orderId}`;
+function readDraft(orderId: string): ReportDraft | null {
+  try {
+    const raw = sessionStorage.getItem(draftKey(orderId));
+    return raw ? (JSON.parse(raw) as ReportDraft) : null;
+  } catch {
+    return null;
+  }
+}
+function writeDraft(orderId: string, draft: ReportDraft | null) {
+  try {
+    if (draft) sessionStorage.setItem(draftKey(orderId), JSON.stringify(draft));
+    else sessionStorage.removeItem(draftKey(orderId));
+  } catch { /* the report still saves without a draft */ }
+}
+
+/** The radiologist's worklist. Opening a study gives the report the whole page. */
 export default function ReportingPage() {
   const [view, setView] = useState<View>("to_report");
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<PortalOrderRow[]>([]);
   const [sel, setSel] = useState<PortalOrderRow | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const [pacs, setPacs] = useState<RadiologyPacs | null>(null);
   const [printing, setPrinting] = useState<RadiologyReport | null>(null);
 
@@ -32,12 +51,48 @@ export default function ReportingPage() {
     if (!isTauri()) return;
     setRows(await listForReporting(view, search));
   }
-  const { bar, refresh } = useAutoRefresh(load, 60);
-  useEffect(() => { const t = setTimeout(() => void refresh(), 250); return () => clearTimeout(t); }, [view, search]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { bar, refresh } = useAutoRefresh(load, 60, { initial: false, paused: Boolean(sel) });
+  // One load on opening; typing in the search waits for a pause.
+  const firstLoad = useRef(true);
+  useEffect(() => {
+    const t = setTimeout(() => void refresh(), firstLoad.current ? 0 : 250);
+    firstLoad.current = false;
+    return () => clearTimeout(t);
+  }, [view, search]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (isTauri()) void getPacs().then(setPacs).catch(() => setPacs(null)); }, []);
 
   async function print(id: string) {
     try { setPrinting(await getRadiologyReport(id)); } catch (e) { window.alert(errMsg(e)); }
+  }
+
+  /** The list carries only what it shows; the full study loads when it is opened. */
+  async function open(id: string) {
+    if (opening) return;
+    setOpening(id);
+    try {
+      const full = await getPortalOrder(id);
+      if (!full) throw new Error("This study is no longer available.");
+      setSel(full);
+    } catch (e) {
+      window.alert(errMsg(e));
+    } finally {
+      setOpening(null);
+    }
+  }
+
+  if (sel) {
+    return (
+      <div>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={() => setSel(null)}><ArrowLeft size={14} />Back to list</Button>
+          <h1 className="text-xl font-bold tracking-tight text-neutral-900">{sel.patient_name}</h1>
+          <PriorityPill priority={sel.priority} />
+        </div>
+        <ReportPanel key={sel.id} order={sel} pacs={pacs} onPrint={() => void print(sel.id)}
+          onSaved={() => { setSel(null); void refresh(); }} />
+        {printing && <RadiologyReportModal report={printing} onClose={() => setPrinting(null)} />}
+      </div>
+    );
   }
 
   return (
@@ -45,42 +100,34 @@ export default function ReportingPage() {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Reporting</h1>
-          <p className="text-sm text-neutral-500">Report examined studies. Templates fill the findings and impression for you to edit.</p>
+          <p className="text-sm text-neutral-500">Choose a patient to write the report.</p>
         </div>
         {bar}
       </div>
-      <Tabs<View> value={view} onChange={(v) => { setView(v); setSel(null); }} tabs={[
+      <Tabs<View> value={view} onChange={setView} tabs={[
         { key: "to_report", label: "To report" }, { key: "unexamined", label: "Not examined yet" }, { key: "reported", label: "Reported" },
       ]} />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(280px,1fr)_minmax(360px,1.6fr)]">
-        <Panel>
-          <div className="relative mb-3">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <Input id="rep-search" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient, MR number, order or study" />
-          </div>
-          {view === "unexamined" && <p className="mb-2 text-xs text-neutral-500">Paid studies the technologist has not completed. Report one directly only where your hospital does not use the technologist step.</p>}
-          <div className="flex max-h-[640px] flex-col gap-2 overflow-y-auto">
-            {rows.length === 0 && <p className="py-6 text-center text-sm text-neutral-500">{view === "to_report" ? "No examined studies are waiting for a report." : "Nothing here."}</p>}
-            {rows.map((o) => (
-              <button key={o.id} type="button" onClick={() => setSel(o)}
-                className={`rounded-xl px-3 py-2.5 text-left ring-1 transition ${sel?.id === o.id ? "bg-violet-50 ring-violet-400" : "ring-neutral-200 hover:bg-neutral-50"}`}>
-                <div className="flex items-center justify-between gap-2"><span className="font-semibold">{o.patient_name}</span><PriorityPill priority={o.priority} /></div>
-                <div className="text-sm">{o.modality}{o.body_part ? ` · ${o.body_part}` : ""}</div>
-                <div className="mt-1 flex items-center justify-between text-xs text-neutral-500">
-                  <span>{o.order_no} · {(o.performed_at ?? o.ordered_at).slice(0, 16)}</span>
-                  {o.images_received_at ? <span className="text-emerald-700">{o.images_count ?? "?"} images</span> : <StatusPill status={o.status} />}
-                </div>
-              </button>
-            ))}
-          </div>
-        </Panel>
-        {!sel ? (
-          <Panel className="flex min-h-[320px] flex-col items-center justify-center text-center text-neutral-500"><FileText size={44} className="mb-3 text-neutral-300" />Select a study to report</Panel>
-        ) : (
-          <ReportPanel key={sel.id} order={sel} pacs={pacs} onPrint={() => void print(sel.id)}
-            onSaved={() => { setSel(null); void refresh(); }} />
-        )}
-      </div>
+      <Panel>
+        <div className="relative mb-3">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <Input id="rep-search" className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient, MR number, order or study" aria-label="Search studies" />
+        </div>
+        {view === "unexamined" && <p className="mb-2 text-xs text-neutral-500">Paid studies the technologist has not completed. Report one directly only where your hospital does not use the technologist step.</p>}
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {rows.length === 0 && <p className="py-6 text-center text-sm text-neutral-500 md:col-span-2 xl:col-span-3">{view === "to_report" ? "No studies are waiting for a report." : "Nothing here."}</p>}
+          {rows.map((o) => (
+            <button key={o.id} type="button" disabled={Boolean(opening)} onClick={() => void open(o.id)}
+              className={`rounded-xl px-3 py-2.5 text-left ring-1 transition disabled:cursor-wait ${opening === o.id ? "bg-violet-50 ring-violet-400" : "ring-neutral-200 hover:bg-neutral-50"}`}>
+              <div className="flex items-center justify-between gap-2"><span className="font-semibold">{o.patient_name}</span><PriorityPill priority={o.priority} /></div>
+              <div className="text-sm">{o.modality}{o.body_part ? ` · ${o.body_part}` : ""}</div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+                <span>{opening === o.id ? "Opening…" : `${o.order_no} · ${(o.performed_at ?? o.ordered_at).slice(0, 16)}`}</span>
+                {o.images_received_at ? <span className="text-emerald-700">{o.images_count ?? "?"} images</span> : <StatusPill status={o.status} />}
+              </div>
+            </button>
+          ))}
+        </div>
+      </Panel>
       {printing && <RadiologyReportModal report={printing} onClose={() => setPrinting(null)} />}
     </div>
   );
@@ -88,20 +135,29 @@ export default function ReportingPage() {
 
 function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow; pacs: RadiologyPacs | null; onSaved: () => void; onPrint: () => void }) {
   const exam = parseExam(order.exam_data, order.clinical_history);
+  const reported = order.status === "reported";
+  // Anything typed earlier in this tab comes back if the page was left or reloaded.
+  const [draft] = useState(() => (reported ? null : readDraft(order.id)));
   const [templates, setTemplates] = useState<RadiologyTemplate[]>([]);
-  const [findings, setFindings] = useState(order.findings ?? "");
-  const [impression, setImpression] = useState(order.impression ?? "");
+  const [findings, setFindings] = useState(draft?.findings ?? order.findings ?? "");
+  const [impression, setImpression] = useState(draft?.impression ?? order.impression ?? "");
   const [radiologist, setRadiologist] = useState(order.radiologist ?? "");
   const [saving, setSaving] = useState(false);
-  const reported = order.status === "reported";
   // Ultrasound: the doctor fills in the scan's values instead of writing the findings.
   const ultrasound = isUltrasoundStudy(order);
-  const [patternId, setPatternId] = useState(templateForStudy(order)?.id ?? "");
-  const [values, setValues] = useState<UsValues>({});
-  const [recommendation, setRecommendation] = useState("");
-  const [note, setNote] = useState("");
+  const [patternId, setPatternId] = useState(draft?.patternId ?? templateForStudy(order)?.id ?? "");
+  const [values, setValues] = useState<UsValues>(draft?.values ?? {});
+  const [recommendation, setRecommendation] = useState(draft?.recommendation ?? "");
+  const [note, setNote] = useState(draft?.note ?? "");
   const pattern = reported ? null : ultrasoundTemplate(patternId);
   const usCtx = { gender: order.gender, reportDate: localDate() };
+
+  const signedRef = useRef(false);
+  useEffect(() => {
+    if (reported) return;
+    const t = setTimeout(() => { if (!signedRef.current) writeDraft(order.id, { patternId, values, findings, impression, recommendation, note }); }, 400);
+    return () => clearTimeout(t);
+  }, [reported, order.id, patternId, values, findings, impression, recommendation, note]);
 
   function changePattern(id: string) {
     if (Object.keys(values).length && !window.confirm("Change the report pattern? The values entered so far will be cleared.")) return;
@@ -126,6 +182,8 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
         findings: findings.trim() || null, impression, radiologist,
         structured: pattern ? { template: pattern.id, values, recommendation, note } : null,
       });
+      signedRef.current = true;
+      writeDraft(order.id, null);
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${errMsg(e)}`);
@@ -145,7 +203,7 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
           <div><dt className="text-neutral-500">Age / gender</dt><dd>{ageGender(order)}</dd></div>
           <div><dt className="text-neutral-500">Order</dt><dd>{order.order_no}</dd></div>
           <div><dt className="text-neutral-500">Referred by</dt><dd>{order.ordered_by ?? "—"}</dd></div>
-          <div><dt className="text-neutral-500">Examined</dt><dd>{order.performed_at ? `${order.performed_at} by ${order.performed_by_name ?? "—"}` : "Not yet"}</dd></div>
+          <div><dt className="text-neutral-500">Examined</dt><dd>{order.performed_at ? `${order.performed_at} by ${order.performed_by_name ?? "—"}` : ultrasound ? "By the reporting doctor" : "Not yet"}</dd></div>
         </dl>
         {(exam.clinical.history || exam.clinical.indication) && <p className="mt-3 text-sm"><span className="text-neutral-500">Clinical history: </span>{[exam.clinical.history, exam.clinical.indication].filter(Boolean).join(" · ")}</p>}
         {order.performed_at && (

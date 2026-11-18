@@ -10,7 +10,7 @@ import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { hospitalPatientsRepo, hospitalImagingRepo, nextMrNo } from "@/lib/repo/hospital";
 import { payOrderFee } from "@/lib/repo/hospitalOpd";
 import { saveImagingStudy, orderImaging, getRadiologyReport } from "@/lib/repo/radiology";
-import { reportStudy } from "@/lib/repo/radiologyPortal";
+import { listForReporting, reportStudy } from "@/lib/repo/radiologyPortal";
 import { getPublicRadiologyReport } from "@/lib/radiologyReportDocument";
 import type { ReportDb } from "@/lib/labReportDocument";
 import {
@@ -114,6 +114,23 @@ test("a signed ultrasound keeps its values, conclusion, recommendation and note;
   assert.deepEqual([saved.template, saved.recommendation, saved.note], ["kub", "Urology opinion.", "Patient fasting."]);
   assert.match(report.publicToken ?? "", /^[0-9a-f]{32}$/);
   assert.equal(report.referringDoctor, "Dr Hamid");
+});
+
+test("a paid ultrasound is ready to report without the technologist step; an unpaid one and other studies wait", async () => {
+  const order = await paidOrder();
+  const unpaid = await saveImagingStudy(null, { name: "Ultrasound Pelvis", modality: "Ultrasound", rate: 900 });
+  const xray = await saveImagingStudy(null, { name: "X-Ray Chest", modality: "X-Ray", rate: 500 });
+  const p = await hospitalPatientsRepo.create({ mr_no: await nextMrNo(), name: "Sara Khan", gender: "Female", age_years: 30 });
+  await orderImaging({ patientId: p.id, serviceId: unpaid.id });
+  const chest = (await orderImaging({ patientId: p.id, serviceId: xray.id })).order;
+  await payOrderFee("imaging", chest.id, "cash");
+  const toReport = await listForReporting("to_report");
+  assert.deepEqual(toReport.map((o) => o.id), [order.id]);
+  assert.equal("exam_data" in toReport[0], false, "the list stays light");
+  assert.deepEqual((await listForReporting("unexamined")).map((o) => o.id), [chest.id]);
+  await reportStudy(order.id, { findings: "Normal.", impression: "Normal study." });
+  const done = (await hospitalImagingRepo.get(order.id))!;
+  assert.deepEqual([done.status, done.performed_by_name, Boolean(done.performed_at)], ["reported", "Dr Sana", true]);
 });
 
 test("the online copy: only a released report, by its random key, without fees or internal notes", async () => {
