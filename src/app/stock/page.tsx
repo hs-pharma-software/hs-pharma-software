@@ -11,6 +11,7 @@ import { useInAndroidApp } from "@/lib/inAndroidApp";
 import { dbSelect } from "@/lib/db";
 import { searchProductsByNameOrBarcode } from "@/lib/repo/products";
 import { addStockToBatch, receiveStock, stockSupplierNames, supplierOf } from "@/lib/repo/stock";
+import { groupUnbatchedStockRows, type StockDisplayRow } from "@/lib/stockDisplay";
 import { businessType } from "@/config/businessTypes";
 import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import { PackagePlus } from "lucide-react";
@@ -19,31 +20,12 @@ import { expiryCorrectionCounts } from "@/lib/repo/batchExpiry";
 import { useAuthStore } from "@/store/authStore";
 import type { Product } from "@/lib/types";
 
-interface StockRow {
-  id: string;
-  product_id: string;
-  /** Supplier of the purchase this batch came from (filled after loading). */
-  supplier_name?: string | null;
-  barcode: string | null;
-  product_name: string;
-  company_name: string | null;
-  location: string | null;
-  category_name: string | null;
-  uom_name: string | null;
-  secondary_unit_id: string | null;
-  secondary_unit_name: string | null;
-  packing: number;
-  avail_qty: number;
-  batch_no: string | null;
-  expiry_date: string | null;
-  mrp: number;
-  sale_price: number;
-  purchase_price: number;
-}
+interface StockRow extends StockDisplayRow { isSummary?: boolean; entryCount?: number }
 
 export default function StockPage() {
   const [rows, setRows] = useState<StockRow[]>([]);
   const [search, setSearch] = useState("");
+  const [showStockEntries, setShowStockEntries] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
   const [productQuery, setProductQuery] = useState("");
@@ -128,21 +110,25 @@ export default function StockPage() {
     return !term || r.product_name.toLowerCase().includes(term) || (r.barcode ?? "").toLowerCase().includes(term)
       || (r.supplier_name ?? "").toLowerCase().includes(term);
   });
+  const displayRows: StockRow[] = canTopUp && !showStockEntries
+    ? groupUnbatchedStockRows(filtered)
+    : filtered.map((r) => ({ ...r, isSummary: false, entryCount: 1 }));
+  const groupedEntryCount = filtered.length - displayRows.length;
 
   const discountFactor = mrpDiscountPct > 0 ? 1 - mrpDiscountPct / 100 : 0;
 
-  const totalStockValue = filtered.reduce((sum, r) => sum + r.avail_qty * r.sale_price, 0);
+  const totalStockValue = displayRows.reduce((sum, r) => sum + r.avail_qty * r.sale_price, 0);
 
   const columns: Column<StockRow>[] = [
     { header: "Barcode", render: (r) => r.barcode ?? "\u2014" },
     { header: "Product Name", render: (r) => <span className="font-medium">{r.product_name}</span> },
     { header: "Company", render: (r) => r.company_name ?? "\u2014" },
     { header: "Supplier", render: (r) => r.supplier_name ?? "\u2014" },
-    { header: "Batch", render: (r) => r.batch_no ?? "\u2014" },
+    { header: "Batch", render: (r) => r.isSummary ? `Unbatched · ${r.entryCount} receipts` : r.batch_no ?? "\u2014" },
     {
       header: "Expiry",
       render: (r) => canCorrectExpiry
-        ? <ExpiryCell expiry={r.expiry_date} used={corrections.get(r.id) ?? 0} onEdit={() => setExpiryEdit(r)} />
+        ? <ExpiryCell expiry={r.expiry_date} used={corrections.get(r.id) ?? 0} onEdit={r.isSummary ? undefined : () => setExpiryEdit(r)} />
         : <ExpiryCell expiry={r.expiry_date} used={0} />,
     },
     { header: "Location", render: (r) => r.location ?? "\u2014" },
@@ -198,7 +184,18 @@ export default function StockPage() {
     setSaving(true);
     setTopUpError(null);
     try {
-      await addStockToBatch(topUp.id, qty / topUpPacking, Number(topUpPrice) || undefined);
+      if (topUp.isSummary) {
+        await receiveStock({
+          productId: topUp.product_id,
+          batchNo: null,
+          qty: qty / topUpPacking,
+          purchasePrice: Number(topUpPrice) || topUp.purchase_price,
+          expiryDate: null,
+          location: null,
+        });
+      } else {
+        await addStockToBatch(topUp.id, qty / topUpPacking, Number(topUpPrice) || undefined);
+      }
       setTopUp(null);
       void reload();
     } catch (e) {
@@ -247,7 +244,7 @@ export default function StockPage() {
                 exportCsv(
                   `stock-${new Date().toISOString().slice(0,10)}.csv`,
                   STOCK_CSV_HEADERS,
-                  filtered.map((r) => [r.barcode, r.product_name, r.company_name, r.batch_no, r.expiry_date, r.location, r.uom_name, r.avail_qty, r.sale_price, r.purchase_price, r.supplier_name ?? ""])
+                  displayRows.map((r) => [r.barcode, r.product_name, r.company_name, r.isSummary ? `${r.entryCount} unbatched receipts` : r.batch_no, r.expiry_date, r.location, r.uom_name, r.avail_qty, r.sale_price, r.purchase_price, r.supplier_name ?? ""])
                 );
               }}
             >
@@ -289,6 +286,11 @@ export default function StockPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
         />
+        {canTopUp && (
+          <Button className="ml-auto shrink-0" onClick={() => setShowStockEntries((show) => !show)}>
+            {showStockEntries ? "Group identical entries" : `Show individual entries${groupedEntryCount ? ` (${groupedEntryCount} hidden)` : ""}`}
+          </Button>
+        )}
       </div>
 
       {!tauriReady ? (
@@ -296,7 +298,7 @@ export default function StockPage() {
           Run inside the desktop app to manage stock.
         </p>
       ) : (
-        <DataTable columns={columns} rows={filtered} />
+        <DataTable columns={columns} rows={displayRows} />
       )}
 
       {/* -- Print-only stock report -- .print-only hides on screen; @media print shows + repositions it */}
@@ -320,13 +322,13 @@ export default function StockPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
+              {displayRows.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #e5e5e5" }}>
                   <td style={{ padding: "4px 8px" }}>{r.barcode ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px", fontWeight: "600" }}>{r.product_name}</td>
                   <td style={{ padding: "4px 8px" }}>{r.company_name ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.supplier_name ?? "-"}</td>
-                  <td style={{ padding: "4px 8px" }}>{r.batch_no ?? "\u2014"}</td>
+                  <td style={{ padding: "4px 8px" }}>{r.isSummary ? `Unbatched · ${r.entryCount} receipts` : r.batch_no ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.expiry_date ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.location ?? "\u2014"}</td>
                   <td style={{ padding: "4px 8px" }}>{r.uom_name ?? "\u2014"}</td>
@@ -348,7 +350,7 @@ export default function StockPage() {
                   Total - {filtered.length} item{filtered.length !== 1 ? "s" : ""}
                 </td>
                 <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                  {filtered.reduce((s, r) => s + r.avail_qty, 0)}
+                  {displayRows.reduce((s, r) => s + r.avail_qty, 0)}
                 </td>
                 <td />
                 <td style={{ padding: "6px 8px", textAlign: "right" }}>
@@ -376,7 +378,7 @@ export default function StockPage() {
               <p className="font-medium text-neutral-800">{topUp.product_name}</p>
               <p className="text-xs text-neutral-500">
                 In stock: {topUp.avail_qty * topUpPacking} {topUpUnit}
-                {topUp.batch_no ? ` · Batch ${topUp.batch_no}` : ""}
+                {topUp.isSummary ? ` · ${topUp.entryCount} unbatched receipts` : topUp.batch_no ? ` · Batch ${topUp.batch_no}` : ""}
               </p>
             </div>
             <Field label={`Quantity to add${topUpUnit ? ` (${topUpUnit})` : ""}`} required>
