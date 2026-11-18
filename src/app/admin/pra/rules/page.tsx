@@ -51,6 +51,7 @@ export default function PraRulesPage() {
         Verify each against the official Gazette and PRA notifications, record the date, then approve. A rule applies to a business only after you assign it. Nothing is inferred from a payment method or a business&apos;s name.
       </p>
       {msg && <p className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{msg.text}</p>}
+      <VendorTemplates onChanged={() => void load()} />
       <div className="flex flex-wrap gap-2">
         <input className={`${input} max-w-xs`} placeholder="Search service, code, source" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={`${input} max-w-xs`} value={sector} onChange={(e) => setSector(e.target.value)}><option value="">All sectors</option>{PRA_SECTORS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
@@ -125,6 +126,48 @@ export default function PraRulesPage() {
 
       <PraCases />
     </div>
+  );
+}
+
+interface VendorTemplate { id: string; label: string; code: string; rate: number; inputAdjustment: string; source: string; approved: boolean }
+
+/** The ready-made vendor services used by Quick setup: their tax rules, approved here or when a vendor is set up. */
+function VendorTemplates({ onChanged }: { onChanged: () => void }) {
+  const [rows, setRows] = useState<VendorTemplate[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { void call<VendorTemplate[]>("templates").then(setRows).catch((e) => setError(errText(e))); }, []);
+  const approve = async (templateId?: string) => {
+    setBusy(true);
+    setError(null);
+    try { setRows(await call<VendorTemplate[]>("approve_templates", { templateId })); onChanged(); } catch (e) { setError(errText(e)); } finally { setBusy(false); }
+  };
+  const pending = (rows ?? []).filter((r) => !r.approved).length;
+  return (
+    <section className="space-y-2 rounded-2xl bg-white p-5 text-sm shadow-sm ring-1 ring-black/[0.05]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Vendor services for Quick setup</h2>
+        {pending > 0 && <Button variant="primary" disabled={busy} onClick={() => { if (confirm(`Approve the tax rules of ${pending} vendor service${pending === 1 ? "" : "s"}, as listed here?`)) void approve(); }}>Approve all</Button>}
+      </div>
+      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-900">{error}</p>}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px]">
+          <thead className="text-left text-xs text-neutral-500"><tr><th className="py-1">Service</th><th>PCT code</th><th>Rate</th><th>Source</th><th>Status</th><th /></tr></thead>
+          <tbody>
+            {(rows ?? []).map((r) => (
+              <tr key={r.id} className="border-t border-neutral-100 align-top">
+                <td className="py-1.5 font-medium">{r.label}</td>
+                <td className="font-mono text-xs">{r.code}</td>
+                <td className="text-xs">{r.rate}%<span className="block text-neutral-500">{r.inputAdjustment}</span></td>
+                <td className="max-w-xs text-xs text-neutral-600">{r.source}</td>
+                <td><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.approved ? TONE.approved : TONE.draft}`}>{r.approved ? "approved" : "not approved"}</span></td>
+                <td className="text-end">{!r.approved && <Button variant="ghost" disabled={busy} onClick={() => void approve(r.id)}>Approve</Button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

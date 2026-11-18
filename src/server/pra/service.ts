@@ -34,7 +34,8 @@ import {
   PRA_CASES, PRA_SECTORS, SEED_RULES, approvalProblems, caseBlock, checkPayment, expectedRate, pctCodeOf, ruleOn,
   type CaseState, type CaseStates, type PaymentComponent, type PraCaseKey, type PraRule,
 } from "@/lib/pra/rules";
-import { PRA_INVOICE_TYPE, isPraInvoice } from "@/lib/pra/services";
+import { PRA_INVOICE_TYPE, PRA_SERVICE, isPraInvoice } from "@/lib/pra/services";
+import { PRA_GATEWAY_IP, PRA_INVOICE_SECTORS, PRA_TEMPLATES, PRA_TEMPLATE_READ_ON, PRA_TEMPLATE_REVIEW_NOTE, PRA_TEMPLATE_SOURCE_URL, praTemplate, type PraTemplate } from "@/lib/pra/templates";
 import { openPra, praHint, praStorageReady, sealPra } from "./secretBox";
 import { postToPra, praRoute, type PraEnvironment, type PraTransportDeps } from "./transport";
 
@@ -231,7 +232,8 @@ async function legacyFlag(sql: Sql, T: string, managed: boolean, now: string) {
 }
 
 const POS_ID = /^\d{1,18}$/;
-const TOKEN = /^[^\s]{8,500}$/;
+/** PRA's API tokens are long; the 8-character access code (or a browser's saved password) is not one. */
+const TOKEN = /^[^\s]{20,500}$/;
 
 /** Super Admin: add or change a counter (branch, counter name, sector, POS IDs, credentials). A changed counter needs approval again. */
 export async function savePos(sql: Sql, c: Caller, input: Record<string, unknown>, deps: PraDeps = {}) {
@@ -258,7 +260,7 @@ export async function savePos(sql: Sql, c: Caller, input: Record<string, unknown
     if (v === undefined || v === null) continue;
     if (typeof v !== "string") throw new HttpError(400, "Tokens are text.");
     const t = v.trim();
-    if (t && !TOKEN.test(t)) throw new HttpError(400, `The ${env} token does not look right (no spaces, 8 to 500 characters).`);
+    if (t && !TOKEN.test(t)) throw new HttpError(400, `The ${env} token does not look right. Enter PRA's API token (a long code with no spaces), not the POS access code or a saved password.`);
     if (t && !praStorageReady()) throw new HttpError(503, "PRA credential storage is not set up on the server yet (PRA_TOKEN_KEY).");
     tokens[env] = { enc: t ? sealPra(t) : null, hint: t ? praHint(t) : null, changed: true };
   }
@@ -467,6 +469,154 @@ export async function assignRule(sql: Sql, c: Caller, input: { tenantId?: unknow
     [randomUUID(), T, branchId, key, note, c.userId, now, now, now]);
   await audit(sql, T, c, "rule.assign", { ruleKey: key, branchId }, deps);
   return setup(sql, c, { tenantId: T });
+}
+
+// ── Vendor templates: one-screen set-up for the Super Admin ──────────────
+
+/** The template's rule, approved and in force: the current version when it already matches, otherwise a new approved version. */
+async function approvedTemplateRule(sql: Sql, c: Caller, t: PraTemplate, deps: PraDeps): Promise<PraRule> {
+  await seedRules(sql, deps);
+  const day = iso(nowOf(deps)).slice(0, 10);
+  const matches = (r: PraRule | null): r is PraRule => !!r && r.eims_applicable === "yes" && r.rate_type === "percent" && Number(r.rate) === t.rate && pctCodeOf(r.classification_code) === pctCodeOf(t.code);
+  const current = ruleOn(await allRules(sql), t.ruleKey, day);
+  if (matches(current)) return current;
+  const saved = await saveRule(sql, c, {
+    ruleKey: t.ruleKey, sector: t.sector, service: t.service, classificationCode: t.code, rateType: "percent", rate: t.rate, paymentCondition: "any", inputAdjustment: t.inputAdjustment,
+    effectiveFrom: "2026-07-01", source: t.source, clause: t.clause, sourceUrl: PRA_TEMPLATE_SOURCE_URL, lastVerifiedAt: PRA_TEMPLATE_READ_ON, reviewNotes: PRA_TEMPLATE_REVIEW_NOTE,
+    needsScopeReview: t.needsScope, eimsApplicable: "yes",
+  }, deps);
+  await decideRule(sql, c, { id: saved.id, decision: "approve", lastVerifiedAt: PRA_TEMPLATE_READ_ON }, deps);
+  return ruleOn(await allRules(sql), t.ruleKey, day)!;
+}
+
+/** Super Admin: the vendor templates and whether each one's rule is approved for use. */
+export async function listTemplates(sql: Sql, c: Caller, deps: PraDeps = {}) {
+  superOnly(c);
+  await seedRules(sql, deps);
+  const rules = await allRules(sql);
+  const day = iso(nowOf(deps)).slice(0, 10);
+  return PRA_TEMPLATES.map((t) => {
+    const r = ruleOn(rules, t.ruleKey, day);
+    return { ...t, approved: !!r && r.eims_applicable === "yes" && Number(r.rate) === t.rate && pctCodeOf(r.classification_code) === pctCodeOf(t.code) };
+  });
+}
+
+/** Super Admin: approve a vendor template's tax rule (or every template's). */
+export async function approveTemplates(sql: Sql, c: Caller, input: { templateId?: unknown }, deps: PraDeps = {}) {
+  superOnly(c);
+  const list = input.templateId ? [praTemplate(input.templateId)].filter((t): t is PraTemplate => !!t) : PRA_TEMPLATES;
+  if (!list.length) throw new HttpError(400, "Choose the service.");
+  for (const t of list) await approvedTemplateRule(sql, c, t, deps);
+  return listTemplates(sql, c, deps);
+}
+
+/** The template's starter services in the business's Products > Services (existing services are left as they are). */
+async function seedServices(sql: Sql, T: string, t: PraTemplate, deps: PraDeps): Promise<number> {
+  const now = iso(nowOf(deps));
+  const have = new Set((await sql.execute(`SELECT LOWER(TRIM(name)) AS n FROM products WHERE tenant_id = ? AND product_classification = ? AND deleted_at IS NULL`, [T, PRA_SERVICE])).rows.map((r) => String(r.n)));
+  let added = 0;
+  for (const s of t.starters) {
+    if (have.has(s.name.toLowerCase())) continue;
+    let unit = (await sql.execute(`SELECT id FROM uoms WHERE tenant_id = ? AND deleted_at IS NULL AND LOWER(TRIM(name)) = ? LIMIT 1`, [T, s.unit.toLowerCase()])).rows[0]?.id as string | undefined;
+    if (!unit) {
+      unit = randomUUID();
+      await sql.execute(`INSERT INTO uoms (id, tenant_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, [unit, T, s.unit, now, now]);
+    }
+    await sql.execute(`INSERT INTO products (id, tenant_id, name, base_unit_id, packing, tax_rate_pct, gst_rate_pct, pct_code, product_classification, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+      [randomUUID(), T, s.name, unit, t.rate, t.rate, t.code, PRA_SERVICE, now, now]);
+    added += 1;
+  }
+  return added;
+}
+
+/** Super Admin, one step: choose the vendor's service, enter its PRA details and tokens. Registers the business,
+ * enables PRA, adds and approves the counter on the Sandbox, approves and assigns the tax rule, and adds the starter services.
+ * Safe to run again until the business is live. Never goes live by itself. */
+export async function quickSetup(sql: Sql, c: Caller, input: Record<string, unknown>, deps: PraDeps = {}) {
+  superOnly(c);
+  const T = tenantFor(c, input);
+  const t = praTemplate(input.templateId);
+  if (!t) throw new HttpError(400, "Choose the vendor's service.");
+  const tenant = (await sql.execute(`SELECT business_type FROM tenants WHERE id = ?`, [T])).rows[0];
+  if (!tenant) throw new HttpError(404, "Business not found.");
+  if (tenant.business_type !== "contractor") throw new HttpError(409, "PRA Invoices and Services are for Contractor businesses: set this business's type to Contractor first.");
+  const cur = await account(sql, T);
+  if (cur?.live_approved_at) throw new HttpError(409, "This business is already live. Withdraw live approval before setting it up again.");
+  const pntn = str(input.pntn, 20), registeredName = str(input.registeredName, 150), counter = str(input.counter, 60), sandboxPosId = str(input.sandboxPosId, 20);
+  const scopeNote = str(input.scopeNote, 1000);
+  if (!pntn || !registeredName) throw new HttpError(400, "Enter the PNTN and the registered business name.");
+  if (!counter) throw new HttpError(400, "Name the counter as registered with PRA.");
+  if (!sandboxPosId) throw new HttpError(400, "Enter the Sandbox POS ID.");
+  if (t.needsScope && !scopeNote) throw new HttpError(400, "This rate depends on the contract: describe the work it covers.");
+  const branchId = str(input.branchId, 80) || (await mainBranch(sql, T));
+  if (!branchId) throw new HttpError(400, "This business has no branch.");
+  const existing = (await counters(sql, T)).find((p) => p.branch_id === branchId && p.status !== "revoked");
+  const sandboxToken = str(input.sandboxToken, 500);
+  if (!sandboxToken && !existing?.sandbox_token_enc) throw new HttpError(400, "Enter the Sandbox token.");
+
+  const rule = await approvedTemplateRule(sql, c, t, deps);
+  await saveAccount(sql, c, { tenantId: T, pntn, registeredName, registrationStatus: "registered", sandboxStatus: "in_progress", whitelistStatus: cur?.whitelist_status, whitelistIp: cur?.whitelist_ip, notes: cur?.notes }, deps);
+  await setAccess(sql, c, { tenantId: T, access: "enabled" }, deps);
+  await savePos(sql, c, {
+    tenantId: T, id: existing?.id, branchId, counter, sector: t.sector, environment: "sandbox", sandboxPosId, productionPosId: str(input.productionPosId, 20) || existing?.production_pos_id,
+    ...(sandboxToken ? { sandboxToken } : {}), ...(str(input.productionToken, 500) ? { productionToken: str(input.productionToken, 500) } : {}),
+  }, deps);
+  const pos = (await counters(sql, T)).find((p) => p.branch_id === branchId && p.status !== "revoked")!;
+  await decidePos(sql, c, { tenantId: T, id: pos.id, approve: true }, deps);
+  await assignRule(sql, c, { tenantId: T, ruleKey: rule.rule_key, contractNote: scopeNote || t.label }, deps);
+  const services = await seedServices(sql, T, t, deps);
+  await audit(sql, T, c, "quick_setup", { template: t.id, rule: rule.rule_key, version: rule.version, services }, deps);
+  return { services, setup: await setup(sql, c, { tenantId: T }) };
+}
+
+/** Super Admin: one sample invoice to PRA's Sandbox with this business's POS ID, token and tax rule. Nothing is written to its books. */
+export async function sandboxTest(sql: Sql, c: Caller, input: { tenantId?: unknown }, deps: PraDeps = {}) {
+  superOnly(c);
+  const T = tenantFor(c, input);
+  const pos = (await counters(sql, T)).find((p) => p.status === "approved" && p.environment === "sandbox");
+  if (!pos?.sandbox_pos_id || !pos.sandbox_token_enc) throw new HttpError(409, "Set up an approved counter on the Sandbox first.");
+  const day = iso(nowOf(deps)).slice(0, 10);
+  const rules = await allRules(sql);
+  const assigned = (await sql.execute(`SELECT rule_key FROM pra_rule_assignments WHERE tenant_id = ? AND status = 'active' AND (branch_id = ? OR branch_id IS NULL)`, [T, pos.branch_id])).rows;
+  const rule = assigned.map((x) => ruleOn(rules, String(x.rule_key), day)).find((r) => r?.sector === pos.sector);
+  const pct = pctCodeOf(rule?.classification_code);
+  if (!rule || !pct) throw new HttpError(409, "Assign an approved tax rule first.");
+  const rate = Number(rule.rate) || 0;
+  const payload = JSON.stringify(buildPraInvoice({
+    posId: pos.sandbox_pos_id, usin: `MAVIN-TEST-${nowOf(deps).getTime()}`, refUsin: null, invoiceType: 1, at: nowOf(deps), pctCode: pct, methods: ["cash"],
+    lines: [{ code: "MAVIN-TEST", name: "MAVIN Sandbox test", qty: 1, grossPaisa: 10000, discountPaisa: 0, taxPaisa: Math.round(100 * rate), taxRate: rate }],
+  }));
+  const res = await postToPra("sandbox", openPra(pos.sandbox_token_enc) ?? "", payload, T, deps);
+  const outcome = res.outcome === "response" ? mapPraResponse({ httpStatus: res.status, body: res.body }) : null;
+  const passed = outcome?.status === "accepted";
+  await sql.execute(`UPDATE pra_accounts SET sandbox_status = ?, updated_by = ?, updated_at = ? WHERE tenant_id = ?`, [passed ? "passed" : "failed", c.userId, iso(nowOf(deps)), T]);
+  await audit(sql, T, c, passed ? "sandbox.passed" : "sandbox.failed", { code: outcome?.code ?? null }, deps);
+  const message = passed ? `PRA accepted the test invoice: ${outcome!.praInvoiceNo}` : outcome ? `PRA refused the test invoice: ${outcome.message}${outcome.code ? ` (code ${outcome.code})` : ""}` : (res as { error: string }).error;
+  return { passed, message, setup: await setup(sql, c, { tenantId: T }) };
+}
+
+/** Super Admin: after a passed Sandbox test, moves the counter to production and approves going live. Bills issued before this moment are never sent. */
+export async function goLive(sql: Sql, c: Caller, input: Record<string, unknown>, deps: PraDeps = {}) {
+  superOnly(c);
+  const T = tenantFor(c, input);
+  const a = await account(sql, T);
+  if (a?.status !== "enabled") throw new HttpError(409, "Set up PRA for this business first.");
+  if (a.sandbox_status !== "passed") throw new HttpError(409, "Run the Sandbox test first: it must pass before going live.");
+  if (process.env.PRA_PRODUCTION_ENABLED !== "1" && deps.env?.PRA_PRODUCTION_ENABLED !== "1") throw new HttpError(409, "Live PRA sending is off on the server: set PRA_PRODUCTION_ENABLED=1 in Vercel and redeploy first.");
+  const route = praRoute("production", deps);
+  if (route.via === "blocked") throw new HttpError(409, route.reason ?? "The production route is not ready.");
+  const whitelistReference = str(input.whitelistReference, 300);
+  if (!whitelistReference) throw new HttpError(400, "Enter PRA's whitelist approval reference (email or ticket) for this POS ID.");
+  const pos = (await counters(sql, T)).find((p) => p.status === "approved");
+  if (!pos) throw new HttpError(409, "No approved counter.");
+  const productionPosId = str(input.productionPosId, 20) || pos.production_pos_id;
+  const productionToken = str(input.productionToken, 500);
+  if (!productionPosId) throw new HttpError(400, "Enter the production POS ID.");
+  if (!productionToken && !pos.production_token_enc) throw new HttpError(400, "Enter the production token from PRA's POS Registration screen.");
+  await savePos(sql, c, { tenantId: T, id: pos.id, environment: "production", productionPosId, ...(productionToken ? { productionToken } : {}), whitelistStatus: "approved", whitelistIp: PRA_GATEWAY_IP, whitelistReference }, deps);
+  await decidePos(sql, c, { tenantId: T, id: pos.id, approve: true }, deps);
+  await saveAccount(sql, c, { tenantId: T, pntn: a.pntn, registeredName: a.registered_name, registrationStatus: a.registration_status, sandboxStatus: a.sandbox_status, whitelistStatus: "approved", whitelistIp: PRA_GATEWAY_IP, notes: a.notes }, deps);
+  return approveLive(sql, c, { tenantId: T, approve: true }, deps);
 }
 
 // ── PRA cases (what PRA still has to confirm) ─────────────────────────────
@@ -714,7 +864,7 @@ async function prepareInvoice(sql: Sql, T: string, inv: InvoiceRow, deps: PraDep
   if (!pos) return { skip: "No approved PRA counter for this branch." };
   if (RESTAURANT_SECTORS.includes(pos.sector)) return { skip: "This counter fiscalises restaurant bills." };
   // A contractor chooses per invoice: PRA Invoice goes to PRA; General and Medicine are FBR's.
-  if (pos.sector === "contractor" && !isPraInvoice(inv.invoice_type)) return { skip: "Only a PRA Invoice is reported to PRA." };
+  if (PRA_INVOICE_SECTORS.includes(pos.sector) && !isPraInvoice(inv.invoice_type)) return { skip: "Only a PRA Invoice is reported to PRA." };
   const at = inv.created_at;
   if (pos.active_from && at < pos.active_from) return { skip: "Issued before PRA was switched on for this counter." };
   const environment: PraEnvironment = pos.environment === "production" ? "production" : "sandbox";
@@ -1025,7 +1175,7 @@ export async function sweep(sql: Sql, deps: PraDeps = {}, onlyTenant?: string) {
     const invoiceCounters = pos.filter((p) => !RESTAURANT_SECTORS.includes(p.sector));
     if (invoiceCounters.length && (await sendingOn(sql, T))) {
       // Contractors: only PRA invoices are due, so their General and Medicine invoices never fill the batch.
-      const onlyPra = invoiceCounters.every((p) => p.sector === "contractor");
+      const onlyPra = invoiceCounters.every((p) => PRA_INVOICE_SECTORS.includes(p.sector));
       const invs = (await sql.execute(
         `SELECT i.id FROM invoices i WHERE i.tenant_id = ? AND i.invoice_no IS NOT NULL AND i.deleted_at IS NULL AND COALESCE(i.is_quotation, 0) = 0 AND COALESCE(i.is_memorized, 0) = 0
            AND i.created_at >= ? AND i.created_at >= ?${onlyPra ? ` AND LOWER(COALESCE(i.invoice_type, '')) = '${PRA_INVOICE_TYPE}'` : ""}

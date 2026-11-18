@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { serverJson } from "@/lib/serverMode";
 import { PRA_SECTORS } from "@/lib/pra/rules";
 import { PRA_STATE_LABEL, PraSubmissions } from "@/components/pra/PraSubmissions";
+import { PraQuickSetup } from "@/components/pra/PraQuickSetup";
 
 interface Row { tenantId: string; name: string; businessType: string; pntn: string | null; state: string; counters: number; attention: number }
 interface Counter { id: string; branchId: string; counter: string; sector: string; environment: string; sandboxPosId: string | null; productionPosId: string | null; status: string; approvedAt: string | null; hasSandboxToken: boolean; hasProductionToken: boolean; sandboxTokenHint: string | null; productionTokenHint: string | null; whitelistStatus: string; whitelistIp: string | null; whitelistReference: string | null }
@@ -113,6 +114,17 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
       </div>
       {msg && <p className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}>{msg.text}</p>}
       {!s.storageReady && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">PRA_TOKEN_KEY is not set on the server: credentials can&apos;t be saved yet.</p>}
+      <PraQuickSetup
+        key={tenantId}
+        onDone={() => { void load(); onChanged(); }}
+        s={{
+          tenantId, businessType: s.tenant.businessType, pntn: a?.pntn ?? null, registeredName: a?.registeredName ?? null, sandboxStatus: a?.sandboxStatus ?? null,
+          liveApprovedAt: a?.liveApprovedAt ?? null, productionSwitch: s.productionSwitch, counter: s.counters.find((c) => c.status !== "revoked") ?? null, hasRule: s.assignments.length > 0,
+        }}
+      />
+      <details className="rounded-xl bg-neutral-50 p-3">
+      <summary className="cursor-pointer text-sm font-semibold">Advanced setup</summary>
+      <div className="mt-3 space-y-4">
       <ol className="grid gap-1 text-sm md:grid-cols-4">
         {steps.map(([label, ok], i) => <li key={label} className={ok ? "text-emerald-700" : "text-neutral-500"}>{ok ? "✓" : `${i + 1}.`} {label}</li>)}
       </ol>
@@ -174,9 +186,9 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
             <label className="text-xs">PRA sector<select className={input} value={pos.sector} onChange={(e) => setPos({ ...pos, sector: e.target.value })}>{PRA_SECTORS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
             <label className="text-xs">Environment<select className={input} value={pos.environment} onChange={(e) => setPos({ ...pos, environment: e.target.value })}><option value="sandbox">sandbox</option><option value="production">production</option></select></label>
             <label className="text-xs">Sandbox (test) POS ID<input className={input} value={pos.sandboxPosId} onChange={(e) => setPos({ ...pos, sandboxPosId: e.target.value })} /></label>
-            <label className="text-xs">Sandbox token (blank = keep)<input className={input} type="password" autoComplete="off" value={pos.sandboxToken} onChange={(e) => setPos({ ...pos, sandboxToken: e.target.value })} /></label>
+            <label className="text-xs">Sandbox token (blank = keep)<input className={input} type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" value={pos.sandboxToken} onChange={(e) => setPos({ ...pos, sandboxToken: e.target.value })} /></label>
             <label className="text-xs">Production POS ID<input className={input} value={pos.productionPosId} onChange={(e) => setPos({ ...pos, productionPosId: e.target.value })} /></label>
-            <label className="text-xs">Production token (blank = keep)<input className={input} type="password" autoComplete="off" value={pos.productionToken} onChange={(e) => setPos({ ...pos, productionToken: e.target.value })} /></label>
+            <label className="text-xs">Production token (blank = keep)<input className={input} type="password" autoComplete="new-password" data-1p-ignore data-lpignore="true" value={pos.productionToken} onChange={(e) => setPos({ ...pos, productionToken: e.target.value })} /></label>
             <label className="text-xs">IP whitelist for this PNTN + POS ID<select className={input} value={pos.whitelistStatus} onChange={(e) => setPos({ ...pos, whitelistStatus: e.target.value })}>{["not_requested", "requested", "approved", "rejected"].map((v) => <option key={v}>{v}</option>)}</select></label>
             <label className="text-xs">Whitelisted server IP<input className={input} value={pos.whitelistIp} placeholder="95.111.192.41" onChange={(e) => setPos({ ...pos, whitelistIp: e.target.value })} /></label>
             <label className="text-xs md:col-span-2">PRA reference (email / ticket)<input className={input} value={pos.whitelistReference} onChange={(e) => setPos({ ...pos, whitelistReference: e.target.value })} /></label>
@@ -218,6 +230,8 @@ function TenantPra({ tenantId, onChanged }: { tenantId: string; onChanged: () =>
           <Button disabled={!assign.ruleKey} onClick={() => void act(() => call("assign_rule", { tenantId, ruleKey: assign.ruleKey, branchId: assign.branchId || null, contractNote: assign.contractNote || null }), "Rule assigned.")}>Assign</Button>
         </div>
       </section>
+      </div>
+      </details>
 
       <section className="space-y-2">
         <h3 className="font-semibold">4 · Submissions</h3>

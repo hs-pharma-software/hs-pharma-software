@@ -43,6 +43,11 @@ export async function POST(req: Request): Promise<Response> {
       case "save_rule": result = await pra.saveRule(sql, caller, b); break;
       case "decide_rule": result = await pra.decideRule(sql, caller, b); break;
       case "assign_rule": result = await pra.assignRule(sql, caller, b); break;
+      case "templates": result = await pra.listTemplates(sql, caller); break;
+      case "approve_templates": result = await pra.approveTemplates(sql, caller, b); break;
+      case "quick_setup": result = await pra.quickSetup(sql, caller, b); break;
+      case "sandbox_test": result = await pra.sandboxTest(sql, caller, b); break;
+      case "go_live": result = await pra.goLive(sql, caller, b); break;
       case "cases": result = await pra.listCases(sql, caller); break;
       case "save_case": result = await pra.saveCase(sql, caller, b); break;
       default: throw new HttpError(400, "Unknown action.");

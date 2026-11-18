@@ -169,7 +169,7 @@ test("going live: whitelisting per PNTN + POS ID (PRA's approval for the shared 
   await ready();
   await pra.saveAccount(sql, SUPER, { tenantId: "t1", pntn: "1234567-8", registrationStatus: "registered", sandboxStatus: "passed" }, deps);
   const p = one(`SELECT id FROM pra_pos WHERE tenant_id = 't1'`);
-  await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, environment: "production", productionPosId: "555", productionToken: "prod-token-abc-0001" }, deps);
+  await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, environment: "production", productionPosId: "555", productionToken: "production-token-value-0001" }, deps);
   await pra.decidePos(sql, SUPER, { tenantId: "t1", id: p.id, approve: true }, { ...deps, now: () => new Date("2026-11-01T00:00:00Z") });
   await assert.rejects(pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps), /whitelisted the IP for PNTN 1234567-8 \/ POS ID 555/);
   await assert.rejects(pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, whitelistStatus: "approved" }, deps), /production POS ID, the IP and PRA's reference/);
@@ -534,6 +534,70 @@ test("a send that never left stays queued while sending is off", async () => {
   assert.equal(posted.length, 1, "not sent again while off");
 });
 
+/** A contractor business with a branch, ready for Quick setup as a laundry. */
+const LAUNDRY = { tenantId: "t1", templateId: "laundry", pntn: "1234567-8", registeredName: "Clean Laundry", counter: "FRONT DESK", sandboxPosId: "821651", sandboxToken: "sandbox-token-xyz-0001" };
+
+test("quick setup: choosing laundry sets the 8 % rule (PCT 9811.0000), sector, counter on the Sandbox and starter services; running it again adds nothing", async () => {
+  run(`UPDATE tenants SET business_type = 'contractor' WHERE id = 't1'`);
+  await assert.rejects(pra.quickSetup(sql, OWNER, LAUNDRY, deps), /Super Admin/);
+  await assert.rejects(pra.quickSetup(sql, SUPER, { ...LAUNDRY, sandboxToken: "12345678" }, deps), /access code/);
+  const r = await pra.quickSetup(sql, SUPER, LAUNDRY, deps);
+  assert.equal(r.services, 5);
+  const rule = one(`SELECT rate, classification_code, status, eims_applicable, sector FROM pra_tax_rules WHERE rule_key = 'laundry-9811.0000'`);
+  assert.deepEqual([rule.rate, rule.classification_code, rule.status, rule.eims_applicable, rule.sector], [8, "9811.0000", "approved", "yes", "laundry"]);
+  const pos = one(`SELECT sector, environment, status FROM pra_pos WHERE tenant_id = 't1'`);
+  assert.deepEqual([pos.sector, pos.environment, pos.status], ["laundry", "sandbox", "approved"]);
+  assert.equal(one(`SELECT status FROM pra_accounts WHERE tenant_id = 't1'`).status, "enabled");
+  assert.equal(one(`SELECT COUNT(*) AS n FROM pra_rule_assignments WHERE tenant_id = 't1' AND status = 'active'`).n, 1);
+  const s = one(`SELECT pct_code, gst_rate_pct, product_classification FROM products WHERE tenant_id = 't1' AND name = 'Dry Cleaning'`);
+  assert.deepEqual([s.pct_code, s.gst_rate_pct, s.product_classification], ["9811.0000", 8, "pra_service"]);
+  assert.equal((await pra.quickSetup(sql, SUPER, { ...LAUNDRY, sandboxToken: "" }, deps)).services, 0);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM pra_tax_rules WHERE rule_key = 'laundry-9811.0000'`).n, 1, "the approved rule is reused");
+});
+
+test("quick setup needs a Contractor business, and a contract note where the rate depends on the contract", async () => {
+  await assert.rejects(pra.quickSetup(sql, SUPER, LAUNDRY, deps), /Contractor/);
+  run(`UPDATE tenants SET business_type = 'contractor' WHERE id = 't1'`);
+  await assert.rejects(pra.quickSetup(sql, SUPER, { ...LAUNDRY, templateId: "contractor_govt" }, deps), /contract/);
+});
+
+test("a laundry's PRA Invoice goes out under its own code at 8 %; its General invoice does not go to PRA", async () => {
+  run(`UPDATE tenants SET business_type = 'contractor' WHERE id = 't1'`);
+  await pra.quickSetup(sql, SUPER, LAUNDRY, deps);
+  run(`INSERT INTO products (id, tenant_id, name, barcode, pct_code, product_classification, created_at, updated_at) VALUES ('svc', 't1', 'Dry Cleaning 2', 'DC-2', '9811.0000', 'pra_service', ?, ?)`, T, T);
+  const later2 = { ...deps, now: () => new Date(Date.parse(T)) };
+  run(`UPDATE pra_pos SET active_from = '2026-11-01T00:00:00.000Z' WHERE tenant_id = 't1'`);
+  invoice("l1", { no: 801, rate: 8 });
+  invoice("l2", { no: 802, rate: 8, type: "general" });
+  answers = [ok("90000520191112009301")];
+  assert.equal((await pra.fiscalizeSource(sql, "t1", "invoice", "l1", OWNER, later2) as { status: string }).status, "accepted");
+  const item = (posted[0].body as { Items: { PCTCode: string; TaxRate: number }[] }).Items[0];
+  assert.deepEqual([item.PCTCode, item.TaxRate], ["98110000", 8]);
+  assert.equal((await pra.fiscalizeSource(sql, "t1", "invoice", "l2", OWNER, later2) as { status: string }).status, "not_required");
+});
+
+test("sandbox test, then going live: needs a passed test, the server switch and PRA's whitelist reference; older bills are never sent", async () => {
+  run(`UPDATE tenants SET business_type = 'contractor' WHERE id = 't1'`);
+  await pra.quickSetup(sql, SUPER, LAUNDRY, deps);
+  const live = { ...deps, env: { PRA_PRODUCTION_ENABLED: "1", PRA_DIRECT_PRODUCTION: "1" } };
+  const go = { tenantId: "t1", productionPosId: "198627", productionToken: "production-token-xyz-0002", whitelistReference: "PRA email 18 Nov" };
+  await assert.rejects(pra.goLive(sql, SUPER, go, live), /Sandbox test/);
+  answers = [() => new Response(`{"InvoiceNumber":"Not Available","Code":"104","Response":"You are not authorized to use this service."}`, { status: 200 })];
+  assert.equal((await pra.sandboxTest(sql, SUPER, { tenantId: "t1" }, deps)).passed, false);
+  answers = [ok("90000520191112009401")];
+  assert.equal((await pra.sandboxTest(sql, SUPER, { tenantId: "t1" }, deps)).passed, true);
+  assert.match(posted[1].url, /sandbox/);
+  assert.equal((posted[1].body as { Items: { PCTCode: string }[] }).Items[0].PCTCode, "98110000");
+  assert.equal(all(`SELECT id FROM pra_submissions`).length, 0, "the test is not on the vendor's books");
+  await assert.rejects(pra.goLive(sql, SUPER, go, deps), /PRA_PRODUCTION_ENABLED/);
+  await assert.rejects(pra.goLive(sql, SUPER, { ...go, whitelistReference: "" }, live), /whitelist/);
+  const after = await pra.goLive(sql, SUPER, go, live);
+  assert.equal(after.state, "live");
+  const pos = one(`SELECT environment, status, whitelist_status, whitelist_ip FROM pra_pos WHERE tenant_id = 't1'`);
+  assert.deepEqual([pos.environment, pos.status, pos.whitelist_status, pos.whitelist_ip], ["production", "approved", "approved", "95.111.192.41"]);
+  await assert.rejects(pra.quickSetup(sql, SUPER, LAUNDRY, deps), /already live/);
+});
+
 test("the year's tax: PRA invoices are PST, the rest GST; a return takes back its share of the original's tax", () => {
   const sales = [{ invoice_type: "general", tax: 1800 }, { invoice_type: "medicine", tax: 200 }, { invoice_type: "pra", tax: 1600 }];
   const returns = [{ invoice_type: "pra", qty: 1, orig_tax: 304, orig_qty: 4 }, { invoice_type: "general", qty: 2, orig_tax: 180, orig_qty: 10 }, { invoice_type: "general", qty: 1, orig_tax: null, orig_qty: null }];
@@ -563,7 +627,7 @@ test("going live with a counter still on sandbox: told to switch it; the counter
   await contractorReady();
   await pra.saveAccount(sql, SUPER, { tenantId: "t1", pntn: "7308865", registrationStatus: "registered", sandboxStatus: "passed" }, deps);
   const p = one(`SELECT id FROM pra_pos`);
-  await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, productionPosId: "198627", productionToken: "prod-token-abc-0009", whitelistStatus: "approved", whitelistIp: "95.111.192.41", whitelistReference: "PRA email 2026-11-17" }, deps);
+  await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, productionPosId: "198627", productionToken: "production-token-value-0001", whitelistStatus: "approved", whitelistIp: "95.111.192.41", whitelistReference: "PRA email 2026-11-17" }, deps);
   await assert.rejects(pra.approveLive(sql, SUPER, { tenantId: "t1", approve: true }, deps), /switch counter "OWNER LAPTOP" to the production environment/);
   await pra.savePos(sql, SUPER, { tenantId: "t1", id: p.id, environment: "production" }, deps);
   await pra.decidePos(sql, SUPER, { tenantId: "t1", id: p.id, approve: true }, deps);

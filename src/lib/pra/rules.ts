@@ -49,6 +49,9 @@ export const PRA_SECTORS = [
   { id: "freight_forwarding", label: "Freight forwarding" },
   { id: "courier", label: "Courier" },
   { id: "contractor", label: "Service contractor / construction" },
+  { id: "laundry", label: "Laundry and dry cleaning" },
+  { id: "photography", label: "Photography studio / event photographer" },
+  { id: "warehouse", label: "Warehouse / cold storage" },
   { id: "general", label: "Other taxable services (general rate)" },
 ] as const;
 export type PraSector = (typeof PRA_SECTORS)[number]["id"];
