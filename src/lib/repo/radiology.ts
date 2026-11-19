@@ -10,6 +10,8 @@ import { hospitalEpisodesRepo, hospitalImagingRepo, hospitalPatientsRepo, hospit
 import { listOpenVisits, orderInvestigation } from "./hospitalOpd";
 import { modalityCodeOfStudy } from "./radiologyPortal";
 import { isMissingSchemaError } from "../dbErrors";
+import { desktopOffline } from "../desktopBridge";
+import { radiologyCall, radiologyOffline } from "../offline/radiologyCalls";
 import type { HospitalEpisode, HospitalImagingOrder, HospitalService, OrderPriority } from "../types-hospital";
 
 // ── Performing Images ─────────────────────────────────────────────────────
@@ -133,6 +135,12 @@ export async function orderImaging(input: {
   } else {
     episode = (await listOpenVisits(patient.id)).find((e) => e.date === localDate()) ?? null;
   }
+  if (radiologyOffline()) {
+    return radiologyCall("orderStudy", {
+      patientId: patient.id, serviceId: svc.id, visitId: episode?.id ?? null, fee: Math.max(0, Number(svc.rate) || 0), bodyPart: input.bodyPart ?? null, priority: input.priority ?? "routine",
+      orderedBy: input.orderedBy ?? null, clinicalHistory: input.clinicalHistory ?? null, modalityCode: await modalityCodeOfStudy(svc.modality).catch(() => null),
+    });
+  }
   if (!episode) {
     const date = localDate();
     episode = await hospitalEpisodesRepo.create({
@@ -214,9 +222,11 @@ export async function getRadiologyReport(orderId: string): Promise<RadiologyRepo
   if (!order) throw new Error("Radiology order not found.");
   if (order.status !== "reported") throw new Error("This study is not reported yet.");
   let publicToken = order.public_token ?? null;
-  if (!publicToken) {
-    publicToken = newRadiologyToken();
-    await hospitalImagingRepo.update(orderId, { public_token: publicToken } as Partial<HospitalImagingOrder>);
+  // The desktop's local copy never holds a report's key, so a key already given out is kept, never replaced.
+  if (!publicToken && !desktopOffline()) {
+    const t = requireCurrentTenantId();
+    await dbExecute(`UPDATE hospital_imaging_orders SET public_token = COALESCE(public_token, ?) WHERE id = ? AND tenant_id = ?`, [newRadiologyToken(), orderId, t]);
+    publicToken = (await dbSelect<{ public_token: string | null }>(`SELECT public_token FROM hospital_imaging_orders WHERE id = ? AND tenant_id = ?`, [orderId, t]))[0]?.public_token ?? null;
   }
   return assembleRadiologyReport(requireCurrentTenantId(), { ...order, public_token: publicToken }, useAuthStore.getState().currentTenant?.name || "Hospital", {
     select: (sql, params) => dbSelect(sql, params), execute: (sql, params) => dbExecute(sql, params),

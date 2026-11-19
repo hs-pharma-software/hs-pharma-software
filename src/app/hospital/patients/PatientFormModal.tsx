@@ -5,6 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { hospitalPatientsRepo, nextMrNo, type HospitalPatient } from "@/lib/repo/hospital";
+import { radiologyCall, radiologyOffline } from "@/lib/offline/radiologyCalls";
 
 interface Props {
   patient: HospitalPatient | null;
@@ -41,14 +42,17 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
   const [notes, setNotes] = useState(patient?.notes ?? "");
   const [saving, setSaving] = useState(false);
 
+  // Without internet this computer gives the MR number when the patient is saved.
+  const offline = radiologyOffline();
+
   useEffect(() => {
-    if (!isEdit) {
+    if (!isEdit && !offline) {
       void nextMrNo().then(setMrNo);
     }
-  }, [isEdit]);
+  }, [isEdit, offline]);
 
   async function save() {
-    if (!name.trim() || !mrNo.trim()) return;
+    if (!name.trim() || (!mrNo.trim() && !offline)) return;
     setSaving(true);
     try {
       const payload = {
@@ -73,7 +77,9 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         next_of_kin_relation: nokRelation.trim() || null,
         notes: notes.trim() || null,
       };
-      const saved = isEdit ? await hospitalPatientsRepo.update(patient.id, payload) : await hospitalPatientsRepo.create(payload);
+      const saved = offline
+        ? await radiologyCall<HospitalPatient>(isEdit ? "updatePatient" : "registerPatient", isEdit ? { ...payload, id: patient.id } : payload)
+        : isEdit ? await hospitalPatientsRepo.update(patient.id, payload) : await hospitalPatientsRepo.create(payload);
       onSaved(saved ?? undefined);
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -86,7 +92,7 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
     <Modal title={isEdit ? "Edit Patient" : "Register Patient"} onClose={onClose}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         <Field label="MR Number *">
-          <Input value={mrNo} onChange={(e) => setMrNo(e.target.value)} required />
+          <Input value={mrNo} onChange={(e) => setMrNo(e.target.value)} required={!offline} readOnly={offline} placeholder={offline ? "Given when saved" : undefined} />
         </Field>
         <Field label="Full Name *">
           <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus={!isEdit} />

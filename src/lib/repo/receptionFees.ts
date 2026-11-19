@@ -13,6 +13,7 @@ import { addPayment, hospitalImagingRepo, hospitalLabRepo } from "./hospital";
 import { listUnpaidOrders, payOrderFee, listOpdQueue, type OpdQueueRow, type UnpaidOrderRow } from "./hospitalOpd";
 import { getVisitReceipt, type VisitReceipt } from "./hospitalCare";
 import { FEE_SCOPE_LAB_ROLES, FEE_SCOPE_IMAGING_ROLES } from "../../config/hospitalStaff";
+import { radiologyCall, radiologyOffline } from "../offline/radiologyCalls";
 import type { HospitalCharge, PaymentMethod } from "../types-hospital";
 
 /** Which fees a desk works with: all of them, or only the lab's / radiology's. */
@@ -92,6 +93,7 @@ export async function visitReceiptFor(episodeId: string, scope: FeeScope): Promi
 /** Collects what this desk is owed on a visit and marks each test / scan paid.
  * Returns the amount actually taken. */
 export async function collectVisitFees(episodeId: string, scope: FeeScope, method: PaymentMethod): Promise<number> {
+  if (radiologyOffline()) return (await radiologyCall<{ amount: number }>("collectFees", { episodeId, scope, method })).amount;
   const receipt = await getVisitReceipt(episodeId);
   const orders = (await visitOrders(episodeId)).filter((o) => o.paid !== 1);
   // Money already taken for tests / scans in an earlier lump payment: mark those paid first, without charging again.

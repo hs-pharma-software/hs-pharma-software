@@ -12,6 +12,7 @@ import { STANDARD_MODALITIES, DICOM_MODALITY_CODES, parseExam, validateExam, typ
 import { RADIOLOGY_ADMIN_ROLES, TECHNOLOGIST_ROLES, TECHNOLOGIST_ASSIGN_ROLES } from "../../config/hospitalStaff";
 import { findingsText, isUltrasoundStudy, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
 import { newRadiologyToken } from "../radiologyReportDocument";
+import { radiologyCall, radiologyOffline } from "../offline/radiologyCalls";
 import type { HospitalImagingOrder, HospitalPatient } from "../types-hospital";
 
 export interface RadiologyModality extends TenantRow {
@@ -497,6 +498,7 @@ export async function searchPatients(q: { mrn?: string; cnic?: string; phone?: s
 
 /** Cancels an order that was not examined yet. */
 export async function cancelImagingOrder(orderId: string, reason: string): Promise<void> {
+  if (radiologyOffline()) { await radiologyCall("cancelOrder", { orderId, reason }); return; }
   const o = await hospitalImagingRepo.get(orderId);
   if (!o) throw new Error("Order not found.");
   if (o.status !== "pending") throw new Error("Only an order still waiting in the queue can be cancelled.");
@@ -527,6 +529,7 @@ export async function getExamContext(orderId: string): Promise<ExamContext> {
 
 /** Calls the patient in: the order goes in progress on this machine. */
 export async function startExam(orderId: string, machineId: string): Promise<void> {
+  if (radiologyOffline()) { await radiologyCall("startExam", { orderId, machineId }); return; }
   const a = await requireRole(TECHNOLOGIST_ROLES, "perform examinations");
   const o = await hospitalImagingRepo.get(orderId);
   if (!o) throw new Error("Order not found.");
@@ -542,6 +545,7 @@ export async function startExam(orderId: string, machineId: string): Promise<voi
 
 /** Sends the patient back to the waiting queue (the draft is kept). */
 export async function returnToQueue(orderId: string): Promise<void> {
+  if (radiologyOffline()) { await radiologyCall("returnToQueue", { orderId }); return; }
   await requireRole(TECHNOLOGIST_ROLES, "perform examinations");
   const o = await hospitalImagingRepo.get(orderId);
   if (!o || o.status !== "in_progress") throw new Error("This examination is not in progress.");
@@ -549,6 +553,7 @@ export async function returnToQueue(orderId: string): Promise<void> {
 }
 
 export async function saveExamDraft(orderId: string, data: ExamData): Promise<void> {
+  if (radiologyOffline()) { await radiologyCall("saveExamDraft", { orderId, data }); return; }
   await requireRole(TECHNOLOGIST_ROLES, "perform examinations");
   const o = await hospitalImagingRepo.get(orderId);
   if (!o || (o.status !== "in_progress" && o.status !== "pending")) throw new Error("Start the examination first.");
@@ -559,6 +564,7 @@ export async function saveExamDraft(orderId: string, data: ExamData): Promise<vo
  * identity) is not ticked; warnings must be confirmed. The study then waits
  * for the radiologist's report. */
 export async function completeExam(orderId: string, data: ExamData, confirmWarnings = false): Promise<{ warnings: string[] }> {
+  if (radiologyOffline()) return radiologyCall("completeExam", { orderId, data, confirm: confirmWarnings });
   const a = await requireRole(TECHNOLOGIST_ROLES, "perform examinations");
   const o = await hospitalImagingRepo.get(orderId);
   if (!o) throw new Error("Order not found.");
@@ -609,6 +615,7 @@ export async function listForReporting(view: "to_report" | "unexamined" | "repor
  * structured ultrasound is checked, and its findings written out as text for
  * the screens that show a report as text. Every report gets its online copy's key. */
 export async function reportStudy(orderId: string, r: { findings: string | null; impression: string; radiologist?: string | null; structured?: StructuredReport | null }): Promise<void> {
+  if (radiologyOffline()) { await radiologyCall("signReport", { orderId, ...r }); return; }
   const a = await currentActor();
   const order = await hospitalImagingRepo.get(orderId) as (HospitalImagingOrder & { public_token?: string | null }) | null;
   if (!order) throw new Error("Order not found in this hospital.");
@@ -627,9 +634,11 @@ export async function reportStudy(orderId: string, r: { findings: string | null;
     structured = { template: template.id, values: r.structured.values, recommendation: clean(r.structured.recommendation), note: clean(r.structured.note) };
   }
   await hospitalImagingRepo.update(orderId, {
-    structured_report: structured ? JSON.stringify(structured) : null, public_token: order.public_token ?? newRadiologyToken(),
+    structured_report: structured ? JSON.stringify(structured) : null,
     // An ultrasound the doctor scanned without a technologist step.
     ...(!order.performed_at && isUltrasoundStudy(order) ? { performed_at: localDateTime(), performed_by_name: a.name } : {}),
   } as Partial<HospitalImagingOrder>);
+  // The desktop's local copy never holds this key: one already given out (a printed QR code) is kept.
+  await dbExecute(`UPDATE hospital_imaging_orders SET public_token = COALESCE(public_token, ?) WHERE id = ? AND tenant_id = ?`, [newRadiologyToken(), orderId, requireCurrentTenantId()]);
   await reportImaging(orderId, { findings, impression: r.impression, radiologist: clean(r.radiologist) ?? (a.designation ? `${a.name}, ${a.designation}` : a.name) });
 }

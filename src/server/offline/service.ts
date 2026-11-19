@@ -308,7 +308,11 @@ export async function grantFor(sql: Sql, d: Device): Promise<SignedGrant> {
  * (owner, or staff with the Invoices section). Returns the new allowance. */
 export async function enrolUser(sql: Sql, d: Device, caller: Caller) {
   if (caller.tenantId !== d.tenant_id) throw new HttpError(403, "This login belongs to another business.");
-  if (caller.role === "staff" && caller.permissions && !caller.permissions.includes("invoices")) throw new HttpError(403, "This login cannot make sales.");
+  if (caller.role === "staff" && caller.permissions) {
+    // A Radiology Centre has no invoices: its reception, technologists and doctors work in the radiology sections.
+    const radiology = String((await tenantRow(sql, d.tenant_id)).business_type) === "radiology_center";
+    if (radiology ? !caller.permissions.some((p) => p.startsWith("hospital_")) : !caller.permissions.includes("invoices")) throw new HttpError(403, radiology ? "This login cannot work in the radiology sections." : "This login cannot make sales.");
+  }
   if (!(await deviceUsable(sql, d))) throw new HttpError(403, "This offline device has been turned off.");
   const users = (JSON.parse(String(d.allowed_users || "[]")) as GrantUser[]).filter((u) => u.id !== caller.userId);
   users.push({ id: caller.userId, name: await userName(sql, caller.userId), role: caller.role === "owner" ? "owner" : "staff" });
@@ -669,7 +673,7 @@ export async function applyCall(sql: Sql, d: Device, op: CallOperation, decidedB
       execute: async (q: string, p: unknown[] = []) => ({ changes: (await x.execute(q, p)).rowsAffected }),
     };
     const ids = idSource(c.ids, randomUUID);
-    const out = await runCall(db, ctx, c, ids.next);
+    const out = await runCall(db, ctx, { ...c, branchId: d.branch_id }, ids.next);
     const s = callSummary(c.module, c.fn, out);
     const doc = (out as { doc?: { id?: unknown; doc_no?: unknown } } | null)?.doc;
     const st = opStmt(d, op, "applied", now, decidedBy);

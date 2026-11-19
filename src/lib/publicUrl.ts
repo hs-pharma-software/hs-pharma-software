@@ -22,6 +22,8 @@ export function publicSiteUrl(): string | null {
   if (typeof window !== "undefined") {
     const { protocol, hostname, origin } = window.location;
     if (/^https?:$/.test(protocol) && hostname !== "tauri.localhost") return origin;
+    // The MAVIN desktop app: a phone scanning its printed QR code opens MAVIN.pk.
+    if (protocol === "mavin:") return "https://app.mavin.pk";
   }
   return null;
 }

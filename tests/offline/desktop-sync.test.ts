@@ -1136,3 +1136,103 @@ test("electronics store offline: a cash bill with a serial is booked on MAVIN.pk
   assert.equal(String(one(`SELECT status FROM es_serials WHERE serial = 'SN-2' AND tenant_id = 't1'`).status), "sold");
   assert.equal((await es.getProduct(inv.id))!.stock, 1);
 });
+
+// ── Radiology Centre without internet ─────────────────────────────────────
+
+const OFFLINE_TIME = "2026-11-19 10:30";
+/** A Radiology Centre with one study and one machine, its computer set up and its local copy filled. */
+async function radiologyCentre() {
+  run(`UPDATE tenants SET business_type = 'radiology_center' WHERE id = 't1'`);
+  run(`INSERT INTO hospital_services (id, tenant_id, code, name, category, department, modality, rate, is_active, created_at, updated_at) VALUES ('us', 't1', 'IMG-001', 'Ultrasound KUB', 'imaging', 'Radiology', 'Ultrasound', 1500, 1, ?, ?)`, T, T);
+  run(`INSERT INTO hospital_services (id, tenant_id, code, name, category, department, modality, rate, is_active, created_at, updated_at) VALUES ('xr', 't1', 'IMG-002', 'X-Ray Chest', 'imaging', 'Radiology', 'X-Ray', 800, 1, ?, ?)`, T, T);
+  run(`INSERT INTO radiology_machines (id, tenant_id, machine_code, name, modality_code, status, created_at, updated_at) VALUES ('m1', 't1', 'XR-1', 'X-Ray Room', 'XRAY', 'active', ?, ?)`, T, T);
+  const d = await provisioned();
+  return { d, copy: localCopyOfT1() };
+}
+const radiology = async <R,>(d: OfflineDevice, copy: Mirror, fn: string, input: Record<string, unknown>) =>
+  (await d.moduleCall(copy, "radiology", fn, [{ ...input, time: OFFLINE_TIME }])).result as R;
+type Id = { id: string };
+
+test("radiology centre offline: register, order, fee and signed report print here and reach MAVIN.pk once, unchanged", async () => {
+  const { d, copy } = await radiologyCentre();
+  net.down = true;
+  const p = await radiology<Id & { mr_no: string }>(d, copy, "registerPatient", { name: "Ali Raza", gender: "Male", age_years: 40 });
+  assert.match(p.mr_no, /^MR-D[0-9A-F]{4}-000001$/);
+  const { order, episode } = await radiology<{ order: Id & { order_no: string; paid: number }; episode: Id & { episode_no: string } }>(d, copy, "orderStudy", { patientId: p.id, serviceId: "us", fee: 1500, orderedBy: "Dr Hamid" });
+  assert.match(order.order_no, /^RAD-20261119-\d{8}$/, "its DICOM Accession Number stays within 16 characters");
+  assert.equal(Number(order.paid), 0);
+  await assert.rejects(radiology(d, copy, "signReport", { orderId: order.id, impression: "Normal." }), /fee for this study is not paid/);
+  assert.equal((await radiology<{ amount: number }>(d, copy, "collectFees", { episodeId: episode.id, scope: "imaging", method: "cash" })).amount, 1500);
+  await radiology(d, copy, "signReport", { orderId: order.id, findings: null, impression: "Normal study.", structured: { template: "kub", values: { rk_length: "10.5", rk_stone: "No" } } });
+
+  const local = copy.query(`SELECT * FROM hospital_imaging_orders WHERE id = ?`, [order.id])[0];
+  assert.equal(local.status, "reported", "the report can be printed from this computer");
+  assert.equal(all(`SELECT * FROM hospital_patients WHERE tenant_id = 't1'`).length, 0, "nothing on MAVIN.pk yet");
+
+  net.down = false;
+  const rep = await d.sync({ manual: true });
+  assert.equal(rep.error, null);
+  assert.equal(rep.applied, 4 + 0, "patient, order, fee and report");
+  assert.equal(rep.held, 0);
+  const srv = one(`SELECT * FROM hospital_imaging_orders WHERE id = ?`, order.id);
+  for (const k of ["order_no", "status", "impression", "findings", "reported_at", "radiologist", "structured_report", "public_token", "branch_id", "fee", "paid"]) assert.equal(srv[k], local[k], k);
+  assert.equal(srv.branch_id, "main-t1");
+  assert.match(String(srv.public_token), /^[0-9a-f]{32}$/, "the printed QR code opens the online copy");
+  assert.equal(one(`SELECT mr_no FROM hospital_patients WHERE id = ?`, p.id).mr_no, p.mr_no);
+  assert.equal(one(`SELECT episode_no FROM hospital_episodes WHERE id = ?`, episode.id).episode_no, episode.episode_no);
+  const pay = all(`SELECT * FROM hospital_payments WHERE episode_id = ?`, episode.id);
+  assert.equal(pay.length, 1, "the fee is taken once");
+  assert.equal(Number(pay[0].amount), 1500);
+  assert.equal(pay[0].received_at, OFFLINE_TIME);
+  assert.equal(pay[0].received_by, "u1");
+  assert.equal(pay[0].branch_id, "main-t1");
+  assert.equal((await d.sync({ manual: true })).applied, 0, "sending again changes nothing");
+});
+
+test("radiology centre offline: the technologist's examination works and a price changed online keeps the fee the patient was told", async () => {
+  const { d, copy } = await radiologyCentre();
+  net.down = true;
+  const p = await radiology<Id>(d, copy, "registerPatient", { name: "Sana", gender: "Female", age_years: 30 });
+  const { order, episode } = await radiology<{ order: Id; episode: Id }>(d, copy, "orderStudy", { patientId: p.id, serviceId: "xr", fee: 800 });
+  await radiology(d, copy, "collectFees", { episodeId: episode.id, scope: "all", method: "cash" });
+  await radiology(d, copy, "startExam", { orderId: order.id, machineId: "m1" });
+  await radiology(d, copy, "returnToQueue", { orderId: order.id });
+  await radiology(d, copy, "startExam", { orderId: order.id, machineId: "m1" });
+  run(`UPDATE hospital_services SET rate = 2000 WHERE id = 'xr'`);
+  net.down = false;
+  const rep = await d.sync({ manual: true });
+  assert.equal(rep.held, 0);
+  const srv = one(`SELECT * FROM hospital_imaging_orders WHERE id = ?`, order.id);
+  assert.equal(srv.status, "in_progress");
+  assert.equal(srv.machine_id, "m1");
+  assert.equal(Number(srv.fee), 800);
+  assert.equal(Number(one(`SELECT amount FROM hospital_charges WHERE episode_id = ?`, episode.id).amount), 800);
+});
+
+test("radiology centre offline: two computers never give out the same numbers, and a refused save is held for the owner", async () => {
+  const { offlineNumbers } = await import("../../src/lib/radiology/offlineStore.ts");
+  const a = offlineNumbers("DA1B2-000007", "2026-11-19");
+  const b = offlineNumbers("DC3D4-000007", "2026-11-19");
+  for (const k of ["mrNo", "episodeNo", "orderNo"] as const) assert.notEqual(a[k], b[k], k);
+
+  const { d, copy } = await radiologyCentre();
+  net.down = true;
+  const p = await radiology<Id>(d, copy, "registerPatient", { name: "Bilal", gender: "Male" });
+  const { order } = await radiology<{ order: Id }>(d, copy, "orderStudy", { patientId: p.id, serviceId: "us", fee: 0 });
+  // Meanwhile the study was removed from the centre's list online.
+  run(`UPDATE hospital_services SET deleted_at = ? WHERE id = 'us'`, T);
+  net.down = false;
+  const rep = await d.sync({ manual: true });
+  assert.equal(rep.applied, 1, "the patient arrives");
+  assert.equal(rep.held, 1, "the order waits for the owner");
+  assert.equal(all(`SELECT * FROM hospital_imaging_orders WHERE id = ?`, order.id).length, 0, "nothing half-saved");
+});
+
+test("radiology centre: its reception staff can use the computer offline; a login outside radiology cannot", async () => {
+  await radiologyCentre();
+  user("r1", "t1", "reception", "staff", ["hospital_radiology_orders", "hospital_patients"]);
+  user("r2", "t1", "cleaner", "staff", ["expenses"]);
+  const dev = all(`SELECT * FROM offline_devices`)[0] as never;
+  await off.enrolUser(sql, dev, LOGINS.reception.caller);
+  await assert.rejects(off.enrolUser(sql, dev, LOGINS.cleaner.caller), /radiology sections/);
+});

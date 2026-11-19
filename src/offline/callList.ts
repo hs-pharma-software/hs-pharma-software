@@ -6,9 +6,10 @@
 export const OFFLINE_CALLS = {
   dist: ["createSale", "createBooking", "receivePayment", "createSaleReturn"],
   electric: ["createSale", "createQuotation", "receivePayment", "createReturn"],
+  radiology: ["registerPatient", "updatePatient", "orderStudy", "collectFees", "cancelOrder", "startExam", "returnToQueue", "saveExamDraft", "completeExam", "signReport"],
 } as const;
 export type CallModule = keyof typeof OFFLINE_CALLS;
 /** The module whose saves work offline, by business type. */
-export const CALL_MODULE_FOR_TYPE: Readonly<Record<string, CallModule>> = { distributor: "dist", electronics_solar: "electric" };
+export const CALL_MODULE_FOR_TYPE: Readonly<Record<string, CallModule>> = { distributor: "dist", electronics_solar: "electric", radiology_center: "radiology" };
 export const callAllowed = (module: string, fn: string) =>
   Object.prototype.hasOwnProperty.call(OFFLINE_CALLS, module) && (OFFLINE_CALLS[module as CallModule] as readonly string[]).includes(fn);

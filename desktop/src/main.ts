@@ -348,6 +348,7 @@ function refreshReplica(): Promise<void> {
     replicaBusy = (async () => {
       if (quitting || online === false || Date.now() < replicaRetryAt) return;
       const startedAt = Date.now();
+      lastCopyRun = startedAt;
       try {
         const r = await currentReplica();
         if (!r) return;
@@ -388,6 +389,17 @@ function localRead(a: unknown): { local: true; rows: Record<string, unknown>[] }
   }
 }
 
+/** A Radiology Centre's computer reads MAVIN.pk only when there is a reason to:
+ * something to send, the window in use, or the connection just came back. */
+const QUIET_SYNC_EVERY_MS = 6 * 3_600_000;
+const QUIET_COPY_EVERY_MS = 15 * 60_000;
+const QUIET_PROBE_EVERY = 4;
+const quietDevice = () => Boolean(device?.provisioned) && device.businessType === "radiology_center";
+const windowInUse = () => Boolean(win && !win.isDestroyed() && win.isFocused());
+let lastQuietSync = 0;
+let lastCopyRun = 0;
+let quietProbes = 0;
+
 let syncing: Promise<void> | null = null;
 let syncFailures = 0;
 let syncRetryAt = 0;
@@ -396,6 +408,8 @@ function syncAll(force = false): Promise<void> {
   if (!syncing) {
     syncing = (async () => {
       if (!device?.provisioned || quitting || (!force && Date.now() < syncRetryAt)) return;
+      // Nothing to send: a Radiology Centre's computer stays quiet (its offline allowance is renewed a few times a day).
+      if (!force && quietDevice() && !device.hasUnsent && Date.now() - lastQuietSync < QUIET_SYNC_EVERY_MS) return;
       const startedSync = new Date(Date.now() - 1000).toISOString();
       const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
       // A save from here that MAVIN.pk held or refused: its rows in the copy were never made there; read the copy again.
@@ -412,6 +426,9 @@ function syncAll(force = false): Promise<void> {
       }
       syncFailures = 0;
       syncRetryAt = 0;
+      lastQuietSync = Date.now();
+      // A Radiology Centre has no stock or sales lists to refresh: its local copy follows only what changed.
+      if (quietDevice()) { overlay(); pushStatus(); return; }
       const due = force || Date.now() - lastMirror > MIRROR_EVERY_MS;
       if (mirror && due && (force || Date.now() >= mirrorRetryAt)) {
         try {
@@ -822,12 +839,22 @@ if (primary) {
     } else {
       createWindow();
     }
-    timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(() => void probe(), PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
+    const probeIfNeeded = () => {
+      // Online and not in use: a quiet computer checks the connection once a minute.
+      if (quietDevice() && online === true && !windowInUse() && ++quietProbes % QUIET_PROBE_EVERY !== 0) return;
+      void probe();
+    };
+    timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(probeIfNeeded, PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
     void probe().then(() => syncAll(false));
     startUpdates();
     // The local copy of the business: filled once, then kept up to date.
-    timers.push(setInterval(() => void refreshReplica(), REPLICA_EVERY_MS));
+    timers.push(setInterval(() => {
+      if (quietDevice() && !windowInUse() && Date.now() - lastCopyRun < QUIET_COPY_EVERY_MS) return;
+      void refreshReplica();
+    }, REPLICA_EVERY_MS));
     setTimeout(() => void refreshReplica(), 5_000);
+    // Back at the computer: the screens show the latest straight away.
+    app.on("browser-window-focus", () => { if (quietDevice() && Date.now() - lastCopyRun > REPLICA_EVERY_MS) void refreshReplica(); });
   });
 
   app.on("second-instance", () => { if (app.isReady()) showWindow(); });

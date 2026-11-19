@@ -43,7 +43,7 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
   return (
     <div className="space-y-4 text-sm">
       {msg && <p className="rounded-lg bg-neutral-100 px-3 py-2 text-neutral-800">{msg}</p>}
-      {!d.supportedType && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline billing is built for pharmacies (retail, medical store, hospital), general, mobile and cloth stores, distributors and electronics / solar stores so far. This business uses MAVIN.pk online; its screens still read from the computer&apos;s own copy.</p>}
+      {!d.supportedType && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline billing is built for pharmacies (retail, medical store, hospital), general, mobile and cloth stores, distributors, electronics / solar stores and radiology centres so far. This business uses MAVIN.pk online; its screens still read from the computer&apos;s own copy.</p>}
       {d.supportedType && !d.allowed && <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-900">Offline Desktop is off for this business{superAdmin ? ": switch it on under Permissions > Offline Desktop." : ". Ask MAVIN.pk to switch it on."}</p>}
       <p className="text-neutral-600">
         Offline checkout computers: {d.perBranch === 1 ? "one per branch" : `up to ${d.perBranch} per branch`}. It sells from its own copy of the branch&apos;s stock, so sales made online or on other counters

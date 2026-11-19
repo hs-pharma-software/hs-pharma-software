@@ -5,6 +5,7 @@
  * so both end with the same rows. No server-only or browser-only imports. */
 import { createDistStore } from "../lib/dist/store.ts";
 import { createElectricStore } from "../lib/electric/store.ts";
+import { createRadiologyStore } from "../lib/radiology/offlineStore.ts";
 import type { RestContext, RestDb } from "../lib/restaurant/store.ts";
 import { callAllowed, type CallModule } from "./callList.ts";
 
@@ -56,7 +57,7 @@ export const jsonList = (raw: unknown): string[] => {
 };
 
 /** Calls `fn` of the module's store with `args`. Only the saves listed in OFFLINE_CALLS. */
-export async function runCall(db: CallDb, ctx: RestContext, call: { module: CallModule; fn: string; args: unknown[]; at: string; day: string }, nextId: () => string): Promise<unknown> {
+export async function runCall(db: CallDb, ctx: RestContext, call: { module: CallModule; fn: string; args: unknown[]; at: string; day: string; offlineRef: string; branchId: string }, nextId: () => string): Promise<unknown> {
   if (!callAllowed(call.module, call.fn)) throw new Error(`${call.fn} cannot be saved offline.`);
   const port: RestDb = {
     select: db.select,
@@ -65,7 +66,10 @@ export async function runCall(db: CallDb, ctx: RestContext, call: { module: Call
     newId: nextId,
     now: () => callClock(call.at, call.day),
   };
-  const store = (call.module === "dist" ? createDistStore(port, () => ctx) : createElectricStore(port, () => ctx)) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+  const made = call.module === "dist" ? createDistStore(port, () => ctx)
+    : call.module === "electric" ? createElectricStore(port, () => ctx)
+    : createRadiologyStore(port, () => ctx, { offlineRef: call.offlineRef, branchId: call.branchId });
+  const store = made as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
   return store[call.fn](...call.args);
 }
 
@@ -73,8 +77,11 @@ export async function runCall(db: CallDb, ctx: RestContext, call: { module: Call
 export function callSummary(module: CallModule, fn: string, result: unknown): { label: string; amount: number | null } {
   const names: Record<string, string> = {
     createSale: "Sale invoice", createBooking: "Booking", receivePayment: "Payment", createSaleReturn: "Sale return", createReturn: "Return", createQuotation: "Quotation",
+    registerPatient: "Patient registered", updatePatient: "Patient updated", orderStudy: "Study ordered", collectFees: "Fee collected", cancelOrder: "Order cancelled",
+    startExam: "Examination started", returnToQueue: "Returned to queue", saveExamDraft: "Examination draft", completeExam: "Examination completed", signReport: "Report signed",
   };
+  const area = module === "dist" ? "Distribution" : module === "electric" ? "Store" : "Radiology";
   const r = result as { doc?: { total?: unknown; net_total?: unknown; payable?: unknown }; total?: unknown; amount?: unknown } | null;
   const n = [r?.doc?.payable, r?.doc?.net_total, r?.doc?.total, r?.total, r?.amount].map(Number).find((x) => Number.isFinite(x));
-  return { label: `${module === "dist" ? "Distribution" : "Store"} ${names[fn] ?? fn}`.slice(0, 80), amount: n ?? null };
+  return { label: `${area} ${names[fn] ?? fn}`.slice(0, 80), amount: n ?? null };
 }

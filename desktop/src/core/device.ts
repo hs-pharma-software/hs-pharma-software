@@ -434,14 +434,18 @@ export class OfflineDevice {
     const day = localDay(now);
     const ids = idSource([], randomUUID);
     return copy.writeCall(async (cdb: CallDb) => {
-      const result = await runCall(cdb, ctx, { module, fn, args, at, day }, ids.next);
+      // The receipt number comes first: a Radiology Centre's MR and order numbers are made from it.
+      const offlineRef = db.tx(() => {
+        const n = Number(meta.get(db, "receipt_seq") ?? 0) + 1;
+        meta.set(db, "receipt_seq", String(n));
+        return `${b.deviceCode}-${String(n).padStart(6, "0")}`;
+      });
+      const result = await runCall(cdb, ctx, { module, fn, args, at, day, offlineRef, branchId: g.branchId }, ids.next);
       const s = callSummary(module, fn, result);
       // Queued last: a save that failed above leaves nothing here or there.
       return db.tx(() => {
-        const n = Number(meta.get(db, "receipt_seq") ?? 0) + 1;
-        meta.set(db, "receipt_seq", String(n));
         const payload: CallPayload = {
-          callId: randomUUID(), offlineRef: `${b.deviceCode}-${String(n).padStart(6, "0")}`, module, fn, args: JSON.parse(JSON.stringify(args)) as unknown[],
+          callId: randomUUID(), offlineRef, module, fn, args: JSON.parse(JSON.stringify(args)) as unknown[],
           ids: ids.used, at, day, userId: user.id, label: s.label, amount: s.amount,
         };
         const problems = checkCall(payload);
@@ -452,6 +456,12 @@ export class OfflineDevice {
       });
     });
   }
+
+  /** The business type this computer is set up for. */
+  get businessType(): string | null { return this.grant()?.businessType ?? null; }
+
+  /** Whether saves made here are still waiting to be sent. */
+  get hasUnsent(): boolean { return this.db && this.binding ? this.counts().pending > 0 : false; }
 
   /** Module saves this computer made that MAVIN.pk held or refused since `since` (the copy is then read again). */
   refusedCallsSince(since: string): number {

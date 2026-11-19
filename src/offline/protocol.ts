@@ -19,7 +19,7 @@ export const OFFLINE_MODULES = ["sale.cash"] as const;
 export type OfflineModule = (typeof OFFLINE_MODULES)[number];
 /** Business types whose sale screen works offline (stock in batches, the shared retail invoice).
  * Mobile shop handsets (IMEI) still need the internet; their accessories sell offline. */
-export const OFFLINE_BUSINESS_TYPES = ["retail_pharmacy", "medical_store", "general_store", "hospital_pharmacy", "mobile_shop", "cloth_store", "distributor", "electronics_solar"] as const;
+export const OFFLINE_BUSINESS_TYPES = ["retail_pharmacy", "medical_store", "general_store", "hospital_pharmacy", "mobile_shop", "cloth_store", "distributor", "electronics_solar", "radiology_center"] as const;
 /** Offline allowance limits (hours). */
 export const MIN_OFFLINE_HOURS = 1;
 export const MAX_OFFLINE_HOURS = 14 * 24;
