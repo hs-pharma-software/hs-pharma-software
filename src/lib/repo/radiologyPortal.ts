@@ -7,7 +7,7 @@ import { localDate, localDateTime } from "../localDate";
 import { currentActor, roleAllowed } from "./medicalRecord";
 import { hospitalImagingRepo, hospitalPatientsRepo } from "./hospital";
 import { canProcess, reportImaging } from "./hospitalOpd";
-import { machineWorklist, modalityCodeFor, newMachineKey, sha256Hex, keyHint, type MachineRow, type ModalityRef, type WorklistOrder } from "../dicomApi";
+import { DICOM_ELITE_MESSAGE, dicomEntitled, machineWorklist, modalityCodeFor, newMachineKey, sha256Hex, keyHint, type MachineRow, type ModalityRef, type WorklistOrder } from "../dicomApi";
 import { STANDARD_MODALITIES, DICOM_MODALITY_CODES, parseExam, validateExam, type ExamData } from "../../config/radiologyPortal";
 import { RADIOLOGY_ADMIN_ROLES, TECHNOLOGIST_ROLES, TECHNOLOGIST_ASSIGN_ROLES } from "../../config/hospitalStaff";
 import { findingsText, isUltrasoundStudy, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
@@ -210,10 +210,18 @@ export async function deleteMachine(id: string): Promise<void> {
   await machinesRepo.remove(id);
 }
 
+/** Whether this business's plan includes connecting machines and a PACS. */
+export const dicomIncluded = (): Promise<boolean> => dicomEntitled(io, requireCurrentTenantId());
+
+async function requireDicomPlan() {
+  if (!(await dicomIncluded())) throw new Error(DICOM_ELITE_MESSAGE);
+}
+
 /** A new API key for the machine; the old one stops working. The key is
  * returned once to show the user: only its hash is stored. */
 export async function createMachineKey(id: string): Promise<string> {
   await requireRole(RADIOLOGY_ADMIN_ROLES, "create machine keys");
+  await requireDicomPlan();
   if (!(await machinesRepo.get(id))) throw new Error("Machine not found.");
   const key = newMachineKey();
   await machinesRepo.update(id, { api_key_hash: await sha256Hex(key), api_key_hint: keyHint(key) });
@@ -351,6 +359,7 @@ const httpUrl = (s: string | null | undefined) => {
 
 export async function savePacs(p: PacsInput): Promise<RadiologyPacs> {
   await requireRole(RADIOLOGY_ADMIN_ROLES, "configure the PACS");
+  await requireDicomPlan();
   const name = p.name.trim() || "Orthanc PACS";
   const viewer = httpUrl(p.viewer_url);
   if (viewer && !/\{(StudyInstanceUID|AccessionNumber|PatientID)\}/.test(viewer)) {

@@ -31,6 +31,21 @@ export class DicomApiError extends Error {
   }
 }
 
+export const DICOM_ELITE_MESSAGE = "DICOM machine connection and PACS image viewing are included in the Mavin Elite plan.";
+
+/** A Radiology Centre connects machines and its PACS on an Elite plan (older name: Enterprise). Hospitals keep them on every plan. */
+export function dicomAllowedForPlan(businessType: string | null | undefined, planName: string | null | undefined): boolean {
+  return businessType !== "radiology_center" || /\b(elite|enterprises?)\b/i.test(planName ?? "");
+}
+
+/** Whether this business's current plan includes the DICOM connection. */
+export async function dicomEntitled(io: Pick<DicomDb, "select">, tenantId: string): Promise<boolean> {
+  const t = (await io.select<{ business_type: string | null; subscription_plan_id: string | null }>(`SELECT business_type, subscription_plan_id FROM tenants WHERE id = ?`, [tenantId]))[0];
+  if (t?.business_type !== "radiology_center") return true;
+  const plan = t.subscription_plan_id ? (await io.select<{ name: string }>(`SELECT name FROM subscription_plans WHERE id = ?`, [t.subscription_plan_id]))[0] : null;
+  return dicomAllowedForPlan(t.business_type, plan?.name);
+}
+
 export interface MachineRow {
   id: string;
   tenant_id: string;
@@ -249,6 +264,7 @@ export async function authenticateMachine(io: DicomDb, key: string | null | unde
   ))[0];
   if (!m) throw new DicomApiError(401, "This machine key is not valid. Create a new key on Radiology > Machines.");
   if (m.status !== "active") throw new DicomApiError(403, `Machine ${m.machine_code} is set to "${m.status}" in the portal.`);
+  if (!(await dicomEntitled(io, m.tenant_id))) throw new DicomApiError(403, DICOM_ELITE_MESSAGE);
   return m;
 }
 

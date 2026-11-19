@@ -10,10 +10,10 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { publicSiteUrl } from "@/lib/publicUrl";
 import {
-  listMachinesWithQueue, listModalities, listTechnologists, saveMachine, deleteMachine, assignMachine, createMachineKey, revokeMachineKey, recentDicomEvents,
+  listMachinesWithQueue, listModalities, listTechnologists, saveMachine, deleteMachine, assignMachine, createMachineKey, revokeMachineKey, recentDicomEvents, dicomIncluded,
   type MachineWithQueue, type RadiologyModality, type Technologist, type MachineInput, type MachineStatus, type DicomEvent,
 } from "@/lib/repo/radiologyPortal";
-import { Panel, errMsg } from "@/components/hospital/radiology/common";
+import { DicomEliteNotice, Panel, errMsg } from "@/components/hospital/radiology/common";
 
 const CONNECTION = {
   online: { label: "Online", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
@@ -32,10 +32,14 @@ export default function MachinesPage() {
   const [assignT, setAssignT] = useState("");
   const [newKey, setNewKey] = useState<{ machine: MachineWithQueue; key: string } | null>(null);
   const [events, setEvents] = useState<{ machine: MachineWithQueue; rows: DicomEvent[] } | null>(null);
+  const [dicom, setDicom] = useState(false);
+  const [planChecked, setPlanChecked] = useState(false);
 
   async function reload() {
     if (!isTauri()) return;
     try {
+      setDicom(await dicomIncluded());
+      setPlanChecked(true);
       setMachines(await listMachinesWithQueue());
       setModalities(await listModalities());
       setTechs(await listTechnologists());
@@ -57,6 +61,7 @@ export default function MachinesPage() {
     <div>
       <PageHeader title="Machine Setup" actions={<Button variant="primary" onClick={() => setEditing("new")} disabled={!modalities.length}><Plus size={14} />Add machine</Button>} />
       {!modalities.length && <Panel className="mb-4"><p className="text-sm">Add modalities first on <Link className="underline" href="/hospital/radiology/modalities">Radiology › Modalities</Link>. Each machine belongs to one modality.</p></Panel>}
+      {planChecked && !dicom && <DicomEliteNotice className="mb-4" />}
 
       <Panel title="Assign machine to technologist" className="mb-4">
         <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_auto]">
@@ -88,7 +93,7 @@ export default function MachinesPage() {
             <Panel key={m.id}>
               <div className="flex items-center justify-between gap-2">
                 <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-mono text-xs">{m.machine_code}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${c.cls}`}>{c.label}</span>
+                {(dicom || m.status !== "active") && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${c.cls}`}>{c.label}</span>}
               </div>
               <h3 className="mt-2 text-lg font-semibold">{m.name}</h3>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-600">
@@ -100,13 +105,13 @@ export default function MachinesPage() {
                 <div><dt className="text-neutral-500">Queue</dt><dd className="flex items-center gap-1 font-semibold tabular-nums"><Activity size={13} />{m.queue}</dd></div>
                 <div><dt className="text-neutral-500">AE Title</dt><dd className="font-mono">{m.ae_title ?? "—"}</dd></div>
                 <div><dt className="text-neutral-500">Technologist</dt><dd>{m.assigned_user_name ?? "—"}</dd></div>
-                <div className="col-span-2"><dt className="text-neutral-500">DICOM API key</dt><dd className="font-mono">{m.api_key_hint ?? "None"}{m.last_seen_at ? <span className="ml-2 font-sans text-xs text-neutral-500">last call {new Date(m.last_seen_at).toLocaleString()}</span> : null}</dd></div>
+                {dicom && <div className="col-span-2"><dt className="text-neutral-500">DICOM API key</dt><dd className="font-mono">{m.api_key_hint ?? "None"}{m.last_seen_at ? <span className="ml-2 font-sans text-xs text-neutral-500">last call {new Date(m.last_seen_at).toLocaleString()}</span> : null}</dd></div>}
               </dl>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => setEditing(m)}><Pencil size={14} />Edit</Button>
-                <Button variant="secondary" onClick={() => void issueKey(m)}><KeyRound size={14} />{m.api_key_hint ? "New key" : "Create key"}</Button>
+                {dicom && <Button variant="secondary" onClick={() => void issueKey(m)}><KeyRound size={14} />{m.api_key_hint ? "New key" : "Create key"}</Button>}
                 {m.api_key_hint && <Button variant="ghost" onClick={() => { if (window.confirm(`Revoke the key of ${m.name}? The machine can no longer reach the API.`)) void run(() => revokeMachineKey(m.id)); }}>Revoke key</Button>}
-                <Button variant="ghost" onClick={() => void recentDicomEvents(m.id).then((rows) => setEvents({ machine: m, rows }))}>Messages</Button>
+                {dicom && <Button variant="ghost" onClick={() => void recentDicomEvents(m.id).then((rows) => setEvents({ machine: m, rows }))}>Messages</Button>}
                 <Button variant="danger" onClick={() => { if (window.confirm(`Delete machine ${m.name}?`)) void run(() => deleteMachine(m.id)); }}><Trash2 size={14} />Delete</Button>
               </div>
             </Panel>

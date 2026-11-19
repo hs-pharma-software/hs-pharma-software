@@ -8,7 +8,7 @@ import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal
 import { isTauri } from "@/lib/platform";
 import { getRadiologyReport, type RadiologyReport } from "@/lib/repo/radiology";
 import {
-  listForReporting, getPortalOrder, templatesFor, reportStudy, getPacs, imagesUrl, type PortalOrderRow, type RadiologyTemplate, type RadiologyPacs,
+  listForReporting, getPortalOrder, dicomIncluded, templatesFor, reportStudy, getPacs, imagesUrl, type PortalOrderRow, type RadiologyTemplate, type RadiologyPacs,
 } from "@/lib/repo/radiologyPortal";
 import { parseExam, SAFETY_CHECKS } from "@/config/radiologyPortal";
 import { Panel, Tabs, PriorityPill, StatusPill, ageGender, errMsg, openImages, imagesMissingReason, useAutoRefresh } from "@/components/hospital/radiology/common";
@@ -60,6 +60,9 @@ export default function ReportingPage() {
     return () => clearTimeout(t);
   }, [view, search]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (isTauri()) void getPacs().then(setPacs).catch(() => setPacs(null)); }, []);
+  // Viewing images from the PACS is part of the plan's DICOM connection.
+  const [dicom, setDicom] = useState(false);
+  useEffect(() => { if (isTauri()) void dicomIncluded().then(setDicom).catch(() => setDicom(false)); }, []);
 
   async function print(id: string) {
     try { setPrinting(await getRadiologyReport(id)); } catch (e) { window.alert(errMsg(e)); }
@@ -88,7 +91,7 @@ export default function ReportingPage() {
           <h1 className="text-xl font-bold tracking-tight text-neutral-900">{sel.patient_name}</h1>
           <PriorityPill priority={sel.priority} />
         </div>
-        <ReportPanel key={sel.id} order={sel} pacs={pacs} onPrint={() => void print(sel.id)}
+        <ReportPanel key={sel.id} order={sel} pacs={pacs} showImages={dicom} onPrint={() => void print(sel.id)}
           onSaved={() => { setSel(null); void refresh(); }} />
         {printing && <RadiologyReportModal report={printing} onClose={() => setPrinting(null)} />}
       </div>
@@ -133,7 +136,7 @@ export default function ReportingPage() {
   );
 }
 
-function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow; pacs: RadiologyPacs | null; onSaved: () => void; onPrint: () => void }) {
+function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: PortalOrderRow; pacs: RadiologyPacs | null; showImages: boolean; onSaved: () => void; onPrint: () => void }) {
   const exam = parseExam(order.exam_data, order.clinical_history);
   const reported = order.status === "reported";
   // Anything typed earlier in this tab comes back if the page was left or reloaded.
@@ -196,7 +199,7 @@ function ReportPanel({ order, pacs, onSaved, onPrint }: { order: PortalOrderRow;
   return (
     <div className="flex flex-col gap-4">
       <Panel title={`${order.modality}${order.body_part ? ` · ${order.body_part}` : ""}`}
-        actions={<Button variant="secondary" onClick={() => openImages(imagesUrl(order, pacs, order.mr_no), imagesMissingReason(order, Boolean(pacs)))}><ExternalLink size={14} />View images</Button>}>
+        actions={showImages ? <Button variant="secondary" onClick={() => openImages(imagesUrl(order, pacs, order.mr_no), imagesMissingReason(order, Boolean(pacs)))}><ExternalLink size={14} />View images</Button> : undefined}>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
           <div><dt className="text-neutral-500">Patient</dt><dd className="font-medium">{order.patient_name}</dd></div>
           <div><dt className="text-neutral-500">MR number</dt><dd>{order.mr_no}</dd></div>

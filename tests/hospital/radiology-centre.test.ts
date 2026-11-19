@@ -15,7 +15,8 @@ import { hasModuleAccess, moduleKeyForPath } from "@/lib/moduleAccess";
 import { hospitalPatientsRepo, hospitalImagingRepo, nextMrNo } from "@/lib/repo/hospital";
 import { collectVisitFees } from "@/lib/repo/receptionFees";
 import { saveImagingStudy, orderImaging, getRadiologyReport } from "@/lib/repo/radiology";
-import { listForReporting, reportStudy } from "@/lib/repo/radiologyPortal";
+import { createMachineKey, dicomIncluded, listForReporting, loadStandardModalities, reportStudy, saveMachine, savePacs } from "@/lib/repo/radiologyPortal";
+import { authenticateMachine, dicomAllowedForPlan } from "@/lib/dicomApi";
 import { getPublicRadiologyReport } from "@/lib/radiologyReportDocument";
 
 const T = "centre-a";
@@ -70,6 +71,42 @@ test("staff get radiology roles, and each login sees only its own desk", () => {
   session(TYPE, "staff", designation("radiology_receptionist")!.pages);
   assert.equal(hasModuleAccess(moduleKeyForPath("/hospital/radiology")), true, "a receptionist opens the counter");
   assert.equal(hasModuleAccess(moduleKeyForPath("/hospital/radiology/reporting")), false);
+});
+
+/** Puts the business on a plan of this name. */
+function onPlan(name: string, type = TYPE) {
+  db.prepare(`INSERT OR REPLACE INTO subscription_plans (id, name, price, duration_days, allowed_modules, max_staff_logins, created_at, updated_at) VALUES ('p1', ?, 0, 30, '[]', 3, '2026-01-01', '2026-01-01')`).run(name);
+  db.prepare(`UPDATE tenants SET subscription_plan_id = 'p1', business_type = ? WHERE id = ?`).run(type, T);
+}
+
+test("DICOM is Elite only for a Radiology Centre: Pro can't create keys, set up a PACS or connect a machine; hospitals keep it", async () => {
+  const io = {
+    select: async <R,>(sql: string, params: unknown[]) => db.prepare(sql).all(...(params as never[])) as R[],
+    execute: async (sql: string, params: unknown[]) => db.prepare(sql).run(...(params as never[])),
+  };
+  assert.equal(dicomAllowedForPlan(TYPE, "Mavin Pro - Radiology"), false);
+  assert.equal(dicomAllowedForPlan(TYPE, "Mavin Elite - Radiology"), true);
+  assert.equal(dicomAllowedForPlan(TYPE, null), false);
+  assert.equal(dicomAllowedForPlan("hospital", "Mavin Pro - Hospital"), true);
+
+  await loadStandardModalities();
+  const machine = await saveMachine(null, { name: "X-Ray Room", modality_code: "XRAY" });
+  onPlan("Mavin Pro - Radiology");
+  assert.equal(await dicomIncluded(), false);
+  await assert.rejects(createMachineKey(machine.id), /Elite/);
+  await assert.rejects(savePacs({ name: "PACS", orthanc_url: "https://pacs.example.pk" }), /Elite/);
+
+  onPlan("Mavin Elite - Radiology");
+  assert.equal(await dicomIncluded(), true);
+  const key = await createMachineKey(machine.id);
+  assert.equal((await authenticateMachine(io, key)).id, machine.id);
+  await savePacs({ name: "PACS", orthanc_url: "https://pacs.example.pk" });
+
+  onPlan("Mavin Pro - Radiology");
+  await assert.rejects(authenticateMachine(io, key), (e: Error & { status?: number }) => e.status === 403 && /Elite/.test(e.message), "a key made on Elite stops working after moving to Pro");
+
+  onPlan("Mavin Pro - Hospital", "hospital");
+  assert.equal((await authenticateMachine(io, key)).id, machine.id, "hospitals are not affected");
 });
 
 test("a patient: order, fee at the counter, report, online copy", async () => {

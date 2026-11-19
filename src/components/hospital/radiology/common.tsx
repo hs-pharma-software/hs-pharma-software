@@ -123,6 +123,15 @@ export const ageGender = (p: { age_years?: number | null; dob?: string | null; g
   return `${age} / ${p.gender ?? "—"}`;
 };
 
+/** Shown to a Radiology Centre whose plan does not include the DICOM connection. */
+export function DicomEliteNotice({ className = "" }: { className?: string }) {
+  return (
+    <p role="status" className={`rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-200 ${className}`}>
+      <b>Included in Mavin Elite.</b> Connecting machines by DICOM and opening images from a PACS need the Elite plan. Patient queues, scanning and reporting work on your current plan. Contact MAVIN.pk to upgrade.
+    </p>
+  );
+}
+
 /** Opens the study in the PACS viewer, or says why it cannot. */
 export function openImages(url: string | null, reason: string) {
   if (url) window.open(url, "_blank", "noopener");

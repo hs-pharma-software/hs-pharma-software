@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { publicSiteUrl } from "@/lib/publicUrl";
-import { getPacs, savePacs, type PacsInput, type RadiologyPacs } from "@/lib/repo/radiologyPortal";
-import { Panel, errMsg } from "@/components/hospital/radiology/common";
+import { dicomIncluded, getPacs, savePacs, type PacsInput, type RadiologyPacs } from "@/lib/repo/radiologyPortal";
+import { DicomEliteNotice, Panel, errMsg } from "@/components/hospital/radiology/common";
 
 /** The hospital's PACS (an Orthanc server): where machines store images, and
  * the viewer address the portal opens for a study. */
@@ -17,9 +17,11 @@ export default function PacsPage() {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState<PacsInput>({ name: "Orthanc PACS" });
   const [saving, setSaving] = useState(false);
+  const [included, setIncluded] = useState<boolean | null>(null);
 
   async function reload() {
     if (!isTauri()) return;
+    setIncluded(await dicomIncluded());
     const p = await getPacs();
     setPacs(p);
     setF({
@@ -35,6 +37,15 @@ export default function PacsPage() {
   }
   const s = (k: keyof PacsInput) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const site = publicSiteUrl() ?? "https://<your-hospital-website>";
+
+  if (included === false) {
+    return (
+      <div>
+        <PageHeader title="PACS / Orthanc Configuration" />
+        <DicomEliteNotice />
+      </div>
+    );
+  }
 
   return (
     <div>

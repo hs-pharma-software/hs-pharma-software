@@ -9,7 +9,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import {
-  listMachinesWithQueue, machineQueue, getExamContext, startExam, returnToQueue, saveExamDraft, completeExam, getPacs, imagesUrl,
+  listMachinesWithQueue, machineQueue, getExamContext, startExam, returnToQueue, saveExamDraft, completeExam, getPacs, imagesUrl, dicomIncluded,
   type MachineWithQueue, type ExamContext, type RadiologyPacs,
 } from "@/lib/repo/radiologyPortal";
 import type { WorklistOrder } from "@/lib/dicomApi";
@@ -57,6 +57,9 @@ export default function TechnologistPage() {
   const { bar } = useAutoRefresh(async () => { await loadMachines(); }, 30);
   useEffect(() => { void loadQueue().catch(() => setQueue([])); }, [loadQueue]);
   useEffect(() => { if (isTauri()) void getPacs().then(setPacs).catch(() => setPacs(null)); }, []);
+  // Viewing images from the PACS is part of the plan's DICOM connection.
+  const [dicom, setDicom] = useState(false);
+  useEffect(() => { if (isTauri()) void dicomIncluded().then(setDicom).catch(() => setDicom(false)); }, []);
 
   async function openOrder(id: string) {
     setOrderId(id);
@@ -259,7 +262,7 @@ export default function TechnologistPage() {
           </dl>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <Button variant="secondary" onClick={() => setDone(null)}>Continue working</Button>
-            <Button variant="secondary" onClick={() => openImages(imagesUrl(done.order, pacs, done.order.mr_no), imagesMissingReason(done.order, Boolean(pacs)))}><ExternalLink size={14} />View images</Button>
+            {dicom && <Button variant="secondary" onClick={() => openImages(imagesUrl(done.order, pacs, done.order.mr_no), imagesMissingReason(done.order, Boolean(pacs)))}><ExternalLink size={14} />View images</Button>}
             <Button variant="primary" onClick={() => router.push("/hospital/radiology/reporting")}><ExternalLink size={14} />Go to reporting</Button>
           </div>
         </Modal>
