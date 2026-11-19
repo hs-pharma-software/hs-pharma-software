@@ -6,6 +6,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { savePatient } from "@/lib/repo/clinic";
 import type { ClinicPatient } from "@/lib/types-clinic";
+import { useAuthStore } from "@/store/authStore";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
@@ -24,6 +25,8 @@ export default function PatientFormModal({
   initialPhone?: string;
 }) {
   const isEdit = Boolean(patient);
+  // A Diagnostic Lab asks only what the bill and report need. Date of birth stays: it is how a lab patient's age is kept and printed.
+  const shortForm = useAuthStore((s) => s.currentTenant?.businessType) === "lab";
   const [name, setName] = useState(patient?.name ?? initialName ?? "");
   const [mrn, setMrn] = useState(patient?.mrn ?? "");
   const [dob, setDob] = useState(patient?.dob ?? "");
@@ -85,12 +88,14 @@ export default function PatientFormModal({
           <Field label="Phone">
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Contact number" />
           </Field>
-          <Field label="Blood Group">
-            <Select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)}>
-              <option value="">— Select —</option>
-              {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
-            </Select>
-          </Field>
+          {!shortForm && (
+            <Field label="Blood Group">
+              <Select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)}>
+                <option value="">— Select —</option>
+                {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+              </Select>
+            </Field>
+          )}
           <div className="md:col-span-2">
             <Field label="Address">
               <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
@@ -101,11 +106,13 @@ export default function PatientFormModal({
               <Input value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder="Known allergies (e.g. Penicillin, Aspirin)" />
             </Field>
           </div>
-          <div className="md:col-span-2">
-            <Field label="Emergency Contact">
-              <Input value={emergencyContact} onChange={(e) => setEmergencyContact(e.target.value)} placeholder="Name & phone of emergency contact" />
-            </Field>
-          </div>
+          {!shortForm && (
+            <div className="md:col-span-2">
+              <Field label="Emergency Contact">
+                <Input value={emergencyContact} onChange={(e) => setEmergencyContact(e.target.value)} placeholder="Name & phone of emergency contact" />
+              </Field>
+            </div>
+          )}
           <div className="md:col-span-2">
             <Field label="Notes">
               <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Additional notes" />

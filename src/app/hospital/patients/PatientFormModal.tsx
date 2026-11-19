@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { hospitalPatientsRepo, nextMrNo, type HospitalPatient } from "@/lib/repo/hospital";
 import { radiologyCall, radiologyOffline } from "@/lib/offline/radiologyCalls";
+import { useAuthStore } from "@/store/authStore";
 
 interface Props {
   patient: HospitalPatient | null;
@@ -44,6 +45,9 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
 
   // Without internet this computer gives the MR number when the patient is saved.
   const offline = radiologyOffline();
+  // A Radiology Centre sees the patient once for a scan: only what the counter and the report need.
+  // Details already on a patient's record stay saved when the patient is edited here.
+  const shortForm = useAuthStore((s) => s.currentTenant?.businessType) === "radiology_center";
 
   useEffect(() => {
     if (!isEdit && !offline) {
@@ -108,9 +112,11 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
             <option value="Unknown">Unknown</option>
           </Select>
         </Field>
-        <Field label="Date of Birth">
-          <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-        </Field>
+        {!shortForm && (
+          <Field label="Date of Birth">
+            <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+          </Field>
+        )}
         <div className="flex gap-2">
           <Field label="Age (Years)">
             <Input type="number" min="0" value={ageYears} onChange={(e) => setAgeYears(e.target.value)} placeholder="Yr" />
@@ -125,15 +131,19 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         <Field label="CNIC">
           <Input value={cnic} onChange={(e) => setCnic(e.target.value)} placeholder="XXXXX-XXXXXXX-X" />
         </Field>
-        <Field label="Blood Group">
-          <Select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)}>
-            <option value="">— Unknown —</option>
-            {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
-          </Select>
-        </Field>
-        <Field label="City">
-          <Input value={city} onChange={(e) => setCity(e.target.value)} />
-        </Field>
+        {!shortForm && (
+          <>
+            <Field label="Blood Group">
+              <Select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)}>
+                <option value="">— Unknown —</option>
+                {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+              </Select>
+            </Field>
+            <Field label="City">
+              <Input value={city} onChange={(e) => setCity(e.target.value)} />
+            </Field>
+          </>
+        )}
         <div className="md:col-span-2">
           <Field label="Address">
             <Input value={address} onChange={(e) => setAddress(e.target.value)} />
@@ -142,35 +152,43 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         <Field label="Known Allergies">
           <Input value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder="e.g. Penicillin, Aspirin" />
         </Field>
-        <Field label="Chronic Conditions">
-          <Input value={chronicConditions} onChange={(e) => setChronicConditions(e.target.value)} placeholder="e.g. Diabetes, Hypertension" />
-        </Field>
+        {!shortForm && (
+          <Field label="Chronic Conditions">
+            <Input value={chronicConditions} onChange={(e) => setChronicConditions(e.target.value)} placeholder="e.g. Diabetes, Hypertension" />
+          </Field>
+        )}
       </div>
 
       {/* Next of Kin */}
-      <div className="border-t border-neutral-100 pt-3 mb-4">
-        <p className="text-xs font-medium text-neutral-500 mb-2">Next of Kin / Emergency Contact</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="Name">
-            <Input value={nokName} onChange={(e) => setNokName(e.target.value)} />
-          </Field>
-          <Field label="Phone">
-            <Input type="tel" value={nokPhone} onChange={(e) => setNokPhone(e.target.value)} />
-          </Field>
-          <Field label="Relation">
-            <Input value={nokRelation} onChange={(e) => setNokRelation(e.target.value)} placeholder="e.g. Son, Wife" />
-          </Field>
+      {!shortForm && (
+        <div className="border-t border-neutral-100 pt-3 mb-4">
+          <p className="text-xs font-medium text-neutral-500 mb-2">Next of Kin / Emergency Contact</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="Name">
+              <Input value={nokName} onChange={(e) => setNokName(e.target.value)} />
+            </Field>
+            <Field label="Phone">
+              <Input type="tel" value={nokPhone} onChange={(e) => setNokPhone(e.target.value)} />
+            </Field>
+            <Field label="Relation">
+              <Input value={nokRelation} onChange={(e) => setNokRelation(e.target.value)} placeholder="e.g. Son, Wife" />
+            </Field>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Insurance */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <Field label="Insurance Company">
-          <Input value={insuranceCompany} onChange={(e) => setInsuranceCompany(e.target.value)} />
-        </Field>
-        <Field label="Insurance No">
-          <Input value={insuranceNo} onChange={(e) => setInsuranceNo(e.target.value)} />
-        </Field>
+        {!shortForm && (
+          <>
+            <Field label="Insurance Company">
+              <Input value={insuranceCompany} onChange={(e) => setInsuranceCompany(e.target.value)} />
+            </Field>
+            <Field label="Insurance No">
+              <Input value={insuranceNo} onChange={(e) => setInsuranceNo(e.target.value)} />
+            </Field>
+          </>
+        )}
         <div className="md:col-span-2">
           <Field label="Notes">
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
