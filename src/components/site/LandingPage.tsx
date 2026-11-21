@@ -6,6 +6,11 @@ import { PRODUCT_GROUPS, SITE_PRODUCTS, productFacts, type ProductGroup } from "
 import { APP_URL, isSiteHost } from "@/config/site";
 import { SiteAnalytics } from "@/components/site/SiteAnalytics";
 import { ANDROID_RELEASE, androidReleaseDateLabel, androidSizeLabel } from "@/config/androidRelease";
+import { WINDOWS_RELEASE, windowsReleaseDateLabel, windowsSizeLabel } from "@/config/windowsRelease";
+
+const WindowsIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M0 2.2 6.5 1.3v6.2H0zm7.3-1L16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.8zm7.3 0H16V16l-8.7-1.2z" /></svg>
+);
 
 /** Where this page's links go. On mavin.pk the site pages have clean
  * addresses and the app lives on app.mavin.pk; on the app's own address the
@@ -258,8 +263,19 @@ export function LandingPage() {
                 🌐 Open Web App
               </a>
             </div>
-            {/* Android app: its own row under the three buttons */}
-            <div className="fi4" style={{display:"flex",justifyContent:"center",marginTop:-50,marginBottom:64}}>
+            {/* The apps: Windows and Android, on their own row under the three buttons */}
+            <div className="fi4" style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginTop:-50,marginBottom:64}}>
+              <Link href={link.site("/download#windows")} className="dl-btn" title={`${WINDOWS_RELEASE.appName} ${WINDOWS_RELEASE.versionName} · ${windowsSizeLabel()}`} style={{
+                display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
+                padding:"15px 28px",
+                background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
+                borderRadius:13,color:"white",
+                textDecoration:"none",fontSize:16,fontWeight:800,
+                letterSpacing:"-.02em",
+              }}>
+                <WindowsIcon />
+                Request for Windows
+              </Link>
               <a href={ANDROID_RELEASE.path} download type="application/vnd.android.package-archive" className="dl-btn" title={`${ANDROID_RELEASE.appName} ${ANDROID_RELEASE.versionName} · ${androidSizeLabel()}`} style={{
                 display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
                 padding:"15px 28px",
@@ -388,6 +404,43 @@ export function LandingPage() {
                   <p style={{fontSize:13.5,color:"#64748b",lineHeight:1.65}}>{f.desc}</p>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* ══════════ WINDOWS APP ══════════ */}
+          <section id="windows-app" style={{padding:"64px 24px",background:"#f8fafc",borderTop:"1px solid #e2e8f0"}}>
+            <div style={{maxWidth:880,margin:"0 auto",display:"flex",flexWrap:"wrap",gap:28,alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{flex:"1 1 320px",minWidth:0}}>
+                <p style={{fontSize:12,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"#1565c0",marginBottom:8}}>Windows App</p>
+                <h2 style={{fontSize:"clamp(24px,3.4vw,34px)",fontWeight:800,letterSpacing:"-.03em",color:"#0f172a",marginBottom:10}}>
+                  {WINDOWS_RELEASE.appName}
+                </h2>
+                <p style={{color:"#64748b",fontSize:15,lineHeight:1.7,marginBottom:12}}>
+                  The desktop app for your MAVIN.pk account. Billing keeps working when the internet is down, and everything syncs when it returns. Send a request and we email you the download link and a demo login.
+                </p>
+                <p style={{color:"#94a3b8",fontSize:13}}>
+                  Version {WINDOWS_RELEASE.versionName} · {windowsSizeLabel()} · Released {windowsReleaseDateLabel()} · {WINDOWS_RELEASE.needs}
+                </p>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"stretch",flex:"0 1 260px"}}>
+                <Link href={link.site("/download#windows")} className="dl-btn" style={{
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
+                  padding:"15px 28px",
+                  background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
+                  borderRadius:13,color:"white",
+                  textDecoration:"none",fontSize:16,fontWeight:800,letterSpacing:"-.02em",
+                }}>
+                  <WindowsIcon />
+                  Request for Windows
+                </Link>
+                <Link href={link.site("/download#windows")} className="web-btn" style={{
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",
+                  padding:"12px 24px",background:"#fff",border:"1.5px solid #e2e8f0",
+                  borderRadius:13,color:"#334155",textDecoration:"none",fontSize:14,fontWeight:700,
+                }}>
+                  How to install · What&apos;s new
+                </Link>
+              </div>
             </div>
           </section>
 
