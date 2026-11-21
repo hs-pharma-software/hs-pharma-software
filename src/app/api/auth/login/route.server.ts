@@ -48,13 +48,13 @@ export async function POST(req: Request): Promise<Response> {
     const portalTenant = await portalTenantFor(sqlForServer(), req.headers.get("host"));
     if (portalTenant && String(u.tenant_id ?? "") !== portalTenant) throw new HttpError(401, "Incorrect username or password.");
     failures.delete(key);
-    // The MAVIN Windows app's pages stay signed in between openings (renewed while in use).
-    const desktopApp = req.headers.get("x-mavin-client") === "desktop";
+    // The MAVIN Windows app's pages and the Android app stay signed in between openings (renewed while in use).
+    const desktopApp = req.headers.get("x-mavin-client") === "desktop" || client === "android";
     const { token } = issueSession(String(u.id), serverConfig().sessionSecret, Date.now(), { desktop: desktopApp });
     const seconds = sessionSeconds(desktopApp);
     const secure = new URL(req.url).protocol === "https:";
-    // The desktop app keeps the token itself and sends it as a Bearer header.
-    const body = client === "desktop" ? { userId: String(u.id), token, expiresInHours: seconds / 3600 } : { userId: String(u.id) };
+    // The desktop and Android apps keep the token themselves and send it as a Bearer header.
+    const body = client === "desktop" || client === "android" ? { userId: String(u.id), token, expiresInHours: seconds / 3600 } : { userId: String(u.id) };
     return Response.json(body, { headers: { "Set-Cookie": sessionCookie(token, seconds, secure) } });
   } catch (e) {
     return jsonError(e);

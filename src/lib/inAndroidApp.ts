@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
  * has been checked for it. Errs on the side of "in the app". */
 export function inAndroidApp(): boolean {
   if (typeof window === "undefined") return false;
+  // The MAVIN Business app (Flutter) opens web sections with this in its user agent.
+  if (/MavinBusinessApp\//.test(navigator.userAgent)) return true;
   try {
     if (document.referrer.startsWith("android-app://")) sessionStorage.setItem("mavin-android-app", "1");
     if (sessionStorage.getItem("mavin-android-app") === "1") return true;

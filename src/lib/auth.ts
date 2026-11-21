@@ -122,6 +122,24 @@ export function tenantAllowedModules(tenant: Pick<Tenant, "allowed_modules">, pl
   return plan ? parseAllowedModules(plan) : [];
 }
 
+/** Web version: a valid server session without a signed-in page (the MAVIN
+ * Business Android app opens web sections with its own sign-in; a browser
+ * whose stored page session was cleared) becomes the page's session, without
+ * asking for the password again. Null when there is no valid session. */
+export async function resumeServerSession(): Promise<{ user: SessionUser; tenant: SessionTenant | null } | null> {
+  if (!SERVER_DB) return null;
+  let me: { userId: string; platformRole: string | null };
+  try {
+    me = await serverJson<{ userId: string; platformRole: string | null }>("/api/auth/me/");
+  } catch {
+    return null;
+  }
+  const record = await usersRepo.get(me.userId).catch(() => null);
+  if (!record || !record.is_active) return null;
+  if (me.platformRole === "distributor") return distributorSession(me.userId, record.username);
+  return buildSession(record);
+}
+
 /** Verifies credentials and returns the session to store. Throws
  * `AuthError` with a user-facing message on any failure. */
 export async function login(username: string, password: string): Promise<{ user: SessionUser; tenant: SessionTenant | null }> {

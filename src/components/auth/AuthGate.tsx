@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { SetupSuperAdmin } from "./SetupSuperAdmin";
 import { StandaloneSetup } from "@/components/standalone/StandaloneSetup";
 import { localBridge, localSession, unwrap } from "@/lib/edition";
+import { resumeServerSession } from "@/lib/auth";
 import { LoginScreen } from "./LoginScreen";
 import { usePublicPage } from "./usePublicPage";
 import { SERVER_DB, SESSION_EXPIRED_EVENT, desktopViaServer, serverJson } from "@/lib/serverMode";
@@ -72,6 +73,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (desktopViaServer()) {
       setState("login");
       return;
+    }
+    // Web version: already signed in on the server (the Android app's own sign-in): no second login.
+    if (SERVER_DB) {
+      const resumed = await resumeServerSession().catch(() => null);
+      if (resumed) {
+        useAuthStore.getState().setSession(resumed.user, resumed.tenant);
+        return;
+      }
     }
     const synced = isTauriShell() && isTursoConfigured();
     if (synced) {

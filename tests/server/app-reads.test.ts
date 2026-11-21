@@ -1,0 +1,125 @@
+/** What the Android app reads (src/server/appReads.ts): the start-up bundle and
+ * products, run the way production runs them (policy check, business/branch
+ * rewrite, purchase prices removed for logins without them). */
+import { test, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import type { DatabaseSync } from "node:sqlite";
+import { fullSchemaDb } from "../catalog/fullDb.ts";
+import { sqliteSql } from "./sqliteSql.ts";
+import * as br from "@/server/branches";
+import { analyzeSql, authorize, costHidden, type Caller } from "@/server/sqlPolicy";
+import { scopeStatement, type Schema, type Scope } from "@/server/tenantScope";
+import { sharedCatalogGroupsFor } from "@/lib/catalogAccess";
+import { appBootstrap, appDashboard, listProducts, productDetail } from "@/server/appReads";
+import type { Res, Runner, Stmt } from "@/server/appDocs";
+
+const T = "2026-11-21T08:00:00.000Z";
+let db: DatabaseSync;
+let schema: Schema;
+let known: Set<string>;
+const owner: Caller = { userId: "u-own", role: "owner", tenantId: "t1", businessType: "retail_pharmacy" };
+// A cashier: Invoices and Stock only, no purchase prices.
+const cashier: Caller = { userId: "u-cash", role: "staff", tenantId: "t1", businessType: "retail_pharmacy", permissions: ["dashboard", "invoices", "stock"], actions: [] };
+const r = (q: string, ...a: unknown[]) => db.prepare(q).run(...(a as never[]));
+
+function seed() {
+  r(`INSERT INTO subscription_plans (id, name, price, duration_days, allowed_modules, max_staff_logins, created_at, updated_at) VALUES ('basic', 'Basic', 0, 30, '[]', 2, ?, ?)`, T, T);
+  r(`INSERT INTO tenants (id, name, subscription_plan_id, subscription_status, business_type, created_at, updated_at) VALUES ('t1', 'Al-Shifa Pharmacy', 'basic', 'active', 'retail_pharmacy', ?, ?)`, T, T);
+  r(`INSERT INTO tenants (id, name, subscription_plan_id, subscription_status, business_type, created_at, updated_at) VALUES ('t2', 'Other', 'basic', 'active', 'retail_pharmacy', ?, ?)`, T, T);
+  r(`INSERT INTO users (id, tenant_id, username, display_name, password_hash, password_salt, role, is_active, created_at, updated_at) VALUES ('u-own', 't1', 'own', 'Ahmed', 'x', 'x', 'owner', 1, ?, ?)`, T, T);
+  r(`INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, is_active, permissions, created_at, updated_at) VALUES ('u-cash', 't1', 'cash', 'x', 'x', 'staff', 1, '["dashboard","invoices","stock"]', ?, ?)`, T, T);
+  r(`INSERT INTO settings (key, value, updated_at) VALUES ('t1::billori_enabled', 'false', ?)`, T);
+  r(`INSERT INTO settings (key, value, updated_at) VALUES ('t1::print_logo', 'data:image/png;base64,iVBORw0KGgo=', ?)`, T);
+  const names = ["Panadol", "Risek", "Augmentin", "Brufen", "Calpol"];
+  names.forEach((n, i) => r(`INSERT INTO products (id, name, tenant_id, packing, barcode, created_at, updated_at) VALUES (?, ?, 't1', 10, ?, ?, ?)`, `p${i}`, n, `89600${i}`, T, T));
+  r(`INSERT INTO products (id, name, tenant_id, packing, created_at, updated_at) VALUES ('p-other', 'Not ours', 't2', 1, ?, ?)`, T, T);
+  r(`INSERT INTO price_list (id, product_id, tenant_id, sale_price, created_at, updated_at) VALUES ('pl1', 'p0', 't1', 300, '2026-01-01', '2026-01-01')`);
+  r(`INSERT INTO price_list (id, product_id, tenant_id, sale_price, created_at, updated_at) VALUES ('pl2', 'p0', 't1', 350, '2026-06-01', '2026-06-01')`);
+  r(`INSERT INTO product_batches (id, product_id, tenant_id, batch_no, expiry_date, qty, purchase_price, created_at, updated_at) VALUES ('b1', 'p0', 't1', 'PN-B', '2028-05-31', 30, 300, ?, ?)`, T, T);
+  r(`INSERT INTO product_batches (id, product_id, tenant_id, batch_no, expiry_date, qty, purchase_price, created_at, updated_at) VALUES ('b2', 'p0', 't1', 'PN-A', '2027-11-30', 18, 290, ?, ?)`, T, T);
+  r(`INSERT INTO product_batches (id, product_id, tenant_id, batch_no, expiry_date, qty, purchase_price, created_at, updated_at) VALUES ('b3', 'p0', 't1', 'PN-0', '2027-01-31', 0, 280, ?, ?)`, T, T);
+}
+
+async function runner(caller: Caller): Promise<Runner> {
+  const branch: Scope["branch"] = await br.branchScopeFor(sqliteSql(db), caller, null).catch(() => undefined);
+  const scope: Scope = { tenantId: caller.tenantId!, sharedGroups: sharedCatalogGroupsFor(caller.businessType), linkedPharmacies: [], branch };
+  const hide = costHidden(caller);
+  const exec = (s: Stmt): Res => {
+    const d = authorize(analyzeSql(s.sql), caller, known);
+    if (!d.ok) throw new Error(`policy: ${d.reason} :: ${s.sql.slice(0, 120)}`);
+    const rows = db.prepare(scopeStatement(s.sql, s.args, scope, schema)).all(...(s.args as never[])) as Record<string, unknown>[];
+    // As runForCaller: purchase prices leave the answer for logins without them.
+    const columns = rows[0] ? Object.keys(rows[0]).filter((c) => !(hide && c === "purchase_price")) : [];
+    return { columns, rows: rows.map((row) => columns.map((c) => row[c])), rowsAffected: 0 };
+  };
+  return async (stmts) => stmts.map(exec);
+}
+
+beforeEach(() => {
+  db = fullSchemaDb();
+  seed();
+  br.clearBranchCache();
+  schema = new Map();
+  for (const { name } of db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]) {
+    schema.set(name.toLowerCase(), new Set((db.prepare(`PRAGMA table_info(${name})`).all() as { name: string }[]).map((c) => c.name.toLowerCase())));
+  }
+  known = new Set(schema.keys());
+});
+
+test("products: a page at a time by name, quantity from batches with stock, the newest sale price, never another business's", async () => {
+  const run = await runner(owner);
+  const first = await listProducts(run, "t1", { limit: 2 });
+  assert.deepEqual(first.rows.map((x) => x.name), ["Augmentin", "Brufen"]);
+  assert.equal(first.nextOffset, 2);
+  const last = await listProducts(run, "t1", { offset: 4, limit: 2 });
+  assert.deepEqual(last.rows.map((x) => x.name), ["Risek"]);
+  assert.equal(last.nextOffset, null);
+  const pan = (await listProducts(run, "t1", { search: "pana" })).rows;
+  assert.deepEqual(pan.map((x) => [x.name, x.qty, x.salePrice]), [["Panadol", 48, 350]]);
+  assert.deepEqual((await listProducts(run, "t1", { search: "896003" })).rows.map((x) => x.name), ["Brufen"], "by barcode");
+  assert.equal((await listProducts(run, "t1", { search: "Not ours" })).rows.length, 0);
+});
+
+test("product detail: batches with stock, earliest expiry first; purchase prices only for logins allowed to see them", async () => {
+  const own = await productDetail(await runner(owner), "t1", "p0");
+  assert.equal(own.qty, 48);
+  assert.deepEqual(own.batches.map((b) => [b.batchNo, b.qty, b.purchasePrice]), [["PN-A", 18, 290], ["PN-B", 30, 300]]);
+  const cash = await productDetail(await runner(cashier), "t1", "p0");
+  assert.deepEqual(cash.batches.map((b) => b.purchasePrice), [null, null]);
+  await assert.rejects(productDetail(await runner(owner), "t1", "p-other"), /not found/i);
+  await assert.rejects(productDetail(await runner(owner), "t1", "x' OR 1=1"), /Invalid product/);
+});
+
+test("bootstrap: the business, the login's own menu (native screens marked), branches and settings", async () => {
+  const sql = sqliteSql(db);
+  const b = await appBootstrap(sql, owner, null);
+  assert.equal(b.business.name, "Al-Shifa Pharmacy");
+  assert.equal(b.business.type, "retail_pharmacy");
+  assert.equal(b.user.name, "Ahmed");
+  assert.equal(b.business.logo, "data:image/png;base64,iVBORw0KGgo=");
+  assert.equal(b.settings.billoriEnabled, false, "Billori off follows the business setting");
+  const keys = b.sections.map((s) => s.key);
+  assert.ok(keys.includes("invoices") && keys.includes("purchase"));
+  assert.equal(b.sections.find((s) => s.key === "invoices")!.native, true);
+  assert.ok(b.sections.some((s) => !s.native), "other sections open the web screens");
+  assert.equal(b.costHidden, false);
+  assert.equal(b.branches.list.length >= 1, true);
+
+  const c = await appBootstrap(sql, cashier, null);
+  assert.deepEqual(c.sections.map((s) => s.key).filter((k) => ["purchase", "invoices", "stock"].includes(k)).sort(), ["invoices", "stock"], "a cashier sees only the sections allowed");
+  assert.equal(c.costHidden, true);
+});
+
+test("home: today's sales and money in/out, low stock, expiring batches, recent invoices; staff need the Dashboard section", async () => {
+  r(`INSERT INTO invoices (id, tenant_id, invoice_no, date, total, payable, paid, balance, is_return, is_memorized, is_quotation, created_at, updated_at) VALUES ('i1', 't1', 1, '2026-11-21', 1000, 1000, 1000, 0, 0, 0, 0, ?, ?)`, T, T);
+  r(`INSERT INTO invoices (id, tenant_id, invoice_no, date, total, payable, paid, balance, is_return, is_memorized, is_quotation, created_at, updated_at) VALUES ('i2', 't1', 2, '2026-11-21', 500, 500, 200, 300, 0, 0, 0, ?, ?)`, T, T);
+  r(`INSERT INTO invoices (id, tenant_id, invoice_no, date, total, payable, paid, balance, is_return, is_memorized, is_quotation, created_at, updated_at) VALUES ('i-old', 't1', 3, '2026-11-20', 9999, 9999, 9999, 0, 0, 0, 0, '2026-11-20', '2026-11-20')`);
+  r(`INSERT INTO expenses (id, tenant_id, date, amount, created_at, updated_at) VALUES ('e1', 't1', '2026-11-21', 150, ?, ?)`, T, T);
+  const d = await appDashboard(await runner(owner), owner, "2026-11-21");
+  assert.deepEqual(d.summary, { sales: 1500, invoiceCount: 2, expenses: 150, cashIn: 1200, cashOut: 150 });
+  assert.ok(d.lowStock.some((x) => x.name === "Risek" && x.qty === 0), "a product with no stock is low");
+  assert.ok(!d.lowStock.some((x) => x.name === "Panadol"), "48 in stock is not low");
+  assert.deepEqual(d.expiring.map((x) => x.batchNo), [], "nothing expires within 180 days of the 21st");
+  assert.deepEqual(d.recentInvoices.slice(0, 2).map((x) => x.invoiceNo).sort(), [1, 2]);
+  await assert.rejects(appDashboard(await runner({ ...cashier, permissions: ["invoices"] }), { ...cashier, permissions: ["invoices"] }, "2026-11-21"), /no access to the Dashboard/);
+});
