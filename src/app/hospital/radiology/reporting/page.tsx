@@ -145,7 +145,7 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
   const [findings, setFindings] = useState(draft?.findings ?? order.findings ?? "");
   const [impression, setImpression] = useState(draft?.impression ?? order.impression ?? "");
   const [radiologist, setRadiologist] = useState(order.radiologist ?? "");
-  // More than one radiologist: the report is signed by the one chosen (blank = the signed-in login).
+  // The report is signed by the radiologist chosen (blank = the signed-in login).
   const [radiologists, setRadiologists] = useState<string[]>([]);
   useEffect(() => { if (!reported) void listRadiologists().then(setRadiologists).catch(() => setRadiologists([])); }, [reported]);
   const [saving, setSaving] = useState(false);
@@ -249,9 +249,9 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
           {pattern && <Field label="Recommendation"><Textarea id="rep-recommendation" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} /></Field>}
           {pattern && <Field label="Note"><Textarea id="rep-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>}
           <Field label="Radiologist">
-            {!reported && radiologists.length > 1 ? (
+            {!reported && radiologists.length > 0 ? (
               <Select id="rep-radiologist" value={radiologist} onChange={(e) => setRadiologist(e.target.value)}>
-                <option value="">Me (signed-in login)</option>
+                <option value="">— Me (signed-in login) —</option>
                 {radiologists.map((r) => <option key={r} value={r}>{r}</option>)}
                 {radiologist && !radiologists.includes(radiologist) && <option value={radiologist}>{radiologist}</option>}
               </Select>
