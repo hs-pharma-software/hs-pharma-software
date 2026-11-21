@@ -19,6 +19,7 @@ void main() {
     expect(soldQty(3, 10), '3');
     expect(soldQty(0.2, 10), '2 units (of 10)');
     expect(soldQty(2 / 21, 21), '2 units (of 21)');
+    expect(soldQty(0.01, 100), '1 unit (of 100)');
   });
 
   test('invoice list and one invoice', () {

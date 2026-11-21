@@ -12,9 +12,12 @@ import 'purchase_screen.dart';
 
 /// One bottom tab (a side rail on tablets), shown only when the login has its section.
 class _Tab {
-  _Tab(this.id, this.label, this.icon, this.selectedIcon, this.build, {this.guard});
+  _Tab(this.id, this.label, this.icon, this.selectedIcon, this.build, {this.guard, String? short}) : short = short ?? label;
   final String id;
   final String label;
+
+  /// On the bottom bar / rail (one line on a narrow phone).
+  final String short;
   final IconData icon;
   final IconData selectedIcon;
   final Widget Function() build;
@@ -42,14 +45,14 @@ class _ShellState extends State<Shell> {
     }
     if (b.section('invoices') != null) {
       final k = GlobalKey<InvoiceScreenState>();
-      tabs.add(_Tab('sell', 'New invoice', Icons.point_of_sale_outlined, Icons.point_of_sale_rounded, () => InvoiceScreen(key: k), guard: k));
+      tabs.add(_Tab('sell', 'New invoice', Icons.point_of_sale_outlined, Icons.point_of_sale_rounded, () => InvoiceScreen(key: k), guard: k, short: 'Invoice'));
     }
     if (b.section('stock') != null || b.section('products') != null) {
       tabs.add(_Tab('products', 'Products', Icons.inventory_2_outlined, Icons.inventory_2_rounded, () => const ProductsScreen()));
     }
     if (b.section('purchase') != null) {
       final k = GlobalKey<PurchaseScreenState>();
-      tabs.add(_Tab('purchase', 'New purchase', Icons.local_shipping_outlined, Icons.local_shipping_rounded, () => PurchaseScreen(key: k), guard: k));
+      tabs.add(_Tab('purchase', 'New purchase', Icons.local_shipping_outlined, Icons.local_shipping_rounded, () => PurchaseScreen(key: k), guard: k, short: 'Purchase'));
     }
     tabs.add(_Tab('more', 'More', Icons.menu_rounded, Icons.menu_open_rounded, () => MoreScreen(tabbed: {for (final t in tabs) t.id})));
     return tabs;
@@ -144,7 +147,7 @@ class _ShellState extends State<Shell> {
                   selectedIndex: _index,
                   labelType: NavigationRailLabelType.all,
                   onDestinationSelected: (i) => setState(() => _index = i),
-                  destinations: [for (final t in tabs) NavigationRailDestination(icon: Icon(t.icon), selectedIcon: Icon(t.selectedIcon), label: Text(t.label))],
+                  destinations: [for (final t in tabs) NavigationRailDestination(icon: Icon(t.icon), selectedIcon: Icon(t.selectedIcon), label: Text(t.short))],
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(child: body),
@@ -155,7 +158,7 @@ class _ShellState extends State<Shell> {
             : NavigationBar(
                 selectedIndex: _index,
                 onDestinationSelected: (i) => setState(() => _index = i),
-                destinations: [for (final t in tabs) NavigationDestination(icon: Icon(t.icon), selectedIcon: Icon(t.selectedIcon), label: t.label)],
+                destinations: [for (final t in tabs) NavigationDestination(icon: Icon(t.icon), selectedIcon: Icon(t.selectedIcon), label: t.short)],
               ),
       ),
     );

@@ -19,7 +19,8 @@ String dayMonthYear(String? isoDate) {
 /// as units: "3", or "2 units (of 10)".
 String soldQty(double packs, double packing) {
   if (packing <= 1 || (packs - packs.roundToDouble()).abs() < 1e-6) return qty(packs);
-  return '${qty(double.parse((packs * packing).toStringAsFixed(2)))} units (of ${qty(packing)})';
+  final units = double.parse((packs * packing).toStringAsFixed(2));
+  return '${qty(units)} ${units == 1 ? 'unit' : 'units'} (of ${qty(packing)})';
 }
 
 /// "2028-05-31" -> "May 2028".
