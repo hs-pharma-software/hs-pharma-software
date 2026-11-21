@@ -7,7 +7,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
-import { businessType } from "@/config/businessTypes";
+import { businessType, moduleAllowedForType } from "@/config/businessTypes";
 import { visibleNavFor } from "@/config/navFilter";
 import { bottomNavFor } from "@/config/bottomNav";
 import { designation, designationsFor, usesHospitalStaff } from "@/config/hospitalStaff";
@@ -125,4 +125,21 @@ test("a patient: order, fee at the counter, report, online copy", async () => {
     execute: async (sql: string, params: unknown[]) => db.prepare(sql).run(...(params as never[])),
   };
   assert.equal((await getPublicRadiologyReport(report.publicToken!, io)).order.impression, "Normal study.");
+});
+
+test("the Super Admin's Accessible Sections decide a centre's sections, and only radiology sections can be ticked", () => {
+  const all = businessType(TYPE).defaultModules;
+  const without = (...keys: string[]) => all.filter((k) => !keys.includes(k));
+  const labels = (allowed: string[]) => visibleNavFor(TYPE, allowed, null).map((n) => n.label);
+  assert.ok(!labels(without("hospital_radiology_tech", "banks")).includes("Technologist"), "an unticked section leaves the sidebar");
+  assert.ok(!labels(without("hospital_radiology_tech", "banks")).includes("Banks"));
+  session(TYPE);
+  useAuthStore.setState((s) => ({ currentTenant: { ...s.currentTenant!, allowedModules: without("hospital_radiology_tech") } }));
+  assert.equal(hasModuleAccess(moduleKeyForPath("/hospital/radiology/technologist")), false, "and cannot be opened by its address");
+  assert.equal(hasModuleAccess(moduleKeyForPath("/hospital/radiology")), true);
+  // A list saved before the centre's own sections could be ticked still shows them all.
+  assert.ok(labels(["dashboard", "staff", "settings"]).includes("Technologist"));
+  for (const k of ["invoices", "quotation", "order", "purchase", "products", "stock", "customers", "suppliers", "tasks", "salesman", "reports"]) {
+    assert.equal(moduleAllowedForType(TYPE, k), false, k);
+  }
 });

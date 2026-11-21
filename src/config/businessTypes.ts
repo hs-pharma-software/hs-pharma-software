@@ -721,8 +721,11 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     validations: ["A study joins the machine queue once its fee is paid", "An ultrasound report needs its values and a conclusion"],
     mvp: ["Reception and fee", "Machine queues", "Technologist examination", "Structured ultrasound reports", "Report print with QR code"],
     advanced: ["DICOM worklist and machine API", "PACS / Orthanc image viewer"],
-    defaultModules: ["dashboard", "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings"],
-    excludedModules: [...PHARMACY_CATALOG_MODULES, "customers", "suppliers"],
+    defaultModules: [
+      "dashboard", "hospital_radiology_orders", "hospital_radiology_tech", "hospital_radiology_reporting", "hospital_radiology_reports", "hospital_radiology", "hospital_patients", "hospital_finance",
+      "staff", "cash_register", "banks", "expenses", "other_revenue", "utilities", "settings",
+    ],
+    excludedModules: [...PHARMACY_CATALOG_MODULES, "customers", "suppliers", "tasks", "contractor_pra"],
     planned: [],
   },
   {
@@ -781,7 +784,8 @@ export function businessType(value: string | null | undefined): BusinessTypeDef 
 
 /** Sections for a new tenant of this type, limited to what its plan includes. */
 export function defaultModulesFor(type: BusinessTypeDef, planModules: string[]): string[] {
-  return planModules.length ? type.defaultModules.filter((k) => planModules.includes(k)) : type.defaultModules;
+  // A type's own sections (hospital_...) are not on plans: they stay in its defaults.
+  return planModules.length ? type.defaultModules.filter((k) => planModules.includes(k) || k.startsWith("hospital_")) : type.defaultModules;
 }
 
 export const STATUS_LABELS: Record<BusinessTypeDef["status"], { label: string; cls: string }> = {

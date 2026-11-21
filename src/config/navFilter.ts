@@ -86,6 +86,13 @@ const FIXED_ORDER: Record<string, string[]> = { clinic: CLINIC_NAV_ORDER, hospit
  * as children. A child is shown when the user has the child's own key or the
  * group's key (the group key grants all its sub-tabs); the plan still limits
  * shared sections. A group with no visible child is hidden. */
+/** A Radiology Centre's own sections follow its Accessible Sections once that
+ * list names any of them (lists saved before they could be ticked show them all). */
+export function ownSectionsGated(typeId: string, allowedModules: string[] | null): boolean {
+  if (typeId !== "radiology_center" || !allowedModules?.length) return false;
+  return NAV.some((n) => n.onlyFor?.includes(typeId) && allowedModules.includes(n.moduleKey));
+}
+
 export function visibleNavFor(
   businessTypeValue: string | null | undefined,
   allowedModules: string[] | null,
@@ -111,6 +118,7 @@ export function visibleNavFor(
     const item = entry.children?.some((c) => c.requires) ? { ...entry, children: entry.children.filter(integrated) } : entry;
     if (item.onlyFor) {
       if (!item.onlyFor.includes(typeId)) continue;
+      if (ownSectionsGated(typeId, allowedModules) && !allowedModules!.includes(item.moduleKey)) continue;
     } else {
       if (!moduleAllowedForType(typeId, item.moduleKey)) continue;
       if (allowedModules && allowedModules.length > 0 && !allowedModules.includes(item.moduleKey)) continue;

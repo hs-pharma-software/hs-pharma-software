@@ -23,6 +23,7 @@ import { STANDALONE } from "@/lib/edition";
 import { useBillori } from "@/lib/billoriState";
 import {
   PAPERS,
+  a4OnlyType,
   loadDefaultPaper,
   loadLogo,
   resizeLogo,
@@ -437,6 +438,8 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
   // The Super Admin can fix a pharmacy's templates (Users > tenant detail).
   const locked = useAuthStore((s) => s.currentTenant?.printTemplatesEditable === false);
   const canEdit = tauriReady && !locked;
+  // A lab or radiology centre prints reports and bills on A4 only: no invoice templates or paper choice.
+  const reportsOnly = a4OnlyType(useAuthStore((s) => s.currentTenant?.businessType));
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -467,7 +470,9 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
         <div>
           <h2 className="font-serif text-lg text-neutral-800">Print Templates</h2>
           <p className="text-sm text-neutral-500">
-            Your logo prints at the top of invoices and shows on the Dashboard next to the pharmacy name.
+            {reportsOnly
+              ? "Your logo prints at the top of reports and bills (A4) and shows on the Dashboard next to your name."
+              : "Your logo prints at the top of invoices and shows on the Dashboard next to the pharmacy name."}
           </p>
           {locked && (
             <p className="mt-1 text-xs font-medium text-amber-700">Print templates are fixed by the administrator.</p>
@@ -475,9 +480,11 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
         </div>
         <div className="flex items-center gap-2">
           {message && <span className="text-xs text-emerald-600">{message}</span>}
-          <Button variant="primary" disabled={!canEdit} onClick={onOpenTemplates}>
-            Templates
-          </Button>
+          {!reportsOnly && (
+            <Button variant="primary" disabled={!canEdit} onClick={onOpenTemplates}>
+              Templates
+            </Button>
+          )}
         </div>
       </div>
 
@@ -524,7 +531,7 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
           </div>
         </div>
 
-        <div className="max-w-xs">
+        {!reportsOnly && <div className="max-w-xs">
           <Field label="Default Print Template">
             <Select
               value={paper}
@@ -544,7 +551,7 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
             </Select>
           </Field>
           <p className="mt-1 text-[11px] text-neutral-400">The Print button sends invoices straight to the default printer.</p>
-        </div>
+        </div>}
       </div>
     </div>
   );

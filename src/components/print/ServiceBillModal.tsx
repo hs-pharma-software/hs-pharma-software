@@ -5,7 +5,7 @@ import { Printer, Send } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { InvoicePrintLayout, type PrintData } from "@/components/print/InvoicePrintLayout";
-import { DEFAULT_TEMPLATES, loadDefaultPaper, loadLogo, loadTemplate, type PrintTemplate } from "@/lib/printTemplates";
+import { DEFAULT_TEMPLATES, a4OnlyType, loadDefaultPaper, loadLogo, loadTemplate, type PrintTemplate } from "@/lib/printTemplates";
 import { printDirect } from "@/lib/print";
 import { isTauri } from "@/lib/platform";
 import { loadCompanyProfile, printedBusinessName, type CompanyProfile } from "@/lib/companyProfile";
@@ -60,7 +60,8 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
       setTemplate(structuredClone(DEFAULT_TEMPLATES.a4));
       return;
     }
-    void loadDefaultPaper().then(loadTemplate).then(setTemplate);
+    // Labs (and other diagnostic businesses) bill on A4 only.
+    void (a4OnlyType(useAuthStore.getState().currentTenant?.businessType) ? loadTemplate("a4") : loadDefaultPaper().then(loadTemplate)).then(setTemplate);
     void loadLogo().then(setLogo);
     void loadFbrSettings().then((s) => setFbrOn(s.enabled)).catch(() => setFbrOn(false));
     void loadCompanyProfile().then(setCompany);

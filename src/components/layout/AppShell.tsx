@@ -27,6 +27,9 @@ import { BranchModeNotice } from "@/components/branches/BranchSwitcher";
 import { STANDALONE } from "@/lib/edition";
 import { StandaloneLicenseBanner } from "@/components/standalone/StandaloneLicenseBanner";
 
+/** When this tab last re-read the business's sections and the login's permissions. */
+let lastAccessRefresh = 0;
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const currentTenant = useAuthStore((s) => s.currentTenant);
@@ -58,9 +61,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [sidebarMobileOpen, setSidebarMobileOpen]);
 
-  // Pick up permission changes an owner made while this staff user is logged in.
+  // Pick up changes to sections and permissions (by the owner or MAVIN.pk) without logging out:
+  // on every page change, at most once a minute on the web.
   useEffect(() => {
-    if (isTauri()) void refreshSessionAccess().catch(() => undefined);
+    if (!isTauri() && Date.now() - lastAccessRefresh < 60_000) return;
+    lastAccessRefresh = Date.now();
+    void refreshSessionAccess().catch(() => undefined);
   }, [pathname]);
 
   return (

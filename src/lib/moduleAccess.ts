@@ -1,6 +1,7 @@
 ﻿import { useAuthStore } from "../store/authStore";
 import { NAV, type NavChild } from "../config/nav";
 import { businessType, moduleAllowedForType } from "../config/businessTypes";
+import { ownSectionsGated } from "../config/navFilter";
 
 /** Maps a pathname like "/invoices/returns" back to its top-level module key
  * ("invoices") by matching the longest NAV href that's a prefix of it. */
@@ -51,7 +52,11 @@ export function hasModuleAccess(moduleKey: string | null): boolean {
   // Business types may share a section (a Radiology Centre uses the hospital's radiology screens).
   const direct = NAV.filter((n) => n.moduleKey === moduleKey);
   const owners = direct.some((n) => !n.onlyFor) ? direct : [...direct, ...NAV.filter((n) => n.onlyFor && inside(n.children))];
-  if (owners.length && owners.every((n) => n.onlyFor)) return owners.some((n) => n.onlyFor!.includes(businessType(currentTenant.businessType).id));
+  if (owners.length && owners.every((n) => n.onlyFor)) {
+    const typeId = businessType(currentTenant.businessType).id;
+    const gated = ownSectionsGated(typeId, currentTenant.allowedModules);
+    return owners.some((n) => n.onlyFor!.includes(typeId) && (!gated || currentTenant.allowedModules.includes(n.moduleKey)));
+  }
   if (!moduleAllowedForType(currentTenant.businessType, moduleKey)) return false;
   return currentTenant.allowedModules.includes(moduleKey);
 }

@@ -238,6 +238,10 @@ export async function saveLogo(dataUrl: string | null, tenantId?: string): Promi
   await setSetting(LOGO_KEY, dataUrl ?? "", tenantId);
 }
 
+/** Diagnostic businesses (lab, radiology centre) print reports and bills on A4 only. */
+export const A4_ONLY_TYPES = ["lab", "radiology_center"];
+export const a4OnlyType = (typeId: string | null | undefined) => Boolean(typeId && A4_ONLY_TYPES.includes(typeId));
+
 /** Paper used when an invoice is printed (Settings > Print Templates).
  * All loaders/savers here take an optional tenantId for the Super Admin. */
 export async function loadDefaultPaper(tenantId?: string): Promise<PaperSize> {

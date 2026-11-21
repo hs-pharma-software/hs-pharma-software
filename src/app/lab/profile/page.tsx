@@ -71,7 +71,7 @@ export default function LabProfilePage() {
         </section>
       </div>
       <div className="mt-4">
-        <ClinicPrintTemplatesCard editable={templatesEditable} docs={["lab"]} />
+        <ClinicPrintTemplatesCard editable={templatesEditable} docs={["lab"]} a4Only />
       </div>
       <div className="mt-4">
         <LabReportTemplatesCard editable={templatesEditable} />

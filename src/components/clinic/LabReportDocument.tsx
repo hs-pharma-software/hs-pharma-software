@@ -4,7 +4,8 @@ import { Fragment } from "react";
 import QRCode from "react-qr-code";
 import type { LabReportView } from "@/lib/labReportView";
 import type { ClinicProfile } from "@/lib/clinicProfile";
-import { PAPERS } from "@/lib/printTemplates";
+import { PAPERS, a4OnlyType } from "@/lib/printTemplates";
+import { useAuthStore } from "@/store/authStore";
 import { PAPER_WIDTH, type ClinicPrintTemplate } from "@/lib/clinicPrintTemplates";
 import type { LabReportDesign } from "@/lib/labReportDesigns";
 import { ReportWithFooterLine } from "@/components/brand/PageFooterLine";
@@ -38,7 +39,7 @@ function Flag({ flag, design }: { flag: string | null | undefined; design: LabRe
 
 /** The report, laid out by a design: header, title, patient details, results,
  * radiology, comments, signature and footer. Prints on the template's paper. */
-export function LabReportDocument({ view, design, t, profile, areaRef, logo = null, qrUrl = null }: {
+export function LabReportDocument({ view, design, t: template, profile, areaRef, logo = null, qrUrl = null }: {
   view: LabReportView;
   design: LabReportDesign;
   t: ClinicPrintTemplate;
@@ -49,6 +50,8 @@ export function LabReportDocument({ view, design, t, profile, areaRef, logo = nu
   /** Address of the online copy: printed as a QR code. */
   qrUrl?: string | null;
 }) {
+  // A Diagnostic Lab prints its reports on A4 only.
+  const t = a4OnlyType(useAuthStore.getState().currentTenant?.businessType) ? { ...template, paper: "a4" as const } : template;
   const p = PAPERS.find((x) => x.id === t.paper)!;
   const narrow = t.paper === "thermal";
   const acc = design.accent;

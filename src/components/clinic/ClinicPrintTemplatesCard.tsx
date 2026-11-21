@@ -12,7 +12,7 @@ import {
 /** Paper and layout of the clinic's invoice, lab report and prescription.
  * The Super Admin passes the clinic's tenantId; the clinic sees it read-only
  * when its templates are fixed. */
-export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false, docs }: { tenantId?: string; editable: boolean; embedded?: boolean; docs?: ClinicDoc[] }) {
+export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false, docs, a4Only = false }: { tenantId?: string; editable: boolean; embedded?: boolean; docs?: ClinicDoc[]; a4Only?: boolean }) {
   const shownDocs = docs ? CLINIC_DOCS.filter((d) => docs.includes(d.id)) : CLINIC_DOCS;
   const [t, setT] = useState<Record<ClinicDoc, ClinicPrintTemplate>>(DEFAULT_CLINIC_TEMPLATES);
   const [saving, setSaving] = useState(false);
@@ -32,7 +32,7 @@ export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false,
   async function save() {
     setSaving(true);
     try {
-      for (const d of shownDocs) await saveClinicTemplate(d.id, t[d.id], tenantId);
+      for (const d of shownDocs) await saveClinicTemplate(d.id, a4Only ? { ...t[d.id], paper: "a4" } : t[d.id], tenantId);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -59,7 +59,7 @@ export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false,
               <legend className="px-1 text-sm font-semibold text-neutral-800">{d.label}</legend>
               <p className="-mt-1 text-xs text-neutral-500">{d.hint}</p>
               <div className="inline-flex w-fit overflow-hidden rounded-lg border border-neutral-200 text-xs">
-                {PAPERS.map((p) => (
+                {PAPERS.filter((p) => !a4Only || p.id === "a4").map((p) => (
                   <button key={p.id} type="button" onClick={() => set(d.id, { paper: p.id as PaperSize })}
                     className={`px-3 py-1.5 font-medium ${x.paper === p.id ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"} disabled:cursor-not-allowed`}>
                     {p.id === "thermal" ? "Thermal" : p.id.toUpperCase()}

@@ -8,7 +8,7 @@ import { tenantsRepo } from "@/lib/repo/tenants";
 import { tenantAllowedModules } from "@/lib/auth";
 import { parseAllowedModules } from "@/lib/repo/subscriptionPlans";
 import { ACTION_PERMISSIONS, parseDeniedActions, tenantAllows, toggleTenantAction } from "@/lib/actionPermissions";
-import { PAPERS, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/lib/printTemplates";
+import { PAPERS, a4OnlyType, loadDefaultPaper, saveDefaultPaper, type PaperSize } from "@/lib/printTemplates";
 import { NAV } from "@/config/nav";
 import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplatesCard";
 import { FbrSettingsCard } from "@/components/settings/FbrSettingsCard";
@@ -17,6 +17,7 @@ import { linkOfTenant, unlinkPharmacy } from "@/lib/repo/pharmacyLink";
 import { WebsiteAdminCard } from "@/components/web/manage/WebsiteAdminCard";
 import { BranchLimitsCard } from "@/components/admin/BranchLimitsCard";
 import { OfflineDevicesManager } from "@/components/offline/OfflineDevicesManager";
+import { TenantResetCard } from "@/components/admin/TenantResetCard";
 import { SERVER_DB } from "@/lib/serverMode";
 import type { SubscriptionPlan, Tenant } from "@/lib/types2";
 import {
@@ -111,6 +112,8 @@ export function TenantDetailPanel({
   const selectedPlan = plan(planId);
   const planModules = selectedPlan ? parseAllowedModules(selectedPlan) : [];
   const effectiveModules = customModules ? modules : planModules;
+  /** Only the sections this business type can have (a Radiology Centre has no invoices or stock). */
+  const sectionChoices = NAV.filter((item) => (item.onlyFor ? item.onlyFor.includes(typeId) : moduleAllowedForType(typeId, item.moduleKey)));
 
   function toggleModule(key: string) {
     if (!customModules) {
@@ -134,7 +137,7 @@ export function TenantDetailPanel({
         print_templates_editable: templatesEditable ? 1 : 0,
         medicine_invoice_allowed: medicineAllowed ? 1 : 0,
       });
-      await saveDefaultPaper(paper, tenant.id);
+      await saveDefaultPaper(a4OnlyType(typeId) ? "a4" : paper, tenant.id);
       setMessage({ ok: true, text: "Saved. Applies to this business's logins on their next screen change." });
       onSaved();
     } catch (e) {
@@ -297,7 +300,7 @@ export function TenantDetailPanel({
               type="button"
               onClick={() => {
                 setCustomModules(true);
-                setModules(NAV.map((n) => n.moduleKey));
+                setModules(sectionChoices.map((n) => n.moduleKey));
               }}
               className="text-emerald-700 hover:underline"
             >
@@ -305,7 +308,7 @@ export function TenantDetailPanel({
             </button>
           </div>
           <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-            {NAV.filter((item) => !item.onlyFor || item.onlyFor.includes(typeId)).map((item) => (
+            {sectionChoices.map((item) => (
               <label key={item.moduleKey} className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white">
                 <input
                   type="checkbox"
@@ -353,19 +356,30 @@ export function TenantDetailPanel({
               <p className="mb-1 text-xs font-medium text-neutral-600">Access</p>
               <Toggle on={templatesEditable} onChange={setTemplatesEditable} onLabel="Allow Editing" offLabel="Fixed" />
             </div>
-            <div className="w-44">
-              <Field label="Default Template">
-                <Select value={paper} onChange={(e) => setPaper(e.target.value as PaperSize)}>
-                  {PAPERS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-            <Button onClick={() => setEditorOpen(true)}>Edit Templates</Button>
+            {a4OnlyType(typeId) ? (
+              <p className="pb-2 text-xs text-neutral-600">Reports and bills print on <b>A4</b> only.</p>
+            ) : (
+              <>
+                <div className="w-44">
+                  <Field label="Default Template">
+                    <Select value={paper} onChange={(e) => setPaper(e.target.value as PaperSize)}>
+                      {PAPERS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <Button onClick={() => setEditorOpen(true)}>Edit Templates</Button>
+              </>
+            )}
           </div>
+          {typeId === "radiology_center" && (
+            <p className="mt-3 text-xs text-neutral-600">
+              Radiology reports print on A4 with the centre&apos;s name, address and logo (Centre Profile) and a QR code for the online copy. The report wording comes from Radiology Setup &gt; Templates.
+            </p>
+          )}
           {typeId === "clinic" && (
             <div className="mt-3">
               <p className="mb-2 text-xs font-medium text-neutral-600">Clinic documents (invoice, lab report, prescription)</p>
@@ -374,8 +388,8 @@ export function TenantDetailPanel({
           )}
           {typeId === "lab" && (
             <div className="mt-3">
-              <p className="mb-2 text-xs font-medium text-neutral-600">Lab report (bills use the templates above)</p>
-              <ClinicPrintTemplatesCard tenantId={tenant.id} editable embedded docs={["lab"]} />
+              <p className="mb-2 text-xs font-medium text-neutral-600">Lab report</p>
+              <ClinicPrintTemplatesCard tenantId={tenant.id} editable embedded docs={["lab"]} a4Only />
             </div>
           )}
         </Section>
@@ -395,6 +409,12 @@ export function TenantDetailPanel({
         {SERVER_DB && (
           <Section title="Website & Domains" hint="Takes effect at once (not with Save Changes). The POS is never affected.">
             <WebsiteAdminCard tenantId={tenant.id} />
+          </Section>
+        )}
+
+        {SERVER_DB && (
+          <Section title="Reset Business Data" hint="Takes effect at once (not with Save Changes) and cannot be undone.">
+            <TenantResetCard tenantId={tenant.id} tenantName={tenant.name} />
           </Section>
         )}
 
