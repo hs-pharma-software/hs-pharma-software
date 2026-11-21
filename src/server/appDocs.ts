@@ -115,6 +115,10 @@ export interface SaleInput {
   description?: string | null;
 }
 export interface SaleResult { id: string; invoiceNo: number; payable: number; paid: number; balance: number; duplicate: boolean }
+/** What a sale would come to, worked out exactly as saving it would (nothing is written). */
+export interface DocPreview { subtotal: number; discount: number; tax: number; payable: number; balance: number; lines: { total: number }[] }
+/** preview: work out the totals and check stock, without numbering or saving anything. */
+export interface DocOptions { preview?: boolean }
 
 async function existingSale(run: Runner, tenantId: string, id: string): Promise<SaleResult | null> {
   const [r] = await run([{ sql: `SELECT id, invoice_no, payable, paid, balance FROM invoices WHERE id = ? AND tenant_id = ?`, args: [id, tenantId] }], false);
@@ -138,10 +142,14 @@ export function checkSaleInput(raw: unknown): SaleInput {
 }
 
 /** Saves a sale (invoice) in one atomic batch. */
-export async function createSale(run: Runner, tenantId: string, raw: unknown, today = pkToday()): Promise<SaleResult> {
+export async function createSale(run: Runner, tenantId: string, raw: unknown, today?: string): Promise<SaleResult>;
+export async function createSale(run: Runner, tenantId: string, raw: unknown, today: string, opts: { preview: true }): Promise<DocPreview>;
+export async function createSale(run: Runner, tenantId: string, raw: unknown, today = pkToday(), opts: DocOptions = {}): Promise<SaleResult | DocPreview> {
   const s = checkSaleInput(raw);
-  const dup = await existingSale(run, tenantId, s.id);
-  if (dup) return dup;
+  if (!opts.preview) {
+    const dup = await existingSale(run, tenantId, s.id);
+    if (dup) return dup;
+  }
 
   // The plan's monthly invoice cap (as the web form checks).
   const monthStart = `${today.slice(0, 7)}-01`;
@@ -150,7 +158,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
     { sql: `SELECT COUNT(*) AS n FROM invoices WHERE deleted_at IS NULL AND tenant_id = ? AND is_return = 0 AND is_quotation = 0 AND date >= ?`, args: [tenantId, monthStart] },
   ], false);
   const cap = rowsOf(reads[0])[0]?.cap;
-  if (cap != null && num(rowsOf(reads[1])[0]?.n) >= num(cap)) {
+  if (!opts.preview && cap != null && num(rowsOf(reads[1])[0]?.n) >= num(cap)) {
     throw new HttpError(403, `Your plan allows up to ${num(cap)} invoices per month - that limit has been reached for this month.`);
   }
 
@@ -194,9 +202,11 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
   const itemStmts: Stmt[] = [];
   const takes = new Map<string, number>();
   let total = 0, lineDiscount = 0, tax = 0;
+  const lineTotals: number[] = [];
   for (const l of s.lines) {
     const p = products.get(l.productId);
     if (!p) throw new HttpError(400, "A product on this sale was not found.");
+    let lineTotal = 0;
     const name = String(p.name);
     if (num(p.track_imei) === 1) throw new HttpError(400, `${name} needs IMEI numbers. Sell it in the web version.`);
     if (num(p.is_narcotic) === 1 && (!customerName || !customerPhone)) throw new HttpError(400, `${name} is a controlled medicine: enter the buyer's name and mobile.`);
@@ -216,6 +226,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
       total += price * part.qty;
       lineDiscount += m.discountRs;
       tax += m.tax;
+      lineTotal += m.total;
       takes.set(part.batch.id, (takes.get(part.batch.id) ?? 0) + part.qty + part.bonus);
       itemStmts.push({
         sql: `INSERT INTO invoice_items (id, invoice_id, product_id, batch_no, packing, uom_id, avail_qty, qty, bonus_qty, purchase_price, sale_price, tax_pct, further_tax_pct, tax_rs, discount_pct, discount_rs, total, tenant_id, created_at, updated_at, deleted_at)
@@ -223,6 +234,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
         args: [newId(), s.id, l.productId, part.batch.batch_no, num(p.packing) || 1, (p.base_unit_id as string | null) ?? null, part.batch.qty, part.qty, part.bonus, part.batch.purchase_price, price, taxPct, m.tax, discountPct, m.discountRs, m.total, tenantId, now, now],
       });
     }
+    lineTotals.push(round2(lineTotal));
   }
   const discountRs = round2(num(s.discountRs));
   const charges = round2(num(s.charges));
@@ -231,6 +243,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
   const paid = round2(num(s.paid));
   const balance = round2(payable - paid);
   const invOn = s.invOn === "credit" ? "credit" : "cash";
+  if (opts.preview) return { subtotal: round2(total), discount: round2(lineDiscount + discountRs), tax: round2(tax), payable, balance, lines: lineTotals.map((t) => ({ total: t })) };
   if (invOn === "credit" && !s.customerId && !customerName) throw new HttpError(400, "A credit sale needs a customer.");
 
   const invoiceNo = await nextNo(run, "invoices", tenantId);
@@ -318,10 +331,14 @@ export function checkPurchaseInput(raw: unknown): PurchaseInput {
 }
 
 /** Saves a purchase (stock in) in one atomic batch. */
-export async function createPurchase(run: Runner, tenantId: string, raw: unknown, today = pkToday()): Promise<PurchaseResult> {
+export async function createPurchase(run: Runner, tenantId: string, raw: unknown, today?: string): Promise<PurchaseResult>;
+export async function createPurchase(run: Runner, tenantId: string, raw: unknown, today: string, opts: { preview: true }): Promise<DocPreview>;
+export async function createPurchase(run: Runner, tenantId: string, raw: unknown, today = pkToday(), opts: DocOptions = {}): Promise<PurchaseResult | DocPreview> {
   const s = checkPurchaseInput(raw);
-  const dup = await existingPurchase(run, tenantId, s.id);
-  if (dup) return dup;
+  if (!opts.preview) {
+    const dup = await existingPurchase(run, tenantId, s.id);
+    if (dup) return dup;
+  }
 
   const productIds = [...new Set(s.lines.map((l) => l.productId))];
   const inList = productIds.map(() => "?").join(", ");
@@ -350,6 +367,7 @@ export async function createPurchase(run: Runner, tenantId: string, raw: unknown
   const now = new Date().toISOString();
   const lineStmts: Stmt[] = [];
   let subtotal = 0, tax = 0;
+  const lineTotals: number[] = [];
   for (const l of s.lines) {
     const p = products.get(l.productId);
     if (!p) throw new HttpError(400, "A product on this purchase was not found.");
@@ -365,6 +383,7 @@ export async function createPurchase(run: Runner, tenantId: string, raw: unknown
     const shown = purchaseLineMath(num(l.purchasePrice), num(l.qty), num(l.bonus), stPct, whtPct, discPct);
     subtotal += shown.total;
     tax += shown.st + shown.wht;
+    lineTotals.push(round2(shown.total));
     const netRate = purchaseLineMath(purchasePrice, qty, bonus, 0, 0, discPct).netRate;
     const amount = purchaseLineMath(purchasePrice, qty, bonus, 0, 0, discPct).amount;
     const batchNo = str(l.batchNo, 60);
@@ -419,6 +438,7 @@ export async function createPurchase(run: Runner, tenantId: string, raw: unknown
   if (payable < 0) throw new HttpError(400, "The discount is more than the purchase.");
   const paid = round2(num(s.paid));
   const balance = round2(payable - paid);
+  if (opts.preview) return { subtotal: round2(subtotal), discount: discountRs, tax: round2(tax), payable, balance, lines: lineTotals.map((t) => ({ total: t })) };
 
   const purchaseNo = await nextNo(run, "purchases", tenantId);
   const header: Stmt = {

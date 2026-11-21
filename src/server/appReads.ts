@@ -256,3 +256,22 @@ export async function appDashboard(run: Runner, caller: Caller, today: string): 
     recentInvoices: rowsOf(res[11]).map((x) => ({ id: String(x.id), invoiceNo: x.invoice_no == null ? null : num(x.invoice_no), date: String(x.date ?? ""), customer: String(x.customer_name), total: num(x.total), balance: num(x.balance) })),
   };
 }
+
+// ── Customers and suppliers (pickers on the invoice and purchase forms) ──
+
+export interface AppParty { id: string; name: string; phone: string | null; detail: string | null }
+
+/** Customers or suppliers of the business by name or phone, at most 30. */
+export async function searchParties(run: Runner, tenantId: string, kind: "customer" | "supplier", search: string | null): Promise<AppParty[]> {
+  const term = (search ?? "").trim().slice(0, 60);
+  const like = `%${term}%`;
+  const table = kind === "customer" ? "customers" : "suppliers";
+  const detail = kind === "customer" ? "area" : "company_name";
+  const [r] = await run([{
+    sql: `SELECT id, name, phone, ${detail} AS detail FROM ${table}
+          WHERE tenant_id = ? AND deleted_at IS NULL ${term ? "AND (name LIKE ? OR phone LIKE ?)" : ""}
+          ORDER BY name COLLATE NOCASE ASC LIMIT 30`,
+    args: [tenantId, ...(term ? [like, like] : [])],
+  }], false);
+  return rowsOf(r).map((x) => ({ id: String(x.id), name: String(x.name ?? ""), phone: strOrNull(x.phone), detail: strOrNull(x.detail) }));
+}

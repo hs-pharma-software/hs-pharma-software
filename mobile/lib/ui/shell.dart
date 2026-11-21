@@ -3,20 +3,23 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/models.dart';
 import '../main.dart';
+import 'form_bits.dart';
 import 'home_screen.dart';
+import 'invoice_screen.dart';
 import 'more_screen.dart';
 import 'products_screen.dart';
-import 'web_section.dart';
+import 'purchase_screen.dart';
 
 /// One bottom tab (a side rail on tablets), shown only when the login has its section.
 class _Tab {
-  _Tab(this.id, this.label, this.icon, this.selectedIcon, this.build, {this.webKey});
+  _Tab(this.id, this.label, this.icon, this.selectedIcon, this.build, {this.guard});
   final String id;
   final String label;
   final IconData icon;
   final IconData selectedIcon;
   final Widget Function() build;
-  final GlobalKey<WebSectionState>? webKey;
+  /// The screen that may keep Back (an unsaved form).
+  final GlobalKey<State>? guard;
 }
 
 /// Option A: navy top bar with the business and branch under the title,
@@ -37,19 +40,16 @@ class _ShellState extends State<Shell> {
     if (b.section('dashboard') != null) {
       tabs.add(_Tab('home', 'Home', Icons.home_outlined, Icons.home_rounded, () => HomeScreen(onNewInvoice: () => _go('sell'))));
     }
-    final sell = b.section('invoices');
-    if (sell != null) {
-      final k = GlobalKey<WebSectionState>();
-      // Native New Invoice comes next; until then the web invoice screen.
-      tabs.add(_Tab('sell', 'Sell', Icons.point_of_sale_outlined, Icons.point_of_sale_rounded, () => WebSection(key: k, path: sell.path), webKey: k));
+    if (b.section('invoices') != null) {
+      final k = GlobalKey<InvoiceScreenState>();
+      tabs.add(_Tab('sell', 'New invoice', Icons.point_of_sale_outlined, Icons.point_of_sale_rounded, () => InvoiceScreen(key: k), guard: k));
     }
     if (b.section('stock') != null || b.section('products') != null) {
       tabs.add(_Tab('products', 'Products', Icons.inventory_2_outlined, Icons.inventory_2_rounded, () => const ProductsScreen()));
     }
-    final pur = b.section('purchase');
-    if (pur != null) {
-      final k = GlobalKey<WebSectionState>();
-      tabs.add(_Tab('purchase', 'Purchase', Icons.local_shipping_outlined, Icons.local_shipping_rounded, () => WebSection(key: k, path: pur.path), webKey: k));
+    if (b.section('purchase') != null) {
+      final k = GlobalKey<PurchaseScreenState>();
+      tabs.add(_Tab('purchase', 'New purchase', Icons.local_shipping_outlined, Icons.local_shipping_rounded, () => PurchaseScreen(key: k), guard: k));
     }
     tabs.add(_Tab('more', 'More', Icons.menu_rounded, Icons.menu_open_rounded, () => MoreScreen(tabbed: {for (final t in tabs) t.id})));
     return tabs;
@@ -112,7 +112,8 @@ class _ShellState extends State<Shell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (await tab.webKey?.currentState?.handleBack() ?? false) return;
+        final guard = tab.guard?.currentState;
+        if (guard is BackGuard && await guard.handleBack()) return;
         if (_index != 0) {
           setState(() => _index = 0);
           return;

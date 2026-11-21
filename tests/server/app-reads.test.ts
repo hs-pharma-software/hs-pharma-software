@@ -10,7 +10,7 @@ import * as br from "@/server/branches";
 import { analyzeSql, authorize, costHidden, type Caller } from "@/server/sqlPolicy";
 import { scopeStatement, type Schema, type Scope } from "@/server/tenantScope";
 import { sharedCatalogGroupsFor } from "@/lib/catalogAccess";
-import { appBootstrap, appDashboard, listProducts, productDetail } from "@/server/appReads";
+import { appBootstrap, appDashboard, listProducts, productDetail, searchParties } from "@/server/appReads";
 import type { Res, Runner, Stmt } from "@/server/appDocs";
 
 const T = "2026-11-21T08:00:00.000Z";
@@ -122,4 +122,14 @@ test("home: today's sales and money in/out, low stock, expiring batches, recent 
   assert.deepEqual(d.expiring.map((x) => x.batchNo), [], "nothing expires within 180 days of the 21st");
   assert.deepEqual(d.recentInvoices.slice(0, 2).map((x) => x.invoiceNo).sort(), [1, 2]);
   await assert.rejects(appDashboard(await runner({ ...cashier, permissions: ["invoices"] }), { ...cashier, permissions: ["invoices"] }, "2026-11-21"), /no access to the Dashboard/);
+});
+
+test("customers and suppliers: by name or phone, this business only", async () => {
+  r(`INSERT INTO customers (id, tenant_id, name, phone, created_at, updated_at) VALUES ('c1', 't1', 'Bilal Medical', '03001234567', ?, ?)`, T, T);
+  r(`INSERT INTO customers (id, tenant_id, name, phone, created_at, updated_at) VALUES ('c2', 't2', 'Bilal Other', '0300', ?, ?)`, T, T);
+  r(`INSERT INTO suppliers (id, tenant_id, name, company_name, created_at, updated_at) VALUES ('s1', 't1', 'Muller & Phipps', 'M&P', ?, ?)`, T, T);
+  const run = await runner(owner);
+  assert.deepEqual((await searchParties(run, "t1", "customer", "bilal")).map((x) => x.id), ["c1"]);
+  assert.deepEqual((await searchParties(run, "t1", "customer", "0300123")).map((x) => x.id), ["c1"]);
+  assert.deepEqual((await searchParties(run, "t1", "supplier", null)).map((x) => [x.name, x.detail]), [["Muller & Phipps", "M&P"]]);
 });

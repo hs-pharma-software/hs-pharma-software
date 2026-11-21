@@ -213,3 +213,28 @@ test("purchase: negative numbers and an unknown supplier are refused", async () 
   await assert.rejects(createPurchase(run, "t1", { id: PUR_ID, supplierId: "s1", lines: [{ productId: "p-pan", qty: 1, purchasePrice: -5 }] }, TODAY), /can't be negative/);
   await assert.rejects(createPurchase(run, "t1", { id: PUR_ID, supplierId: "s-none-0000", lines: [{ productId: "p-pan", qty: 1, purchasePrice: 5 }] }, TODAY), /supplier was not found/);
 });
+
+test("preview: the totals the save will come to, line by line, with nothing written or numbered", async () => {
+  const run = await runner(owner);
+  const body = { id: SALE_ID, customerId: "c1", invOn: "credit" as const, paid: 100, lines: [{ productId: "p-pan", unit: "pack" as const, qty: 3 }, { productId: "p-rsk", unit: "loose" as const, qty: 7 }] };
+  const before = [stock("b-pan-early"), stock("b-pan-late"), stock("b-rsk")];
+  const p = await createSale(run, "t1", body, TODAY, { preview: true });
+  assert.deepEqual([stock("b-pan-early"), stock("b-pan-late"), stock("b-rsk")], before, "no stock taken");
+  assert.equal(one(`SELECT COUNT(*) AS n FROM invoices WHERE id = ?`, SALE_ID).n, 0, "nothing saved");
+  const pan = saleLineMath(100, 3, 10, 0, 17);
+  assert.equal(p.lines[0].total, Math.round(pan.total * 100) / 100);
+  const saved = await createSale(run, "t1", body, TODAY);
+  assert.equal(p.payable, saved.payable);
+  assert.equal(p.balance, saved.balance);
+  assert.equal(saved.invoiceNo, 8, "the preview took no number");
+  // A stock problem shows at preview time.
+  await assert.rejects(createSale(run, "t1", { id: "33333333-3333-4333-8333-333333333333", lines: [{ productId: "p-pan", qty: 50 }] }, TODAY, { preview: true }), /Not enough stock/);
+
+  const pbody = { id: PUR_ID, supplierId: "s1", discountRs: 10, lines: [{ productId: "p-pan", qty: 10, bonus: 1, purchasePrice: 80, stPct: 17, whtPct: 0.5, batchNo: "N1", expiryDate: "2029-01-31" }] };
+  const pp = await createPurchase(run, "t1", pbody, TODAY, { preview: true });
+  assert.equal(one(`SELECT COUNT(*) AS n FROM purchases WHERE id = ?`, PUR_ID).n, 0);
+  assert.equal(one(`SELECT COUNT(*) AS n FROM product_batches WHERE batch_no = 'N1'`).n, 0);
+  const ps = await createPurchase(run, "t1", pbody, TODAY);
+  assert.equal(pp.payable, ps.payable);
+  assert.equal(pp.lines.length, 1);
+});

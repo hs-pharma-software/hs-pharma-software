@@ -110,14 +110,49 @@ class Bootstrap {
 }
 
 class ProductRow {
-  ProductRow({required this.id, required this.name, required this.qty, required this.salePrice, this.unit});
-  factory ProductRow.fromJson(Map<String, dynamic> j) =>
-      ProductRow(id: '${j['id']}', name: '${j['name']}', qty: _num(j['qty']), salePrice: _num(j['salePrice']), unit: _str(j['unit']));
+  ProductRow({required this.id, required this.name, required this.qty, required this.salePrice, this.unit, this.packing = 1});
+  factory ProductRow.fromJson(Map<String, dynamic> j) => ProductRow(
+        id: '${j['id']}',
+        name: '${j['name']}',
+        qty: _num(j['qty']),
+        salePrice: _num(j['salePrice']),
+        unit: _str(j['unit']),
+        packing: _num(j['packing']) > 0 ? _num(j['packing']) : 1,
+      );
   final String id;
   final String name;
   final double qty;
   final double salePrice;
   final String? unit;
+
+  /// Units in one pack (1 when sold whole).
+  final double packing;
+}
+
+class Party {
+  Party({required this.id, required this.name, this.phone, this.detail});
+  factory Party.fromJson(Map<String, dynamic> j) => Party(id: '${j['id']}', name: '${j['name']}', phone: _str(j['phone']), detail: _str(j['detail']));
+  final String id;
+  final String name;
+  final String? phone;
+  final String? detail;
+}
+
+/// A sale or purchase as the server works it out (preview) before saving.
+class DocTotals {
+  DocTotals({required this.subtotal, required this.discount, required this.tax, required this.payable, required this.lines});
+  factory DocTotals.fromJson(Map<String, dynamic> j) => DocTotals(
+        subtotal: _num(j['subtotal']),
+        discount: _num(j['discount']),
+        tax: _num(j['tax']),
+        payable: _num(j['payable']),
+        lines: [for (final x in (j['lines'] as List? ?? const [])) _num((x as Map)['total'])],
+      );
+  final double subtotal;
+  final double discount;
+  final double tax;
+  final double payable;
+  final List<double> lines;
 }
 
 class ProductPage {
