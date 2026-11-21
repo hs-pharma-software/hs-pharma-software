@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { UserFormModal } from "./UserFormModal";
+import { UserEditModal } from "./UserEditModal";
 import { listUsersForTenant, usersRepo } from "@/lib/repo/users";
 import { tenantsRepo } from "@/lib/repo/tenants";
 import { changePassword, updateUserPermissions } from "@/lib/auth";
@@ -48,6 +49,7 @@ export function UserLoginsPage({
   const [contactFor, setContactFor] = useState<UserAccount | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [editingPerms, setEditingPerms] = useState<UserAccount | null>(null);
+  const [editing, setEditing] = useState<UserAccount | null>(null);
   const [permsState, setPermsState] = useState<string[] | null>(null);
   const [deniedState, setDeniedState] = useState<string[]>([]);
   const [permsSaving, setPermsSaving] = useState(false);
@@ -95,13 +97,18 @@ export function UserLoginsPage({
     setDeniedState((d) => toggleStaffAction(d, key));
   }
 
-  /** NAV items that are relevant to the tenant whose user is being edited. */
-  function visibleNavForUser(u: UserAccount | null) {
-    if (!u) return uniqueNavItems(NAV);
+  /** The business type of the tenant a login belongs to. */
+  function typeOfUser(u: UserAccount) {
     const tenant = u.tenant_id == null
       ? null
       : tenants.find((t) => t.id === u.tenant_id) ?? (scope === "own" ? currentTenant : null);
-    const bt = businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
+    return businessType(("businessType" in (tenant ?? {}) ? (tenant as { businessType?: string | null }).businessType : (tenant as { business_type?: string | null } | null)?.business_type) ?? null);
+  }
+
+  /** NAV items that are relevant to the tenant whose user is being edited. */
+  function visibleNavForUser(u: UserAccount | null) {
+    if (!u) return uniqueNavItems(NAV);
+    const bt = typeOfUser(u);
     // The same sections as this business's sidebar (a clinic sees only clinic sections).
     return visibleNavFor(bt.id, null, null);
   }
@@ -192,6 +199,11 @@ export function UserLoginsPage({
           {SERVER_DB && (
             <button type="button" onClick={() => setContactFor(u)} className="text-teal-700 hover:underline">
               Recovery
+            </button>
+          )}
+          {u.role === "staff" && (
+            <button type="button" onClick={() => setEditing(u)} className="text-neutral-700 hover:underline">
+              Edit
             </button>
           )}
           {u.role === "staff" && (
@@ -303,6 +315,16 @@ export function UserLoginsPage({
             </div>
           </form>
         </Modal>
+      )}
+
+      {editing && (
+        <UserEditModal
+          user={editing}
+          typeId={typeOfUser(editing).id}
+          canEditStaff={scope === "own"}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void reload(); }}
+        />
       )}
 
       {editingPerms && (() => {
