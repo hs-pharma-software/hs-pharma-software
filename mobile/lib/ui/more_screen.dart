@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../main.dart';
+import 'sales_screen.dart';
 import 'theme.dart';
 import 'web_section.dart';
 
@@ -31,6 +32,14 @@ class MoreScreen extends StatelessWidget {
         subtitle: Text('${b.businessName} · ${b.businessTypeLabel}'),
       ),
       const Divider(),
+      if (b.section('invoices') != null)
+        ListTile(
+          leading: const Icon(Icons.receipt_long_outlined),
+          title: const Text('Sales'),
+          subtitle: const Text('Invoices, newest first'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SalesScreen())),
+        ),
       if (sections.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('No other sections for this login.')),
       for (final s in sections)
         if (s.children.length > 1)

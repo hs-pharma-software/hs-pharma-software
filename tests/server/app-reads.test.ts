@@ -10,7 +10,8 @@ import * as br from "@/server/branches";
 import { analyzeSql, authorize, costHidden, type Caller } from "@/server/sqlPolicy";
 import { scopeStatement, type Schema, type Scope } from "@/server/tenantScope";
 import { sharedCatalogGroupsFor } from "@/lib/catalogAccess";
-import { appBootstrap, appDashboard, listProducts, productDetail, searchParties } from "@/server/appReads";
+import { appBootstrap, appDashboard, invoiceDetail, listInvoices, listProducts, productDetail, searchParties } from "@/server/appReads";
+import { requireModule } from "@/server/appDocs";
 import type { Res, Runner, Stmt } from "@/server/appDocs";
 
 const T = "2026-11-21T08:00:00.000Z";
@@ -122,6 +123,32 @@ test("home: today's sales and money in/out, low stock, expiring batches, recent 
   assert.deepEqual(d.expiring.map((x) => x.batchNo), [], "nothing expires within 180 days of the 21st");
   assert.deepEqual(d.recentInvoices.slice(0, 2).map((x) => x.invoiceNo).sort(), [1, 2]);
   await assert.rejects(appDashboard(await runner({ ...cashier, permissions: ["invoices"] }), { ...cashier, permissions: ["invoices"] }, "2026-11-21"), /no access to the Dashboard/);
+});
+
+test("sales: newest first, by invoice number or customer, no returns or other businesses; one invoice with its items", async () => {
+  r(`INSERT INTO customers (id, tenant_id, name, phone, created_at, updated_at) VALUES ('c1', 't1', 'Bilal Medical', '03001234567', ?, ?)`, T, T);
+  const inv = (id: string, t: string, no: number, extra: string, at: string) =>
+    r(`INSERT INTO invoices (id, tenant_id, invoice_no, date, customer_id, customer_name, total, payable, paid, balance, is_return, is_memorized, is_quotation, created_at, updated_at) VALUES (?, ?, ?, '2026-11-21', ${extra}, 500, 500, 200, 300, ?, 0, 0, ?, ?)`, id, t, no, id === "i-ret" ? 1 : 0, at, at);
+  inv("i1", "t1", 1, "NULL, 'Ali'", "2026-11-21T08:00:00Z");
+  inv("i2", "t1", 2, "'c1', NULL", "2026-11-21T09:00:00Z");
+  inv("i-ret", "t1", 3, "NULL, NULL", "2026-11-21T10:00:00Z");
+  inv("i-other", "t2", 9, "NULL, 'Ali'", "2026-11-21T11:00:00Z");
+  r(`INSERT INTO invoice_items (id, invoice_id, product_id, tenant_id, batch_no, qty, packing, sale_price, discount_rs, tax_rs, total, created_at, updated_at) VALUES ('ii1', 'i2', 'p0', 't1', 'PN-A', 0.2, 10, 350, 0, 0, 70, ?, ?)`, T, T);
+  const run = await runner(owner);
+  const all = await listInvoices(run, "t1", {});
+  assert.deepEqual(all.rows.map((x) => [x.invoiceNo, x.customer]), [[2, "Bilal Medical"], [1, "Ali"]]);
+  assert.equal(all.nextOffset, null);
+  assert.deepEqual((await listInvoices(run, "t1", { search: "#1" })).rows.map((x) => x.invoiceNo), [1]);
+  assert.deepEqual((await listInvoices(run, "t1", { search: "bilal" })).rows.map((x) => x.invoiceNo), [2]);
+  assert.deepEqual((await listInvoices(run, "t1", { search: "0300123" })).rows.map((x) => x.invoiceNo), [2]);
+  const d = await invoiceDetail(run, "t1", "i2");
+  assert.equal(d.phone, "03001234567");
+  assert.equal(d.balance, 300);
+  assert.deepEqual(d.items.map((i) => [i.product, i.qty, i.packing, i.total]), [["Panadol", 0.2, 10, 70]]);
+  await assert.rejects(invoiceDetail(run, "t1", "i-other"), /not found/);
+  await assert.rejects(invoiceDetail(run, "t1", "x' OR 1=1"), /Invalid invoice/);
+  assert.throws(() => requireModule({ ...cashier, permissions: ["stock"] }, "invoices"), /no access to Invoices/);
+  assert.doesNotThrow(() => requireModule(cashier, "invoices"));
 });
 
 test("customers and suppliers: by name or phone, this business only", async () => {

@@ -9,6 +9,7 @@ import '../core/models.dart';
 import '../main.dart';
 import 'form_bits.dart';
 import 'pickers.dart';
+import 'sales_screen.dart';
 import 'theme.dart';
 
 class _SaleLine {
@@ -228,9 +229,13 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
       }
       if (!mounted) return;
       final no = r['invoiceNo'];
+      final id = '${r['id']}';
       final balance = (r['balance'] as num?)?.toDouble() ?? 0;
       _reset();
+      final nav = Navigator.of(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(label: 'View', onPressed: () => nav.push(MaterialPageRoute(builder: (_) => InvoiceDetailScreen(id: id, no: no is num ? no.toInt() : null)))),
         content: Text('Invoice #$no saved · ${rs((r['payable'] as num?) ?? 0)}${balance > 0.004 ? ' · Balance ${rs(balance)}' : ''}'),
         behavior: SnackBarBehavior.floating,
       ));

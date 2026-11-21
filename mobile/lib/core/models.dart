@@ -240,7 +240,7 @@ class Dashboard {
       ],
       recent: [
         for (final x in (j['recentInvoices'] as List? ?? const []))
-          (no: (x as Map)['invoiceNo'] is num ? (x['invoiceNo'] as num).toInt() : null, customer: '${x['customer']}', total: _num(x['total']), balance: _num(x['balance'])),
+          (id: '${(x as Map)['id']}', no: x['invoiceNo'] is num ? (x['invoiceNo'] as num).toInt() : null, customer: '${x['customer']}', total: _num(x['total']), balance: _num(x['balance'])),
       ],
     );
   }
@@ -251,5 +251,87 @@ class Dashboard {
   final double cashOut;
   final List<({String id, String name, double qty})> lowStock;
   final List<({String product, String? batchNo, String expiry, double qty})> expiring;
-  final List<({int? no, String customer, double total, double balance})> recent;
+  final List<({String id, int? no, String customer, double total, double balance})> recent;
+}
+
+class InvoiceRow {
+  InvoiceRow({required this.id, required this.no, required this.date, required this.customer, required this.payable, required this.paid, required this.balance, this.fbrNo});
+  factory InvoiceRow.fromJson(Map<String, dynamic> j) => InvoiceRow(
+        id: '${j['id']}',
+        no: j['invoiceNo'] is num ? (j['invoiceNo'] as num).toInt() : null,
+        date: '${j['date'] ?? ''}',
+        customer: '${j['customer'] ?? 'Walk-in'}',
+        payable: _num(j['payable']),
+        paid: _num(j['paid']),
+        balance: _num(j['balance']),
+        fbrNo: _str(j['fbrNo']),
+      );
+  final String id;
+  final int? no;
+  final String date;
+  final String customer;
+  final double payable;
+  final double paid;
+  final double balance;
+  final String? fbrNo;
+}
+
+class InvoicePage {
+  InvoicePage({required this.rows, required this.nextOffset});
+  factory InvoicePage.fromJson(Map<String, dynamic> j) => InvoicePage(
+        rows: [for (final x in (j['rows'] as List? ?? const [])) InvoiceRow.fromJson(x as Map<String, dynamic>)],
+        nextOffset: j['nextOffset'] is num ? (j['nextOffset'] as num).toInt() : null,
+      );
+  final List<InvoiceRow> rows;
+  final int? nextOffset;
+}
+
+class InvoiceItem {
+  InvoiceItem({required this.product, this.batchNo, required this.qty, required this.packing, required this.bonus, required this.price, required this.discount, required this.tax, required this.total});
+  final String product;
+  final String? batchNo;
+
+  /// In packs; a loose sale is a fraction of a pack.
+  final double qty;
+  final double packing;
+  final double bonus;
+
+  /// Per pack.
+  final double price;
+  final double discount;
+  final double tax;
+  final double total;
+}
+
+class InvoiceDetail {
+  InvoiceDetail({required this.head, this.phone, this.salesman, required this.total, required this.discount, required this.charges, required this.items});
+  factory InvoiceDetail.fromJson(Map<String, dynamic> j) => InvoiceDetail(
+        head: InvoiceRow.fromJson(j),
+        phone: _str(j['phone']),
+        salesman: _str(j['salesman']),
+        total: _num(j['total']),
+        discount: _num(j['discount']),
+        charges: _num(j['charges']),
+        items: [
+          for (final x in (j['items'] as List? ?? const []))
+            InvoiceItem(
+              product: '${(x as Map)['product']}',
+              batchNo: _str(x['batchNo']),
+              qty: _num(x['qty']),
+              packing: _num(x['packing']) > 0 ? _num(x['packing']) : 1,
+              bonus: _num(x['bonus']),
+              price: _num(x['price']),
+              discount: _num(x['discount']),
+              tax: _num(x['tax']),
+              total: _num(x['total']),
+            ),
+        ],
+      );
+  final InvoiceRow head;
+  final String? phone;
+  final String? salesman;
+  final double total;
+  final double discount;
+  final double charges;
+  final List<InvoiceItem> items;
 }

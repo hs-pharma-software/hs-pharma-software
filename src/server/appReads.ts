@@ -265,6 +265,77 @@ export async function appDashboard(run: Runner, caller: Caller, today: string): 
   };
 }
 
+// ── Sales (invoice list and one invoice) ─────────────────────────────────
+
+export interface AppInvoiceRow { id: string; invoiceNo: number | null; date: string; customer: string; payable: number; paid: number; balance: number; fbrNo: string | null }
+export interface AppInvoicePage { rows: AppInvoiceRow[]; offset: number; nextOffset: number | null }
+
+const invoiceRow = (x: Row): AppInvoiceRow => ({
+  id: String(x.id), invoiceNo: x.invoice_no == null ? null : num(x.invoice_no), date: String(x.date ?? ""), customer: String(x.customer_name ?? "Walk-in"),
+  payable: num(x.payable), paid: num(x.paid), balance: num(x.balance), fbrNo: strOrNull(x.fbr_invoice_no),
+});
+
+/** Sale invoices (no returns, held or quotations), newest first; search by invoice number or customer. */
+export async function listInvoices(run: Runner, tenantId: string, q: { search?: string | null; offset?: number; limit?: number }): Promise<AppInvoicePage> {
+  const term = (q.search ?? "").trim().replace(/^#/, "").slice(0, 60);
+  const limit = Math.min(100, Math.max(1, Math.floor(q.limit ?? PRODUCT_PAGE)));
+  const offset = Math.max(0, Math.floor(q.offset ?? 0));
+  const like = `%${term}%`;
+  // Up to 6 digits is an invoice number; longer digits (a phone) or words search the customer's name and phone.
+  const byNo = /^\d{1,6}$/.test(term);
+  const filter = !term ? "" : byNo ? "AND i.invoice_no = ?" : "AND (i.customer_name LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)";
+  const [r] = await run([{
+    sql: `SELECT i.id, i.invoice_no, i.date, COALESCE(NULLIF(i.customer_name, ''), c.name, 'Walk-in') AS customer_name,
+                 i.payable, i.paid, i.balance, i.fbr_invoice_no
+          FROM invoices i
+          LEFT JOIN customers c ON c.id = i.customer_id
+          WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND COALESCE(i.is_return, 0) = 0 AND COALESCE(i.is_memorized, 0) = 0 AND COALESCE(i.is_quotation, 0) = 0
+            ${filter}
+          ORDER BY i.created_at DESC
+          LIMIT ? OFFSET ?`,
+    args: [tenantId, ...(!term ? [] : byNo ? [Number(term)] : [like, like, like]), limit + 1, offset],
+  }], false);
+  const rows = rowsOf(r);
+  return { rows: rows.slice(0, limit).map(invoiceRow), offset, nextOffset: rows.length > limit ? offset + limit : null };
+}
+
+export interface AppInvoiceItem { product: string; batchNo: string | null; qty: number; packing: number; bonus: number; price: number; discount: number; tax: number; total: number }
+export interface AppInvoiceDetail extends AppInvoiceRow { phone: string | null; salesman: string | null; total: number; discount: number; charges: number; items: AppInvoiceItem[] }
+
+export async function invoiceDetail(run: Runner, tenantId: string, id: string): Promise<AppInvoiceDetail> {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new HttpError(400, "Invalid invoice.");
+  const [h, it] = await run([
+    {
+      sql: `SELECT i.id, i.invoice_no, i.date, COALESCE(NULLIF(i.customer_name, ''), c.name, 'Walk-in') AS customer_name,
+                   COALESCE(NULLIF(i.customer_phone, ''), c.phone) AS phone, sm.name AS salesman_name,
+                   i.total, i.discount_rs, i.charges, i.payable, i.paid, i.balance, i.fbr_invoice_no
+            FROM invoices i
+            LEFT JOIN customers c ON c.id = i.customer_id
+            LEFT JOIN salesmen sm ON sm.id = i.salesman_id
+            WHERE i.id = ? AND i.tenant_id = ? AND i.deleted_at IS NULL`,
+      args: [id, tenantId],
+    },
+    {
+      sql: `SELECT ii.batch_no, ii.qty, COALESCE(ii.packing, p.packing, 1) AS packing, ii.bonus_qty, ii.sale_price, ii.discount_rs, ii.tax_rs, ii.total, p.name AS product_name
+            FROM invoice_items ii
+            LEFT JOIN products p ON p.id = ii.product_id AND (p.tenant_id = ii.tenant_id OR p.tenant_id IS NULL)
+            WHERE ii.invoice_id = ? AND ii.tenant_id = ? AND ii.deleted_at IS NULL
+            ORDER BY ii.created_at`,
+      args: [id, tenantId],
+    },
+  ], false);
+  const x = rowsOf(h)[0];
+  if (!x) throw new HttpError(404, "This invoice was not found. It may have been deleted.");
+  return {
+    ...invoiceRow(x), phone: strOrNull(x.phone), salesman: strOrNull(x.salesman_name),
+    total: num(x.total), discount: num(x.discount_rs), charges: num(x.charges),
+    items: rowsOf(it).map((i) => ({
+      product: String(i.product_name ?? "(deleted product)"), batchNo: strOrNull(i.batch_no), qty: num(i.qty), packing: num(i.packing) || 1,
+      bonus: num(i.bonus_qty), price: num(i.sale_price), discount: num(i.discount_rs), tax: num(i.tax_rs), total: num(i.total),
+    })),
+  };
+}
+
 // ── Customers and suppliers (pickers on the invoice and purchase forms) ──
 
 export interface AppParty { id: string; name: string; phone: string | null; detail: string | null }

@@ -15,6 +15,32 @@ void main() {
     expect(qty(48), '48');
     expect(monthYear('2028-05-31'), 'May 2028');
     expect(monthYear('2027-03'), 'Mar 2027');
+    expect(dayMonthYear('2026-11-21T09:30:00Z'), '21 Nov 2026');
+    expect(soldQty(3, 10), '3');
+    expect(soldQty(0.2, 10), '2 units (of 10)');
+    expect(soldQty(2 / 21, 21), '2 units (of 21)');
+  });
+
+  test('invoice list and one invoice', () {
+    final page = InvoicePage.fromJson({
+      'rows': [
+        {'id': 'i2', 'invoiceNo': 2, 'date': '2026-11-21', 'customer': 'Bilal Medical', 'payable': 500, 'paid': 200, 'balance': 300, 'fbrNo': null},
+      ],
+      'nextOffset': null,
+    });
+    expect(page.rows.single.no, 2);
+    expect(page.rows.single.balance, 300);
+    expect(page.nextOffset, isNull);
+    final d = InvoiceDetail.fromJson({
+      'id': 'i2', 'invoiceNo': 2, 'date': '2026-11-21', 'customer': 'Bilal Medical', 'payable': 500, 'paid': 200, 'balance': 300,
+      'phone': '03001234567', 'salesman': null, 'total': 500, 'discount': 0, 'charges': 0,
+      'items': [
+        {'product': 'Panadol', 'batchNo': 'PN-A', 'qty': 0.2, 'packing': 10, 'bonus': 0, 'price': 350, 'discount': 0, 'tax': 0, 'total': 70},
+      ],
+    });
+    expect(d.head.customer, 'Bilal Medical');
+    expect(d.phone, '03001234567');
+    expect(soldQty(d.items.single.qty, d.items.single.packing), '2 units (of 10)');
   });
 
   test('bootstrap: sections, branch name, settings', () {

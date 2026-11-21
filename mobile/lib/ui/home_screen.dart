@@ -4,6 +4,7 @@ import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
 import 'product_detail_screen.dart';
+import 'sales_screen.dart';
 import 'states.dart';
 import 'theme.dart';
 
@@ -97,11 +98,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 : [
                     for (final x in d.recent)
                       ListTile(
+                        onTap: canSell ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => InvoiceDetailScreen(id: x.id, no: x.no))) : null,
                         title: Text('${x.no == null ? '' : '#${x.no} · '}${x.customer}', maxLines: 1, overflow: TextOverflow.ellipsis),
                         trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                           Text(rs(x.total), style: const TextStyle(fontWeight: FontWeight.w500)),
                           if (x.balance > 0) Text('Due ${rs(x.balance)}', style: const TextStyle(fontSize: 12, color: noStock)),
                         ]),
+                      ),
+                    if (canSell)
+                      ListTile(
+                        title: const Text('All invoices', style: TextStyle(color: mavinNavy, fontWeight: FontWeight.w500)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: mavinNavy),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SalesScreen())),
                       ),
                   ]),
           ]);

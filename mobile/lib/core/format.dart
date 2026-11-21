@@ -9,6 +9,19 @@ String rs(num v) => 'Rs ${_money.format(v)}';
 /// "48" / "2.5".
 String qty(num v) => _qty.format(v);
 
+/// "2026-11-21" or "2026-11-21T09:30:00Z" -> "21 Nov 2026".
+String dayMonthYear(String? isoDate) {
+  final d = isoDate == null || isoDate.length < 10 ? null : DateTime.tryParse(isoDate.substring(0, 10));
+  return d == null ? (isoDate ?? '') : DateFormat('d MMM yyyy', 'en_US').format(d);
+}
+
+/// A sold quantity: stored in packs, so a loose sale (a part of a pack) shows
+/// as units: "3", or "2 units (of 10)".
+String soldQty(double packs, double packing) {
+  if (packing <= 1 || (packs - packs.roundToDouble()).abs() < 1e-6) return qty(packs);
+  return '${qty(double.parse((packs * packing).toStringAsFixed(2)))} units (of ${qty(packing)})';
+}
+
 /// "2028-05-31" -> "May 2028".
 String monthYear(String? isoDate) {
   if (isoDate == null || isoDate.length < 7) return isoDate ?? '';
