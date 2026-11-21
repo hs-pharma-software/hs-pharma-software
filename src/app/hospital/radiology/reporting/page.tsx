@@ -8,7 +8,7 @@ import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal
 import { isTauri } from "@/lib/platform";
 import { getRadiologyReport, type RadiologyReport } from "@/lib/repo/radiology";
 import {
-  listForReporting, getPortalOrder, dicomIncluded, templatesFor, reportStudy, getPacs, imagesUrl, type PortalOrderRow, type RadiologyTemplate, type RadiologyPacs,
+  listForReporting, listRadiologists, getPortalOrder, dicomIncluded, templatesFor, reportStudy, getPacs, imagesUrl, type PortalOrderRow, type RadiologyTemplate, type RadiologyPacs,
 } from "@/lib/repo/radiologyPortal";
 import { parseExam, SAFETY_CHECKS } from "@/config/radiologyPortal";
 import { Panel, Tabs, PriorityPill, StatusPill, ageGender, errMsg, openImages, imagesMissingReason, useAutoRefresh } from "@/components/hospital/radiology/common";
@@ -145,6 +145,9 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
   const [findings, setFindings] = useState(draft?.findings ?? order.findings ?? "");
   const [impression, setImpression] = useState(draft?.impression ?? order.impression ?? "");
   const [radiologist, setRadiologist] = useState(order.radiologist ?? "");
+  // More than one radiologist: the report is signed by the one chosen (blank = the signed-in login).
+  const [radiologists, setRadiologists] = useState<string[]>([]);
+  useEffect(() => { if (!reported) void listRadiologists().then(setRadiologists).catch(() => setRadiologists([])); }, [reported]);
   const [saving, setSaving] = useState(false);
   // Ultrasound: the doctor fills in the scan's values instead of writing the findings.
   const ultrasound = isUltrasoundStudy(order);
@@ -245,7 +248,17 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
           <Field label={pattern ? "Conclusion" : "Impression"} required><Textarea id="rep-impression" rows={3} value={impression} readOnly={reported} onChange={(e) => setImpression(e.target.value)} /></Field>
           {pattern && <Field label="Recommendation"><Textarea id="rep-recommendation" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} /></Field>}
           {pattern && <Field label="Note"><Textarea id="rep-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>}
-          <Field label="Radiologist"><Input id="rep-radiologist" value={radiologist} readOnly={reported} onChange={(e) => setRadiologist(e.target.value)} placeholder="Blank = your name and designation" /></Field>
+          <Field label="Radiologist">
+            {!reported && radiologists.length > 1 ? (
+              <Select id="rep-radiologist" value={radiologist} onChange={(e) => setRadiologist(e.target.value)}>
+                <option value="">Me (signed-in login)</option>
+                {radiologists.map((r) => <option key={r} value={r}>{r}</option>)}
+                {radiologist && !radiologists.includes(radiologist) && <option value={radiologist}>{radiologist}</option>}
+              </Select>
+            ) : (
+              <Input id="rep-radiologist" value={radiologist} readOnly={reported} onChange={(e) => setRadiologist(e.target.value)} placeholder="Blank = your name and designation" />
+            )}
+          </Field>
           {!reported && (
             <div className="flex justify-end">
               <Button variant="primary" disabled={saving || !impression.trim()} onClick={() => void save()}>{saving ? "Saving…" : "Sign and release report"}</Button>

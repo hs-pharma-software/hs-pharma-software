@@ -74,7 +74,7 @@ export interface ScopedReceipt extends VisitReceipt {
 
 /** The visit's receipt for this desk: at a counter, only its own charges, each
  * marked paid or unpaid, and the balance of those. */
-export async function visitReceiptFor(episodeId: string, scope: FeeScope): Promise<ScopedReceipt> {
+export async function visitReceiptFor(episodeId: string, scope: FeeScope, opts: { current?: boolean } = {}): Promise<ScopedReceipt> {
   const [r, orders] = await Promise.all([getVisitReceipt(episodeId), visitOrders(episodeId)]);
   const chargePaid: Record<string, boolean> = {};
   for (const o of orders) if (o.charge_id) chargePaid[o.charge_id] = o.paid === 1;
@@ -83,11 +83,23 @@ export async function visitReceiptFor(episodeId: string, scope: FeeScope): Promi
   const ids = new Set(orders.filter((o) => o.kind === scope).map((o) => o.order_no));
   const total = round(charges.reduce((t, c) => t + Number(c.amount), 0));
   const due = round(orders.filter((o) => o.kind === scope && o.paid !== 1).reduce((t, o) => t + Number(o.fee), 0));
-  return {
-    ...r, scope, chargePaid, charges,
-    payments: r.payments.filter((p) => p.reference && ids.has(p.reference)),
-    total, due, paid: round(total - due),
-  };
+  const payments = r.payments.filter((p) => p.reference && ids.has(p.reference));
+  if (opts.current) {
+    // This time only: the studies still to pay, or else those of the last payment (a reprint).
+    const mine = orders.filter((o) => o.kind === scope);
+    const unpaid = mine.filter((o) => o.paid !== 1);
+    const last = payments.reduce((m, p) => (p.received_at > m ? p.received_at : m), "");
+    const shownPays = unpaid.length ? [] : payments.filter((p) => p.received_at === last);
+    const pick = new Set(unpaid.length ? unpaid.map((o) => o.order_no) : shownPays.map((p) => String(p.reference)));
+    const chargeIds = new Set(mine.filter((o) => o.charge_id && pick.has(o.order_no)).map((o) => o.charge_id as string));
+    if (chargeIds.size) {
+      const shown = charges.filter((c) => chargeIds.has(c.id));
+      const shownTotal = round(shown.reduce((t, c) => t + Number(c.amount), 0));
+      const shownPaid = round(shownPays.reduce((t, p) => t + (p.type === "refund" ? -1 : 1) * Number(p.amount), 0));
+      return { ...r, scope, chargePaid, charges: shown, payments: shownPays, total: shownTotal, due, paid: shownPaid };
+    }
+  }
+  return { ...r, scope, chargePaid, charges, payments, total, due, paid: round(total - due) };
 }
 
 /** Collects what this desk is owed on a visit and marks each test / scan paid.

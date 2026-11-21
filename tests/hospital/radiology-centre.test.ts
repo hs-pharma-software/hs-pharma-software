@@ -143,3 +143,47 @@ test("the Super Admin's Accessible Sections decide a centre's sections, and only
     assert.equal(moduleAllowedForType(TYPE, k), false, k);
   }
 });
+
+test("the radiology receipt shows this time's studies only; the whole visit on request", async () => {
+  const { visitReceiptFor } = await import("@/lib/repo/receptionFees");
+  const us = await saveImagingStudy(null, { name: "Ultrasound KUB", modality: "Ultrasound", rate: 1500 });
+  const xr = await saveImagingStudy(null, { name: "X-Ray Chest", modality: "X-Ray", rate: 800 });
+  const p = await hospitalPatientsRepo.create({ mr_no: await nextMrNo(), name: "Ali", gender: "Male", age_years: 40 });
+  const first = await orderImaging({ patientId: p.id, serviceId: us.id });
+  await collectVisitFees(first.episode.id, "imaging", "cash");
+  db.prepare(`UPDATE hospital_payments SET received_at = '2026-11-21 09:00'`).run();
+  const second = await orderImaging({ patientId: p.id, serviceId: xr.id });
+  assert.equal(second.episode.id, first.episode.id, "the same visit");
+  const now = await visitReceiptFor(first.episode.id, "imaging", { current: true });
+  assert.deepEqual(now.charges.map((c) => c.description), ["X-Ray Chest"], "only the study to pay now");
+  assert.equal(now.due, 800);
+  await collectVisitFees(first.episode.id, "imaging", "cash");
+  const reprint = await visitReceiptFor(first.episode.id, "imaging", { current: true });
+  assert.deepEqual(reprint.charges.map((c) => c.description), ["X-Ray Chest"], "the last payment's study");
+  assert.equal(reprint.paid, 800);
+  assert.equal(reprint.payments.length, 1);
+  assert.equal((await visitReceiptFor(first.episode.id, "imaging")).charges.length, 2, "the whole visit");
+});
+
+test("logins of a centre start from its radiology roles; a staff member can be linked to an existing login", async () => {
+  const { presetsFor, presetModules } = await import("@/lib/rolePresets");
+  const { linkStaffLogin, listLinkableLogins } = await import("@/lib/hospitalLogins");
+  const { listRadiologists } = await import("@/lib/repo/radiologyPortal");
+  const roles = presetsFor(TYPE);
+  assert.ok(["radiology_receptionist", "radiographer", "radiologist"].every((k) => roles.some((r) => r.id === k)));
+  assert.ok(!roles.some((r) => r.id === "cashier"));
+  assert.deepEqual(presetModules(roles.find((r) => r.id === "radiologist")!, []), designation("radiologist")!.pages);
+  assert.equal(presetsFor("retail_pharmacy")[0].id, "cashier", "other businesses keep their presets");
+
+  db.prepare(`INSERT INTO users (id, tenant_id, username, role, password_hash, password_salt, is_active, created_at, updated_at) VALUES ('u9', ?, 'sana', 'staff', 'x', 'x', 1, '2026-01-01', '2026-01-01')`).run(T);
+  for (const [id, name] of [["st1", "Dr Sana"], ["st2", "Dr Hamid"]]) {
+    db.prepare(`INSERT INTO staff (id, tenant_id, name, staff_category, designation, created_at, updated_at) VALUES (?, ?, ?, 'radiologist', 'Consultant Radiologist', '2026-01-01', '2026-01-01')`).run(id, T, name);
+  }
+  assert.deepEqual(await listRadiologists(), ["Dr Hamid, Consultant Radiologist", "Dr Sana, Consultant Radiologist"]);
+  assert.deepEqual((await listLinkableLogins()).map((u) => u.id), ["u9"]);
+  await linkStaffLogin("st1", "u9");
+  const u = db.prepare(`SELECT permissions FROM users WHERE id = 'u9'`).get() as { permissions: string };
+  assert.deepEqual(JSON.parse(u.permissions), designation("radiologist")!.pages, "the login opens the radiologist's sections");
+  assert.deepEqual(await listLinkableLogins(), []);
+  await assert.rejects(linkStaffLogin("st2", "u9"), /not linked to anyone/);
+});

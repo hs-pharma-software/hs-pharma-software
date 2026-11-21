@@ -9,7 +9,9 @@ import { SERVER_DB } from "@/lib/serverMode";
 import { visibleNavFor } from "@/config/navFilter";
 import { useAuthStore } from "@/store/authStore";
 import type { Tenant, UserRole } from "@/lib/types2";
-import { DEFAULT_PRESET, ROLE_PRESETS, presetActions, presetModules, type RolePreset } from "@/lib/rolePresets";
+import { presetActions, presetModules, presetsFor } from "@/lib/rolePresets";
+import { businessType } from "@/config/businessTypes";
+import { usesHospitalStaff } from "@/config/hospitalStaff";
 
 /** Creates a new login. Two modes:
  * - Super Admin (`scope: "all"`): picks any tenant and role (owner/staff).
@@ -37,7 +39,7 @@ export function UserFormModal({
   const [role, setRole] = useState<UserRole>("staff");
   const [tenantId, setTenantId] = useState(fixedTenantId ?? tenants[0]?.id ?? "");
   const [permissions, setPermissions] = useState<string[] | null>([]);
-  const [presetId, setPresetId] = useState<RolePreset["id"] | "custom">(DEFAULT_PRESET.id);
+  const [presetId, setPresetId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -47,10 +49,14 @@ export function UserFormModal({
   const modules = visibleNavFor(typeOfTenant, null, null);
   const moduleKeys = modules.map((n) => n.moduleKey);
   // Until the owner changes something, the chosen preset decides sections and actions.
-  const preset = ROLE_PRESETS.find((p) => p.id === presetId) ?? null;
+  // A hospital or radiology centre starts from its staff roles (Receptionist, Technologist, Radiologist...).
+  const typeId = businessType(typeOfTenant).id;
+  const presets = presetsFor(typeId);
+  const staffRoles = usesHospitalStaff(typeId);
+  const preset = presetId === "custom" ? null : presets.find((p) => p.id === presetId) ?? presets[0] ?? null;
   const effectivePermissions = preset ? presetModules(preset, moduleKeys) : permissions;
 
-  function choosePreset(id: RolePreset["id"] | "custom") {
+  function choosePreset(id: string) {
     if (id === "custom") setPermissions(effectivePermissions);
     setPresetId(id);
   }
@@ -129,7 +135,7 @@ export function UserFormModal({
         {scope === "all" && (
           <>
             <Field label="Tenant" required>
-              <Select value={tenantId} onChange={(e) => { setTenantId(e.target.value); setPresetId(DEFAULT_PRESET.id); }} required>
+              <Select value={tenantId} onChange={(e) => { setTenantId(e.target.value); setPresetId(""); }} required>
                 <option value="">Select...</option>
                 {tenants.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -165,11 +171,13 @@ export function UserFormModal({
             </div>
             <label htmlFor="uf-preset" className="mb-2 flex items-center gap-2 text-xs text-neutral-600">
               Role
-              <select id="uf-preset" value={presetId} onChange={(e) => choosePreset(e.target.value as RolePreset["id"] | "custom")} className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs">
-                {ROLE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              <select id="uf-preset" value={preset ? preset.id : "custom"} onChange={(e) => choosePreset(e.target.value)} className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs">
+                {presets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 <option value="custom">Custom</option>
               </select>
-              <span className="text-neutral-400">Refund, export, restore, FBR submit and closing stay off unless the role or the owner allows them.</span>
+              <span className="text-neutral-400">{staffRoles
+                ? "Opens what this role needs. Link the login to the person under Staff so their reports and examinations carry their name and role."
+                : "Refund, export, restore, FBR submit and closing stay off unless the role or the owner allows them."}</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
               {modules.map((item) => (

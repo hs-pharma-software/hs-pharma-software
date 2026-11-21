@@ -6,7 +6,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { saveHospitalStaff, nextEmployeeId } from "@/lib/repo/hospitalOpd";
 import { hospitalDepartmentsRepo, type HospitalDepartment } from "@/lib/repo/hospital";
-import { createStaffLogin } from "@/lib/hospitalLogins";
+import { createStaffLogin, linkStaffLogin, listLinkableLogins } from "@/lib/hospitalLogins";
 import { listCollectionCenters } from "@/lib/repo/labReports";
 import type { CollectionCenter } from "@/lib/types-hospital";
 import { LICENSE_LABEL, designation as findDesignation, designationsFor } from "@/config/hospitalStaff";
@@ -35,6 +35,10 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   const [basicPay, setBasicPay] = useState(String(staff?.basic_pay ?? 0));
   const [dateOfJoining, setDateOfJoining] = useState(staff?.date_of_joining ?? localDate());
   const [makeLogin, setMakeLogin] = useState(false);
+  /** A new login, or one that already exists (made under Settings > User Logins). */
+  const [loginMode, setLoginMode] = useState<"new" | "link">("new");
+  const [linkable, setLinkable] = useState<{ id: string; username: string; display_name: string | null }[]>([]);
+  const [linkUserId, setLinkUserId] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [employeeId, setEmployeeId] = useState(staff?.employee_id ?? "");
@@ -49,6 +53,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   useEffect(() => {
     void hospitalDepartmentsRepo.list({ orderBy: "name ASC" }).then((all) => setDepartments(all.filter((x) => x.is_active)));
     void listCollectionCenters().then(setCenters).catch(() => setCenters([]));
+    void listLinkableLogins().then(setLinkable).catch(() => setLinkable([]));
   }, []);
 
   // Preview the id the designation will get (kept when editing within the same designation).
@@ -80,7 +85,14 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         basic_pay: Number(basicPay) || 0,
         date_of_joining: dateOfJoining || null,
       });
-      if (makeLogin && !hasLogin) await createStaffLogin(saved.id, username, password);
+      if (makeLogin && !hasLogin) {
+        if (loginMode === "link") {
+          if (!linkUserId) throw new Error("Choose the login to link.");
+          await linkStaffLogin(saved.id, linkUserId);
+        } else {
+          await createStaffLogin(saved.id, username, password);
+        }
+      }
       onSaved();
     } catch (err) {
       window.alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
@@ -160,8 +172,25 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
               </label>
               {makeLogin && (
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Username" required><Input value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="off" /></Field>
-                  <Field label="Password" required><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" /></Field>
+                  <div className="flex gap-4 text-sm text-neutral-700 sm:col-span-2">
+                    <label className="flex items-center gap-1.5"><input type="radio" checked={loginMode === "new"} onChange={() => setLoginMode("new")} /> New login</label>
+                    <label className="flex items-center gap-1.5"><input type="radio" checked={loginMode === "link"} onChange={() => setLoginMode("link")} /> Link an existing login</label>
+                  </div>
+                  {loginMode === "link" ? (
+                    <div className="sm:col-span-2">
+                      <Field label="Login" required>
+                        <Select value={linkUserId} onChange={(e) => setLinkUserId(e.target.value)} required>
+                          <option value="">{linkable.length ? "— Choose a login —" : "No unlinked staff login"}</option>
+                          {linkable.map((u) => <option key={u.id} value={u.id}>{u.username}{u.display_name ? ` (${u.display_name})` : ""}</option>)}
+                        </Select>
+                      </Field>
+                    </div>
+                  ) : (
+                    <>
+                      <Field label="Username" required><Input value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="off" /></Field>
+                      <Field label="Password" required><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" /></Field>
+                    </>
+                  )}
                   <p className="text-xs text-neutral-500 sm:col-span-2">
                     {d ? (d.pages === null ? "Opens every section." : `Opens only what a ${d.label} needs.`) : "Choose a designation to see what this login can open."}
                   </p>

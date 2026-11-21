@@ -25,9 +25,11 @@ export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: {
   const [r, setR] = useState<ScopedReceipt | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [busy, setBusy] = useState(false);
+  // At the radiology counter the receipt shows this time's studies only; the whole visit on request.
+  const [current, setCurrent] = useState(scope === "imaging");
 
-  const load = () => visitReceiptFor(episodeId, scope).then(setR).catch((e) => window.alert(`Could not load the receipt: ${e instanceof Error ? e.message : String(e)}`));
-  useEffect(() => { void load(); }, [episodeId, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = () => visitReceiptFor(episodeId, scope, { current }).then(setR).catch((e) => window.alert(`Could not load the receipt: ${e instanceof Error ? e.message : String(e)}`));
+  useEffect(() => { void load(); }, [episodeId, scope, current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function collect() {
     if (!r || busy || !(r.due > 0)) return;
@@ -120,6 +122,11 @@ export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
+            {scope === "imaging" && (
+              <button type="button" onClick={() => setCurrent((v) => !v)} className="mr-auto text-xs text-sky-700 hover:underline">
+                {current ? "Show the whole visit" : "Show this time only"}
+              </button>
+            )}
             {r.due > 0 && (
               <>
                 <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className="!w-40" aria-label="Payment method">

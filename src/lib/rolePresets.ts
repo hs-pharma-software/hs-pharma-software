@@ -2,13 +2,17 @@
  * login starts as a Cashier (least privilege); the owner picks another preset
  * or ticks sections and actions one by one. Only the sections this business
  * type has are kept (a clinic has no Purchase section). */
+import { designationsFor, usesHospitalStaff } from "../config/hospitalStaff";
+
 export interface RolePreset {
-  id: "cashier" | "storekeeper" | "accountant" | "manager";
+  id: string;
   label: string;
   /** Section (module) keys. */
   modules: string[];
   /** Opt-in actions this preset ticks (lib/actionPermissions.ts). */
   actions: string[];
+  /** A hospital / radiology designation: its sections exactly as listed (sub-sections included). */
+  exact?: boolean;
 }
 
 export const ROLE_PRESETS: readonly RolePreset[] = [
@@ -41,8 +45,18 @@ export const ROLE_PRESETS: readonly RolePreset[] = [
 
 const MANAGER_EXCLUDED = ["staff", "settings", "utilities", "hospital_logins", "dist_settings", "es_settings", "restaurant_settings", "clinic_settings"];
 
+/** The roles a login can start from: a hospital or radiology centre uses its staff
+ * designations (Receptionist, Technologist, Radiologist...), other businesses the presets above. */
+export function presetsFor(typeId: string | null | undefined): readonly RolePreset[] {
+  if (!typeId || !usesHospitalStaff(typeId)) return ROLE_PRESETS;
+  return designationsFor(typeId)
+    .filter((d) => d.pages !== null)
+    .map((d) => ({ id: d.key, label: d.label, modules: d.pages ?? [], actions: [], exact: true }));
+}
+
 /** The preset's sections among the ones this business has. */
 export function presetModules(preset: RolePreset, available: readonly string[]): string[] {
+  if (preset.exact) return [...preset.modules];
   if (preset.modules.includes("*")) return available.filter((k) => !MANAGER_EXCLUDED.includes(k));
   return available.filter((k) => preset.modules.includes(k));
 }

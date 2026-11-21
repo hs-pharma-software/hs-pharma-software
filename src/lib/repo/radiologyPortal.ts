@@ -583,6 +583,15 @@ export async function completeExam(orderId: string, data: ExamData, confirmWarni
   return { warnings: [] };
 }
 
+/** The radiologists of this business, as a report signs them ("Dr Sana, Consultant Radiologist"). */
+export async function listRadiologists(): Promise<string[]> {
+  const rows = await dbSelect<{ name: string; designation: string | null }>(
+    `SELECT name, designation FROM staff WHERE tenant_id = ? AND deleted_at IS NULL AND staff_category = 'radiologist' ORDER BY name`,
+    [requireCurrentTenantId()]
+  );
+  return rows.map((r) => (r.designation?.trim() ? `${r.name}, ${r.designation.trim()}` : r.name));
+}
+
 // ── Reporting ─────────────────────────────────────────────────────────────
 
 /** Only what the worklist shows: findings, the examination record and the saved report load when a study is opened. */
