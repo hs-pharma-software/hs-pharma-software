@@ -10,15 +10,20 @@
  * then copy latest.yml LAST (installed apps update from it), and update these values. */
 export const WINDOWS_RELEASE = {
   appName: "MAVIN for Windows",
-  versionName: "0.3.0",
+  versionName: "0.3.4",
   /** Release date shown on the website. */
-  releaseDate: "2026-11-14",
-  fileName: "MAVIN-Offline-Setup-0.3.0.exe",
-  sizeBytes: 112_912_121,
-  sha256: "FB5C179734E70CE29A0B1E95D228F4CDC9FF82E3403FA28D1169E4EB0EE24043",
+  releaseDate: "2026-11-21",
+  fileName: "MAVIN-Offline-Setup-0.3.4.exe",
+  sizeBytes: 113_093_030,
+  sha256: "C3257598F9C3782E84D2949CFFFCD96C888FF1EF2151423B0A9AC6A9DB7BC16B",
   needs: "Windows 10 or 11 (64-bit)",
-  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.3.0.exe",
+  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.3.4.exe",
   notes: [
+    "Stays signed in: the app no longer asks you to log in every time it is opened (sign in once after this update).",
+    "New: Radiology Centres work offline — reception, registration, orders, fees, examinations and signing reports are saved on this computer and synced when the internet returns.",
+    "Ultrasound reports are written out in sentences from the values entered, with an editable preview before signing; values stay as entered and a signed report cannot change.",
+    "Reports print on one A4 page with the business logo, the radiologist's name and the QR code; Radiology and Lab use A4 report templates only.",
+    "Shorter patient form for Radiology and Lab; radiologist list, radiology staff roles and editing a login's role.",
     "New: distributors and electronics / solar stores bill offline too — sale invoices, bookings, payments and returns are saved on this computer and booked on MAVIN.pk when the internet returns.",
     "New: hospital pharmacies, mobile shops (accessories) and cloth stores (with the customer's custom size) sell offline.",
     "Fast screens for every business: your data is copied to this computer once, then only changes sync every few seconds. Every business can also view its data offline.",
