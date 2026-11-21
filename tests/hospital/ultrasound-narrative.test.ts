@@ -96,8 +96,10 @@ test("signing saves the sentences with the doctor's wording; a signed report can
   const item = narrativeItems(pelvis, malePelvis, MALE).items[1];
   const edits = { prostate: toTemplate(itemText(item).replace("Normal in size", "Normal size for age"), tokensOf(item)) };
   await reportStudy(order.id, { findings: null, impression: "Normal male pelvis.", structured: { template: "pelvis", values: malePelvis, edits } });
+  db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)`).run(`${T}::print_logo`, "data:image/png;base64,iVBORw0KGgo=", "2026-11-21");
   const report = await getRadiologyReport(order.id);
   const saved = parseStructuredReport(report.order.structured_report)!;
+  assert.equal(report.logo, "data:image/png;base64,iVBORw0KGgo=", "the business logo prints in the header");
   assert.deepEqual(saved.narrative!.map((x) => x.label), ["Urinary bladder", "Prostate"]);
   assert.match(saved.narrative![1].text, /^Measures 3\.8 x 4\.2 x 3\.1 cm, corresponding to a volume of 25\.7 cc\. Normal size for age with homogeneous echotexture\./);
   assert.match(report.order.findings ?? "", /^SONOGRAPHIC FINDINGS\nUrinary bladder: Well distended/);

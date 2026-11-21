@@ -109,6 +109,8 @@ body {
   body {
     height: auto !important;
     overflow: visible !important;
+    /* Paper is white: the app's grey page colour never prints around a report. */
+    background: #fff !important;
   }
   body *:not(.print-area):not(.print-area *):not(:has(.print-area)) {
     display: none !important;

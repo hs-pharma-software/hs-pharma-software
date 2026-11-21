@@ -92,7 +92,11 @@ export function RadiologyReportSheet({ report: r, qrUrl }: { report: RadiologyRe
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b-2 border-neutral-800 pb-2">
-        <div>
+        {r.logo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={r.logo} alt="" className="max-h-16 max-w-[28%] shrink-0 object-contain" />
+        )}
+        <div className={r.logo ? "mr-auto" : undefined}>
           <p className="text-xl font-bold leading-tight">{r.hospital.name}</p>
           <p className="text-xs text-neutral-600">Department of Radiology</p>
           {(r.hospital.address || r.hospital.phone) && <p className="text-xs text-neutral-600">{[r.hospital.address, r.hospital.phone].filter(Boolean).join(" · ")}</p>}

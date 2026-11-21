@@ -12,6 +12,8 @@ export type RadiologyReportOrder = Pick<HospitalImagingOrder, "order_no" | "moda
 export interface RadiologyReport {
   order: RadiologyReportOrder;
   hospital: { name: string; address: string | null; phone: string | null; registration: string | null };
+  /** The business logo (Settings > Print Templates), printed in the header. */
+  logo: string | null;
   patient: { name: string; mrNo: string; age: string | null; gender: string | null };
   episodeNo: string | null;
   referringDoctor: string | null;
@@ -41,7 +43,9 @@ export async function assembleRadiologyReport(tenantId: string, order: OrderRow,
   } catch {
     profile = {};
   }
+  const logo = (await one<{ value: string }>(`SELECT value FROM settings WHERE key = ?`, [`${tenantId}::print_logo`]))?.value || null;
   return {
+    logo: logo && /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i.test(logo) ? logo : null,
     order: {
       order_no: order.order_no, modality: order.modality, body_part: order.body_part, ordered_at: order.ordered_at, reported_at: order.reported_at,
       findings: order.findings, impression: order.impression, radiologist: order.radiologist, structured_report: order.structured_report ?? null,

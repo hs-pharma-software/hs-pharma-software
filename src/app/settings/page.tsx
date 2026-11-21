@@ -490,7 +490,7 @@ function PrintSettingsCard({ tauriReady, onOpenTemplates }: { tauriReady: boolea
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div>
-          <p className="mb-1.5 text-xs font-medium text-neutral-600">Pharmacy Logo</p>
+          <p className="mb-1.5 text-xs font-medium text-neutral-600">{reportsOnly ? "Logo" : "Pharmacy Logo"}</p>
           <div className="flex items-center gap-3">
             <div className="flex h-16 w-32 items-center justify-center overflow-hidden rounded-lg bg-neutral-50 ring-1 ring-neutral-200">
               {logo ? (
