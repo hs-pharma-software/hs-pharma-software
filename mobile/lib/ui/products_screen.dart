@@ -104,8 +104,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
         child: ListView.separated(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(12),
           itemCount: _rows.length + 1,
-          separatorBuilder: (_, _) => const Divider(),
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
             if (i == _rows.length) {
               if (_error != null) return TextButton(onPressed: _loadMore, child: const Text('Couldn\'t load more. Try again'));
@@ -122,9 +123,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     return Column(children: [
       Material(
-        color: mavinNavy,
+        color: Colors.white,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: TextField(
             controller: _search,
             onChanged: (v) {
@@ -133,7 +134,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             },
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search name or barcode',
+              hintText: 'Search by product or barcode...',
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: searching
                   ? IconButton(
@@ -145,12 +146,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       },
                     )
                   : null,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
             ),
           ),
         ),
       ),
+      const Divider(),
       Expanded(child: list),
     ]);
   }
@@ -162,32 +162,24 @@ class _ProductTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The website's phone card: the name, "Avail X" (red "Out of stock"), the price on the right.
     final out = row.qty <= 0;
     final low = !out && row.qty <= 5;
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailScreen(id: row.id, name: row.name))),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(children: [
-              Expanded(child: Text(row.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 64,
-                child: Text(out ? 'Out' : qty(row.qty), textAlign: TextAlign.right, style: TextStyle(color: out ? noStock : low ? lowStock : null, fontWeight: out || low ? FontWeight.w500 : null, fontFeatures: const [FontFeature.tabularFigures()])),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 84,
-                child: Text(rs(row.salePrice), textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w500, fontFeatures: [FontFeature.tabularFigures()])),
-              ),
-            ]),
-          ),
+    return WebCard(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailScreen(id: row.id, name: row.name))),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(row.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text(out ? 'Out of stock' : 'Avail ${qty(row.qty)}${row.packing > 1 ? ' · Pack of ${qty(row.packing)}' : ''}',
+                style: TextStyle(fontSize: 12.5, color: out ? noStock : low ? lowStock : muted, fontWeight: out || low ? FontWeight.w600 : FontWeight.w500)),
+          ]),
         ),
-      ),
+        const SizedBox(width: 12),
+        Text(rs(row.salePrice), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5, fontFeatures: [FontFeature.tabularFigures()])),
+      ]),
     );
   }
 }

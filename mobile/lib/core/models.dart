@@ -142,19 +142,41 @@ class Party {
 
 /// A sale or purchase as the server works it out (preview) before saving.
 class DocTotals {
-  DocTotals({required this.subtotal, required this.discount, required this.tax, required this.payable, required this.lines});
+  DocTotals({required this.subtotal, required this.discount, required this.tax, required this.payable, required this.lines, this.details = const []});
   factory DocTotals.fromJson(Map<String, dynamic> j) => DocTotals(
         subtotal: _num(j['subtotal']),
         discount: _num(j['discount']),
         tax: _num(j['tax']),
         payable: _num(j['payable']),
         lines: [for (final x in (j['lines'] as List? ?? const [])) _num((x as Map)['total'])],
+        details: [
+          for (final x in (j['lines'] as List? ?? const []))
+            LineInfo(
+              price: (x as Map)['price'] == null ? null : _num(x['price']),
+              taxPct: x['taxPct'] == null ? null : _num(x['taxPct']),
+              discountPct: x['discountPct'] == null ? null : _num(x['discountPct']),
+              batch: _str(x['batch']),
+              avail: x['avail'] == null ? null : _num(x['avail']),
+            ),
+        ],
       );
   final double subtotal;
   final double discount;
   final double tax;
   final double payable;
   final List<double> lines;
+
+  /// Sale preview: each line's price, Tax %, Disc %, batch and Avail (in the line's unit).
+  final List<LineInfo> details;
+}
+
+class LineInfo {
+  const LineInfo({this.price, this.taxPct, this.discountPct, this.batch, this.avail});
+  final double? price;
+  final double? taxPct;
+  final double? discountPct;
+  final String? batch;
+  final double? avail;
 }
 
 class ProductPage {
@@ -226,10 +248,36 @@ class ProductDetail {
 }
 
 class Dashboard {
-  Dashboard({required this.sales, required this.invoiceCount, required this.expenses, required this.cashIn, required this.cashOut, required this.lowStock, required this.expiring, required this.recent});
+  Dashboard({
+    required this.sales,
+    required this.invoiceCount,
+    required this.expenses,
+    required this.cashIn,
+    required this.cashOut,
+    required this.lowStock,
+    required this.expiring,
+    required this.recent,
+    this.receivable = 0,
+    this.payable = 0,
+    this.products = 0,
+    this.customers = 0,
+    this.suppliers = 0,
+    this.topSelling = const [],
+    this.today = '',
+  });
   factory Dashboard.fromJson(Map<String, dynamic> j) {
     final s = j['summary'] as Map<String, dynamic>? ?? const {};
+    final t = j['totals'] as Map<String, dynamic>? ?? const {};
     return Dashboard(
+      today: '${j['today'] ?? ''}',
+      receivable: _num(t['receivable']),
+      payable: _num(t['payable']),
+      products: _num(t['products']).toInt(),
+      customers: _num(t['customers']).toInt(),
+      suppliers: _num(t['suppliers']).toInt(),
+      topSelling: [
+        for (final x in (j['topSelling'] as List? ?? const [])) (id: '${(x as Map)['id']}', name: '${x['name']}', qty: _num(x['qty']), sales: _num(x['sales'])),
+      ],
       sales: _num(s['sales']),
       invoiceCount: _num(s['invoiceCount']).toInt(),
       expenses: _num(s['expenses']),
@@ -242,7 +290,7 @@ class Dashboard {
       ],
       recent: [
         for (final x in (j['recentInvoices'] as List? ?? const []))
-          (id: '${(x as Map)['id']}', no: x['invoiceNo'] is num ? (x['invoiceNo'] as num).toInt() : null, customer: '${x['customer']}', total: _num(x['total']), balance: _num(x['balance'])),
+          (id: '${(x as Map)['id']}', no: x['invoiceNo'] is num ? (x['invoiceNo'] as num).toInt() : null, customer: '${x['customer']}', total: _num(x['total']), balance: _num(x['balance']), date: '${x['date'] ?? ''}'),
       ],
     );
   }
@@ -253,7 +301,16 @@ class Dashboard {
   final double cashOut;
   final List<({String id, String name, double qty})> lowStock;
   final List<({String product, String? batchNo, String expiry, double qty})> expiring;
-  final List<({String id, int? no, String customer, double total, double balance})> recent;
+  final List<({String id, int? no, String customer, double total, double balance, String date})> recent;
+  final double receivable;
+  final double payable;
+  final int products;
+  final int customers;
+  final int suppliers;
+  final List<({String id, String name, double qty, double sales})> topSelling;
+
+  /// The business's today (Pakistan), from MAVIN.pk.
+  final String today;
 }
 
 class InvoiceRow {

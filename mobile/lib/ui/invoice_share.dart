@@ -47,6 +47,23 @@ Future<void> shareInvoice(BuildContext context, {required String invoiceId}) {
 
 const _channel = MethodChannel('pk.mavin.business/whatsapp');
 
+/// The website's "PDF": the invoice PDF to any app (save, print, email, WhatsApp).
+Future<void> shareInvoicePdf(BuildContext context, {required String invoiceId}) async {
+  final api = AppScope.read(context).api;
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(const SnackBar(content: Text('Preparing the PDF…'), duration: Duration(seconds: 2)));
+  try {
+    final bytes = await api.postBytes('/api/invoices/share/', {'action': 'pdf', 'invoiceId': invoiceId, 'purpose': 'download'});
+    final dir = Directory('${(await getTemporaryDirectory()).path}/share_plus');
+    await dir.create(recursive: true);
+    final f = File('${dir.path}/Invoice-${invoiceId.substring(0, invoiceId.length < 8 ? invoiceId.length : 8)}.pdf');
+    await f.writeAsBytes(bytes, flush: true);
+    await SharePlus.instance.share(ShareParams(files: [XFile(f.path, mimeType: 'application/pdf')]));
+  } on ApiException catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(e.message)));
+  }
+}
+
 class _ShareSheet extends StatefulWidget {
   const _ShareSheet({required this.invoiceId});
   final String invoiceId;

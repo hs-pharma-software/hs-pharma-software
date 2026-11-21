@@ -155,17 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 14),
                         ] else
                           const SizedBox(height: 6),
-                        FilledButton(
-                          onPressed: _busy ? null : _submit,
-                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54), disabledBackgroundColor: mavinNavy.withValues(alpha: .75), disabledForegroundColor: Colors.white),
-                          child: _busy
-                              ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white)),
-                                  SizedBox(width: 12),
-                                  Text('Signing in…'),
-                                ])
-                              : const Text('Sign in'),
-                        ),
+                        GradientButton(label: _busy ? 'Signing in…' : 'Sign in', busy: _busy, expand: true, height: 52, onPressed: _submit),
                         const SizedBox(height: 40),
                         const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                           Icon(Icons.verified_user_outlined, size: 15, color: muted),

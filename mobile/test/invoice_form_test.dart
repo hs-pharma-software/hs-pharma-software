@@ -45,31 +45,32 @@ void main() {
     final seen = <http.Request>[];
     final state = AppState(api: Api(client: fakeServer(seen))..token = 'tok');
     await t.pumpWidget(AppScope(state: state, child: const MaterialApp(home: Scaffold(body: InvoiceScreen()))));
-    expect(find.text('Start a new invoice'), findsOneWidget);
+    expect(find.text('No content in table'), findsOneWidget);
 
-    final search = find.widgetWithText(TextField, 'Search medicine or scan barcode');
+    final search = find.widgetWithText(TextField, 'Type to search...');
     await t.enterText(search, 'pan');
     await t.pump(const Duration(milliseconds: 300));
     await t.pumpAndSettle();
     expect(find.text('Out of stock'), findsOneWidget);
     // Pantra has no stock: tapping it adds nothing.
-    await t.tap(find.text('Pantra'));
+    await t.tap(find.textContaining('Pantra (896002)'));
     await t.pumpAndSettle();
-    expect(find.text('1 product'), findsNothing, reason: 'nothing added');
-    await t.tap(find.text('Panadol'));
+    expect(find.text('No content in table'), findsOneWidget, reason: 'nothing added');
+    await t.tap(find.textContaining('Panadol (896001)'));
     await t.pumpAndSettle();
-    expect(find.text('Start a new invoice'), findsNothing);
-    expect(find.text('1 product'), findsOneWidget);
+    expect(find.text('No content in table'), findsNothing);
+    expect(find.text('Remove'), findsOneWidget, reason: 'one line');
 
     // A barcode scanner types the code and presses Enter.
-    await t.enterText(find.byType(TextField).first, '896001');
+    await t.enterText(find.widgetWithText(TextField, 'Type to search...'), '896001');
     await t.pump(const Duration(milliseconds: 300));
     await t.pumpAndSettle();
     await t.testTextInput.receiveAction(TextInputAction.search);
     await t.pumpAndSettle();
-    expect(find.text('1 product'), findsOneWidget, reason: 'the same product: one line');
-    expect(find.text('2'), findsOneWidget, reason: 'quantity 2');
-    // The added line's highlight fades.
+    expect(find.text('Remove'), findsOneWidget, reason: 'the same product: one line');
+    expect(find.widgetWithText(TextField, '2'), findsOneWidget, reason: 'quantity 2');
+    // Panadol comes in packs of 10: the line starts in loose units, as the website.
+    expect(find.text('Pack'), findsOneWidget);
     await t.pump(const Duration(seconds: 1));
   });
 }

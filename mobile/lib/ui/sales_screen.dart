@@ -7,6 +7,7 @@ import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
 import 'invoice_share.dart';
+import 'shell.dart' show openNewInvoice;
 import 'states.dart';
 import 'theme.dart';
 
@@ -16,7 +17,10 @@ const _muted = Color(0xFF667085);
 /// pages of 50 as the list scrolls. Returns, held invoices and quotations stay
 /// in the web version.
 class SalesScreen extends StatefulWidget {
-  const SalesScreen({super.key});
+  const SalesScreen({super.key, this.embedded = false});
+
+  /// A bottom tab (the frame shows the title): no top bar of its own.
+  final bool embedded;
 
   @override
   State<SalesScreen> createState() => _SalesScreenState();
@@ -103,8 +107,9 @@ class _SalesScreenState extends State<SalesScreen> {
         child: ListView.separated(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
           itemCount: _rows.length + 1,
-          separatorBuilder: (_, _) => const Divider(),
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
             if (i == _rows.length) {
               if (_error != null) return TextButton(onPressed: _loadMore, child: const Text('Couldn\'t load more. Try again'));
@@ -119,14 +124,16 @@ class _SalesScreenState extends State<SalesScreen> {
         ),
       );
     }
+    final canNew = AppScope.of(context).boot?.section('invoices') != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Sales')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('Invoices Details')),
       body: Column(children: [
-        Material(
-          color: mavinNavy,
+        Container(
+          color: Colors.white,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: TextField(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(children: [
+              Expanded(child: TextField(
               controller: _search,
               onChanged: (_) {
                 setState(() {});
@@ -147,12 +154,19 @@ class _SalesScreenState extends State<SalesScreen> {
                         },
                       )
                     : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
               ),
-            ),
+            )),
+              if (canNew) ...[
+                const SizedBox(width: 10),
+                GradientButton(label: 'New Invoice', icon: Icons.add_rounded, height: 44, onPressed: () async {
+                  await openNewInvoice(context);
+                  if (mounted) _reload();
+                }),
+              ],
+            ]),
           ),
         ),
+        const Divider(),
         Expanded(child: list),
       ]),
     );
@@ -165,31 +179,59 @@ class _InvoiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The website's phone card: "#N · Customer", the date with Due (amber) and FBR (green) badges, the total and a ⋮ menu.
     final due = row.balance > 0.004;
-    return Material(
-      color: Colors.white,
-      child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => InvoiceDetailScreen(id: row.id, no: row.no))),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${row.no == null ? '' : '#${row.no} · '}${row.customer}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 2),
-                Text([dayMonthYear(row.date), if (row.fbrNo != null) 'FBR'].join(' · '), style: const TextStyle(fontSize: 12, color: _muted)),
-              ]),
-            ),
-            const SizedBox(width: 12),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(rs(row.payable), style: const TextStyle(fontWeight: FontWeight.w500, fontFeatures: [FontFeature.tabularFigures()])),
-              if (due) Text('Due ${rs(row.balance)}', style: const TextStyle(fontSize: 12, color: noStock)),
+    final share = canShareInvoices(context);
+    void view() => Navigator.push(context, MaterialPageRoute(builder: (_) => InvoiceDetailScreen(id: row.id, no: row.no)));
+    return WebCard(
+      onTap: view,
+      padding: const EdgeInsets.fromLTRB(14, 10, 2, 10),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${row.no == null ? '' : '#${row.no} · '}${row.customer}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(dayMonthYear(row.date), style: const TextStyle(fontSize: 12, color: _muted)),
+              if (due) _Badge('Due ${rs(row.balance)}', fg: const Color(0xFFB45309), bg: amberHi),
+              if (row.fbrNo != null) const _Badge('FBR', fg: Colors.white, bg: fbrGreen),
             ]),
           ]),
         ),
-      ),
+        const SizedBox(width: 8),
+        Text(rs(row.payable), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5, fontFeatures: [FontFeature.tabularFigures()])),
+        PopupMenuButton<String>(
+          tooltip: 'Actions',
+          icon: const Icon(Icons.more_vert_rounded, color: _muted),
+          color: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          onSelected: (a) {
+            if (a == 'view') view();
+            if (a == 'pdf') shareInvoicePdf(context, invoiceId: row.id);
+            if (a == 'wa') shareInvoice(context, invoiceId: row.id);
+          },
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'view', child: ListTile(leading: Icon(Icons.visibility_outlined), title: Text('View'), contentPadding: EdgeInsets.zero)),
+            if (share) const PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.file_download_outlined), title: Text('Download PDF'), contentPadding: EdgeInsets.zero)),
+            if (share) const PopupMenuItem(value: 'wa', child: ListTile(leading: Icon(Icons.chat_outlined, color: whatsappGreen), title: Text('Send on WhatsApp'), contentPadding: EdgeInsets.zero)),
+          ],
+        ),
+      ]),
     );
   }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge(this.text, {required this.fg, required this.bg});
+  final String text;
+  final Color fg;
+  final Color bg;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg)),
+      );
 }
 
 /// One invoice: customer, items (loose sales shown as units) and the totals.
@@ -310,12 +352,24 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: whatsappGreen, minimumSize: const Size.fromHeight(50)),
-                    onPressed: () => shareInvoice(context, invoiceId: widget.id),
-                    icon: const Icon(Icons.chat_rounded),
-                    label: const Text('Send on WhatsApp'),
-                  ),
+                  child: Row(children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => shareInvoicePdf(context, invoiceId: widget.id),
+                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 19),
+                        label: const Text('PDF'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GradientButton(
+                        label: 'WhatsApp',
+                        icon: Icons.chat_rounded,
+                        colors: const [Color(0xFF16A34A), whatsappGreen],
+                        onPressed: () => shareInvoice(context, invoiceId: widget.id),
+                      ),
+                    ),
+                  ]),
                 ),
               ),
             ),

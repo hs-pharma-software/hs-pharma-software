@@ -87,6 +87,126 @@ class ProductSearch extends ChangeNotifier {
   }
 }
 
+/// The website's "Barcode/Product Name" input (placeholder "Type to search...").
+/// Enter adds the barcode match or the only match; the keyboard stays up.
+class ProductSearchField extends StatelessWidget {
+  const ProductSearchField({super.key, required this.search, required this.onPick});
+  final ProductSearch search;
+  final ValueChanged<ProductRow> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: search,
+      builder: (context, _) => TextField(
+        controller: search.text,
+        focusNode: search.focus,
+        onChanged: (_) => search.changed(),
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) {
+          final p = search.bestMatch() ?? (search.results.isNotEmpty ? search.results.first : null);
+          if (p != null && search.canAdd(p)) onPick(p);
+          search.focus.requestFocus();
+        },
+        decoration: InputDecoration(
+          hintText: 'Type to search...',
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+          suffixIcon: search.open
+              ? IconButton(tooltip: 'Clear', icon: const Icon(Icons.close_rounded, size: 19), onPressed: search.clear)
+              : const Icon(Icons.qr_code_scanner_rounded, size: 19),
+        ),
+      ),
+    );
+  }
+}
+
+/// The matches under the input, as the website's dropdown: "Name (barcode)",
+/// stock and price; the first (Enter's choice) highlighted amber.
+class ProductSearchDropdown extends StatelessWidget {
+  const ProductSearchDropdown({super.key, required this.search, required this.onPick, this.inForm});
+  final ProductSearch search;
+  final ValueChanged<ProductRow> onPick;
+  final double Function(String productId)? inForm;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: search,
+      builder: (context, _) {
+        final rows = search.results.take(12).toList();
+        if (rows.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+            child: search.loading
+                ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                : Text(search.error ?? 'No product matches "${search.query}".', style: const TextStyle(color: muted)),
+          );
+        }
+        final best = search.bestMatch() ?? rows.first;
+        return Container(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: hairline)),
+          clipBehavior: Clip.antiAlias,
+          child: Column(children: [
+            if (search.loading) const LinearProgressIndicator(minHeight: 2),
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) const Divider(),
+              _DropRow(p: rows[i], highlight: identical(rows[i], best), ok: search.canAdd(rows[i]), added: inForm?.call(rows[i].id) ?? 0, onTap: () {
+                HapticFeedback.selectionClick();
+                onPick(rows[i]);
+              }),
+            ],
+          ]),
+        );
+      },
+    );
+  }
+}
+
+class _DropRow extends StatelessWidget {
+  const _DropRow({required this.p, required this.highlight, required this.ok, required this.added, required this.onTap});
+  final ProductRow p;
+  final bool highlight;
+  final bool ok;
+  final double added;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: highlight && ok ? const Color(0xFFFEF3C7) : Colors.white,
+      child: InkWell(
+        onTap: ok ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: p.name, style: TextStyle(fontWeight: FontWeight.w600, color: ok ? ink : faint)),
+                    if (p.barcode != null) TextSpan(text: ' (${p.barcode})', style: const TextStyle(color: faint, fontSize: 12.5)),
+                  ]),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 2),
+                Wrap(children: [
+                  _Stock(p.qty),
+                  if (p.packing > 1) Text('  ·  Pack of ${qty(p.packing)}', style: const TextStyle(fontSize: 12, color: muted)),
+                  if (added > 0) Text('  ·  ${qty(added)} on invoice', style: const TextStyle(fontSize: 12, color: mavinAccent, fontWeight: FontWeight.w600)),
+                ]),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Text(rs(p.salePrice), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: ok ? ink : faint)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 /// The search bar (always visible at the top of the form).
 class ProductSearchBar extends StatelessWidget {
   const ProductSearchBar({super.key, required this.search, required this.onPick, this.hint = 'Search medicine or scan barcode'});
@@ -97,7 +217,7 @@ class ProductSearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: mavinNavy,
+      color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
         child: ListenableBuilder(
@@ -117,7 +237,7 @@ class ProductSearchBar extends StatelessWidget {
             decoration: InputDecoration(
               hintText: hint,
               hintStyle: const TextStyle(color: muted),
-              prefixIcon: const Icon(Icons.search_rounded, color: mavinNavy),
+              prefixIcon: const Icon(Icons.search_rounded, color: mavinAccent),
               suffixIcon: search.open
                   ? IconButton(tooltip: 'Clear', icon: const Icon(Icons.close_rounded), onPressed: search.clear)
                   : const Icon(Icons.qr_code_scanner_rounded, color: muted),

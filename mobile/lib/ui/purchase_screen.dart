@@ -8,6 +8,7 @@ import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
 import 'form_bits.dart';
+import 'invoice_screen.dart' show WebActionBar, money2;
 import 'pickers.dart';
 import 'product_search.dart';
 import 'theme.dart';
@@ -310,73 +311,90 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
         ),
       ),
     );
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: open ? mavinBlue : const Color(0xFFE4E7EE), width: open ? 1.5 : 1)),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: [
-        header,
-        if (open)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 10),
-            child: Column(children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: NumField(controller: l.qtyC, label: 'Qty', error: err('qty'), onChanged: (_) => _changed())),
-                const SizedBox(width: 6),
-                Expanded(child: NumField(controller: l.bonus, label: 'Bonus', onChanged: (_) => _changed())),
-                const SizedBox(width: 6),
-                Expanded(child: NumField(controller: l.rate, label: 'Purch. rate', onChanged: (_) => _changed())),
-                const SizedBox(width: 6),
-                Expanded(child: NumField(controller: l.sale, label: 'Sale rate', onChanged: (_) => _changed())),
-              ]),
-              const SizedBox(height: 8),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                  flex: 4,
-                  child: TextField(controller: l.batch, textInputAction: TextInputAction.next, onChanged: (_) => _changed(), decoration: const InputDecoration(labelText: 'Batch')),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  flex: 5,
-                  child: TextField(
-                    controller: l.expiry,
-                    keyboardType: TextInputType.datetime,
-                    onChanged: (_) => _changed(),
-                    decoration: InputDecoration(
-                      labelText: 'Expiry',
-                      hintText: 'YYYY-MM-DD',
-                      errorText: err('expiry'),
-                      suffixIcon: IconButton(tooltip: 'Choose a date', icon: const Icon(Icons.calendar_month_outlined, size: 20), onPressed: () => _pickExpiry(l)),
+    Widget numF(String label, TextEditingController c, {String? error}) => LabeledField(
+          label: label,
+          child: TextField(
+            controller: c,
+            onChanged: (_) => _changed(),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: numberInput,
+            textInputAction: TextInputAction.next,
+            decoration: InputDecoration(errorText: error, errorMaxLines: 2),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: open ? mavinAccent : const Color(0x0A000000), width: open ? 1.5 : 1),
+          boxShadow: const [BoxShadow(color: Color(0x12000000), blurRadius: 4, offset: Offset(0, 1))],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: [
+          header,
+          if (open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
+              child: Column(children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: LabeledField(label: 'Batch', child: TextField(controller: l.batch, textInputAction: TextInputAction.next, onChanged: (_) => _changed()))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: LabeledField(
+                      label: 'Expiry',
+                      child: TextField(
+                        controller: l.expiry,
+                        keyboardType: TextInputType.datetime,
+                        onChanged: (_) => _changed(),
+                        decoration: InputDecoration(
+                          hintText: 'YYYY-MM-DD',
+                          errorText: err('expiry'),
+                          suffixIcon: IconButton(tooltip: 'Choose a date', icon: const Icon(Icons.calendar_month_outlined, size: 19), onPressed: () => _pickExpiry(l)),
+                        ),
+                      ),
                     ),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: numF('Purchase Rate', l.rate)),
+                  const SizedBox(width: 10),
+                  Expanded(child: numF('Sale Rate', l.sale)),
+                ]),
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: numF('Quantity', l.qtyC, error: err('qty'))),
+                  const SizedBox(width: 10),
+                  Expanded(child: numF('Bonus', l.bonus)),
+                ]),
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: numF('S.T %', l.st)),
+                  const SizedBox(width: 10),
+                  Expanded(child: numF('W.T %', l.wt)),
+                  const SizedBox(width: 10),
+                  Expanded(child: numF('Extra Disc %', l.disc, error: err('disc'))),
+                ]),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _lines.removeAt(i).dispose();
+                        _open = -1;
+                      });
+                      _changed();
+                    },
+                    style: TextButton.styleFrom(foregroundColor: noStock),
+                    child: const Text('Remove'),
                   ),
                 ),
               ]),
-              const SizedBox(height: 8),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: NumField(controller: l.st, label: 'S.T %', onChanged: (_) => _changed())),
-                const SizedBox(width: 6),
-                Expanded(child: NumField(controller: l.wt, label: 'W.T %', onChanged: (_) => _changed())),
-                const SizedBox(width: 6),
-                Expanded(child: NumField(controller: l.disc, label: 'Extra disc %', error: err('disc'), onChanged: (_) => _changed())),
-              ]),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _lines.removeAt(i).dispose();
-                      _open = -1;
-                    });
-                    _changed();
-                  },
-                  style: TextButton.styleFrom(foregroundColor: noStock),
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  label: const Text('Remove'),
-                ),
-              ),
-            ]),
-          ),
-      ]),
+            ),
+        ]),
+      ),
     );
   }
 
@@ -387,75 +405,113 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
     final form = ListView(
         controller: _scroll,
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         children: [
-          const SectionLabel('Supplier'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+          WebCard(
             child: Column(children: [
-              InkWell(
-                onTap: _pickSupplier,
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Supplier',
-                    errorText: _showErrors && _supplier == null ? 'Choose the supplier' : null,
-                    suffixIcon: const Icon(Icons.arrow_drop_down_rounded),
+              LabeledField(
+                label: 'Supplier Name',
+                required: true,
+                child: InkWell(
+                  onTap: _pickSupplier,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _showErrors && _supplier == null ? noStock : hairline),
+                    ),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(_supplier?.name ?? 'Select...',
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _supplier == null ? muted : ink, fontWeight: _supplier == null ? null : FontWeight.w600)),
+                      ),
+                      const Icon(Icons.expand_more_rounded, color: muted),
+                    ]),
                   ),
-                  child: Text(_supplier?.name ?? 'Choose…', style: TextStyle(color: _supplier == null ? const Color(0xFF667085) : null)),
                 ),
               ),
+              if (_showErrors && _supplier == null) const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4, left: 2), child: Text('Choose the supplier', style: TextStyle(color: noStock, fontSize: 12)))),
               const SizedBox(height: 10),
-              Row(children: [
-                Expanded(child: TextField(controller: _supplierInv, decoration: const InputDecoration(labelText: 'Supplier invoice #'))),
-                const SizedBox(width: 8),
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  segments: const [ButtonSegment(value: false, label: Text('Cash')), ButtonSegment(value: true, label: Text('Bank'))],
-                  selected: {_bank},
-                  onSelectionChanged: (s) => setState(() => _bank = s.first),
-                ),
-              ]),
+              LabeledField(label: 'Invoice #', child: TextField(controller: _supplierInv)),
             ]),
           ),
-          SectionLabel('Products · ${_lines.length}'),
-          for (var i = 0; i < _lines.length; i++) _row(i),
-          if (_lines.isEmpty)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: Text('Search above (name or barcode) and tap a product to add it.', style: TextStyle(color: muted)),
-            ),
-          const SectionLabel('Payment'),
+          const SizedBox(height: 10),
+          WebCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              LabeledField(label: 'Barcode/Product Name', child: ProductSearchField(search: _search, onPick: _addProduct)),
+              if (_search.open) ...[
+                const SizedBox(height: 6),
+                ProductSearchDropdown(search: _search, onPick: _addProduct),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 14),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Row(children: [
+              const Text('Products', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 6),
+              Text('${_lines.length}', style: const TextStyle(color: muted, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              if (_pending) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            ]),
+          ),
+          for (var i = 0; i < _lines.length; i++) _row(i),
+          if (_lines.isEmpty) const WebCard(child: Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Center(child: Text('No content in table', style: TextStyle(color: faint))))),
+          const SizedBox(height: 4),
+          WebCard(
             child: Column(children: [
               Row(children: [
-                Expanded(child: NumField(controller: _discount, label: 'Discount Rs', onChanged: (_) => _changed())),
-                const SizedBox(width: 8),
-                Expanded(child: NumField(controller: _paid, label: 'Paid Rs', onChanged: (_) => setState(() {}))),
+                Expanded(child: LabeledField(label: 'Discount Rs', child: TextField(controller: _discount, onChanged: (_) => _changed(), keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: numberInput, decoration: const InputDecoration(hintText: '0.00')))),
+                const SizedBox(width: 10),
+                Expanded(child: LabeledField(label: 'Tax', child: ReadOnlyBox(t == null ? '0.00' : money2(t.tax)))),
               ]),
               const SizedBox(height: 10),
-              TextField(controller: _note, decoration: const InputDecoration(labelText: 'Description (optional)')),
+              Row(children: [
+                Expanded(child: LabeledField(label: 'Payable', child: ReadOnlyBox(t == null ? '0.00' : money2(t.payable), strong: true))),
+                const SizedBox(width: 10),
+                Expanded(child: LabeledField(label: 'Paid', required: true, child: TextField(controller: _paid, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: numberInput, decoration: const InputDecoration(hintText: '0.00')))),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: LabeledField(label: 'Balance', child: ReadOnlyBox(t == null ? '0.00' : money2(t.payable - paid), color: t != null && t.payable - paid > 0.004 ? noStock : null))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: LabeledField(
+                    label: 'Payment Method',
+                    required: true,
+                    child: DropdownButtonFormField<bool>(
+                      initialValue: _bank,
+                      isExpanded: true,
+                      icon: const Icon(Icons.expand_more_rounded, size: 20),
+                      borderRadius: BorderRadius.circular(12),
+                      dropdownColor: Colors.white,
+                      items: const [DropdownMenuItem(value: false, child: Text('Cash')), DropdownMenuItem(value: true, child: Text('Bank'))],
+                      onChanged: (v) => setState(() => _bank = v ?? false),
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              LabeledField(label: 'Description', child: TextField(controller: _note)),
             ]),
           ),
         ]);
     return Column(children: [
-      ProductSearchBar(search: _search, onPick: _addProduct, hint: 'Search product to add, or scan barcode'),
-      Expanded(
-        child: Stack(children: [
-          Positioned.fill(child: form),
-          if (_search.open) Positioned.fill(child: ProductSearchResults(search: _search, onPick: _addProduct)),
-        ]),
-      ),
-      if (!_search.open) TotalsBar(
-        label: '${_lines.length} ${_lines.length == 1 ? 'product' : 'products'}',
+      Expanded(child: form),
+      WebActionBar(
         payable: t?.payable,
-        balance: t == null ? null : t.payable - paid,
         problem: _problem,
         onProblem: _showFirstProblem,
-        pending: _pending,
         busy: _saving,
-        action: 'Save',
-        onAction: _save,
+        onReset: _dirty
+            ? () async {
+                if (await confirmDiscard(context, 'purchase')) _reset();
+              }
+            : null,
+        onSave: _save,
       ),
     ]);
   }

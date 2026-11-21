@@ -116,7 +116,9 @@ export interface SaleInput {
 }
 export interface SaleResult { id: string; invoiceNo: number; payable: number; paid: number; balance: number; duplicate: boolean }
 /** What a sale would come to, worked out exactly as saving it would (nothing is written). */
-export interface DocPreview { subtotal: number; discount: number; tax: number; payable: number; balance: number; lines: { total: number }[] }
+export interface DocPreview { subtotal: number; discount: number; tax: number; payable: number; balance: number; lines: PreviewLine[] }
+/** A line as the web form shows it: price, Tax %, Disc % and Avail in the line's unit (pack or loose), and the batches it takes. */
+export interface PreviewLine { total: number; price?: number; taxPct?: number; discountPct?: number; batch?: string | null; avail?: number }
 /** preview: work out the totals and check stock, without numbering or saving anything. */
 export interface DocOptions { preview?: boolean }
 
@@ -202,7 +204,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
   const itemStmts: Stmt[] = [];
   const takes = new Map<string, number>();
   let total = 0, lineDiscount = 0, tax = 0;
-  const lineTotals: number[] = [];
+  const lineTotals: PreviewLine[] = [];
   for (const l of s.lines) {
     const p = products.get(l.productId);
     if (!p) throw new HttpError(400, "A product on this sale was not found.");
@@ -234,7 +236,15 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
         args: [newId(), s.id, l.productId, part.batch.batch_no, num(p.packing) || 1, (p.base_unit_id as string | null) ?? null, part.batch.qty, part.qty, part.bonus, part.batch.purchase_price, price, taxPct, m.tax, discountPct, m.discountRs, m.total, tenantId, now, now],
       });
     }
-    lineTotals.push(round2(lineTotal));
+    const per = loose ? packing : 1;
+    lineTotals.push({
+      total: round2(lineTotal),
+      price: round2(price / per),
+      taxPct,
+      discountPct,
+      batch: [...new Set(parts.map((x) => x.batch.batch_no).filter(Boolean))].join(", ") || null,
+      avail: Math.round(batches.reduce((t, b) => t + b.qty, 0) * per * 1000) / 1000,
+    });
   }
   const discountRs = round2(num(s.discountRs));
   const charges = round2(num(s.charges));
@@ -243,7 +253,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
   const paid = round2(num(s.paid));
   const balance = round2(payable - paid);
   const invOn = s.invOn === "credit" ? "credit" : "cash";
-  if (opts.preview) return { subtotal: round2(total), discount: round2(lineDiscount + discountRs), tax: round2(tax), payable, balance, lines: lineTotals.map((t) => ({ total: t })) };
+  if (opts.preview) return { subtotal: round2(total), discount: round2(lineDiscount + discountRs), tax: round2(tax), payable, balance, lines: lineTotals };
   if (invOn === "credit" && !s.customerId && !customerName) throw new HttpError(400, "A credit sale needs a customer.");
 
   const invoiceNo = await nextNo(run, "invoices", tenantId);

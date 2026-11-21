@@ -14,7 +14,7 @@ export async function GET(req: Request): Promise<Response> {
     if (!caller.tenantId) throw new HttpError(403, "This login is not attached to a business.");
     const u = new URL(req.url);
     const kind = u.searchParams.get("kind");
-    if (kind !== "customer" && kind !== "supplier") throw new HttpError(400, "Ask for customers or suppliers.");
+    if (kind !== "customer" && kind !== "supplier" && kind !== "salesman") throw new HttpError(400, "Ask for customers, suppliers or salesmen.");
     const branch = await branchScopeFor(sqlForServer(), caller, req.headers.get("x-branch"));
     const ip = clientIp(req);
     const run: Runner = (stmts, batch) => runForCaller(caller, stmts, batch, ip, branch);

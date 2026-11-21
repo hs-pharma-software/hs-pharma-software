@@ -205,7 +205,22 @@ export interface AppDashboard {
   lowStock: { id: string; name: string; qty: number }[];
   expiring: { id: string; product: string; batchNo: string | null; expiry: string; qty: number }[];
   recentInvoices: { id: string; invoiceNo: number | null; date: string; customer: string; total: number; balance: number }[];
+  /** The web Dashboard's second row and footer: what customers owe, what is owed to suppliers, and counts. */
+  totals: { receivable: number; payable: number; products: number; customers: number; suppliers: number };
+  topSelling: { id: string; name: string; qty: number; sales: number }[];
 }
+
+/** Opening balance + unpaid bills - payments received/made (lib/repo/ledger.ts getTotalPartyBalance). */
+const partyBalance = (table: "customers" | "suppliers") => {
+  const trade = table === "customers" ? "invoices" : "purchases";
+  const fk = table === "customers" ? "customer_id" : "supplier_id";
+  const party = table === "customers" ? "customer" : "supplier";
+  return `SELECT COALESCE(SUM(COALESCE(p.opening_balance, 0)
+            + COALESCE((SELECT SUM(CASE WHEN is_return = 0 THEN balance ELSE -balance END) FROM ${trade} WHERE ${fk} = p.id AND tenant_id = ? AND deleted_at IS NULL${table === "customers" ? " AND is_quotation = 0" : ""}), 0)
+            - COALESCE((SELECT SUM(paid_amount) FROM ledger_adjustments WHERE tenant_id = ? AND party_type = '${party}' AND party_id = p.id AND deleted_at IS NULL), 0)), 0) AS n,
+          COUNT(*) AS c
+          FROM ${table} p WHERE p.deleted_at IS NULL AND p.tenant_id = ?`;
+};
 
 /** Today's figures, low stock, batches expiring within 180 days and the latest invoices: the same rules as the web Dashboard. */
 export async function appDashboard(run: Runner, caller: Caller, today: string): Promise<AppDashboard> {
@@ -249,6 +264,17 @@ export async function appDashboard(run: Runner, caller: Caller, today: string): 
             FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id
             WHERE i.deleted_at IS NULL AND i.tenant_id = ? AND i.is_return = 0 AND i.is_memorized = 0 AND i.is_quotation = 0
             ORDER BY i.created_at DESC LIMIT 6`, args: [T] },
+    { sql: partyBalance("customers"), args: [T, T, T] },
+    { sql: partyBalance("suppliers"), args: [T, T, T] },
+    { sql: `SELECT COUNT(*) AS n FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(product_classification, '') <> 'pra_service'`, args: [T] },
+    { sql: `SELECT p.id, p.name,
+                   SUM(CASE WHEN i.is_return = 0 THEN ii.qty ELSE -ii.qty END) AS qty,
+                   SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales
+            FROM invoice_items ii
+            JOIN invoices i ON i.id = ii.invoice_id
+            JOIN products p ON p.id = ii.product_id AND (p.tenant_id = ii.tenant_id OR p.tenant_id IS NULL)
+            WHERE i.deleted_at IS NULL AND ii.deleted_at IS NULL AND i.tenant_id = ? AND i.is_memorized = 0 AND i.is_quotation = 0
+            GROUP BY p.id HAVING sales > 0 ORDER BY sales DESC LIMIT 5`, args: [T] },
   ], false);
   const n = (i: number, col = "n") => num(rowsOf(res[i])[0]?.[col]);
   const expenses = n(1);
@@ -262,6 +288,8 @@ export async function appDashboard(run: Runner, caller: Caller, today: string): 
     lowStock: rowsOf(res[9]).map((x) => ({ id: String(x.id), name: String(x.name ?? ""), qty: num(x.avail_qty) })),
     expiring: rowsOf(res[10]).map((x) => ({ id: String(x.id), product: String(x.product_name ?? ""), batchNo: strOrNull(x.batch_no), expiry: String(x.expiry_date), qty: num(x.qty) })),
     recentInvoices: rowsOf(res[11]).map((x) => ({ id: String(x.id), invoiceNo: x.invoice_no == null ? null : num(x.invoice_no), date: String(x.date ?? ""), customer: String(x.customer_name), total: num(x.total), balance: num(x.balance) })),
+    totals: { receivable: n(12), payable: n(13), products: n(14), customers: n(12, "c"), suppliers: n(13, "c") },
+    topSelling: rowsOf(res[15]).map((x) => ({ id: String(x.id), name: String(x.name ?? ""), qty: num(x.qty), sales: num(x.sales) })),
   };
 }
 
@@ -340,12 +368,14 @@ export async function invoiceDetail(run: Runner, tenantId: string, id: string): 
 
 export interface AppParty { id: string; name: string; phone: string | null; detail: string | null }
 
-/** Customers or suppliers of the business by name or phone, at most 30. */
-export async function searchParties(run: Runner, tenantId: string, kind: "customer" | "supplier", search: string | null): Promise<AppParty[]> {
+export type PartyKind = "customer" | "supplier" | "salesman";
+
+/** Customers, suppliers or salesmen of the business by name or phone, at most 30. */
+export async function searchParties(run: Runner, tenantId: string, kind: PartyKind, search: string | null): Promise<AppParty[]> {
   const term = (search ?? "").trim().slice(0, 60);
   const like = `%${term}%`;
-  const table = kind === "customer" ? "customers" : "suppliers";
-  const detail = kind === "customer" ? "area" : "company_name";
+  const table = kind === "customer" ? "customers" : kind === "supplier" ? "suppliers" : "salesmen";
+  const detail = kind === "customer" ? "area" : kind === "supplier" ? "company_name" : "NULL";
   const [r] = await run([{
     sql: `SELECT id, name, phone, ${detail} AS detail FROM ${table}
           WHERE tenant_id = ? AND deleted_at IS NULL ${term ? "AND (name LIKE ? OR phone LIKE ?)" : ""}

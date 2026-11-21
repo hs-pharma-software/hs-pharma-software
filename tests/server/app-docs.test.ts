@@ -223,6 +223,9 @@ test("preview: the totals the save will come to, line by line, with nothing writ
   assert.equal(one(`SELECT COUNT(*) AS n FROM invoices WHERE id = ?`, SALE_ID).n, 0, "nothing saved");
   const pan = saleLineMath(100, 3, 10, 0, 17);
   assert.equal(p.lines[0].total, Math.round(pan.total * 100) / 100);
+  // Each line as the web form shows it: price, Tax %, Disc %, the batches taken (earliest expiry first) and Avail, in the line's unit.
+  assert.deepEqual({ ...p.lines[0], total: 0 }, { total: 0, price: 100, taxPct: 17, discountPct: 10, batch: "A1, A2", avail: 7 });
+  assert.deepEqual({ ...p.lines[1], total: 0 }, { total: 0, price: Math.round((600 / 21) * 100) / 100, taxPct: 0, discountPct: 0, batch: "R1", avail: 21 });
   const saved = await createSale(run, "t1", body, TODAY);
   assert.equal(p.payable, saved.payable);
   assert.equal(p.balance, saved.balance);

@@ -39,6 +39,31 @@ class NumField extends StatelessWidget {
   }
 }
 
+/// A form (Create Invoice, Add Purchase) as its own page; Back asks the form first.
+class FormPage extends StatelessWidget {
+  const FormPage({super.key, required this.title, required this.guard, required this.child});
+  final String title;
+  final GlobalKey guard;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final g = guard.currentState;
+        if (g is BackGuard && await g.handleBack()) return;
+        if (context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: child,
+      ),
+    );
+  }
+}
+
 Future<bool> confirmDiscard(BuildContext context, String what) async {
   final r = await showDialog<bool>(
     context: context,

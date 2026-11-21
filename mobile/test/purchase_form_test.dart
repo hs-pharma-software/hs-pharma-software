@@ -7,6 +7,7 @@ import 'package:mavin_business/core/api.dart';
 import 'package:mavin_business/core/app_state.dart';
 import 'package:mavin_business/main.dart';
 import 'package:mavin_business/ui/purchase_screen.dart';
+import 'package:mavin_business/ui/theme.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// A fake MAVIN.pk: two products, one with a visible purchase price, and the preview totals.
@@ -36,12 +37,15 @@ MockClient fakeServer(List<http.Request> seen) => MockClient((req) async {
 
 /// Types in the search at the top of the form and taps the match.
 Future<void> addProduct(WidgetTester t, String name) async {
-  await t.enterText(find.widgetWithText(TextField, 'Search product to add, or scan barcode'), name.substring(0, 3));
+  await t.enterText(find.widgetWithText(TextField, 'Type to search...'), name.substring(0, 3));
   await t.pump(const Duration(milliseconds: 300));
   await t.pumpAndSettle();
-  await t.tap(find.text(name).last);
+  await t.tap(find.textContaining(name).last);
   await t.pumpAndSettle();
 }
+
+/// The input under a website-style label ("Quantity").
+Finder field(String label) => find.descendant(of: find.widgetWithText(LabeledField, label), matching: find.byType(TextField));
 
 void main() {
   testWidgets('the next product closes the previous row and keeps its values; missing details are flagged', (t) async {
@@ -54,14 +58,14 @@ void main() {
 
     await addProduct(t, 'Panadol');
     // The new row is open with the latest purchase price and the sale price filled in.
-    expect(find.widgetWithText(TextField, 'Qty'), findsOneWidget);
+    expect(field('Quantity'), findsOneWidget);
     expect(find.widgetWithText(TextField, '300'), findsOneWidget);
-    await t.enterText(find.widgetWithText(TextField, 'Qty'), '10');
+    await t.enterText(field('Quantity'), '10');
     await t.pumpAndSettle();
 
     await addProduct(t, 'Risek');
     // One row open at a time: Risek now.
-    expect(find.widgetWithText(TextField, 'Qty'), findsOneWidget);
+    expect(field('Quantity'), findsOneWidget);
     expect(find.widgetWithText(TextField, '10'), findsNothing);
 
     // Close Risek (no quantity yet): it shows what is missing.

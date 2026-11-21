@@ -122,6 +122,8 @@ test("home: today's sales and money in/out, low stock, expiring batches, recent 
   assert.ok(!d.lowStock.some((x) => x.name === "Panadol"), "48 in stock is not low");
   assert.deepEqual(d.expiring.map((x) => x.batchNo), [], "nothing expires within 180 days of the 21st");
   assert.deepEqual(d.recentInvoices.slice(0, 2).map((x) => x.invoiceNo).sort(), [1, 2]);
+  // No customers or suppliers yet: nothing owed; 5 products of this business.
+  assert.deepEqual(d.totals, { receivable: 0, payable: 0, products: 5, customers: 0, suppliers: 0 });
   await assert.rejects(appDashboard(await runner({ ...cashier, permissions: ["invoices"] }), { ...cashier, permissions: ["invoices"] }, "2026-11-21"), /no access to the Dashboard/);
 });
 
@@ -159,4 +161,20 @@ test("customers and suppliers: by name or phone, this business only", async () =
   assert.deepEqual((await searchParties(run, "t1", "customer", "bilal")).map((x) => x.id), ["c1"]);
   assert.deepEqual((await searchParties(run, "t1", "customer", "0300123")).map((x) => x.id), ["c1"]);
   assert.deepEqual((await searchParties(run, "t1", "supplier", null)).map((x) => [x.name, x.detail]), [["Muller & Phipps", "M&P"]]);
+  r(`INSERT INTO salesmen (id, tenant_id, name, phone, created_at, updated_at) VALUES ('sm1', 't1', 'Imran', '0300', ?, ?)`, T, T);
+  assert.deepEqual((await searchParties(run, "t1", "salesman", null)).map((x) => x.name), ["Imran"]);
+});
+
+test("home: what customers owe and what is owed to suppliers (opening balance + unpaid bills - payments), top selling", async () => {
+  r(`INSERT INTO customers (id, tenant_id, name, opening_balance, created_at, updated_at) VALUES ('c1', 't1', 'Bilal', 100, ?, ?)`, T, T);
+  r(`INSERT INTO suppliers (id, tenant_id, name, opening_balance, created_at, updated_at) VALUES ('s1', 't1', 'Distributor', 0, ?, ?)`, T, T);
+  r(`INSERT INTO invoices (id, tenant_id, customer_id, invoice_no, date, total, payable, paid, balance, is_return, is_memorized, is_quotation, created_at, updated_at) VALUES ('i1', 't1', 'c1', 1, '2026-11-21', 500, 500, 200, 300, 0, 0, 0, ?, ?)`, T, T);
+  r(`INSERT INTO invoice_items (id, invoice_id, product_id, tenant_id, qty, sale_price, total, created_at, updated_at) VALUES ('ii1', 'i1', 'p0', 't1', 2, 250, 500, ?, ?)`, T, T);
+  r(`INSERT INTO ledger_adjustments (id, tenant_id, party_type, party_id, paid_amount, date, created_at, updated_at) VALUES ('la1', 't1', 'customer', 'c1', 50, '2026-11-21', ?, ?)`, T, T);
+  r(`INSERT INTO purchases (id, tenant_id, supplier_id, purchase_no, date, balance, is_return, created_at, updated_at) VALUES ('pu1', 't1', 's1', 1, '2026-11-21', 1200, 0, ?, ?)`, T, T);
+  const d = await appDashboard(await runner(owner), owner, "2026-11-21");
+  assert.equal(d.totals.receivable, 350);
+  assert.equal(d.totals.payable, 1200);
+  assert.equal(d.totals.customers, 1);
+  assert.deepEqual(d.topSelling.map((x) => [x.name, x.qty, x.sales]), [["Panadol", 2, 500]]);
 });

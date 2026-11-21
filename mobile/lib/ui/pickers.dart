@@ -78,8 +78,6 @@ class _ProductPickerState extends State<ProductPicker> {
               decoration: InputDecoration(
                 hintText: 'Search name or barcode',
                 prefixIcon: const Icon(Icons.search_rounded),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
               ),
             ),
           ),
@@ -180,8 +178,6 @@ class _PartyPickerState extends State<PartyPicker> {
               decoration: InputDecoration(
                 hintText: 'Search name or mobile',
                 prefixIcon: const Icon(Icons.search_rounded),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
               ),
             ),
           ),
