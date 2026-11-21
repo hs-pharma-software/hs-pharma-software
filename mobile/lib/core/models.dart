@@ -110,7 +110,7 @@ class Bootstrap {
 }
 
 class ProductRow {
-  ProductRow({required this.id, required this.name, required this.qty, required this.salePrice, this.unit, this.packing = 1});
+  ProductRow({required this.id, required this.name, required this.qty, required this.salePrice, this.unit, this.packing = 1, this.barcode});
   factory ProductRow.fromJson(Map<String, dynamic> j) => ProductRow(
         id: '${j['id']}',
         name: '${j['name']}',
@@ -118,9 +118,11 @@ class ProductRow {
         salePrice: _num(j['salePrice']),
         unit: _str(j['unit']),
         packing: _num(j['packing']) > 0 ? _num(j['packing']) : 1,
+        barcode: _str(j['barcode']),
       );
   final String id;
   final String name;
+  final String? barcode;
   final double qty;
   final double salePrice;
   final String? unit;

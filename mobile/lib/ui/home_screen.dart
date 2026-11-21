@@ -64,12 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
-                childAspectRatio: 2.1,
+                childAspectRatio: 1.75,
                 children: [
-                  _Tile('Today\'s sales', rs(d.sales)),
-                  _Tile('Invoices today', '${d.invoiceCount}'),
-                  _Tile('Money in', rs(d.cashIn)),
-                  _Tile('Money out', rs(d.cashOut), note: 'Expenses ${rs(d.expenses)}'),
+                  _Tile('Today\'s sales', rs(d.sales), icon: Icons.trending_up_rounded, color: mavinBlue),
+                  _Tile('Invoices today', '${d.invoiceCount}', icon: Icons.receipt_long_rounded, color: const Color(0xFF7A5AF8)),
+                  _Tile('Money in', rs(d.cashIn), icon: Icons.south_west_rounded, color: mavinGreen),
+                  _Tile('Money out', rs(d.cashOut), note: 'Expenses ${rs(d.expenses)}', icon: Icons.north_east_rounded, color: noStock),
                 ],
               ),
             ),
@@ -124,21 +124,31 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile(this.label, this.value, {this.note});
+  const _Tile(this.label, this.value, {this.note, required this.icon, required this.color});
   final String label;
   final String value;
   final String? note;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF667085))),
-          const SizedBox(height: 2),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w500))),
-          if (note != null) Text(note!, style: const TextStyle(fontSize: 11, color: Color(0xFF667085))),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Row(children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(9)),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: muted, fontWeight: FontWeight.w500))),
+          ]),
+          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF101828), letterSpacing: -.3))),
+          if (note != null) Text(note!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: muted)),
         ]),
       ),
     );

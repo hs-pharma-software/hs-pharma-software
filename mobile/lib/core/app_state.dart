@@ -36,10 +36,15 @@ class AppState extends ChangeNotifier {
 
   static const _kToken = 'session_token';
   static const _kBranch = 'branch_id';
+  static const _kLastUser = 'last_username';
+
+  /// Filled in on the sign-in screen (the username only, never the password).
+  String? lastUsername;
 
   /// On launch: a saved session is renewed and the business loaded, else the sign-in screen.
   Future<void> start() async {
     final token = await _storage.read(key: _kToken);
+    lastUsername = await _storage.read(key: _kLastUser);
     if (token == null) {
       status = AuthStatus.signedOut;
       notifyListeners();
@@ -60,6 +65,8 @@ class AppState extends ChangeNotifier {
     api.branchId = null;
     await _storage.write(key: _kToken, value: token);
     await _storage.delete(key: _kBranch);
+    lastUsername = username.trim();
+    await _storage.write(key: _kLastUser, value: lastUsername);
     notice = null;
     _renewedAt = DateTime.now();
     status = AuthStatus.signedIn;

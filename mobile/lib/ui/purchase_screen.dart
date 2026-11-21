@@ -9,6 +9,7 @@ import '../core/models.dart';
 import '../main.dart';
 import 'form_bits.dart';
 import 'pickers.dart';
+import 'product_search.dart';
 import 'theme.dart';
 
 class _PurLine {
@@ -75,10 +76,18 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
   Timer? _debounce;
   int _gen = 0;
   final _scroll = ScrollController();
+  late final ProductSearch _search = ProductSearch(api: apiOf(context), sale: false);
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _search.dispose();
     for (final c in [_supplierInv, _discount, _paid, _note]) {
       c.dispose();
     }
@@ -152,9 +161,10 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
     _changed();
   }
 
-  Future<void> _addProduct() async {
-    final p = await Navigator.push<ProductRow>(context, MaterialPageRoute(builder: (_) => const ProductPicker(title: 'Add to purchase')));
-    if (p == null || !mounted) return;
+  /// From the search: a new row, opened for its quantity and rates (the previous row closes).
+  Future<void> _addProduct(ProductRow p) async {
+    _search.clear();
+    FocusScope.of(context).unfocus();
     // Rates to start from: the latest batch's purchase price (when this login may see it) and the sale price.
     double? rate;
     try {
@@ -255,6 +265,10 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
 
   @override
   Future<bool> handleBack() async {
+    if (_search.open) {
+      _search.clear();
+      return true;
+    }
     if (_open >= 0) {
       setState(() => _open = -1);
       return true;
@@ -370,9 +384,11 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
   Widget build(BuildContext context) {
     final t = _totals;
     final paid = _paid.text.trim().isNotEmpty ? numOf(_paid) : 0.0;
-    return Column(children: [
-      Expanded(
-        child: ListView(controller: _scroll, padding: const EdgeInsets.only(bottom: 16), children: [
+    final form = ListView(
+        controller: _scroll,
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: [
           const SectionLabel('Supplier'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -403,15 +419,11 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
           ),
           SectionLabel('Products · ${_lines.length}'),
           for (var i = 0; i < _lines.length; i++) _row(i),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: OutlinedButton.icon(
-              onPressed: _addProduct,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(_lines.isEmpty ? 'Add product' : 'Add another product'),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), backgroundColor: Colors.white),
+          if (_lines.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: Text('Search above (name or barcode) and tap a product to add it.', style: TextStyle(color: muted)),
             ),
-          ),
           const SectionLabel('Payment'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -425,17 +437,24 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
               TextField(controller: _note, decoration: const InputDecoration(labelText: 'Description (optional)')),
             ]),
           ),
+        ]);
+    return Column(children: [
+      ProductSearchBar(search: _search, onPick: _addProduct, hint: 'Search product to add, or scan barcode'),
+      Expanded(
+        child: Stack(children: [
+          Positioned.fill(child: form),
+          if (_search.open) Positioned.fill(child: ProductSearchResults(search: _search, onPick: _addProduct)),
         ]),
       ),
-      TotalsBar(
-        label: 'Payable · ${_lines.length} products',
+      if (!_search.open) TotalsBar(
+        label: '${_lines.length} ${_lines.length == 1 ? 'product' : 'products'}',
         payable: t?.payable,
         balance: t == null ? null : t.payable - paid,
         problem: _problem,
         onProblem: _showFirstProblem,
         pending: _pending,
         busy: _saving,
-        action: 'Save purchase',
+        action: 'Save',
         onAction: _save,
       ),
     ]);

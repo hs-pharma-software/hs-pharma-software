@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'core/app_state.dart';
@@ -5,6 +6,9 @@ import 'ui/login_screen.dart';
 import 'ui/shell.dart';
 import 'ui/states.dart';
 import 'ui/theme.dart';
+
+/// Shown on the sign-in screen; keep in step with `version:` in pubspec.yaml.
+const appVersion = '3.1.0';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,15 +72,47 @@ class _Root extends StatelessWidget {
     final s = AppScope.of(context);
     switch (s.status) {
       case AuthStatus.starting:
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        return const StartScreen();
       case AuthStatus.signedOut:
         return const LoginScreen();
       case AuthStatus.signedIn:
         if (s.boot != null) return const Shell();
         if (s.bootError != null) {
-          return Scaffold(body: SafeArea(child: StateMessage.error(s.bootError!, onRetry: s.loadBootstrap)));
+          return Scaffold(backgroundColor: Colors.white, body: SafeArea(child: StateMessage.error(s.bootError!, onRetry: s.loadBootstrap)));
         }
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        return const StartScreen(message: 'Opening your business…');
     }
+  }
+}
+
+/// The first screen while the app starts: white with the MAVIN mark, exactly
+/// where the system splash left it, then the wordmark and a thin progress bar.
+class StartScreen extends StatelessWidget {
+  const StartScreen({super.key, this.message});
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.white),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Column(children: [
+            const Spacer(),
+            const MavinMark(size: 112),
+            const SizedBox(height: 18),
+            const Text('MAVIN Business', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: mavinNavy, letterSpacing: -.3)),
+            const SizedBox(height: 4),
+            const Text('Aap ke business ka muawin', style: TextStyle(fontSize: 13.5, color: muted)),
+            const Spacer(),
+            SizedBox(width: 140, child: ClipRRect(borderRadius: BorderRadius.circular(4), child: const LinearProgressIndicator(minHeight: 3))),
+            const SizedBox(height: 12),
+            Text(message ?? '', style: const TextStyle(fontSize: 12.5, color: muted)),
+            const SizedBox(height: 36),
+          ]),
+        ),
+      ),
+    );
   }
 }

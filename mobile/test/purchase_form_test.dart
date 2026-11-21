@@ -34,11 +34,12 @@ MockClient fakeServer(List<http.Request> seen) => MockClient((req) async {
       return http.Response(jsonEncode({'error': 'not in this test'}), 404);
     });
 
+/// Types in the search at the top of the form and taps the match.
 Future<void> addProduct(WidgetTester t, String name) async {
-  await t.ensureVisible(find.byType(OutlinedButton));
-  await t.tap(find.byType(OutlinedButton));
+  await t.enterText(find.widgetWithText(TextField, 'Search product to add, or scan barcode'), name.substring(0, 3));
+  await t.pump(const Duration(milliseconds: 300));
   await t.pumpAndSettle();
-  await t.tap(find.text(name));
+  await t.tap(find.text(name).last);
   await t.pumpAndSettle();
 }
 
@@ -75,7 +76,7 @@ void main() {
 
     // Saving without a supplier is refused before anything is sent.
     final posts = seen.where((r) => r.method == 'POST').length;
-    await t.tap(find.text('Save purchase'));
+    await t.tap(find.text('Save'));
     await t.pumpAndSettle();
     expect(find.text('Choose the supplier.'), findsOneWidget);
     expect(seen.where((r) => r.method == 'POST' && !r.url.query.contains('preview')).length, 0);

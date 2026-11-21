@@ -55,10 +55,18 @@ class Api {
     return _send(() => _client.post(uri, headers: _headers(json: true), body: jsonEncode(body)));
   }
 
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function() call) async {
-    http.Response res;
+  /// A file from MAVIN.pk (the invoice PDF): the bytes, or the server's error in words.
+  Future<List<int>> postBytes(String path, Object body) async {
+    final uri = Uri.parse('$apiBase$path');
+    final res = await _call(() => _client.post(uri, headers: _headers(json: true), body: jsonEncode(body)), timeout: const Duration(seconds: 60));
+    if (res.statusCode >= 200 && res.statusCode < 300) return res.bodyBytes;
+    _decode(res);
+    throw ApiException('MAVIN.pk answered ${res.statusCode}. Try again.', status: res.statusCode);
+  }
+
+  Future<http.Response> _call(Future<http.Response> Function() call, {Duration timeout = _timeout}) async {
     try {
-      res = await call().timeout(_timeout);
+      return await call().timeout(timeout);
     } on SocketException {
       throw ApiException('No internet connection. Check the connection and try again.', offline: true);
     } on TimeoutException {
@@ -66,6 +74,11 @@ class Api {
     } on http.ClientException {
       throw ApiException('Could not reach MAVIN.pk. Check the connection and try again.', offline: true);
     }
+  }
+
+  Future<Map<String, dynamic>> _send(Future<http.Response> Function() call) async => _decode(await _call(call));
+
+  Map<String, dynamic> _decode(http.Response res) {
     Map<String, dynamic> body = const {};
     try {
       final decoded = jsonDecode(utf8.decode(res.bodyBytes));

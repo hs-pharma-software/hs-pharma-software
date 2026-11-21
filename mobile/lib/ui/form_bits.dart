@@ -88,42 +88,57 @@ class TotalsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final due = balance != null && balance!.abs() > 0.004;
     return Material(
       color: Colors.white,
-      elevation: 6,
+      elevation: 10,
+      shadowColor: const Color(0x33000000),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+          padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (problem != null)
               Padding(
-                padding: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.only(bottom: 8),
                 child: InkWell(
                   onTap: onProblem,
-                  child: Row(children: [
-                    const Icon(Icons.error_outline_rounded, size: 18, color: noStock),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(problem!, style: const TextStyle(color: noStock, fontSize: 13))),
-                  ]),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(color: const Color(0xFFFDECEC), borderRadius: BorderRadius.circular(10)),
+                    child: Row(children: [
+                      const Icon(Icons.error_outline_rounded, size: 18, color: noStock),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(problem!, style: const TextStyle(color: noStock, fontSize: 13, fontWeight: FontWeight.w500))),
+                    ]),
+                  ),
                 ),
               ),
-            Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-              Expanded(child: Text(label, style: const TextStyle(color: Color(0xFF667085)))),
-              if (pending) const Padding(padding: EdgeInsets.only(right: 8), child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))),
-              Text(payable == null ? '—' : rs(payable!), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600)),
+            Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Row(children: [
+                    Flexible(child: Text('Total · $label', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: muted, fontWeight: FontWeight.w500))),
+                    if (pending) const Padding(padding: EdgeInsets.only(left: 8), child: SizedBox(width: 11, height: 11, child: CircularProgressIndicator(strokeWidth: 1.8))),
+                  ]),
+                  const SizedBox(height: 2),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(payable == null ? 'Rs 0' : rs(payable!), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: Color(0xFF101828), letterSpacing: -.4)),
+                  ),
+                  if (due) Text('Balance ${rs(balance!)}', style: const TextStyle(fontSize: 12.5, color: noStock, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: busy ? null : onAction,
+                style: FilledButton.styleFrom(minimumSize: const Size(132, 52), padding: const EdgeInsets.symmetric(horizontal: 22)),
+                icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white)) : const Icon(Icons.check_rounded),
+                label: Text(busy ? 'Saving…' : action),
+              ),
             ]),
-            if (balance != null && balance!.abs() > 0.004)
-              Row(children: [
-                const Expanded(child: Text('Balance', style: TextStyle(fontSize: 12.5, color: Color(0xFF667085)))),
-                Text(rs(balance!), style: const TextStyle(fontSize: 12.5, color: noStock, fontWeight: FontWeight.w500)),
-              ]),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: busy ? null : onAction,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              child: Text(busy ? 'Saving…' : action),
-            ),
           ]),
         ),
       ),

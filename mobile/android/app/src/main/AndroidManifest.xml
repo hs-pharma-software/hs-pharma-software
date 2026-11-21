@@ -42,5 +42,12 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Sending an invoice: WhatsApp links (wa.me) and the share sheet. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <package android:name="com.whatsapp"/>
+        <package android:name="com.whatsapp.w4b"/>
     </queries>
 </manifest>

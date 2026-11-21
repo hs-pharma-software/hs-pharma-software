@@ -6,6 +6,7 @@ import '../core/api.dart';
 import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
+import 'invoice_share.dart';
 import 'states.dart';
 import 'theme.dart';
 
@@ -293,7 +294,32 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
         ]),
       );
     }
-    return Scaffold(appBar: AppBar(title: Text(no == null ? 'Invoice' : 'Invoice #$no')), body: body);
+    final share = d != null && canShareInvoices(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(no == null ? 'Invoice' : 'Invoice #$no'),
+        actions: [if (share) IconButton(tooltip: 'Send on WhatsApp', onPressed: () => shareInvoice(context, invoiceId: widget.id), icon: const Icon(Icons.share_rounded))],
+      ),
+      body: body,
+      bottomNavigationBar: !share
+          ? null
+          : Material(
+              color: Colors.white,
+              elevation: 8,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: whatsappGreen, minimumSize: const Size.fromHeight(50)),
+                    onPressed: () => shareInvoice(context, invoiceId: widget.id),
+                    icon: const Icon(Icons.chat_rounded),
+                    label: const Text('Send on WhatsApp'),
+                  ),
+                ),
+              ),
+            ),
+    );
   }
 
   Widget _heading(String t) => Padding(
