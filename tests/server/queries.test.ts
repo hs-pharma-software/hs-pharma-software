@@ -115,3 +115,28 @@ test("only the Super Admin can list, count or open queries", async () => {
   }
   assert.equal(await unreadCount(sql, ADMIN), 1, "a refused open does not mark it read");
 });
+
+test("Request for Windows: needs email, mobile and business type; saved as a query; emails the link and that type's demo login", async () => {
+  const { saveDemoLogins, getDemoLogins, sendWindowsRequest, demoLoginFor } = await import("@/server/windowsRequest");
+  const { WINDOWS_RELEASE } = await import("@/config/windowsRelease");
+  assert.throws(() => visitor({ kind: "windows", business: "", email: "", phone: "", businessType: "" }), (e: LeadError) =>
+    Boolean(e.fields.email && e.fields.phone && e.fields.businessType && !e.fields.business));
+  const lead = visitor({ kind: "windows", business: "", businessType: "Radiology Centre" })!;
+  await saveQuery(sql, lead);
+  const row = (await listQueries(sql, ADMIN)).rows[0];
+  assert.equal(row.kind, "demo");
+  assert.equal(row.topic, "Windows app request");
+
+  await assert.rejects(saveDemoLogins(sql, TENANT_OWNER, []), (e: HttpError) => e.status === 403, "only the Super Admin sets demo logins");
+  await saveDemoLogins(sql, ADMIN, [{ businessType: "Any", username: "demo", password: "demo-1234" }, { businessType: "Radiology Centre", username: "demo.radiology", password: "rad-1234", note: "Ultrasound and X-Ray ready" }]);
+  assert.equal((await getDemoLogins(sql, ADMIN)).length, 2);
+  await assert.rejects(saveDemoLogins(sql, ADMIN, [{ businessType: "Any", username: "a" }, { businessType: "any", username: "b" }]), /one demo login/);
+  assert.equal(demoLoginFor(await getDemoLogins(sql, ADMIN), "Restaurant POS")!.username, "demo", "other types get the Any login");
+
+  const sent: { to: string; text: string; html: string }[] = [];
+  await sendWindowsRequest(sql, async (m) => void sent.push(m), lead);
+  assert.equal(sent[0].to, "visitor@example.com");
+  assert.ok(sent[0].text.includes(WINDOWS_RELEASE.url), "the download link");
+  assert.ok(sent[0].text.includes("demo.radiology") && sent[0].text.includes("rad-1234"), "the radiology demo login");
+  assert.ok(!sent[0].html.includes("<b>not bold</b>"));
+});

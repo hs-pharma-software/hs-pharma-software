@@ -3,9 +3,11 @@ import { withSeoMeta } from "@/config/seoMeta";
 import { PageIntro, Section } from "@/components/site/chrome";
 import { ANDROID_RELEASE as R, androidReleaseDateLabel, androidSizeLabel } from "@/config/androidRelease";
 import { WINDOWS_RELEASE as W, windowsReleaseDateLabel, windowsSizeLabel } from "@/config/windowsRelease";
+import { SITE_PRODUCTS } from "@/config/siteProducts";
+import { WindowsRequestForm } from "@/components/site/WindowsRequestForm";
 
 const WINDOWS_INSTALL = [
-  ["Download", `Click "Download for Windows". The file is ${windowsSizeLabel()}.`],
+  ["Request", `Click "Request for Windows" and send the form. We email you the download link (${windowsSizeLabel()}) and a demo login.`],
   ["Run the installer", `Open ${W.fileName} from your Downloads folder.`],
   ["If Windows warns you", "Windows may show \"Windows protected your PC\" for new software. Click More info, check the file name, then click Run anyway."],
   ["Sign in", "Sign in once with your MAVIN.pk login while online. After that the app also works offline. To update, install the new version over the old one: your data is kept."],
@@ -101,12 +103,7 @@ export default function DownloadPage() {
                 <dt className="text-slate-400">Needs</dt><dd>{W.needs}; internet for the first sign-in on each computer</dd>
               </dl>
             </div>
-            <a
-              href={W.url}
-              className="inline-flex min-h-12 items-center justify-center rounded-lg bg-[#0b2a6b] px-6 py-3 text-base font-semibold text-white hover:bg-[#1565c0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1565c0]"
-            >
-              Download for Windows
-            </a>
+            <WindowsRequestForm businessTypes={SITE_PRODUCTS.map((p) => p.name)} />
           </div>
         </Section>
 

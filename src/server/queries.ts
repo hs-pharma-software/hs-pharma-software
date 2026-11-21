@@ -15,8 +15,9 @@ export async function saveQuery(sql: Sql, lead: Lead, now = new Date().toISOStri
     `INSERT INTO site_queries (id, submission_key, kind, name, business_name, business_type, branches, phone, email, message, topic, status, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unread', ?)
      ON CONFLICT(submission_key) DO NOTHING`,
-    [randomUUID(), lead.submissionKey, lead.kind, lead.name, lead.business || null, lead.businessType || null, lead.branches || null,
-      lead.phone || null, lead.email || null, lead.workflow || null, lead.topic || null, now],
+    // A Windows request is saved as a demo request about the Windows app (the table knows demo and contact).
+    [randomUUID(), lead.submissionKey, lead.kind === "windows" ? "demo" : lead.kind, lead.name, lead.business || null, lead.businessType || null, lead.branches || null,
+      lead.phone || null, lead.email || null, lead.workflow || null, (lead.kind === "windows" ? "Windows app request" : lead.topic) || null, now],
   );
   return { duplicate: r.rowsAffected === 0 };
 }

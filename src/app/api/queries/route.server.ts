@@ -2,6 +2,7 @@
 import { callerOf, jsonError, HttpError } from "@/server/db";
 import { listQueries, openQuery, unreadCount } from "@/server/queries";
 import { sqlForServer } from "@/server/subSupersApi";
+import { getDemoLogins, saveDemoLogins } from "@/server/windowsRequest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,13 +11,15 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const caller = await callerOf(req);
     const sql = sqlForServer();
-    const b = (await req.json().catch(() => ({}))) as { action?: string; id?: string; filter?: string; q?: string };
+    const b = (await req.json().catch(() => ({}))) as { action?: string; id?: string; filter?: string; q?: string; logins?: unknown };
     switch (b.action) {
       case "unread": return Response.json({ result: { unread: await unreadCount(sql, caller) } });
       case "list": return Response.json({ result: await listQueries(sql, caller, b) });
       case "open":
         if (!b.id) throw new HttpError(400, "Missing id.");
         return Response.json({ result: await openQuery(sql, caller, b.id) });
+      case "demoLogins": return Response.json({ result: await getDemoLogins(sql, caller) });
+      case "saveDemoLogins": return Response.json({ result: await saveDemoLogins(sql, caller, b.logins) });
       default: throw new HttpError(400, "Unknown action.");
     }
   } catch (e) {

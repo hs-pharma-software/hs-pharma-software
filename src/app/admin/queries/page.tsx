@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Field";
 import { subSupersAvailable, when } from "@/lib/subSupersClient";
 import { announceUnread, queriesCall, type SiteQuery } from "@/lib/queriesClient";
 import { ListState, Notice, errText } from "@/components/subsupers/shared";
+import { WindowsDemoLoginsCard } from "@/components/admin/WindowsDemoLoginsCard";
 
 /** Super Admin > Queries: website Contact Us and Book a Demo submissions.
  * Opening this page changes nothing; a query is marked read only when its
@@ -66,6 +67,7 @@ export default function QueriesPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Queries" actions={<Button onClick={() => void load()}>Refresh</Button>} />
+      <WindowsDemoLoginsCard />
       <div className="flex flex-wrap items-center gap-3">
         <div role="group" aria-label="Show" className="flex gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5 text-xs">
           {(["all", "unread"] as const).map((f) => (

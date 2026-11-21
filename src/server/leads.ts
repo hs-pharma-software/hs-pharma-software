@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
-export const LEAD_KINDS = ["demo", "contact"] as const;
+/** "windows": a request for the Windows app (download link and demo login by email). */
+export const LEAD_KINDS = ["demo", "contact", "windows"] as const;
 export type LeadKind = (typeof LEAD_KINDS)[number];
 
 export interface Lead {
@@ -83,8 +84,12 @@ export function checkLead(input: LeadInput, ip: string | null, now = Date.now())
     : `hash:${createHash("sha256").update(JSON.stringify([kind, lead.name, lead.business, lead.phone, lead.email, lead.workflow])).digest("hex")}`;
   const fields: Record<string, string> = {};
   if (lead.name.length < 2) fields.name = "Enter your name.";
-  if (lead.business.length < 2) fields.business = "Enter your business name.";
-  if (!lead.phone && !lead.email) fields.phone = "Enter a phone number or an email address.";
+  if (kind !== "windows" && lead.business.length < 2) fields.business = "Enter your business name.";
+  if (kind === "windows") {
+    if (!lead.email) fields.email = "Enter your email address: the download link is sent there.";
+    if (!lead.phone) fields.phone = "Enter your mobile number.";
+    if (!lead.businessType) fields.businessType = "Choose your business type.";
+  } else if (!lead.phone && !lead.email) fields.phone = "Enter a phone number or an email address.";
   if (lead.phone && !/^\+?[0-9][0-9 -]{6,18}$/.test(lead.phone)) fields.phone = "Enter a phone number with digits only, for example 0300 1234567.";
   if (lead.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(lead.email)) fields.email = "Enter a valid email address.";
   if (kind === "demo" && !lead.businessType) fields.businessType = "Choose your business type.";
