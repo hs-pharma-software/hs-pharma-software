@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { printDirect } from "@/lib/print";
+import { fitToA4Page, printDirect } from "@/lib/print";
 import { publicRadiologyReportUrl } from "@/lib/publicUrl";
 import { RadiologyReportSheet } from "@/components/hospital/RadiologyReportSheet";
 import type { RadiologyReport } from "@/lib/repo/radiology";
@@ -18,7 +18,13 @@ export function RadiologyReportModal({ report: r, onClose }: { report: Radiology
     if (printing) return;
     setPrinting(true);
     try {
-      await printDirect("a4", areaRef.current);
+      // One page: a report slightly longer than A4 is shrunk so the radiologist and the QR code stay on it.
+      const restore = fitToA4Page(areaRef.current);
+      try {
+        await printDirect("a4", areaRef.current);
+      } finally {
+        restore();
+      }
     } catch (e) {
       window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

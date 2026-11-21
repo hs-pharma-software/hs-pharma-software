@@ -43,3 +43,24 @@ export async function printDirect(paper: PaperSize, area?: HTMLElement | null): 
     window.print();
   }
 }
+
+/** Shrinks `area` (at most to 75%) so it prints on a single A4 page, and
+ * returns a function that puts it back. A report whose signature and QR code
+ * would otherwise spill alone onto a second page then fits on one. */
+export function fitToA4Page(area: HTMLElement | null): () => void {
+  if (!area) return () => {};
+  const p = PAPERS.find((x) => x.id === "a4")!;
+  const prev = { width: area.style.width, maxWidth: area.style.maxWidth, zoom: area.style.zoom };
+  // Measured at the printed width, where lines wrap as they will on paper.
+  area.style.maxWidth = "none";
+  area.style.width = `${p.widthMm - p.marginMm * 2}mm`;
+  area.style.zoom = "1";
+  const pageHeight = (297 - p.marginMm * 2) * PX_PER_MM;
+  const height = area.scrollHeight;
+  area.style.width = prev.width;
+  area.style.maxWidth = prev.maxWidth;
+  // A little room for rounding by the printer.
+  const scale = height > pageHeight * 0.98 ? Math.max(0.75, (pageHeight * 0.97) / height) : 1;
+  area.style.zoom = scale < 1 ? String(scale) : prev.zoom;
+  return () => { area.style.zoom = prev.zoom; };
+}

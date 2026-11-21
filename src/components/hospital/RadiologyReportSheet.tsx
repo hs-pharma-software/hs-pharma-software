@@ -101,7 +101,7 @@ export function RadiologyReportSheet({ report: r, qrUrl }: { report: RadiologyRe
           <p className="whitespace-pre-line">{structured.note}</p>
         </div>
       )}
-      <div className="mt-6 flex items-end justify-between gap-4 break-inside-avoid text-xs">
+      <div className="mt-4 flex items-end justify-between gap-4 break-inside-avoid text-xs">
         <div>
           <p>Reported by <b>{o.radiologist ?? "—"}</b></p>
           <p className="text-neutral-500">Electronically generated report.</p>
@@ -109,7 +109,7 @@ export function RadiologyReportSheet({ report: r, qrUrl }: { report: RadiologyRe
         {qrUrl && (
           <div className="flex items-center gap-2 text-right">
             <p className="max-w-[28mm] text-[10px] leading-tight text-neutral-600">Scan to view this report online</p>
-            <div className="bg-white p-1 ring-1 ring-neutral-300"><QRCode value={qrUrl} size={72} style={{ width: 72, height: 72 }} viewBox="0 0 256 256" /></div>
+            <div className="bg-white p-1 ring-1 ring-neutral-300"><QRCode value={qrUrl} size={64} style={{ width: 64, height: 64 }} viewBox="0 0 256 256" /></div>
           </div>
         )}
       </div>
