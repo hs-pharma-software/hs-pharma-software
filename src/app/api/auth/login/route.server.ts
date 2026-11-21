@@ -2,7 +2,7 @@
  * (httpOnly cookie). Repeated failures from one address are slowed down. */
 import { serverConfig } from "@/server/config";
 import { clientIp, jsonError, passwordHash, serverDb, HttpError } from "@/server/db";
-import { issueSession, sessionCookie, SESSION_HOURS } from "@/server/session";
+import { issueSession, sessionCookie, sessionSeconds } from "@/server/session";
 import { sqlForServer } from "@/server/subSupersApi";
 import { portalTenantFor } from "@/server/web/domains";
 import { timingSafeEqual } from "node:crypto";
@@ -48,11 +48,14 @@ export async function POST(req: Request): Promise<Response> {
     const portalTenant = await portalTenantFor(sqlForServer(), req.headers.get("host"));
     if (portalTenant && String(u.tenant_id ?? "") !== portalTenant) throw new HttpError(401, "Incorrect username or password.");
     failures.delete(key);
-    const { token } = issueSession(String(u.id), serverConfig().sessionSecret);
+    // The MAVIN Windows app's pages stay signed in between openings (renewed while in use).
+    const desktopApp = req.headers.get("x-mavin-client") === "desktop";
+    const { token } = issueSession(String(u.id), serverConfig().sessionSecret, Date.now(), { desktop: desktopApp });
+    const seconds = sessionSeconds(desktopApp);
     const secure = new URL(req.url).protocol === "https:";
     // The desktop app keeps the token itself and sends it as a Bearer header.
-    const body = client === "desktop" ? { userId: String(u.id), token, expiresInHours: SESSION_HOURS } : { userId: String(u.id) };
-    return Response.json(body, { headers: { "Set-Cookie": sessionCookie(token, SESSION_HOURS * 3600, secure) } });
+    const body = client === "desktop" ? { userId: String(u.id), token, expiresInHours: seconds / 3600 } : { userId: String(u.id) };
+    return Response.json(body, { headers: { "Set-Cookie": sessionCookie(token, seconds, secure) } });
   } catch (e) {
     return jsonError(e);
   }

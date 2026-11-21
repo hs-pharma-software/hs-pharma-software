@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { analyzeSql, authorize, type Caller } from "@/server/sqlPolicy";
-import { issueSession, verifySession, readCookie, sessionCookie } from "@/server/session";
+import { issueSession, verifySession, readCookie, sessionCookie, renewSession, sessionIssuedAt } from "@/server/session";
 
 const KNOWN = new Set(["hospital_patients", "hospital_episodes", "users", "tenants", "subscription_plans", "products", "invoices", "settings", "hospital_form_records", "schema_migrations", "dist_loc_points"]);
 const owner: Caller = { userId: "u1", role: "owner", tenantId: "t1" };
@@ -85,4 +85,24 @@ test("a staff login without any hospital section cannot reach hospital records",
   assert.equal(ok(sql, nurse).ok, true);
   assert.equal(ok(sql, full).ok, true, "a staff login with full access");
   assert.equal(ok("SELECT * FROM products WHERE tenant_id = ?", cashier).ok, true);
+});
+
+test("sessions: the Windows app stays signed in for 30 days; a session in use is renewed hourly", () => {
+  const secret = "x".repeat(40);
+  const H = 3600_000;
+  const desk = verifySession(issueSession("user-1", secret, 0, { desktop: true }).token, secret, 1)!;
+  assert.equal(desk.d, 1);
+  assert.ok(verifySession(issueSession("user-1", secret, 0, { desktop: true }).token, secret, 29 * 24 * H), "still signed in after 29 days");
+  assert.equal(verifySession(issueSession("user-1", secret, 0, { desktop: true }).token, secret, 31 * 24 * H), null, "ends after 30 unused days");
+  assert.equal(renewSession(desk, secret, 30 * 60_000), null, "not renewed within the hour");
+  const r = renewSession(desk, secret, 2 * H)!;
+  assert.equal(r.seconds, 30 * 24 * 3600);
+  const renewed = verifySession(r.token, secret, 2 * H + 1)!;
+  assert.equal(renewed.u, "user-1");
+  assert.equal(renewed.d, 1);
+  assert.equal(renewed.exp, 2 * H + 30 * 24 * H, "full length again from the renewal");
+  const web = verifySession(issueSession("user-2", secret, 0).token, secret, 1)!;
+  assert.equal(web.d, undefined);
+  assert.equal(renewSession(web, secret, 5 * H)!.seconds, 12 * 3600, "the web stays at 12 hours");
+  assert.equal(sessionIssuedAt({ u: "x", exp: 12 * H + 5 }), 5, "older sessions: issued 12 hours before expiry");
 });

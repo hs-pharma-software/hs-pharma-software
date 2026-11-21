@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
@@ -13,12 +13,14 @@ import {
 import { parseExam, SAFETY_CHECKS } from "@/config/radiologyPortal";
 import { Panel, Tabs, PriorityPill, StatusPill, ageGender, errMsg, openImages, imagesMissingReason, useAutoRefresh } from "@/components/hospital/radiology/common";
 import { UltrasoundReportForm } from "@/components/hospital/radiology/UltrasoundReportForm";
+import { NarrativePreview } from "@/components/hospital/radiology/NarrativePreview";
+import { narrativeView, suggestedConclusion } from "@/config/ultrasoundNarrative";
 import { ULTRASOUND_TEMPLATES, isUltrasoundStudy, templateForStudy, ultrasoundTemplate, type UsValues } from "@/config/ultrasoundReports";
 import { localDate } from "@/lib/localDate";
 
 type View = "to_report" | "unexamined" | "reported";
 
-interface ReportDraft { patternId: string; values: UsValues; findings: string; impression: string; recommendation: string; note: string }
+interface ReportDraft { patternId: string; values: UsValues; findings: string; impression: string; recommendation: string; note: string; edits?: Record<string, string> }
 
 /** What the doctor has typed, kept in this browser tab until the report is signed. */
 const draftKey = (orderId: string) => `radiology-report-draft:${orderId}`;
@@ -155,19 +157,24 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
   const [values, setValues] = useState<UsValues>(draft?.values ?? {});
   const [recommendation, setRecommendation] = useState(draft?.recommendation ?? "");
   const [note, setNote] = useState(draft?.note ?? "");
+  // The doctor's wording of the written-out report (values kept as entered).
+  const [edits, setEdits] = useState<Record<string, string>>(draft?.edits ?? {});
   const pattern = reported ? null : ultrasoundTemplate(patternId);
-  const usCtx = { gender: order.gender, reportDate: localDate() };
+  const usCtx = useMemo(() => ({ gender: order.gender, reportDate: localDate() }), [order.gender]);
+  const narrative = useMemo(() => (pattern ? narrativeView(pattern, values, usCtx, edits) : null), [pattern, values, usCtx, edits]);
+  const narrativeErrors = narrative?.paragraphs.filter((p) => p.error).length ?? 0;
 
   const signedRef = useRef(false);
   useEffect(() => {
     if (reported) return;
-    const t = setTimeout(() => { if (!signedRef.current) writeDraft(order.id, { patternId, values, findings, impression, recommendation, note }); }, 400);
+    const t = setTimeout(() => { if (!signedRef.current) writeDraft(order.id, { patternId, values, findings, impression, recommendation, note, edits }); }, 400);
     return () => clearTimeout(t);
-  }, [reported, order.id, patternId, values, findings, impression, recommendation, note]);
+  }, [reported, order.id, patternId, values, findings, impression, recommendation, note, edits]);
 
   function changePattern(id: string) {
     if (Object.keys(values).length && !window.confirm("Change the report pattern? The values entered so far will be cleared.")) return;
     setValues({});
+    setEdits({});
     setPatternId(id);
   }
 
@@ -186,7 +193,7 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
     try {
       await reportStudy(order.id, {
         findings: findings.trim() || null, impression, radiologist,
-        structured: pattern ? { template: pattern.id, values, recommendation, note } : null,
+        structured: pattern ? { template: pattern.id, values, recommendation, note, edits } : null,
       });
       signedRef.current = true;
       writeDraft(order.id, null);
@@ -243,9 +250,26 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
             </Field>
           )}
           {pattern
-            ? <UltrasoundReportForm template={pattern} values={values} onChange={setValues} ctx={usCtx} />
+            ? (
+              <>
+                <UltrasoundReportForm template={pattern} values={values} onChange={setValues} ctx={usCtx} />
+                <div>
+                  <p className="mb-1.5 text-sm font-semibold text-neutral-800">Report preview</p>
+                  <NarrativePreview template={pattern} gender={order.gender} paragraphs={narrative?.paragraphs ?? []} edits={edits} onEdits={setEdits} />
+                </div>
+              </>
+            )
             : <Field label="Findings"><Textarea id="rep-findings" rows={8} value={findings} readOnly={reported} onChange={(e) => setFindings(e.target.value)} /></Field>}
-          <Field label={pattern ? "Conclusion" : "Impression"} required><Textarea id="rep-impression" rows={3} value={impression} readOnly={reported} onChange={(e) => setImpression(e.target.value)} /></Field>
+          <Field label={pattern ? "Impression / conclusion (one point per line)" : "Impression"} required><Textarea id="rep-impression" rows={3} value={impression} readOnly={reported} onChange={(e) => setImpression(e.target.value)} /></Field>
+          {pattern && (narrative?.paragraphs.length ?? 0) > 0 && (
+            <div className="-mt-1.5">
+              <button type="button" className="text-xs text-violet-700 hover:underline" onClick={() => {
+                const s = suggestedConclusion(pattern, values, usCtx);
+                if (impression.trim() && impression.trim() !== s && !window.confirm("Replace the conclusion with the suggested one?")) return;
+                setImpression(s);
+              }}>Fill the suggested conclusion from the findings</button>
+            </div>
+          )}
           {pattern && <Field label="Recommendation"><Textarea id="rep-recommendation" rows={2} value={recommendation} onChange={(e) => setRecommendation(e.target.value)} /></Field>}
           {pattern && <Field label="Note"><Textarea id="rep-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>}
           <Field label="Radiologist">
@@ -260,8 +284,9 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
             )}
           </Field>
           {!reported && (
-            <div className="flex justify-end">
-              <Button variant="primary" disabled={saving || !impression.trim()} onClick={() => void save()}>{saving ? "Saving…" : "Sign and release report"}</Button>
+            <div className="flex flex-wrap justify-end">
+              {narrativeErrors > 0 && <p className="mr-3 self-center text-xs text-rose-700">Correct the report preview first.</p>}
+              <Button variant="primary" disabled={saving || !impression.trim() || narrativeErrors > 0} onClick={() => void save()}>{saving ? "Saving…" : "Sign and release report"}</Button>
             </div>
           )}
         </div>

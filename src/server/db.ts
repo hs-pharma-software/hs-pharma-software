@@ -3,7 +3,7 @@
 import { createClient, type Client, type InStatement, type ResultSet } from "@libsql/client/web";
 import { createHash, randomUUID } from "node:crypto";
 import { serverConfig } from "./config";
-import { verifySession, requestToken, SESSION_HOURS } from "./session";
+import { verifySession, requestToken, sessionIssuedAt } from "./session";
 import { analyzeSql, authorize, callerCan, costHidden, personalScope, HIDDEN_COLUMNS, type Analysis, type Caller } from "./sqlPolicy";
 import { scopeStatement, ScopeError, updateParts, type Schema, type Scope } from "./tenantScope";
 import { sharedCatalogGroupsFor } from "../lib/catalogAccess";
@@ -76,7 +76,7 @@ export async function callerOf(req: Request, opts: { allowDistributor?: boolean 
   if (!u || !Number(u.is_active)) throw new HttpError(401, "This login is no longer active.");
   // A password reset (forgot password) ends the sessions started before it.
   const changed = u.password_changed_at ? Date.parse(String(u.password_changed_at)) : NaN;
-  if (Number.isFinite(changed) && claims.exp - SESSION_HOURS * 3600_000 < changed) throw new HttpError(401, "Your password was reset. Log in again.");
+  if (Number.isFinite(changed) && sessionIssuedAt(claims) < changed) throw new HttpError(401, "Your password was reset. Log in again.");
   refuseDistributor(u.platform_role, opts.allowDistributor);
   const distributor = String(u.platform_role ?? "") === "distributor";
   let permissions: string[] | null = null;

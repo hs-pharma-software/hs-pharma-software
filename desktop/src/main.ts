@@ -203,6 +203,8 @@ async function pageRequest(a: unknown) {
   const headers: Record<string, string> = {};
   const h = (o.headers ?? {}) as Record<string, unknown>;
   for (const k of ["Content-Type", "X-Branch"]) if (typeof h[k] === "string") headers[k] = h[k] as string;
+  // The app's sign-in lasts between openings (MAVIN.pk renews it while in use).
+  headers["X-Mavin-Client"] = "desktop";
   if (path.startsWith("/api/db")) pageBranch = headers["X-Branch"] ?? "";
   if (cookies.size) headers.Cookie = [...cookies].map(([k, v]) => `${k}=${v}`).join("; ");
   const body = method === "GET" ? undefined : typeof o.body === "string" ? o.body : undefined;

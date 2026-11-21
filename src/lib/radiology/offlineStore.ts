@@ -9,7 +9,8 @@
 import type { RestContext, RestDb } from "../restaurant/store.ts";
 import { TECHNOLOGIST_ROLES } from "../../config/hospitalStaff.ts";
 import { validateExam, type ExamData } from "../../config/radiologyPortal.ts";
-import { findingsText, isUltrasoundStudy, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports.ts";
+import { isUltrasoundStudy, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports.ts";
+import { finalizeUltrasound } from "../../config/ultrasoundNarrative.ts";
 
 type Row = Record<string, unknown>;
 
@@ -292,6 +293,7 @@ export function createRadiologyStore(db: RestDb, context: () => RestContext, job
       const time = timeOf(input);
       const token = db.newId().replace(/-/g, "").toLowerCase();
       const o = await needOrder(String(input.orderId ?? ""));
+      if (o.status === "reported") throw new Error("This report is signed and released; it can no longer be changed.");
       if (!canProcess(o)) throw new Error("The fee for this study is not paid yet. Reception must take the fee first.");
       const impression = text(input.impression);
       if (!impression) throw new Error("Enter the conclusion.");
@@ -299,14 +301,9 @@ export function createRadiologyStore(db: RestDb, context: () => RestContext, job
       let structured: StructuredReport | null = null;
       const s = input.structured as StructuredReport | null | undefined;
       if (s) {
-        const template = ultrasoundTemplate(s.template);
-        if (!template) throw new Error("Choose the report pattern.");
         const p = await find("hospital_patients", String(o.patient_id));
         const check = { gender: (p?.gender as string | null) ?? null, reportDate: time.slice(0, 10) };
-        const errors = validateUltrasound(template, s.values, check);
-        if (errors.length) throw new Error(errors.join(" "));
-        findings = findingsText(template, s.values, check);
-        structured = { template: template.id, values: s.values, recommendation: text(s.recommendation), note: text(s.note) };
+        ({ structured, findings } = finalizeUltrasound(s, check, validateUltrasound, text));
       }
       const scannedByDoctor = !o.performed_at && isUltrasoundStudy(o as never);
       await update("hospital_imaging_orders", String(o.id), {

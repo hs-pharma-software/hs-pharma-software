@@ -6,19 +6,33 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const SESSION_COOKIE = "hs_session";
 export const SESSION_HOURS = 12;
+/** The MAVIN Windows app: stays signed in while it is opened at least once a month. */
+export const DESKTOP_SESSION_DAYS = 30;
+/** A session in use is renewed (a fresh cookie) at most once an hour. */
+const RENEW_AFTER_MS = 3600_000;
 
 export interface SessionClaims {
   /** user id */
   u: string;
   /** expiry, ms since epoch */
   exp: number;
+  /** issued at, ms since epoch (absent on sessions from before it was added) */
+  iat?: number;
+  /** 1: the MAVIN Windows app's session (long, renewed while in use) */
+  d?: 1;
 }
+
+/** How long a new session lasts, in seconds. */
+export const sessionSeconds = (desktop: boolean) => (desktop ? DESKTOP_SESSION_DAYS * 24 : SESSION_HOURS) * 3600;
+
+/** When the session was started: its own record, or worked out from a 12-hour expiry. */
+export const sessionIssuedAt = (c: SessionClaims) => c.iat ?? c.exp - SESSION_HOURS * 3600_000;
 
 const b64 = (s: string | Buffer) => Buffer.from(s).toString("base64url");
 const sign = (body: string, secret: string) => createHmac("sha256", secret).update(body).digest("base64url");
 
-export function issueSession(userId: string, secret: string, now = Date.now()): { token: string; claims: SessionClaims } {
-  const claims: SessionClaims = { u: userId, exp: now + SESSION_HOURS * 3600_000 };
+export function issueSession(userId: string, secret: string, now = Date.now(), opts: { desktop?: boolean } = {}): { token: string; claims: SessionClaims } {
+  const claims: SessionClaims = { u: userId, exp: now + sessionSeconds(Boolean(opts.desktop)) * 1000, iat: now, ...(opts.desktop ? { d: 1 as const } : {}) };
   const body = b64(JSON.stringify(claims));
   return { token: `${body}.${sign(body, secret)}`, claims };
 }
@@ -38,6 +52,14 @@ export function verifySession(token: string | undefined | null, secret: string, 
   } catch {
     return null;
   }
+}
+
+/** A fresh session for one in use (same kind, full length again), once it is
+ * an hour old; null while it is newer. The caller has already checked it. */
+export function renewSession(claims: SessionClaims, secret: string, now = Date.now()): { token: string; seconds: number } | null {
+  if (now - sessionIssuedAt(claims) < RENEW_AFTER_MS) return null;
+  const desktop = claims.d === 1;
+  return { token: issueSession(claims.u, secret, now, { desktop }).token, seconds: sessionSeconds(desktop) };
 }
 
 /** Set-Cookie value. Secure everywhere except plain-http localhost development. */

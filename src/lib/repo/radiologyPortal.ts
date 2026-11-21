@@ -10,7 +10,8 @@ import { canProcess, reportImaging } from "./hospitalOpd";
 import { DICOM_ELITE_MESSAGE, dicomEntitled, machineWorklist, modalityCodeFor, newMachineKey, sha256Hex, keyHint, type MachineRow, type ModalityRef, type WorklistOrder } from "../dicomApi";
 import { STANDARD_MODALITIES, DICOM_MODALITY_CODES, parseExam, validateExam, type ExamData } from "../../config/radiologyPortal";
 import { RADIOLOGY_ADMIN_ROLES, TECHNOLOGIST_ROLES, TECHNOLOGIST_ASSIGN_ROLES } from "../../config/hospitalStaff";
-import { findingsText, isUltrasoundStudy, ultrasoundTemplate, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
+import { isUltrasoundStudy, validateUltrasound, type StructuredReport } from "../../config/ultrasoundReports";
+import { finalizeUltrasound } from "../../config/ultrasoundNarrative";
 import { newRadiologyToken } from "../radiologyReportDocument";
 import { radiologyCall, radiologyOffline } from "../offline/radiologyCalls";
 import type { HospitalImagingOrder, HospitalPatient } from "../types-hospital";
@@ -629,19 +630,16 @@ export async function reportStudy(orderId: string, r: { findings: string | null;
   const a = await currentActor();
   const order = await hospitalImagingRepo.get(orderId) as (HospitalImagingOrder & { public_token?: string | null }) | null;
   if (!order) throw new Error("Order not found in this hospital.");
+  if (order.status === "reported") throw new Error("This report is signed and released; it can no longer be changed.");
   if (!canProcess(order)) throw new Error("The fee for this study is not paid yet. Reception must take the fee first.");
   if (!r.impression.trim()) throw new Error("Enter the conclusion.");
   let findings = r.findings;
   let structured: StructuredReport | null = null;
   if (r.structured) {
-    const template = ultrasoundTemplate(r.structured.template);
-    if (!template) throw new Error("Choose the report pattern.");
     const patient = await hospitalPatientsRepo.get(order.patient_id);
     const ctx = { gender: patient?.gender ?? null, reportDate: localDate() };
-    const errors = validateUltrasound(template, r.structured.values, ctx);
-    if (errors.length) throw new Error(errors.join(" "));
-    findings = findingsText(template, r.structured.values, ctx);
-    structured = { template: template.id, values: r.structured.values, recommendation: clean(r.structured.recommendation), note: clean(r.structured.note) };
+    // The findings in sentences, with the doctor's wording; the entered values as entered.
+    ({ structured, findings } = finalizeUltrasound(r.structured, ctx, validateUltrasound, (v) => clean(typeof v === "string" ? v : null)));
   }
   await hospitalImagingRepo.update(orderId, {
     structured_report: structured ? JSON.stringify(structured) : null,

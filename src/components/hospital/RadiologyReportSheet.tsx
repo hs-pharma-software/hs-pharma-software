@@ -2,6 +2,7 @@
 
 import QRCode from "react-qr-code";
 import { parseStructuredReport, reportSections, ultrasoundTemplate, type UsPrintSection } from "@/config/ultrasoundReports";
+import { narrativeTitle } from "@/config/ultrasoundNarrative";
 import type { RadiologyReport } from "@/lib/radiologyReportDocument";
 
 const Heading = ({ children }: { children: React.ReactNode }) => <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-600">{children}</p>;
@@ -47,12 +48,45 @@ function Section({ s }: { s: UsPrintSection }) {
   );
 }
 
+const GroupHeading = ({ children }: { children: React.ReactNode }) => (
+  <p className="mt-3 border-b border-neutral-400 pb-0.5 text-[12px] font-bold uppercase tracking-wide text-[#0b2a6b] print:text-neutral-900">{children}</p>
+);
+
+/** The findings in sentences, as signed: headings, then a bullet per organ. */
+function Narrative({ paragraphs }: { paragraphs: NonNullable<ReturnType<typeof parseStructuredReport>>["narrative"] & object }) {
+  const groups: { title: string; items: typeof paragraphs }[] = [];
+  for (const p of paragraphs) {
+    if (groups[groups.length - 1]?.title !== p.group) groups.push({ title: p.group, items: [] });
+    groups[groups.length - 1].items.push(p);
+  }
+  return (
+    <>
+      {groups.map((g) => (
+        <div key={g.title}>
+          <GroupHeading>{g.title}</GroupHeading>
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-[12.5px] leading-snug">
+            {g.items.map((p) => <li key={p.id} className="break-inside-avoid"><b>{p.label}:</b> <span className="whitespace-pre-line">{p.text}</span></li>)}
+          </ul>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** The conclusion: one numbered point per line when there are several. */
+function Points({ text }: { text: string }) {
+  const lines = text.split("\n").map((l) => l.replace(/^\s*(\d+[.)]|[-•*])\s*/, "").trim()).filter(Boolean);
+  if (lines.length < 2) return <p className="whitespace-pre-line font-medium">{text}</p>;
+  return <ol className="list-decimal space-y-0.5 pl-5 font-medium">{lines.map((l, i) => <li key={i}>{l}</li>)}</ol>;
+}
+
 /** The radiology report: the printed page and the online copy. */
 export function RadiologyReportSheet({ report: r, qrUrl }: { report: RadiologyReport; qrUrl: string | null }) {
   const o = r.order;
   const structured = parseStructuredReport(o.structured_report);
   const template = structured ? ultrasoundTemplate(structured.template) : null;
-  const sections = structured && template
+  const narrative = structured?.narrative?.length ? structured.narrative : null;
+  const sections = structured && template && !narrative
     ? reportSections(template, structured.values, { gender: r.patient.gender, reportDate: (o.reported_at ?? o.ordered_at).slice(0, 10) })
     : null;
   return (
@@ -78,17 +112,26 @@ export function RadiologyReportSheet({ report: r, qrUrl }: { report: RadiologyRe
         <p><span className="text-neutral-500">Ordered:</span> {o.ordered_at.replace("T", " ").slice(0, 16)}</p>
         <p><span className="text-neutral-500">Reported:</span> {o.reported_at?.replace("T", " ").slice(0, 16) ?? "—"}</p>
       </div>
-      <p className="mt-3 text-base font-semibold">{o.modality}{o.body_part ? ` · ${o.body_part}` : ""}</p>
-      {sections ? sections.map((s) => <Section key={s.title} s={s} />) : o.findings && (
+      {narrative && template
+        ? <p className="mt-3 text-center text-[15px] font-bold tracking-wide text-[#0b2a6b] print:text-neutral-900">{narrativeTitle(template, r.patient.gender)}</p>
+        : <p className="mt-3 text-base font-semibold">{o.modality}{o.body_part ? ` · ${o.body_part}` : ""}</p>}
+      {narrative ? <Narrative paragraphs={narrative} /> : sections ? sections.map((s) => <Section key={s.title} s={s} />) : o.findings && (
         <div className="mt-2">
           <Heading>Findings</Heading>
           <p className="whitespace-pre-line">{o.findings}</p>
         </div>
       )}
-      <div className="mt-3 break-inside-avoid rounded border border-neutral-400 px-2.5 py-1.5">
-        <Heading>{template ? "Conclusion" : "Impression"}</Heading>
-        <p className="whitespace-pre-line font-medium">{o.impression}</p>
-      </div>
+      {narrative ? (
+        <div className="break-inside-avoid">
+          <GroupHeading>Impression</GroupHeading>
+          <div className="mt-1 text-[12.5px]"><Points text={o.impression ?? ""} /></div>
+        </div>
+      ) : (
+        <div className="mt-3 break-inside-avoid rounded border border-neutral-400 px-2.5 py-1.5">
+          <Heading>{template ? "Conclusion" : "Impression"}</Heading>
+          <p className="whitespace-pre-line font-medium">{o.impression}</p>
+        </div>
+      )}
       {structured?.recommendation && (
         <div className="mt-2 break-inside-avoid">
           <Heading>Recommendation</Heading>

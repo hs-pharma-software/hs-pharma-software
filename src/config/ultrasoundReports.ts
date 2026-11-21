@@ -66,6 +66,10 @@ export interface StructuredReport {
   values: UsValues;
   recommendation?: string | null;
   note?: string | null;
+  /** The doctor's wording of paragraphs, each value kept as {{key}} (ultrasoundNarrative.ts). */
+  edits?: Record<string, string>;
+  /** The findings in sentences, as signed and printed. */
+  narrative?: { id: string; group: string; label: string; text: string }[];
 }
 
 const text = (v: UsValue | undefined) => (typeof v === "string" ? v.trim() : "");
