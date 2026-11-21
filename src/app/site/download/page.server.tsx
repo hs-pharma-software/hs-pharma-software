@@ -122,10 +122,6 @@ export default function DownloadPage() {
           <ul className="max-w-3xl list-disc space-y-1.5 pl-5 text-sm text-slate-600">
             {W.notes.map((n) => <li key={n}>{n}</li>)}
           </ul>
-          <div className="mt-4 max-w-3xl space-y-2 text-sm text-slate-600">
-            <p>{W.fileName}, {W.sizeBytes.toLocaleString("en-US")} bytes. SHA-256 of the file:</p>
-            <p className="break-all rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700">{W.sha256}</p>
-          </div>
         </Section>
       </div>
     </>
