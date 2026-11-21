@@ -13,7 +13,6 @@
  * the web. */
 import { visibleNavFor } from "../config/navFilter";
 import { businessType } from "../config/businessTypes";
-import { parseDeniedActions } from "../lib/actionPermissions";
 import { HttpError } from "./db";
 import { branchContext } from "./branches";
 import { costHidden, type Caller } from "./sqlPolicy";
@@ -26,6 +25,15 @@ type Row = Record<string, unknown>;
 const rowsOf = (r: Res | undefined): Row[] => (r ? r.rows.map((row) => Object.fromEntries(r.columns.map((c, i) => [c, row[i]]))) : []);
 const num = (v: unknown) => Number(v) || 0;
 const strOrNull = (v: unknown) => (v == null || v === "" ? null : String(v));
+/** A JSON list of action ids (tenants.denied_actions). Not lib/actionPermissions: that file pulls the page's store (React) into server routes. */
+const jsonIds = (v: unknown): string[] => {
+  try {
+    const x = JSON.parse(String(v ?? "[]"));
+    return Array.isArray(x) ? x.filter((i): i is string => typeof i === "string") : [];
+  } catch {
+    return [];
+  }
+};
 
 /** Sections the app shows as its own screens; every other section opens the web screen inside the app. */
 export const NATIVE_SECTIONS = ["dashboard", "invoices", "purchase", "stock", "products"] as const;
@@ -94,7 +102,7 @@ export async function appBootstrap(sql: Sql, caller: Caller, requestedBranch: st
       logo: logo && /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(logo) ? logo : null,
     },
     sections,
-    deniedActions: [...new Set([...(caller.actions ?? []), ...(caller.tenantDeniedActions ?? []), ...parseDeniedActions(strOrNull(tenant.denied_actions))])],
+    deniedActions: [...new Set([...(caller.actions ?? []), ...(caller.tenantDeniedActions ?? []), ...jsonIds(tenant.denied_actions)])],
     costHidden: costHidden(caller),
     branches: ctx
       ? { list: ctx.branches.map((b) => ({ id: b.id, name: b.name, isMain: Boolean(b.isMain), status: String(b.status) })), active: ctx.active, canSwitch: ctx.branches.length > 1 }
