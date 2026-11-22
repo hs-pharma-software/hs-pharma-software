@@ -9,9 +9,9 @@ import 'invoice_screen.dart';
 import 'more_screen.dart';
 import 'products_screen.dart';
 import 'purchase_screen.dart';
+import 'reports_screen.dart';
 import 'sales_screen.dart';
 import 'theme.dart';
-import 'web_section.dart';
 
 /// Opens Create Invoice (the website's invoice form) as its own page.
 Future<void> openNewInvoice(BuildContext context) {
@@ -49,7 +49,6 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   int _index = 0;
   final Map<String, Widget> _built = {};
-  final _reports = GlobalKey<WebSectionState>();
   List<_Tab>? _cachedTabs;
   Bootstrap? _cachedFor;
 
@@ -64,9 +63,8 @@ class _ShellState extends State<Shell> {
     if (b.section('stock') != null || b.section('products') != null) {
       tabs.add(_Tab('products', 'Products', Icons.inventory_2_outlined, () => const ProductsScreen(), title: 'Product Details'));
     }
-    final reports = b.section('reports');
-    if (reports != null) {
-      tabs.add(_Tab('reports', 'Reports', Icons.bar_chart_rounded, () => WebSection(key: _reports, path: reports.path), title: 'Reports'));
+    if (b.section('reports') != null) {
+      tabs.add(_Tab('reports', 'Reports', Icons.bar_chart_rounded, () => const ReportsScreen(), title: 'Reports'));
     }
     tabs.add(_Tab('more', 'More', Icons.menu_rounded, () => MoreScreen(tabbed: {for (final t in tabs) t.id}), title: 'More'));
     return tabs;
@@ -135,7 +133,6 @@ class _ShellState extends State<Shell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (tab.id == 'reports' && (await _reports.currentState?.handleBack() ?? false)) return;
         if (_index != 0) {
           setState(() => _index = 0);
           return;

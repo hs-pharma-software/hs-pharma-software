@@ -8,7 +8,7 @@ import 'ui/states.dart';
 import 'ui/theme.dart';
 
 /// Shown on the sign-in screen; keep in step with `version:` in pubspec.yaml.
-const appVersion = '3.3.0';
+const appVersion = '3.4.0';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

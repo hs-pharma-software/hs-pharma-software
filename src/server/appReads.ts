@@ -211,7 +211,7 @@ export interface AppDashboard {
 }
 
 /** Opening balance + unpaid bills - payments received/made (lib/repo/ledger.ts getTotalPartyBalance). */
-const partyBalance = (table: "customers" | "suppliers") => {
+export const partyBalance = (table: "customers" | "suppliers") => {
   const trade = table === "customers" ? "invoices" : "purchases";
   const fk = table === "customers" ? "customer_id" : "supplier_id";
   const party = table === "customers" ? "customer" : "supplier";

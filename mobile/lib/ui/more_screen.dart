@@ -3,8 +3,30 @@ import 'package:material_ui/material_ui.dart';
 import '../core/models.dart';
 import '../main.dart';
 import 'shell.dart' show openNewInvoice, openNewPurchase, AccountPanel;
+import 'books_screen.dart';
+import 'products_screen.dart';
+import 'reports_screen.dart';
+import 'sales_screen.dart';
 import 'theme.dart';
 import 'web_section.dart';
+
+/// The app's own screen for a website page (by its path), or null: that page opens the website inside the app.
+Widget? nativePageFor(String title, String path) {
+  final p = path.endsWith('/') && path.length > 1 ? path.substring(0, path.length - 1) : path;
+  if (p.startsWith('/reports/')) return ReportPage(reportKey: p.substring('/reports/'.length), title: title);
+  return switch (p) {
+    '/reports' => Scaffold(appBar: AppBar(title: const Text('Reports')), body: const ReportsScreen()),
+    '/customers' => const PartiesScreen(kind: 'customer', dueOnly: false),
+    '/customers/receivable' || '/customers/outstanding' => const PartiesScreen(kind: 'customer'),
+    '/suppliers' => const PartiesScreen(kind: 'supplier', dueOnly: false),
+    '/suppliers/payable' || '/suppliers/outstanding' => const PartiesScreen(kind: 'supplier'),
+    '/cash-register' => const CashRegisterScreen(),
+    '/expenses' => const ExpensesScreen(),
+    '/invoices' => const SalesScreen(),
+    '/products' || '/stock' => Scaffold(appBar: AppBar(title: Text(title)), body: const ProductsScreen()),
+    _ => null,
+  };
+}
 
 /// More: the website's navigation menu (the navy sidebar it opens on phones),
 /// with this login's sections in the website's order. Sections the app shows
@@ -50,7 +72,7 @@ class _MoreScreenState extends State<MoreScreen> {
     final b = AppScope.of(context).boot!;
     final hidden = {for (final t in widget.tabbed) _tabKeys[t]}..remove(null);
     final sections = b.sections.where((s) => !hidden.contains(s.key)).toList();
-    void open(String title, String path) => Navigator.push(context, MaterialPageRoute(builder: (_) => WebSectionPage(title: title, path: path)));
+    void open(String title, String path) => Navigator.push(context, MaterialPageRoute(builder: (_) => nativePageFor(title, path) ?? WebSectionPage(title: title, path: path)));
 
     return Container(
       decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [mavinNavyDeep, mavinNavy])),

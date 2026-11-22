@@ -56,9 +56,11 @@ function newId(): string {
 
 /** A staff login limited to some sections needs this one (the web hides the
  * section; the menu keys are config/nav.ts's "invoices" and "purchase"). */
-export function requireModule(caller: Caller, moduleKey: "invoices" | "purchase"): void {
+const MODULE_LABEL: Record<string, string> = { invoices: "Invoices", purchase: "Purchase", reports: "Reports", customers: "Customers", suppliers: "Suppliers", expenses: "Expenses", cash_register: "Cash Register" };
+
+export function requireModule(caller: Caller, moduleKey: "invoices" | "purchase" | "reports" | "customers" | "suppliers" | "expenses" | "cash_register"): void {
   if (caller.role === "staff" && Array.isArray(caller.permissions) && !caller.permissions.includes(moduleKey)) {
-    throw new HttpError(403, `Your login has no access to ${moduleKey === "invoices" ? "Invoices" : "Purchase"}. Ask the owner to allow it.`);
+    throw new HttpError(403, `Your login has no access to ${MODULE_LABEL[moduleKey]}. Ask the owner to allow it.`);
   }
 }
 
