@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The MAVIN app logo's blue gradient. -->
+    <color name="mavin_brand_light">#0067B3</color>
+    <color name="mavin_brand">#00478C</color>
+    <color name="mavin_brand_dark">#00225B</color>
+</resources>

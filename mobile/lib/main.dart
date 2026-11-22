@@ -8,7 +8,7 @@ import 'ui/states.dart';
 import 'ui/theme.dart';
 
 /// Shown on the sign-in screen; keep in step with `version:` in pubspec.yaml.
-const appVersion = '3.2.0';
+const appVersion = '3.3.0';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,8 +85,9 @@ class _Root extends StatelessWidget {
   }
 }
 
-/// The first screen while the app starts: white with the MAVIN mark, exactly
-/// where the system splash left it, then the wordmark and a thin progress bar.
+/// The first screen while the app starts: the logo's blue with the white M
+/// exactly where the system splash left it (no jump, no flash), the name
+/// under it and a thin progress bar at the bottom.
 class StartScreen extends StatelessWidget {
   const StartScreen({super.key, this.message});
   final String? message;
@@ -94,22 +95,39 @@ class StartScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.white),
+      value: SystemUiOverlayStyle.light.copyWith(statusBarColor: Colors.transparent, systemNavigationBarColor: brandDark),
       child: Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: Column(children: [
-            const Spacer(),
-            const MavinMark(size: 112),
-            const SizedBox(height: 18),
-            const Text('MAVIN Business', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: mavinNavy, letterSpacing: -.3)),
-            const SizedBox(height: 4),
-            const Text('Aap ke business ka muawin', style: TextStyle(fontSize: 13.5, color: muted)),
-            const Spacer(),
-            SizedBox(width: 140, child: ClipRRect(borderRadius: BorderRadius.circular(4), child: const LinearProgressIndicator(minHeight: 3))),
-            const SizedBox(height: 12),
-            Text(message ?? '', style: const TextStyle(fontSize: 12.5, color: muted)),
-            const SizedBox(height: 36),
+        body: DecoratedBox(
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [brandLight, brandDark])),
+          child: Stack(children: [
+            Center(child: Image.asset('assets/mavin-glyph.png', width: 110, height: 110, filterQuality: FilterQuality.medium, semanticLabel: 'MAVIN')),
+            Align(
+              alignment: const Alignment(0, .3),
+              child: Column(mainAxisSize: MainAxisSize.min, children: const [
+                Text('MAVIN Business', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -.2)),
+                SizedBox(height: 4),
+                Text('Aap ke business ka muawin', style: TextStyle(fontSize: 13.5, color: Color(0xCCFFFFFF))),
+              ]),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 36),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    SizedBox(
+                      width: 140,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: const LinearProgressIndicator(minHeight: 3, color: Colors.white, backgroundColor: Color(0x33FFFFFF)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(message ?? '', style: const TextStyle(fontSize: 12.5, color: Color(0xCCFFFFFF))),
+                  ]),
+                ),
+              ),
+            ),
           ]),
         ),
       ),

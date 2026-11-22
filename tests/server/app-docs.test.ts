@@ -135,6 +135,44 @@ test("sale: latest price, product tax, category discount, earliest expiry first,
   assert.ok(Math.abs(stock("b-rsk") - (1 - 7 / 21)) < 1e-6);
 });
 
+test("sale: the cashier's Sale Price (per loose unit converts to per pack), Wholesale, salesman and the buyer's FBR details", async () => {
+  const run = await runner(owner);
+  r(`INSERT INTO salesmen (id, tenant_id, name, created_at, updated_at) VALUES ('sm1', 't1', 'Imran', ?, ?)`, T, T);
+  const res = await createSale(run, "t1", {
+    id: SALE_ID, invoiceType: "wholesale", salesmanId: "sm1", customerName: "Ali Traders", customerPhone: "0300-1234567",
+    buyerRegType: "Registered", buyerNtn: "1234567", buyerProvince: "Punjab", buyerAddress: "Mall Road",
+    lines: [{ productId: "p-pan", unit: "pack", qty: 1, salePrice: 120 }, { productId: "p-rsk", unit: "loose", qty: 7, salePrice: 30 }],
+  }, TODAY);
+  const items = all(`SELECT product_id, sale_price FROM invoice_items WHERE invoice_id = ? ORDER BY product_id`, SALE_ID);
+  assert.deepEqual(items.map((i) => [i.product_id, Number(i.sale_price)]), [["p-pan", 120], ["p-rsk", 30 * 21]]);
+  const inv = one(`SELECT * FROM invoices WHERE id = ?`, SALE_ID);
+  assert.deepEqual([inv.invoice_type, inv.salesman_id, inv.buyer_registration_type, inv.buyer_ntn_cnic, inv.buyer_province, inv.buyer_address], ["wholesale", "sm1", "Registered", "1234567", "Punjab", "Mall Road"]);
+  assert.equal(res.payable, Math.round((saleLineMath(120, 1, 10, 0, 17).total + saleLineMath(630, 7 / 21, 0, 0, 0).total) * 100) / 100);
+  // The web form's buyer checks.
+  const base = { id: "33333333-3333-4333-8333-333333333333", lines: [{ productId: "p-pan", qty: 1 }] };
+  await assert.rejects(createSale(run, "t1", { ...base, customerPhone: "042-1234567" }, TODAY), /03XXXXXXXXX/);
+  await assert.rejects(createSale(run, "t1", { ...base, buyerRegType: "Registered" }, TODAY), /registered buyer needs an NTN/);
+  await assert.rejects(createSale(run, "t1", { ...base, buyerNtn: "12" }, TODAY), /NTN must be/);
+  await assert.rejects(createSale(run, "t1", { ...base, buyerProvince: "Mars" }, TODAY), /province/);
+  await assert.rejects(createSale(run, "t1", { ...base, lines: [{ productId: "p-pan", qty: 1, salePrice: -1 }] }, TODAY), /can't be negative/);
+});
+
+test("draft: numbered like an invoice, takes no stock, may hold more than the stock", async () => {
+  const run = await runner(owner);
+  const res = await createSale(run, "t1", { id: SALE_ID, draft: true, lines: [{ productId: "p-pan", qty: 9 }] }, TODAY);
+  assert.equal(res.draft, true);
+  assert.equal(res.invoiceNo, 8);
+  const inv = one(`SELECT is_memorized FROM invoices WHERE id = ?`, SALE_ID);
+  assert.equal(Number(inv.is_memorized), 1);
+  assert.equal(stock("b-pan-early"), 2, "no stock taken");
+  assert.equal(stock("b-pan-late"), 5);
+  const q = all(`SELECT qty FROM invoice_items WHERE invoice_id = ?`, SALE_ID).reduce((t, i) => t + Number(i.qty), 0);
+  assert.equal(q, 9, "the whole quantity is on the draft");
+  const again = await createSale(run, "t1", { id: SALE_ID, draft: true, lines: [{ productId: "p-pan", qty: 9 }] }, TODAY);
+  assert.equal(again.duplicate, true);
+  assert.equal(again.draft, true);
+});
+
 test("sale: sending the same sale again returns the saved one and takes no more stock", async () => {
   const run = await runner(owner);
   const body = { id: SALE_ID, lines: [{ productId: "p-pan", qty: 1 }], paid: 0 };

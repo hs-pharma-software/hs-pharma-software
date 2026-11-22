@@ -107,7 +107,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: AutofillGroup(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         const SizedBox(height: 40),
-                        const Center(child: MavinLogo(width: 230)),
+                        const Center(child: MavinMark(size: 88)),
+                        const SizedBox(height: 12),
+                        const Center(child: Text('MAVIN Business', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: mavinNavy, letterSpacing: -.2))),
+                        const Center(child: Text('by MAVIN.pk', style: TextStyle(fontSize: 12.5, color: muted))),
                         const SizedBox(height: 40),
                         const Text('Welcome back', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Color(0xFF101828), letterSpacing: -.4)),
                         const SizedBox(height: 6),

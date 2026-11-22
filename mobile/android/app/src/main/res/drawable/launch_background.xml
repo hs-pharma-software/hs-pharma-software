@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Before Android 12: the logo's blue with the white M in the middle (the same as the first Flutter screen). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-    <item android:gravity="center">
-        <bitmap android:src="@drawable/splash_mark" android:gravity="center" />
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item>
+        <bitmap android:src="@drawable/splash_glyph" android:gravity="center" />
     </item>
 </layer-list>

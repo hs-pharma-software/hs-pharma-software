@@ -10,7 +10,7 @@ import * as br from "@/server/branches";
 import { analyzeSql, authorize, costHidden, type Caller } from "@/server/sqlPolicy";
 import { scopeStatement, type Schema, type Scope } from "@/server/tenantScope";
 import { sharedCatalogGroupsFor } from "@/lib/catalogAccess";
-import { appBootstrap, appDashboard, invoiceDetail, listInvoices, listProducts, productDetail, searchParties } from "@/server/appReads";
+import { appBootstrap, appDashboard, createParty, invoiceDetail, listInvoices, listProducts, productDetail, searchParties } from "@/server/appReads";
 import { requireModule } from "@/server/appDocs";
 import type { Res, Runner, Stmt } from "@/server/appDocs";
 
@@ -163,6 +163,14 @@ test("customers and suppliers: by name or phone, this business only", async () =
   assert.deepEqual((await searchParties(run, "t1", "supplier", null)).map((x) => [x.name, x.detail]), [["Muller & Phipps", "M&P"]]);
   r(`INSERT INTO salesmen (id, tenant_id, name, phone, created_at, updated_at) VALUES ('sm1', 't1', 'Imran', '0300', ?, ?)`, T, T);
   assert.deepEqual((await searchParties(run, "t1", "salesman", null)).map((x) => x.name), ["Imran"]);
+  // The invoice form's "+": a new customer and salesman of this business.
+  const c = await createParty(run, "t1", "customer", { name: " Hamza ", phone: "03211234567" });
+  assert.equal(c.name, "Hamza");
+  assert.equal((db.prepare(`SELECT tenant_id FROM customers WHERE id = ?`).get(c.id) as { tenant_id?: string } | undefined)?.tenant_id, "t1");
+  await createParty(run, "t1", "salesman", { name: "Zain" });
+  assert.deepEqual((await searchParties(run, "t1", "salesman", null)).map((x) => x.name), ["Imran", "Zain"]);
+  await assert.rejects(createParty(run, "t1", "customer", { name: "" }), /Enter the name/);
+  await assert.rejects(createParty(run, "t1", "customer", { name: "X", phone: "12" }), /03XXXXXXXXX/);
 });
 
 test("home: what customers owe and what is owed to suppliers (opening balance + unpaid bills - payments), top selling", async () => {

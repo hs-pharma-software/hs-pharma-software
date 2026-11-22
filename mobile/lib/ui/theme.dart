@@ -23,6 +23,10 @@ const hairline = Color(0xFFE5E5E5);
 const pageBg = Color(0xFFF5F5F7);
 const amberHi = Color(0xFFFEF3C7);
 
+/// The app logo's blue gradient (splash, start screen, launcher icon).
+const brandLight = Color(0xFF0067B3);
+const brandDark = Color(0xFF00225B);
+
 ThemeData mavinTheme() {
   final scheme = ColorScheme.fromSeed(seedColor: mavinAccent, primary: mavinAccent, secondary: mavinNavy, surface: Colors.white, onSurface: ink);
   final base = ThemeData(colorScheme: scheme, useMaterial3: true);

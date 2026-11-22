@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Before Android 12: white, with the MAVIN mark in the middle (the same as the first Flutter screen). -->
+<!-- Before Android 12: the logo's blue with the white M in the middle (the same as the first Flutter screen). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-    <item android:width="112dp" android:height="112dp" android:gravity="center">
-        <bitmap android:src="@drawable/splash_mark" android:filter="true" />
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item android:width="120dp" android:height="120dp" android:gravity="center">
+        <bitmap android:src="@drawable/splash_glyph" />
     </item>
 </layer-list>

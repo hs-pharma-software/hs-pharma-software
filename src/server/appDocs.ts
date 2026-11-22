@@ -100,7 +100,8 @@ async function settleNo(run: Runner, table: "invoices" | "purchases", tenantId: 
 
 // ── Sales ──────────────────────────────────────────────────────────────────
 
-export interface SaleLineInput { productId: string; unit?: "pack" | "loose"; qty: number; bonus?: number; discountPct?: number | null }
+/** salePrice: the cashier's price in the line's unit (per pack, or per loose unit), as the web form's Sale Price; else the price list. */
+export interface SaleLineInput { productId: string; unit?: "pack" | "loose"; qty: number; bonus?: number; discountPct?: number | null; salePrice?: number | null }
 export interface SaleInput {
   id: string;
   lines: SaleLineInput[];
@@ -113,8 +114,23 @@ export interface SaleInput {
   charges?: number;
   paid?: number;
   description?: string | null;
+  /** The web form's Invoice Type (a label on the bill; prices are the same). */
+  invoiceType?: "retail" | "wholesale";
+  /** Customer & Buyer Details (sent to FBR with the invoice). */
+  buyerRegType?: "Unregistered" | "Registered";
+  buyerNtn?: string | null;
+  buyerProvince?: string | null;
+  buyerAddress?: string | null;
+  /** Draft (the web's memorized invoice): numbered, takes no stock, finished on the web later. */
+  draft?: boolean;
 }
-export interface SaleResult { id: string; invoiceNo: number; payable: number; paid: number; balance: number; duplicate: boolean }
+export interface SaleResult { id: string; invoiceNo: number; payable: number; paid: number; balance: number; duplicate: boolean; draft?: boolean }
+
+/** lib/fbrData.ts: the provinces FBR accepts, as the app stores them. */
+export const FBR_PROVINCES = ["Punjab", "Sindh", "KPK", "Balochistan", "Federal", "AJK", "Gilgit Baltistan"];
+const normalizeNtn = (v: unknown) => String(v ?? "").replace(/[\s-]/g, "").toUpperCase();
+const validNtnOrCnic = (v: string) => /^[A-Z0-9]\d{6}$/.test(v) || /^\d{9}$/.test(v) || /^\d{13}$/.test(v);
+const validPkMobile = (v: string) => /^(\+92|0092|0)3\d{9}$/.test(v.replace(/[\s-]/g, ""));
 /** What a sale would come to, worked out exactly as saving it would (nothing is written). */
 export interface DocPreview { subtotal: number; discount: number; tax: number; payable: number; balance: number; lines: PreviewLine[] }
 /** A line as the web form shows it: price, Tax %, Disc % and Avail in the line's unit (pack or loose), and the batches it takes. */
@@ -123,9 +139,9 @@ export interface PreviewLine { total: number; price?: number; taxPct?: number; d
 export interface DocOptions { preview?: boolean }
 
 async function existingSale(run: Runner, tenantId: string, id: string): Promise<SaleResult | null> {
-  const [r] = await run([{ sql: `SELECT id, invoice_no, payable, paid, balance FROM invoices WHERE id = ? AND tenant_id = ?`, args: [id, tenantId] }], false);
+  const [r] = await run([{ sql: `SELECT id, invoice_no, payable, paid, balance, is_memorized FROM invoices WHERE id = ? AND tenant_id = ?`, args: [id, tenantId] }], false);
   const row = rowsOf(r)[0];
-  return row ? { id, invoiceNo: num(row.invoice_no), payable: num(row.payable), paid: num(row.paid), balance: num(row.balance), duplicate: true } : null;
+  return row ? { id, invoiceNo: num(row.invoice_no), payable: num(row.payable), paid: num(row.paid), balance: num(row.balance), duplicate: true, draft: num(row.is_memorized) === 1 } : null;
 }
 
 export function checkSaleInput(raw: unknown): SaleInput {
@@ -138,8 +154,17 @@ export function checkSaleInput(raw: unknown): SaleInput {
     if (!(Number(l.qty) > 0)) throw new HttpError(400, "Every line needs a quantity greater than 0.");
     if (Number(l.bonus ?? 0) < 0) throw new HttpError(400, "Bonus can't be negative.");
     if (l.discountPct != null && (Number(l.discountPct) < 0 || Number(l.discountPct) > 100)) throw new HttpError(400, "Discount must be between 0 and 100%.");
+    if (l.salePrice != null && !(Number(l.salePrice) >= 0 && Number.isFinite(Number(l.salePrice)))) throw new HttpError(400, "Sale price can't be negative.");
   }
   for (const k of ["discountRs", "charges", "paid"] as const) if (Number(s[k] ?? 0) < 0) throw new HttpError(400, `${k} can't be negative.`);
+  if (s.invoiceType != null && s.invoiceType !== "retail" && s.invoiceType !== "wholesale") throw new HttpError(400, "Invoice Type is Retail or Wholesale.");
+  // The web form's buyer checks (validateBuyer).
+  const phone = typeof s.customerPhone === "string" ? s.customerPhone.trim() : "";
+  if (phone && !validPkMobile(phone)) throw new HttpError(400, "Mobile number must be like 03XXXXXXXXX or +923XXXXXXXXX.");
+  const ntn = normalizeNtn(s.buyerNtn);
+  if (ntn && !validNtnOrCnic(ntn)) throw new HttpError(400, "Buyer NTN must be 7-9 digits or CNIC 13 digits.");
+  if (s.buyerRegType === "Registered" && !ntn) throw new HttpError(400, "A registered buyer needs an NTN/CNIC for FBR.");
+  if (s.buyerProvince && !FBR_PROVINCES.includes(s.buyerProvince)) throw new HttpError(400, "Choose the buyer's province from the list.");
   return s as SaleInput;
 }
 
@@ -160,7 +185,8 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
     { sql: `SELECT COUNT(*) AS n FROM invoices WHERE deleted_at IS NULL AND tenant_id = ? AND is_return = 0 AND is_quotation = 0 AND date >= ?`, args: [tenantId, monthStart] },
   ], false);
   const cap = rowsOf(reads[0])[0]?.cap;
-  if (!opts.preview && cap != null && num(rowsOf(reads[1])[0]?.n) >= num(cap)) {
+  const draft = s.draft === true;
+  if (!opts.preview && !draft && cap != null && num(rowsOf(reads[1])[0]?.n) >= num(cap)) {
     throw new HttpError(403, `Your plan allows up to ${num(cap)} invoices per month - that limit has been reached for this month.`);
   }
 
@@ -217,19 +243,26 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
     const qty = toBaseUnitQty(Number(l.qty), loose, packing);
     const bonus = toBaseUnitQty(Number(l.bonus ?? 0), loose, packing);
     const batches = batchesOf.get(l.productId) ?? [];
-    // Price: the latest price list entry, else the batch's purchase price (as the web form).
-    const price = prices.get(l.productId) ?? batches[0]?.purchase_price ?? 0;
+    // Price: the cashier's Sale Price (in the line's unit), else the latest price list entry, else the batch's purchase price (as the web form).
+    const price = l.salePrice != null ? round2(loose ? Number(l.salePrice) * packing : Number(l.salePrice)) : prices.get(l.productId) ?? batches[0]?.purchase_price ?? 0;
     const discountPct = l.discountPct != null ? pct(l.discountPct) : pct(num(p.sub_disc) > 0 ? p.sub_disc : p.cat_disc);
     const taxPct = num(p.gst_rate_pct);
     const { parts, short } = allocateBatches(batches, qty, bonus, used);
-    if (short > STOCK_EPS) throw new HttpError(409, `Not enough stock of ${name}: ${Math.round((loose ? short * packing : short) * 1000) / 1000} ${loose ? "units" : "packs"} more needed than all its batches hold.`);
+    if (short > STOCK_EPS) {
+      if (!draft) throw new HttpError(409, `Not enough stock of ${name}: ${Math.round((loose ? short * packing : short) * 1000) / 1000} ${loose ? "units" : "packs"} more needed than all its batches hold.`);
+      // A draft may hold more than is in stock: the rest goes on the last batch (as the web form).
+      if (!parts.length) parts.push({ batch: { id: "", batch_no: null, expiry_date: null, qty: 0, purchase_price: price }, qty: 0, bonus: 0 });
+      const last = parts[parts.length - 1];
+      last.qty += Math.max(0, qty - parts.reduce((t, x) => t + x.qty, 0));
+      last.bonus += Math.max(0, bonus - parts.reduce((t, x) => t + x.bonus, 0));
+    }
     for (const part of parts) {
       const m = saleLineMath(price, part.qty, discountPct, 0, taxPct);
       total += price * part.qty;
       lineDiscount += m.discountRs;
       tax += m.tax;
       lineTotal += m.total;
-      takes.set(part.batch.id, (takes.get(part.batch.id) ?? 0) + part.qty + part.bonus);
+      if (!draft && part.batch.id) takes.set(part.batch.id, (takes.get(part.batch.id) ?? 0) + part.qty + part.bonus);
       itemStmts.push({
         sql: `INSERT INTO invoice_items (id, invoice_id, product_id, batch_no, packing, uom_id, avail_qty, qty, bonus_qty, purchase_price, sale_price, tax_pct, further_tax_pct, tax_rs, discount_pct, discount_rs, total, tenant_id, created_at, updated_at, deleted_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, NULL)`,
@@ -254,16 +287,19 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
   const balance = round2(payable - paid);
   const invOn = s.invOn === "credit" ? "credit" : "cash";
   if (opts.preview) return { subtotal: round2(total), discount: round2(lineDiscount + discountRs), tax: round2(tax), payable, balance, lines: lineTotals };
-  if (invOn === "credit" && !s.customerId && !customerName) throw new HttpError(400, "A credit sale needs a customer.");
+  if (invOn === "credit" && !s.customerId && !customerName && !draft) throw new HttpError(400, "A credit sale needs a customer.");
+  const buyerNtn = normalizeNtn(s.buyerNtn) || null;
 
   const invoiceNo = await nextNo(run, "invoices", tenantId);
   const header: Stmt = {
     sql: `INSERT INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, salesman_id, customer_id, customer_name, customer_phone,
+            buyer_ntn_cnic, buyer_province, buyer_address, buyer_registration_type,
             total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance, is_return, is_memorized, is_quotation, converted_invoice_id,
             tenant_id, created_at, updated_at, deleted_at)
-          VALUES (?, ?, ?, ?, 'retail', ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, NULL, ?, ?, ?, NULL)`,
-    args: [s.id, invoiceNo, today, invOn, str(s.description, 500), s.salesmanId || null, s.customerId || null, customerName, customerPhone,
-      round2(total), charges, discountRs, payable, paid, balance, tenantId, now, now],
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, ?, 0, NULL, ?, ?, ?, NULL)`,
+    args: [s.id, invoiceNo, today, invOn, s.invoiceType === "wholesale" ? "wholesale" : "retail", str(s.description, 500), s.salesmanId || null, s.customerId || null, customerName, customerPhone,
+      buyerNtn, str(s.buyerProvince, 40), str(s.buyerAddress, 300), s.buyerRegType === "Registered" ? "Registered" : "Unregistered",
+      round2(total), charges, discountRs, payable, paid, balance, draft ? 1 : 0, tenantId, now, now],
   };
   const stockStmts: Stmt[] = [...takes].map(([batchId, q]) => ({
     // As deductStock (lib/repo/stock.ts), without its "enough stock" condition: the guard below refuses the whole sale instead.
@@ -271,7 +307,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
     args: [-q, STOCK_EPS, -q, now, batchId, tenantId],
   }));
   try {
-    await run([header, ...itemStmts, ...stockStmts, stockGuard([...takes.keys()], tenantId)], true);
+    await run([header, ...itemStmts, ...stockStmts, ...(takes.size ? [stockGuard([...takes.keys()], tenantId)] : [])], true);
   } catch (e) {
     if (isStockGuard(e)) throw new HttpError(409, "Stock changed while saving (another sale took it). Nothing was saved. Refresh and try again.");
     // Sent twice at the same moment: the other request saved it.
@@ -282,7 +318,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
     throw e;
   }
   const no = await settleNo(run, "invoices", tenantId, s.id, invoiceNo, now);
-  return { id: s.id, invoiceNo: no, payable, paid, balance, duplicate: false };
+  return { id: s.id, invoiceNo: no, payable, paid, balance, duplicate: false, draft };
 }
 
 // ── Purchases ──────────────────────────────────────────────────────────────

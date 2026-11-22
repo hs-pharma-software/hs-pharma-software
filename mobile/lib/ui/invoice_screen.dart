@@ -14,6 +14,7 @@ import 'pickers.dart';
 import 'product_search.dart';
 import 'sales_screen.dart';
 import 'theme.dart';
+import 'web_section.dart';
 
 class _SaleLine {
   _SaleLine(this.p) : loose = p.packing > 1 {
@@ -23,6 +24,9 @@ class _SaleLine {
   final qty = TextEditingController();
   final bonus = TextEditingController();
   final disc = TextEditingController();
+
+  /// The cashier's Sale Price in the line's unit; empty = the price list's.
+  final price = TextEditingController();
   final key = UniqueKey();
 
   /// The website starts a line in the loose unit (Tab) when the product has one.
@@ -35,6 +39,7 @@ class _SaleLine {
     qty.dispose();
     bonus.dispose();
     disc.dispose();
+    price.dispose();
   }
 }
 
@@ -65,7 +70,13 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
   final _paid = TextEditingController();
   final _note = TextEditingController();
   bool _credit = false;
+  bool _wholesale = false;
   bool _buyerOpen = false;
+  bool _registered = false;
+  String? _province;
+  final _ntn = TextEditingController();
+  final _address = TextEditingController();
+  bool _drafting = false;
   late final ProductSearch _search = ProductSearch(api: apiOf(context));
   final _searchKey = GlobalKey();
 
@@ -103,7 +114,7 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
   void dispose() {
     _debounce?.cancel();
     _search.dispose();
-    for (final c in [_name, _phone, _charges, _discount, _paid, _note]) {
+    for (final c in [_name, _phone, _charges, _discount, _paid, _note, _ntn, _address]) {
       c.dispose();
     }
     for (final l in _lines) {
@@ -122,8 +133,14 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
               'qty': l.q,
               'bonus': numOf(l.bonus),
               if (l.disc.text.trim().isNotEmpty) 'discountPct': numOf(l.disc).clamp(0, 100),
+              if (l.price.text.trim().isNotEmpty) 'salePrice': numOf(l.price),
             },
         ],
+        'invoiceType': _wholesale ? 'wholesale' : 'retail',
+        'buyerRegType': _registered ? 'Registered' : 'Unregistered',
+        if (_ntn.text.trim().isNotEmpty) 'buyerNtn': _ntn.text.trim(),
+        if (_province != null) 'buyerProvince': _province,
+        if (_address.text.trim().isNotEmpty) 'buyerAddress': _address.text.trim(),
         if (_customer != null) 'customerId': _customer!.id,
         if (_customer == null && _name.text.trim().isNotEmpty) 'customerName': _name.text.trim(),
         if (_phone.text.trim().isNotEmpty) 'customerPhone': _phone.text.trim(),
@@ -194,6 +211,11 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
     // Switching the unit converts the quantity (as the website's Pack | Tab toggle).
     final packs = l.loose ? l.q / l.p.packing : l.q;
     final next = loose ? packs * l.p.packing : packs / l.p.packing;
+    // A typed Sale Price converts with the unit too (per pack <-> per unit).
+    if (l.price.text.trim().isNotEmpty) {
+      final p = numOf(l.price);
+      l.price.text = (loose ? p / l.p.packing : p * l.p.packing).toStringAsFixed(2);
+    }
     l.loose = loose;
     l.qty.text = qty(double.parse(next.toStringAsFixed(3)));
     _changed();
@@ -208,6 +230,62 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
     _changed();
   }
 
+  /// The website's "+" next to Customer and Salesman: a new one with a name and an optional mobile, chosen at once.
+  Future<void> _quickAdd(String kind) async {
+    final created = await showModalBottomSheet<Party>(context: context, isScrollControlled: true, builder: (_) => _QuickAddSheet(kind: kind));
+    if (created == null || !mounted) return;
+    if (kind == 'customer') {
+      _customer = created;
+      _name.text = created.name;
+      if (created.phone != null) _phone.text = created.phone!;
+    } else {
+      _salesmen = [..._salesmen, created];
+      _salesman = created;
+    }
+    _changed();
+  }
+
+  /// Draft (the website's memorized invoice): numbered, takes no stock; finished later in Memorized Invoices.
+  Future<void> _saveDraft() async {
+    if (_drafting || _saving) return;
+    if (_lines.isEmpty) {
+      setState(() => _problem = 'Add at least one product line.');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _drafting = true;
+      _problem = null;
+    });
+    try {
+      Map<String, dynamic>? r;
+      while (r == null) {
+        try {
+          if (!mounted) return;
+          r = await AppScope.read(context).api.post('/api/app/sale/', {..._body(paid: numOf(_paid)), 'draft': true});
+        } on ApiException catch (e) {
+          if (!e.offline || !mounted || !await askRetryUnknown(context, e, 'draft')) {
+            if (!e.offline && mounted) setState(() => _problem = e.message);
+            return;
+          }
+        }
+      }
+      if (!mounted) return;
+      final no = r['invoiceNo'];
+      _reset();
+      final memorized = AppScope.read(context).boot?.section('invoices')?.children.where((c) => c.path.contains('memorized')).firstOrNull;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 6),
+        content: Text('Draft #$no saved. No stock was taken.'),
+        action: memorized == null
+            ? null
+            : SnackBarAction(label: 'Open drafts', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => WebSectionPage(title: memorized.label, path: memorized.path)))),
+      ));
+    } finally {
+      if (mounted) setState(() => _drafting = false);
+    }
+  }
+
   void _reset() {
     for (final l in _lines) {
       l.dispose();
@@ -217,10 +295,13 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
       _lines.clear();
       _customer = null;
       _salesman = null;
-      for (final c in [_name, _phone, _charges, _discount, _paid, _note]) {
+      for (final c in [_name, _phone, _charges, _discount, _paid, _note, _ntn, _address]) {
         c.clear();
       }
       _credit = false;
+      _wholesale = false;
+      _registered = false;
+      _province = null;
       _buyerOpen = false;
       _totals = null;
       _problem = null;
@@ -382,6 +463,8 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
     final buyerSummary = [
       _customer?.name ?? (_name.text.trim().isEmpty ? 'Walk-in' : _name.text.trim()),
       if (_phone.text.trim().isNotEmpty) _phone.text.trim(),
+      _registered ? 'Registered' : 'Unregistered',
+      ?_province,
     ].join(' · ');
 
     return Column(children: [
@@ -411,32 +494,53 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
                   const SizedBox(width: 10),
                   Expanded(
                     child: LabeledField(
-                      label: 'Salesman (Optional)',
-                      child: _Select<String>(
-                        value: _salesman?.id ?? '',
-                        items: {'': '—', for (final s in _salesmen) s.id: s.name},
-                        onChanged: (v) => setState(() => _salesman = _salesmen.where((s) => s.id == v).firstOrNull),
+                      label: 'Invoice Type',
+                      child: _Select<bool>(
+                        value: _wholesale,
+                        items: const {false: 'Retail', true: 'Wholesale'},
+                        onChanged: (v) => setState(() => _wholesale = v),
                       ),
                     ),
                   ),
                 ]),
                 const SizedBox(height: 12),
                 LabeledField(
+                  label: 'Salesman (Optional)',
+                  child: Row(children: [
+                    Expanded(
+                      child: _Select<String>(
+                        value: _salesman?.id ?? '',
+                        items: {'': '—', for (final s in _salesmen) s.id: s.name},
+                        onChanged: (v) => setState(() => _salesman = _salesmen.where((s) => s.id == v).firstOrNull),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _PlusButton(tooltip: 'Add Salesman', onPressed: () => _quickAdd('salesman')),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                LabeledField(
                   label: 'Customer Name',
-                  child: _PickerBox(
-                    text: _customer?.name ?? 'Walk-in',
-                    placeholder: _customer == null,
-                    icon: Icons.person_search_outlined,
-                    onTap: _pickCustomer,
-                    onClear: _customer == null
-                        ? null
-                        : () {
-                            _customer = null;
-                            _name.clear();
-                            _phone.clear();
-                            _changed();
-                          },
-                  ),
+                  child: Row(children: [
+                    Expanded(
+                      child: _PickerBox(
+                        text: _customer?.name ?? 'Walk-in',
+                        placeholder: _customer == null,
+                        icon: Icons.person_search_outlined,
+                        onTap: _pickCustomer,
+                        onClear: _customer == null
+                            ? null
+                            : () {
+                                _customer = null;
+                                _name.clear();
+                                _phone.clear();
+                                _changed();
+                              },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _PlusButton(tooltip: 'Add Customer', onPressed: () => _quickAdd('customer')),
+                  ]),
                 ),
               ]),
             ),
@@ -487,6 +591,38 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
                           decoration: const InputDecoration(hintText: '03XXXXXXXXX'),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(
+                          child: LabeledField(
+                            label: 'Buyer Registration Type',
+                            child: _Select<bool>(
+                              value: _registered,
+                              items: const {false: 'Unregistered', true: 'Registered'},
+                              onChanged: (v) => setState(() => _registered = v),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: LabeledField(
+                            label: 'Buyer NTN / CNIC',
+                            required: _registered,
+                            child: TextField(controller: _ntn, keyboardType: TextInputType.text, textCapitalization: TextCapitalization.characters, onChanged: (_) => setState(() {})),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 10),
+                      LabeledField(
+                        label: 'Buyer Province',
+                        child: _Select<String>(
+                          value: _province ?? '',
+                          items: const {'': 'Select...', 'Punjab': 'Punjab', 'Sindh': 'Sindh', 'KPK': 'KPK', 'Balochistan': 'Balochistan', 'Federal': 'Federal', 'AJK': 'AJK', 'Gilgit Baltistan': 'Gilgit Baltistan'},
+                          onChanged: (v) => setState(() => _province = v.isEmpty ? null : v),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      LabeledField(label: 'Buyer Address', child: TextField(controller: _address, textInputAction: TextInputAction.next)),
                     ]),
                   ),
               ]),
@@ -581,6 +717,8 @@ class InvoiceScreenState extends State<InvoiceScreen> with BackGuard {
         busy: _saving,
         onReset: _lines.isEmpty && _customer == null ? null : _confirmReset,
         onSave: _lines.isEmpty ? null : _save,
+        onDraft: _lines.isEmpty ? null : _saveDraft,
+        drafting: _drafting,
       ),
     ]);
   }
@@ -628,7 +766,7 @@ class _LineCard extends StatelessWidget {
             Row(children: [
               Expanded(child: _Cell('Batch', Text(i?.batch ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)))),
               Expanded(child: _Cell('Avail', Text(i?.avail == null ? '—' : qty(i!.avail!), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: over ? noStock : ink)))),
-              Expanded(child: _Cell('Sale Price', Text(i?.price == null ? '—' : money2(i!.price!), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)))),
+              Expanded(child: _Cell('Sale Price', _MiniNum(controller: l.price, onChanged: onChanged, hint: i?.price == null ? '' : money2(i!.price!)))),
             ]),
             const SizedBox(height: 8),
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -745,6 +883,8 @@ class _Select<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<T>(
+      // A new value from outside (a salesman just added) shows at once.
+      key: ValueKey('$value/${items.length}'),
       initialValue: items.containsKey(value) ? value : items.keys.first,
       isExpanded: true,
       icon: const Icon(Icons.expand_more_rounded, size: 20),
@@ -753,6 +893,88 @@ class _Select<T> extends StatelessWidget {
       style: const TextStyle(fontSize: 14, color: ink),
       items: [for (final e in items.entries) DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis))],
       onChanged: (v) => v == null ? null : onChanged(v),
+    );
+  }
+}
+
+/// The website's "+" next to a select (Add Customer, Add Salesman).
+class _PlusButton extends StatelessWidget {
+  const _PlusButton({required this.tooltip, required this.onPressed});
+  final String tooltip;
+  final VoidCallback onPressed;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 44,
+        height: 44,
+        child: IconButton.filled(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          style: IconButton.styleFrom(backgroundColor: mavinTint, foregroundColor: mavinAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+          icon: const Icon(Icons.add_rounded),
+        ),
+      );
+}
+
+/// Add Customer / Add Salesman: name and an optional mobile (QuickCustomerDialog on the web).
+class _QuickAddSheet extends StatefulWidget {
+  const _QuickAddSheet({required this.kind});
+  final String kind;
+
+  @override
+  State<_QuickAddSheet> createState() => _QuickAddSheetState();
+}
+
+class _QuickAddSheetState extends State<_QuickAddSheet> {
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_busy) return;
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = 'Enter the name.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final r = await AppScope.read(context).api.post('/api/app/parties/', {'kind': widget.kind, 'name': _name.text.trim(), 'phone': _phone.text.trim()});
+      if (mounted) Navigator.pop(context, Party.fromJson(r['row'] as Map<String, dynamic>));
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final what = widget.kind == 'customer' ? 'Customer' : 'Salesman';
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Add $what', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 14),
+          LabeledField(label: 'Name', required: true, child: TextField(controller: _name, autofocus: true, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next)),
+          const SizedBox(height: 10),
+          LabeledField(label: 'Mobile Number', child: TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(hintText: '03XXXXXXXXX'), onSubmitted: (_) => _save())),
+          if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_error!, style: const TextStyle(color: noStock, fontWeight: FontWeight.w500))),
+          const SizedBox(height: 16),
+          GradientButton(label: _busy ? 'Saving...' : 'Save', busy: _busy, expand: true, onPressed: _save),
+        ]),
+      ),
     );
   }
 }
@@ -787,10 +1009,14 @@ class _PickerBox extends StatelessWidget {
 
 /// The website's phone action bar: "Payable · Rs X", Reset and Save.
 class WebActionBar extends StatelessWidget {
-  const WebActionBar({super.key, required this.payable, required this.problem, required this.busy, required this.onReset, required this.onSave, this.onProblem});
+  const WebActionBar({super.key, required this.payable, required this.problem, required this.busy, required this.onReset, required this.onSave, this.onProblem, this.onDraft, this.drafting = false});
   final double? payable;
   final String? problem;
   final VoidCallback? onProblem;
+
+  /// The website's Draft button (memorized invoice); null hides it.
+  final VoidCallback? onDraft;
+  final bool drafting;
   final bool busy;
   final VoidCallback? onReset;
   final VoidCallback? onSave;
@@ -812,20 +1038,30 @@ class WebActionBar extends StatelessWidget {
                   child: Text(problem!, style: const TextStyle(color: noStock, fontSize: 13, fontWeight: FontWeight.w500)),
                 ),
               ),
-            Row(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+              const Text('Payable', style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w500)),
+              const SizedBox(width: 10),
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  const Text('Payable', style: TextStyle(fontSize: 11.5, color: muted, fontWeight: FontWeight.w500)),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text('Rs ${money2(payable ?? 0)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -.3)),
-                  ),
-                ]),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text('Rs ${money2(payable ?? 0)}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800, letterSpacing: -.3)),
+                ),
               ),
-              OutlinedButton(onPressed: onReset, child: const Text('Reset')),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              OutlinedButton(onPressed: busy || drafting ? null : onReset, child: const Text('Reset')),
+              if (onDraft != null || drafting) ...[
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: busy || drafting ? null : onDraft,
+                  icon: drafting ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.bookmark_border_rounded, size: 18),
+                  label: const Text('Draft'),
+                ),
+              ],
               const SizedBox(width: 8),
-              GradientButton(label: busy ? 'Saving...' : 'Save', icon: Icons.check_rounded, busy: busy, onPressed: onSave),
+              Expanded(child: GradientButton(label: busy ? 'Saving...' : 'Save', icon: Icons.check_rounded, busy: busy, expand: true, onPressed: drafting ? null : onSave)),
             ]),
           ]),
         ),

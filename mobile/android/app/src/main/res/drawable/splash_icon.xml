@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12+ splash icon: the mark inset so it sits inside the system's round mask. -->
+<!-- Android 12+ splash icon: the white M, inset so the system's round mask never cuts it. -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:drawable="@drawable/splash_mark"
-    android:inset="18%" />
+    android:drawable="@drawable/splash_glyph"
+    android:inset="16%" />

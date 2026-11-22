@@ -370,6 +370,23 @@ export interface AppParty { id: string; name: string; phone: string | null; deta
 
 export type PartyKind = "customer" | "supplier" | "salesman";
 
+/** The invoice form's "+" (QuickCustomerDialog / Add Salesman): a new customer or salesman with a name and an optional mobile. */
+export async function createParty(run: Runner, tenantId: string, kind: "customer" | "salesman", raw: unknown): Promise<AppParty> {
+  const b = (raw ?? {}) as { name?: unknown; phone?: unknown };
+  const name = typeof b.name === "string" ? b.name.trim().slice(0, 120) : "";
+  const phone = typeof b.phone === "string" && b.phone.trim() ? b.phone.trim().slice(0, 40) : null;
+  if (!name) throw new HttpError(400, "Enter the name.");
+  if (phone && !/^(\+92|0092|0)3\d{9}$/.test(phone.replace(/[\s-]/g, ""))) throw new HttpError(400, "Mobile number must be like 03XXXXXXXXX or +923XXXXXXXXX.");
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await run([
+    kind === "customer"
+      ? { sql: `INSERT INTO customers (id, tenant_id, name, phone, opening_balance, balance_type, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 'receivable', ?, ?)`, args: [id, tenantId, name, phone, now, now] }
+      : { sql: `INSERT INTO salesmen (id, tenant_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, args: [id, tenantId, name, phone, now, now] },
+  ], true);
+  return { id, name, phone, detail: null };
+}
+
 /** Customers, suppliers or salesmen of the business by name or phone, at most 30. */
 export async function searchParties(run: Runner, tenantId: string, kind: PartyKind, search: string | null): Promise<AppParty[]> {
   const term = (search ?? "").trim().slice(0, 60);
