@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api.dart';
+import 'fbr.dart';
 import 'models.dart';
 
 enum AuthStatus { starting, signedOut, signedIn }
@@ -132,6 +133,7 @@ class AppState extends ChangeNotifier {
     api.token = null;
     api.branchId = null;
     boot = null;
+    forgetFbrAvailability();
     _dashboard = null;
     _renewedAt = null;
     await _storage.delete(key: _kToken);

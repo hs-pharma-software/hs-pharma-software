@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/api.dart';
+import '../core/fbr.dart';
 import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
@@ -247,11 +248,60 @@ class InvoiceDetailScreen extends StatefulWidget {
 class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   InvoiceDetail? _d;
   Object? _error;
+  bool _fbr = false;
+  bool _fbrBusy = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    fbrAvailable(AppScope.read(context).api).then((v) => mounted ? setState(() => _fbr = v) : null);
+  }
+
+  /// The website's "Submit to FBR" (InvoiceViewModal): once per invoice; the FBR number is saved on it.
+  Future<void> _submitFbr() async {
+    if (_fbrBusy) return;
+    final no = _d?.head.no;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Submit invoice${no == null ? '' : ' #$no'} to FBR?'),
+        content: const Text('MAVIN.pk sends this invoice to FBR Digital Invoicing. FBR keeps it; it cannot be taken back from here.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), style: FilledButton.styleFrom(backgroundColor: fbrGreen), child: const Text('Submit to FBR')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _fbrBusy = true);
+    String title;
+    String message;
+    try {
+      final r = await submitInvoiceToFbr(AppScope.read(context).api, widget.id);
+      if (r.success) {
+        title = 'Accepted by FBR';
+        message = 'FBR invoice number: ${r.fbrInvoiceNo ?? '—'}';
+      } else if (r.outcome == 'uncertain') {
+        title = 'FBR\'s answer is not clear';
+        message = r.error ?? 'Check in IRIS before sending it again.';
+      } else {
+        title = 'FBR did not accept it';
+        message = r.error ?? 'FBR refused this invoice.';
+      }
+    } on ApiException catch (e) {
+      title = 'Not sent to FBR';
+      message = e.message;
+    } finally {
+      if (mounted) setState(() => _fbrBusy = false);
+    }
+    if (!mounted) return;
+    await _load();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(title: Text(title), content: Text(message), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))]),
+    );
   }
 
   Future<void> _load() async {
@@ -331,19 +381,20 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           _card([for (final (k, v, strong) in totals) _pair(k, v, strong: strong, warn: k == 'Balance')]),
           const Padding(
             padding: EdgeInsets.fromLTRB(4, 12, 4, 0),
-            child: Text('Print, return, edit and FBR submission are in the web version.', style: TextStyle(fontSize: 12, color: _muted)),
+            child: Text('Print, return and edit are in the web version.', style: TextStyle(fontSize: 12, color: _muted)),
           ),
         ]),
       );
     }
     final share = d != null && canShareInvoices(context);
+    final showFbr = d != null && _fbr && d.head.fbrNo == null;
     return Scaffold(
       appBar: AppBar(
         title: Text(no == null ? 'Invoice' : 'Invoice #$no'),
         actions: [if (share) IconButton(tooltip: 'Send on WhatsApp', onPressed: () => shareInvoice(context, invoiceId: widget.id), icon: const Icon(Icons.share_rounded))],
       ),
       body: body,
-      bottomNavigationBar: !share
+      bottomNavigationBar: !share && !showFbr
           ? null
           : Material(
               color: Colors.white,
@@ -352,7 +403,19 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 top: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                  child: Row(children: [
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    if (showFbr) ...[
+                      GradientButton(
+                        label: _fbrBusy ? 'Submitting…' : 'Submit to FBR',
+                        icon: Icons.verified_outlined,
+                        busy: _fbrBusy,
+                        expand: true,
+                        colors: const [Color(0xFF00804A), fbrGreen],
+                        onPressed: _submitFbr,
+                      ),
+                      if (share) const SizedBox(height: 10),
+                    ],
+                    if (share) Row(children: [
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => shareInvoicePdf(context, invoiceId: widget.id),
@@ -369,6 +432,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                         onPressed: () => shareInvoice(context, invoiceId: widget.id),
                       ),
                     ),
+                  ]),
                   ]),
                 ),
               ),

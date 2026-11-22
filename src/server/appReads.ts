@@ -12,6 +12,7 @@
  * policy check, business and branch scoping and hidden purchase prices as
  * the web. */
 import { visibleNavFor } from "../config/navFilter";
+import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../lib/catalogAccess";
 import { businessType } from "../config/businessTypes";
 import { HttpError } from "./db";
 import { branchContext } from "./branches";
@@ -230,6 +231,7 @@ export async function appDashboard(run: Runner, caller: Caller, today: string): 
     throw new HttpError(403, "Your login has no access to the Dashboard. Ask the owner to allow it.");
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new HttpError(400, "Invalid date.");
+  const catalog = sharedCatalogWhereClause(T, sharedCatalogGroupsFor(caller.businessType));
   const until = new Date(`${today}T00:00:00Z`);
   until.setUTCDate(until.getUTCDate() + 180);
   const day = `substr(date, 1, 10) = ?`;
@@ -266,7 +268,8 @@ export async function appDashboard(run: Runner, caller: Caller, today: string): 
             ORDER BY i.created_at DESC LIMIT 6`, args: [T] },
     { sql: partyBalance("customers"), args: [T, T, T] },
     { sql: partyBalance("suppliers"), args: [T, T, T] },
-    { sql: `SELECT COUNT(*) AS n FROM products WHERE deleted_at IS NULL AND tenant_id = ? AND COALESCE(product_classification, '') <> 'pra_service'`, args: [T] },
+    // The web's countProducts: the business's own and the shared catalogue its type may use.
+    { sql: `SELECT COUNT(*) AS n FROM products WHERE deleted_at IS NULL AND ${catalog.clause} AND COALESCE(product_classification, '') <> 'pra_service'`, args: catalog.params },
     { sql: `SELECT p.id, p.name,
                    SUM(CASE WHEN i.is_return = 0 THEN ii.qty ELSE -ii.qty END) AS qty,
                    SUM(CASE WHEN i.is_return = 0 THEN ii.sale_price * ii.qty ELSE -ii.sale_price * ii.qty END) AS sales

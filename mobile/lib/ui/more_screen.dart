@@ -4,6 +4,7 @@ import '../core/models.dart';
 import '../main.dart';
 import 'shell.dart' show openNewInvoice, openNewPurchase, AccountPanel;
 import 'books_screen.dart';
+import 'list_screen.dart';
 import 'products_screen.dart';
 import 'reports_screen.dart';
 import 'sales_screen.dart';
@@ -24,9 +25,31 @@ Widget? nativePageFor(String title, String path) {
     '/expenses' => const ExpensesScreen(),
     '/invoices' => const SalesScreen(),
     '/products' || '/stock' => Scaffold(appBar: AppBar(title: Text(title)), body: const ProductsScreen()),
-    _ => null,
+    _ => switch (_lists[p]) { final key? => ListPageScreen(listKey: key, title: title), _ => null },
   };
 }
+
+/// Website pages shown as the app's list page (src/server/appLists.ts keys).
+const _lists = {
+  '/invoices/returns': 'invoice-returns',
+  '/invoices/memorized': 'memorized',
+  '/quotations': 'quotations',
+  '/orders': 'orders',
+  '/purchases': 'purchases',
+  '/purchases/returns': 'purchase-returns',
+  '/products/price-list': 'price-list',
+  '/products/uom': 'uom',
+  '/products/categories': 'categories',
+  '/products/companies': 'companies',
+  '/customers/narcotics': 'narcotics',
+  '/staff': 'staff',
+  '/banks': 'banks',
+  '/salesman': 'salesmen',
+  '/other-revenue': 'other-revenue',
+  '/other-revenue/categories': 'revenue-categories',
+  '/expenses/categories': 'expense-categories',
+  '/tasks': 'tasks',
+};
 
 /// More: the website's navigation menu (the navy sidebar it opens on phones),
 /// with this login's sections in the website's order. Sections the app shows

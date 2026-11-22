@@ -254,10 +254,14 @@ class _Panel extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Flexible(child: Text(title, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700))),
-          const SizedBox(width: 6),
-          _Pill('$count', fg: muted, bg: const Color(0xFFF0F0F0)),
-          const Spacer(),
+          Expanded(
+            child: Row(children: [
+              Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700))),
+              const SizedBox(width: 6),
+              _Pill('$count', fg: muted, bg: const Color(0xFFF0F0F0)),
+            ]),
+          ),
+          const SizedBox(width: 8),
           if (onViewAll != null)
             InkWell(
               onTap: onViewAll,
