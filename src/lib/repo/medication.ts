@@ -15,6 +15,9 @@ import { DOCTOR_CATEGORIES } from "../../config/hospitalStaff";
 import { highRiskGroup, PATIENT_IDENTIFIERS } from "../../config/highRiskMedicines";
 import { antibioticClass, RESERVE_APPROVAL_HOURS, ABX_REVIEW_OUTCOMES } from "../../config/medicines";
 import type { HospitalEpisode, HospitalRxItem, MarEntry } from "../types-hospital";
+import { getPharmacyLink, postToPharmacyMailbox } from "./clinic";
+import { hospitalPatientsRepo } from "./hospital";
+import { useAuthStore } from "../../store/authStore";
 
 export const marRepo = createTenantRepo<MarEntry>("hospital_mar_entries", {
   refs: [["patient_id", "hospital_patients", "Patient"], ["episode_id", "hospital_episodes", "Admission"]],
@@ -143,6 +146,30 @@ export async function addMedicationOrder(episodeId: string, o: MedicationOrderIn
   }
   await recordOutbox("hospital_rx_items", row.id, "insert", row as unknown as Record<string, unknown>);
   return row;
+}
+
+/** The name clinicians see: the generic (Selected Brands), else the medicine as written. */
+export const medicineName = (o: Pick<HospitalRxItem, "product_name" | "generic_name">) => o.generic_name?.trim() || o.product_name;
+
+/** Sends the admission's / emergency visit's new active orders (not the
+ * patient's own medicines) to the linked hospital pharmacy, with their brands. */
+export async function sendMedicationOrdersToPharmacy(episodeId: string): Promise<number> {
+  const ep = await hospitalEpisodesRepo.get(episodeId);
+  if (!ep) throw new Error("Admission not found.");
+  const link = await getPharmacyLink();
+  if (!link) throw new Error("Link the hospital pharmacy first: Pharmacy Department > Linked Pharmacy.");
+  const lines = (await listMedicationOrders(episodeId)).filter((o) => o.order_status === "active" && !o.sent_at && !o.own_supply);
+  if (!lines.length) throw new Error("No new medication orders to send.");
+  const patient = await hospitalPatientsRepo.get(ep.patient_id);
+  const ts = nowIso();
+  await postToPharmacyMailbox({
+    pharmacyTenantId: link.pharmacy_tenant_id, prescriptionId: `${episodeId}:${ts}`, patientName: patient?.name ?? "", patientId: ep.patient_id,
+    doctorName: lines[0].ordered_by_name ?? null, senderName: useAuthStore.getState().currentTenant?.name ?? null, rxDate: ts.slice(0, 10),
+    notes: [ep.type === "emergency" ? "Emergency" : "Admission", ep.episode_no, ep.room_ward && `Ward ${ep.room_ward}`, ep.bed_no && `Bed ${ep.bed_no}`].filter(Boolean).join(" · "),
+    lines,
+  });
+  for (const o of lines) await patch(o.id, { sent_at: ts });
+  return lines.length;
 }
 
 export async function listMedicationOrders(episodeId: string): Promise<HospitalRxItem[]> {

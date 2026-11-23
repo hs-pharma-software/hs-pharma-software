@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BedDouble, FileText, History, Send, Trash2 } from "lucide-react";
+import { BedDouble, FileText, History, Printer, Send, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -25,6 +25,8 @@ import { VisitChecklist } from "@/components/hospital/record/EpisodeRecord";
 import type { Staff } from "@/lib/types";
 import { listVitals, recordVitals } from "@/lib/repo/medicalRecord";
 import { VitalsFields } from "@/components/hospital/VitalsFields";
+import { PrescriptionPrintModal } from "@/components/hospital/PrescriptionPrint";
+import { listSelectedBrands, type BrandSelection } from "@/lib/repo/brandSelections";
 import { cToF, fToC, vitalsSummary, type VitalValues } from "@/config/vitalNorms";
 
 type Product = { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null };
@@ -129,6 +131,9 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
   const [pharmacies, setPharmacies] = useState<{ id: string; name: string }[]>([]);
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<Product[]>([]);
+  // The administrator's Selected Brands: doctors prescribe by generic; the brand goes on the print and to the pharmacy.
+  const [brands, setBrands] = useState<BrandSelection[]>([]);
+  const [printing, setPrinting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [vit, setVit] = useState<VitalValues>({});
   const [vitDirty, setVitDirty] = useState(false);
@@ -184,17 +189,22 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
     void hospitalServicesRepo.list({ orderBy: "name ASC" }).then((s) => setServices(s.filter((x) => x.is_active && (x.category === "lab" || x.category === "imaging"))));
     void listPharmacyTenants().then(setPharmacies);
     void getPharmacyLink().then((l) => setPharmacyId(l?.pharmacy_tenant_id ?? ""));
+    void listSelectedBrands().then(setBrands).catch(() => setBrands([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [episodeId]);
 
-  // Medicine search in the linked pharmacy, by brand or generic name.
+  const byGeneric = brands.length > 0;
+  const genericMatches = byGeneric && term.trim().length >= 2
+    ? brands.filter((b) => b.generic_label.toLowerCase().includes(term.trim().toLowerCase())).slice(0, 20) : [];
+
+  // No brands chosen yet: the linked pharmacy's medicines, by brand or generic name.
   useEffect(() => {
-    if (!pharmacyId || term.trim().length < 2) return setResults([]);
+    if (byGeneric || !pharmacyId || term.trim().length < 2) return setResults([]);
     const t = setTimeout(() => {
       void searchProductsForPharmacy(term, pharmacyId).then(setResults).catch(() => setResults([]));
     }, 250);
     return () => clearTimeout(t);
-  }, [term, pharmacyId]);
+  }, [term, pharmacyId, byGeneric]);
 
   const run = async (what: string, fn: () => Promise<unknown>) => {
     if (busy) return;
@@ -292,8 +302,20 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         </div>
 
         <div className="relative mb-3">
-          <Input value={term} onChange={(e) => setTerm(e.target.value)} disabled={!pharmacyId}
-            placeholder={pharmacyId ? "Search medicine by brand or generic name…" : "Link the hospital pharmacy to search its medicines"} />
+          <Input value={term} onChange={(e) => setTerm(e.target.value)} disabled={!pharmacyId && !byGeneric}
+            placeholder={byGeneric ? "Search medicine by generic name, e.g. Omeprazole…" : pharmacyId ? "Search medicine by brand or generic name…" : "Link the hospital pharmacy to search its medicines"} />
+          {!byGeneric && pharmacyId && <p className="mt-1 text-[11px] text-amber-700">The administrator has not chosen brands yet (Pharmacy Department › Selected Brands): brand names are shown.</p>}
+          {genericMatches.length > 0 && (
+            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+              {genericMatches.map((b) => (
+                <button key={b.id} type="button" className="block w-full px-3 py-1.5 text-left text-sm font-medium hover:bg-amber-50"
+                  onClick={() => { setLines((ls) => [...ls, { ...EMPTY_LINE, product_id: b.product_id, product_name: b.product_name, generic_name: b.generic_label }]); setTerm(""); }}>
+                  {b.generic_label}
+                </button>
+              ))}
+            </div>
+          )}
+          {byGeneric && term.trim().length >= 2 && genericMatches.length === 0 && <p className="mt-1 text-[11px] text-neutral-500">Not among the hospital&apos;s selected medicines. Ask the administrator to add it in Pharmacy Department › Selected Brands.</p>}
           {results.length > 0 && (
             <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
               {results.map((p) => (
@@ -318,7 +340,9 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
               <tbody>
                 {lines.map((l, i) => (
                   <tr key={i} className="border-b border-neutral-50 align-top">
-                    <td className="py-1 pr-2"><span className="font-medium">{l.product_name}</span>{l.generic_name && <span className="block text-neutral-400">{l.generic_name}</span>}</td>
+                    <td className="py-1 pr-2">{byGeneric && l.generic_name
+                      ? <span className="font-medium">{l.generic_name}</span>
+                      : <><span className="font-medium">{l.product_name}</span>{l.generic_name && <span className="block text-neutral-400">{l.generic_name}</span>}</>}</td>
                     <td className="py-1 pr-2"><Input value={l.dose ?? ""} onChange={(e) => setLine(i, { dose: e.target.value })} className="w-16" /></td>
                     <td className="py-1 pr-2">
                       <Select value={l.frequency ?? ""} onChange={(e) => setLine(i, { frequency: e.target.value })} className="w-40">
@@ -339,6 +363,9 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
           {sentAt && <span className="mr-auto text-xs text-emerald-700">Sent to the pharmacy.</span>}
           <Button onClick={() => void run("save the prescription", () => saveRx(ep.id, lines))} disabled={busy}>Save prescription</Button>
+          <Button disabled={busy || lines.length === 0} onClick={() => void run("save the prescription", async () => { await saveRx(ep.id, lines); setPrinting(true); })}>
+            <Printer size={13} className="mr-1" /> Print
+          </Button>
           <Button variant="primary" disabled={busy || lines.length === 0 || !pharmacyId}
             onClick={() => void run("send the prescription", async () => { await saveRx(ep.id, lines); await sendRxToPharmacy(ep.id); })}>
             <Send size={13} className="mr-1" /> Send to pharmacy
@@ -355,6 +382,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         emptyHint="Add radiology studies (X-ray, ultrasound, CT…) with their fees in Service Master, category Imaging / Radiology."
         onOrder={() => void run("order the scan", async () => { await orderInvestigation(ep.id, scanId); setScanId(""); })} onView={(o) => void viewReport(o)} />
 
+      {printing && patient && <PrescriptionPrintModal episodeId={ep.id} onClose={() => setPrinting(false)} />}
       {showHistory && patient && <HistoryModal patientId={patient.id} excludeId={ep.id} name={patient.name} onClose={() => setShowHistory(false)} />}
       {labReport && <LabReportModal report={labReport} onClose={() => setLabReport(null)} />}
       {scanReport && <RadiologyReportModal report={scanReport} onClose={() => setScanReport(null)} />}

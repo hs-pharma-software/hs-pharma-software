@@ -8,7 +8,9 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import {
   addMedicationOrder, listMedicationOrders, countersignOrder, verifyHighRiskOrder, stopMedicationOrder,
   recordAdministration, voidAdministration, listAdministrations, approveAntibiotic, reviewAntibiotic, onFormulary, type MedicationOrderInput,
+  medicineName, sendMedicationOrdersToPharmacy,
 } from "@/lib/repo/medication";
+import { listSelectedBrands, type BrandSelection } from "@/lib/repo/brandSelections";
 import { antibioticClass, ABX_LABEL, ABX_REVIEW_HOURS, ABX_REVIEW_OUTCOMES, RESERVE_APPROVAL_HOURS } from "@/config/medicines";
 import { AdrModal } from "../medicines/AdrModal";
 import { listHospitalDoctors } from "@/lib/repo/hospitalOpd";
@@ -55,6 +57,7 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
   const active = orders.filter((o) => o.order_status === "active");
   const stopped = orders.filter((o) => o.order_status !== "active");
   const lastGiven = (id: string) => mar.find((m) => m.order_id === id && !m.voided_at);
+  const unsent = active.filter((o) => !o.sent_at && !o.own_supply).length;
 
   return (
     <div className={card}>
@@ -62,6 +65,9 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
         <h2 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-700"><Pill size={15} />Medication orders and administration</h2>
         <div className="flex flex-wrap gap-1">
           <Button variant="ghost" onClick={() => setAdr("")}>Report reaction</Button>
+          {episode.status === "open" && unsent > 0 && (
+            <Button variant="ghost" onClick={() => void act("send the orders", async () => { const n = await sendMedicationOrdersToPharmacy(episode.id); window.alert(`${n} order${n === 1 ? "" : "s"} sent to the pharmacy.`); })}>Send to pharmacy ({unsent})</Button>
+          )}
           {episode.status === "open" && <Button onClick={() => setNewOrder(true)}>New order</Button>}
         </div>
       </div>
@@ -77,7 +83,8 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
             <div key={o.id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
               <div className="min-w-0">
                 <p className="font-medium">
-                  {o.product_name} <span className="font-normal text-neutral-600">{o.dose} · {o.route} · {o.frequency} · {o.duration}</span>
+                  {medicineName(o)} <span className="font-normal text-neutral-600">{o.dose} · {o.route} · {o.frequency} · {o.duration}</span>
+                  {o.sent_at ? <span className="ml-1.5 text-[11px] font-normal text-emerald-700">sent to pharmacy</span> : null}
                 </p>
                 <div className="mt-0.5 flex flex-wrap gap-1 text-[11px]">
                   {o.high_risk ? <span className="rounded-full bg-rose-100 px-1.5 py-0.5 font-medium text-rose-700">High-risk{highRiskGroup(o.product_name, o.generic_name) ? ` · ${highRiskGroup(o.product_name, o.generic_name)}` : ""}</span> : null}
@@ -111,7 +118,7 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
       {stopped.length > 0 && (
         <details className="mt-2 text-xs text-neutral-500">
           <summary className="cursor-pointer">Stopped ({stopped.length})</summary>
-          {stopped.map((o) => <p key={o.id} className="mt-1">{o.product_name} {o.dose} · stopped {fmtWhen(o.stopped_at)} by {o.stopped_by_name}: {o.stop_reason}</p>)}
+          {stopped.map((o) => <p key={o.id} className="mt-1">{medicineName(o)} {o.dose} · stopped {fmtWhen(o.stopped_at)} by {o.stopped_by_name}: {o.stop_reason}</p>)}
         </details>
       )}
 
@@ -126,7 +133,7 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
                 return (
                   <tr key={m.id} className={`border-t border-neutral-50 align-top ${m.voided_at ? "text-neutral-400 line-through" : ""}`} title={m.voided_at ? `Void: ${m.void_reason} (${m.voided_by_name})` : undefined}>
                     <td className="py-1 pr-2 tabular-nums">{fmtWhen(m.given_at)}</td>
-                    <td className="py-1 pr-2">{o?.product_name ?? "—"}</td>
+                    <td className="py-1 pr-2">{o ? medicineName(o) : "—"}</td>
                     <td className="py-1 pr-2">{MAR_STATUS[m.status]}{m.reason ? ` · ${m.reason}` : ""}</td>
                     <td className="py-1 pr-2">{m.dose_given ? `${m.dose_given} ${m.route_given}` : "—"}</td>
                     <td className="py-1 pr-2">{m.status === "given" ? `${m.identifier_1} + ${m.identifier_2}; medicine, dose, route, time checked${m.second_checker_name ? `; 2nd check ${m.second_checker_name}` : ""}` : "—"}</td>
@@ -152,7 +159,14 @@ function OrderModal({ episode, onClose, onSaved }: { episode: HospitalEpisode; o
   const [o, setO] = useState<MedicationOrderInput>({ product_name: "", dose: "", route: "Oral", frequency: "", duration: "", source: "written" });
   const [doctors, setDoctors] = useState<Staff[]>([]);
   const [busy, setBusy] = useState(false);
+  // The hospital's Selected Brands: the order is written by generic; the brand goes to the pharmacy.
+  const [brands, setBrands] = useState<BrandSelection[]>([]);
+  const [term, setTerm] = useState("");
   useEffect(() => { void listHospitalDoctors().then(setDoctors).catch(() => setDoctors([])); }, []);
+  useEffect(() => { void listSelectedBrands().then(setBrands).catch(() => setBrands([])); }, []);
+  const byGeneric = brands.length > 0 && !o.ownSupply;
+  const matches = byGeneric && term.trim().length >= 2 && term !== o.generic_name
+    ? brands.filter((b) => b.generic_label.toLowerCase().includes(term.trim().toLowerCase())).slice(0, 12) : [];
   const set = (p: Partial<MedicationOrderInput>) => setO((x) => ({ ...x, ...p }));
   const group = highRiskGroup(o.product_name, o.generic_name);
   const abx = antibioticClass(o.product_name, o.generic_name);
@@ -180,8 +194,30 @@ function OrderModal({ episode, onClose, onSaved }: { episode: HospitalEpisode; o
     <Modal title="Medication order" onClose={onClose}>
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Medicine (brand and strength)" required><Input id="o-name" value={o.product_name} onChange={(e) => set({ product_name: e.target.value })} autoFocus /></Field>
-          <Field label="Generic name"><Input id="o-generic" value={o.generic_name ?? ""} onChange={(e) => set({ generic_name: e.target.value })} /></Field>
+          {byGeneric ? (
+            <div className="relative sm:col-span-2">
+              <Field label="Medicine (generic)" required>
+                <Input id="o-name" value={term} autoFocus placeholder="Search by generic name, e.g. Ceftriaxone"
+                  onChange={(e) => { setTerm(e.target.value); set({ product_id: null, product_name: "", generic_name: null }); }} />
+              </Field>
+              {matches.length > 0 && (
+                <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+                  {matches.map((b) => (
+                    <button key={b.id} type="button" className="block w-full px-3 py-1.5 text-left text-sm font-medium hover:bg-amber-50"
+                      onClick={() => { setTerm(b.generic_label); set({ product_id: b.product_id, product_name: b.product_name, generic_name: b.generic_label }); }}>
+                      {b.generic_label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {term.trim().length >= 2 && !o.product_name && matches.length === 0 && <p className="mt-1 text-[11px] text-neutral-500">Not among the hospital&apos;s selected medicines (Pharmacy Department › Selected Brands).</p>}
+            </div>
+          ) : (
+            <>
+              <Field label="Medicine (brand and strength)" required><Input id="o-name" value={o.product_name} onChange={(e) => set({ product_name: e.target.value })} autoFocus /></Field>
+              <Field label="Generic name"><Input id="o-generic" value={o.generic_name ?? ""} onChange={(e) => set({ generic_name: e.target.value })} /></Field>
+            </>
+          )}
           <Field label="Dose" required><Input id="o-dose" value={o.dose} onChange={(e) => set({ dose: e.target.value })} placeholder="e.g. 500 mg, 6 units" /></Field>
           <Field label="Route" required>
             <Select id="o-route" value={o.route} onChange={(e) => set({ route: e.target.value })}>{ROUTES.map((r) => <option key={r}>{r}</option>)}</Select>

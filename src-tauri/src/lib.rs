@@ -1877,6 +1877,30 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v98() -> &'static str {
+    r#"
+    -- Hospital Pharmacy Department > Selected Brands: for each generic the
+    -- doctors prescribe (e.g. "Omeprazole 20mg Cap"), the brand of the linked
+    -- hospital pharmacy the administrator chose (e.g. Omesec 20mg Cap). Doctors
+    -- see the generic; the print and the pharmacy order carry the brand.
+    CREATE TABLE IF NOT EXISTS hospital_brand_selections (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, generic_label TEXT NOT NULL, generic_name TEXT,
+        product_id TEXT NOT NULL, product_name TEXT NOT NULL, company_name TEXT, pharmacy_tenant_id TEXT,
+        selected_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_brand_generic ON hospital_brand_selections (tenant_id, generic_label) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_brand_selections_ins AFTER INSERT ON hospital_brand_selections BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_brand_selections', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_brand_selections_upd AFTER UPDATE ON hospital_brand_selections BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_brand_selections', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_brand_selections_del AFTER DELETE ON hospital_brand_selections BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_brand_selections', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
 fn schema_sql_v97() -> &'static str {
     r#"
     -- Hospital MR numbers: MR-<number>-<registration date DDMMYYYY>-<year>.
@@ -6679,6 +6703,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 97,
             description: "hospital_mr_number_and_shares",
             sql: schema_sql_v97(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 98,
+            description: "hospital_brand_selections",
+            sql: schema_sql_v98(),
             kind: MigrationKind::Up,
         },
     ]

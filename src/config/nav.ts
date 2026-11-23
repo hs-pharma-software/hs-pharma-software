@@ -2,6 +2,7 @@
 import {
   KeyRound,
   PillBottle,
+  Pill,
   ShieldAlert,
   Droplets,
   LayoutDashboard,
@@ -657,6 +658,17 @@ const HOSPITAL_NAV: NavItem[] = [
   },
   { label: "Surgery", href: "/hospital/surgery", icon: Scissors, moduleKey: "hospital_surgery", onlyFor: ["hospital"] },
   { label: "Medicines", href: "/hospital/medicines", icon: PillBottle, moduleKey: "hospital_medicines", onlyFor: ["hospital"] },
+  {
+    label: "Pharmacy Department",
+    href: "/hospital/pharmacy",
+    icon: Pill,
+    moduleKey: "hospital_pharmacy_dept",
+    onlyFor: ["hospital"],
+    children: [
+      { label: "Linked Pharmacy", href: "/hospital/pharmacy" },
+      { label: "Selected Brands", href: "/hospital/pharmacy/brands" },
+    ],
+  },
   {
     label: "Infection Control",
     href: "/hospital/ipc",

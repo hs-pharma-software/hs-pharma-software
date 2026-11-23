@@ -39,6 +39,7 @@ export const HOSPITAL_NAV_ORDER = [
   "hospital_radiology",
   "hospital_surgery",
   "hospital_medicines",
+  "hospital_pharmacy_dept",
   "hospital_infection",
   "hospital_quality",
   "hospital_facility",
