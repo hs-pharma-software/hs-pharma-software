@@ -703,7 +703,12 @@ const HOSPITAL_NAV: NavItem[] = [
     icon: UserCog,
     moduleKey: "hospital_hr",
     onlyFor: ["hospital"],
-    children: [shared("Staff", "staff"), { label: "Staff Records", href: "/hospital/hr" }],
+    children: [
+      shared("Staff", "staff"),
+      { label: "Staff Records", href: "/hospital/hr" },
+      { label: "Duty Roster", href: "/hospital/hr/roster", moduleKey: "hospital_hr_roster" },
+      { label: "Trainees", href: "/hospital/hr/trainees", moduleKey: "hospital_hr_trainees" },
+    ],
   },
   { label: "User Logins", href: "/hospital/logins", icon: KeyRound, moduleKey: "hospital_logins", onlyFor: ["hospital"] },
 ];

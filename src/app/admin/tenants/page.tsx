@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { TenantFormModal } from "@/components/admin/TenantFormModal";
 import { TenantDetailPanel } from "@/components/admin/TenantDetailPanel";
+import { DemoHospitalModal } from "@/components/admin/DemoHospitalModal";
 import { UserLoginsPage } from "@/components/admin/UserLoginsPage";
 import { Modal } from "@/components/ui/Modal";
 import { tenantsRepo } from "@/lib/repo/tenants";
@@ -29,6 +30,7 @@ export default function TenantsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Tenant | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [demoOpen, setDemoOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
   const shown = typeFilter ? tenants.filter((t) => businessType(t.business_type).id === typeFilter) : tenants;
   const detail = tenants.find((t) => t.id === detailId) ?? null;
@@ -164,10 +166,13 @@ export default function TenantsPage() {
             >
               Add
             </Button>
+            <Button onClick={() => setDemoOpen(true)} disabled={plans.length === 0}>Create demo hospital</Button>
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
         }
       />
+
+      {demoOpen && <DemoHospitalModal plans={plans} onClose={() => setDemoOpen(false)} onCreated={() => void reload()} />}
 
       {plans.length === 0 && tauriReady && (
         <p className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">

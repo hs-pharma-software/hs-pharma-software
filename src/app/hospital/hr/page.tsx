@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -9,15 +9,15 @@ import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import {
   staffHrStatus, listTraining, recordTraining, listCredentials, recordCredential, verifyCredential, listAppraisals, saveAppraisal, finalizeAppraisal,
-  rosterRange, setRosterShift, hospitalStaffList, type StaffHrStatus,
+  type StaffHrStatus,
 } from "@/lib/repo/hrRecords";
 import { addDays } from "@/lib/repo/facility";
 import { jobDescriptionFor } from "@/lib/repo/documents";
-import { TRAINING_KINDS, trainingKind, CREDENTIAL_KINDS, VERIFICATION_METHODS, APPRAISAL_CRITERIA, ROSTER_SHIFTS, type RosterShift } from "@/config/facility";
+import { TRAINING_KINDS, trainingKind, CREDENTIAL_KINDS, VERIFICATION_METHODS, APPRAISAL_CRITERIA } from "@/config/facility";
 import { designation } from "@/config/hospitalStaff";
 import { err } from "@/components/hospital/quality/SafetyModals";
 import type { Staff } from "@/lib/types";
-import type { Appraisal, ControlledDocument, RosterEntry, StaffCredential, StaffTraining } from "@/lib/types-hospital";
+import type { Appraisal, ControlledDocument, StaffCredential, StaffTraining } from "@/lib/types-hospital";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -26,19 +26,12 @@ const pill = (label: string, cls: string) => <span className={`whitespace-nowrap
 const good = (l: string) => pill(l, "bg-emerald-100 text-emerald-700");
 const bad = (l: string) => pill(l, "bg-rose-100 text-rose-700");
 
-/** Staff files and the duty roster (MSDS HRM). */
+/** Staff files (MSDS HRM). The duty roster and trainees have their own HR tabs. */
 export default function HrRecordsPage() {
-  const [tab, setTab] = useState<"files" | "roster">("files");
   return (
     <div>
-      <PageHeader title="Staff Records" actions={
-        <div className="flex overflow-hidden rounded-lg border border-neutral-200 text-sm">
-          {([["files", "Staff files"], ["roster", "Duty roster"]] as const).map(([t, l]) => (
-            <button key={t} type="button" onClick={() => setTab(t)} className={`px-3 py-1.5 ${tab === t ? "bg-rose-700 text-white" : "bg-white text-neutral-600"}`}>{l}</button>
-          ))}
-        </div>
-      } />
-      {tab === "files" ? <Files /> : <Roster />}
+      <PageHeader title="Staff Records" />
+      <Files />
     </div>
   );
 }
@@ -247,71 +240,5 @@ function AppraisalModal({ staff, appraisal, onClose, onSaved }: { staff: Staff; 
         <Button variant="primary" onClick={() => save(true)}>Finalize</Button>
       </div>
     </Modal>
-  );
-}
-
-// ── Duty roster ───────────────────────────────────────────────────────────
-
-const SHIFT_CLS: Record<RosterShift, string> = {
-  M: "bg-sky-100 text-sky-800", E: "bg-amber-100 text-amber-800", N: "bg-indigo-600 text-white", L: "bg-teal-100 text-teal-800",
-  C: "bg-violet-100 text-violet-800", O: "bg-neutral-100 text-neutral-500", LV: "bg-rose-100 text-rose-700",
-};
-const weekday = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
-
-function Roster() {
-  const [start, setStart] = useState(localDate());
-  const [dept, setDept] = useState("");
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [entries, setEntries] = useState<RosterEntry[]>([]);
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(start, i)), [start]);
-  const reload = async () => {
-    if (!isTauri()) return;
-    try {
-      setStaff(await hospitalStaffList());
-      setEntries(await rosterRange(days[0], days[6]));
-    } catch (e) { err(e); }
-  };
-  useEffect(() => { void reload(); }, [start]); // eslint-disable-line react-hooks/exhaustive-deps
-  const departments = [...new Set(staff.map((s) => s.department).filter(Boolean) as string[])].sort();
-  const shown = staff.filter((s) => !dept || s.department === dept);
-  const set = async (s: Staff, day: string, shift: RosterShift | "") => {
-    try { await setRosterShift(s.id, day, shift); setEntries(await rosterRange(days[0], days[6])); } catch (e) { err(e); }
-  };
-  return (
-    <div className={card}>
-      <div className="mb-3 flex flex-wrap items-end gap-2">
-        <Field label="Week from"><Input id="ro-start" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-        <Field label="Department">
-          <Select id="ro-dept" value={dept} onChange={(e) => setDept(e.target.value)}><option value="">All</option>{departments.map((d) => <option key={d}>{d}</option>)}</Select>
-        </Field>
-        <p className="pb-2 text-[11px] text-neutral-500">{Object.entries(ROSTER_SHIFTS).map(([k, l]) => `${k} ${l}`).join(" · ")}</p>
-      </div>
-      {shown.length === 0 ? <p className="text-sm text-neutral-400">No staff.</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs text-neutral-500"><th className={th}>Staff</th>{days.map((d) => <th key={d} className={`${th} text-center`}>{weekday(d)}</th>)}</tr></thead>
-            <tbody>
-              {shown.map((s) => (
-                <tr key={s.id} className="border-t border-neutral-100">
-                  <td className={`${td} whitespace-nowrap`}>{s.name}<span className="block text-[11px] text-neutral-500">{s.department ?? designation(s.staff_category)?.label}</span></td>
-                  {days.map((d) => {
-                    const e = entries.find((x) => x.staff_id === s.id && x.duty_date === d);
-                    const shift = (e?.shift ?? "") as RosterShift | "";
-                    return (
-                      <td key={d} className="px-0.5 py-1 text-center">
-                        <select id={`ro-${s.id}-${d}`} aria-label={`${s.name} ${d}`} value={shift} onChange={(ev) => set(s, d, ev.target.value as RosterShift | "")}
-                          className={`w-14 rounded-md border-0 px-1 py-1 text-center text-xs font-semibold ${shift ? SHIFT_CLS[shift] : "bg-white text-neutral-300 ring-1 ring-neutral-200"}`}>
-                          <option value="">—</option>{Object.keys(ROSTER_SHIFTS).map((k) => <option key={k} value={k}>{k}</option>)}
-                        </select>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
   );
 }

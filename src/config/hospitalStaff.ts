@@ -68,8 +68,29 @@ export const DESIGNATIONS: Designation[] = [
   { key: "admin", label: "Admin", prefix: "ADM", license: null, licenseRequired: false, doctor: false, pages: null },
   { key: "receptionist", label: "Receptionist", prefix: "REC", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_lab_reports", "hospital_radiology_reports", "hospital_my_cash"] },
+  { key: "computer_operator", label: "Computer Operator", prefix: "CO", license: null, licenseRequired: false, doctor: false,
+    pages: ["hospital_reception", "hospital_patients", "hospital_episodes", "hospital_my_cash", "hospital_hr_roster"] },
+  { key: "security_guard", label: "Security Guard", prefix: "SG", license: null, licenseRequired: false, doctor: false, pages: ["hospital_hr_roster"] },
   { key: "other", label: "Other", prefix: "EMP", license: null, licenseRequired: false, doctor: false, pages: ["hospital_dashboard"] },
 ];
+
+/** Duty roster groups: who is on the floor, by the kind of work. */
+export const STAFF_GROUPS = {
+  doctors: "Doctors",
+  nurses: "Nurses",
+  paramedical: "Paramedical staff",
+  technical: "Technical staff",
+  support: "Support and admin",
+} as const;
+export type StaffGroup = keyof typeof STAFF_GROUPS;
+const GROUP_OF: Record<string, StaffGroup> = {
+  hod: "doctors", consultant: "doctors", medical_specialist: "doctors", medical_officer: "doctors", pathologist: "doctors", radiologist: "doctors",
+  nursing_superintendent: "nurses", head_nurse: "nurses", nurse: "nurses", infection_control_nurse: "nurses",
+  lab_technician: "paramedical", radiographer: "paramedical", paramedic: "paramedical", blood_bank_technologist: "paramedical", pharmacist: "paramedical",
+  cssd_supervisor: "technical", cssd_technician: "technical", facility_manager: "technical", computer_operator: "technical", radiology_admin: "technical",
+};
+/** The roster group of a designation (support and admin when not clinical or technical). */
+export const staffGroup = (category: string | null | undefined): StaffGroup => GROUP_OF[category ?? ""] ?? "support";
 
 /** Confirm admissions: the Head Nurse for their own department, the Nursing
  * Superintendent for every department. */
@@ -95,6 +116,8 @@ export const DRILL_ROLES = ["facility_manager", "quality_manager", "nursing_supe
 export const HR_ROLES = ["hr_officer"];
 export const TRAINING_ROLES = ["hr_officer", "nursing_superintendent", "quality_manager", "infection_control_nurse"];
 export const ROSTER_ROLES = ["hr_officer", "nursing_superintendent", "head_nurse", "hod"];
+/** Who places trainees and interns: HR, nursing, heads of department and the department leads who supervise them. */
+export const TRAINEE_ROLES = ["hr_officer", "nursing_superintendent", "hod", "pathologist", "radiologist", "radiology_admin"];
 export const APPRAISER_ROLES = ["hod", "nursing_superintendent", "head_nurse", "hr_officer"];
 /** Controlled documents: drafted by these, approved by the quality team (never by the author). */
 export const DOCUMENT_AUTHOR_ROLES = ["quality_manager", "nursing_superintendent", "hod", "hr_officer", "infection_control_nurse", "facility_manager", "pathologist"];
