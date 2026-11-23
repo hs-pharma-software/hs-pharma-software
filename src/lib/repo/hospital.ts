@@ -16,15 +16,45 @@ import { localDate } from "../localDate";
 import { invoicesRepo } from "./invoices";
 import { useAuthStore } from "../../store/authStore";
 import { settlingCreate } from "./docNumbers";
+import { formatMr, parseMr } from "../hospitalMr";
 
 export type { HospitalDepartment, HospitalLabOrder, HospitalImagingOrder, HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
 
-export const hospitalPatientsRepo = createTenantRepo<HospitalPatient>("hospital_patients");
+const patientsBase = createTenantRepo<HospitalPatient>("hospital_patients");
+/** Patients. A new patient given a new-format MR (MR-0001-23112026-2026) keeps
+ * its number, registration date and year; if another counter took that
+ * number a moment earlier, the next free one is given instead. */
+export const hospitalPatientsRepo = {
+  ...patientsBase,
+  async create(data: Partial<HospitalPatient>): Promise<HospitalPatient> {
+    for (let attempt = 0; ; attempt++) {
+      const parsed = parseMr(data.mr_no);
+      const row = parsed ? { ...data, mr_seq: parsed.seq, mr_reg_date: parsed.regDate, mr_year: parsed.year } : data;
+      try {
+        return await patientsBase.create(row);
+      } catch (e) {
+        // Before the v97 database update: the MR is kept, without its parts.
+        if (parsed && /no such column: mr_|has no column named mr_/i.test(String(e instanceof Error ? e.message : e))) return patientsBase.create(data);
+        const clash = /UNIQUE constraint failed: hospital_patients.(tenant_id, )?.*mr_no|ux_hosp_patient_mr|mr no is already in use/i.test(String(e instanceof Error ? e.message : e));
+        if (!parsed || !clash || attempt >= 4) throw e;
+        data = { ...data, mr_no: await nextMrNo(parsed.regDate) };
+      }
+    }
+  },
+};
 export const hospitalServicesRepo = createTenantRepo<HospitalService>("hospital_services");
 const PATIENT_REF: [string, string, string] = ["patient_id", "hospital_patients", "Patient"];
 const EPISODE_REF: [string, string, string] = ["episode_id", "hospital_episodes", "Episode"];
 // from_episode_id: the visit an admission came from (same hospital), or empty.
-export const hospitalEpisodesRepo = createTenantRepo<HospitalEpisode>("hospital_episodes", { refs: [PATIENT_REF, ["from_episode_id", "hospital_episodes", "Source visit"]] });
+const episodesBase = createTenantRepo<HospitalEpisode>("hospital_episodes", { refs: [PATIENT_REF, ["from_episode_id", "hospital_episodes", "Source visit"]] });
+/** Episodes. A visit in a new year first renews the year part of the patient's MR. */
+export const hospitalEpisodesRepo = {
+  ...episodesBase,
+  async create(data: Partial<HospitalEpisode>): Promise<HospitalEpisode> {
+    if (data.patient_id) await renewMrForVisit(data.patient_id, data.date || localDate()).catch(() => null);
+    return episodesBase.create(data);
+  },
+};
 export const hospitalChargesRepo = createTenantRepo<HospitalCharge>("hospital_charges", { refs: [EPISODE_REF] });
 export const hospitalPaymentsRepo = createTenantRepo<HospitalPayment>("hospital_payments", { refs: [EPISODE_REF] });
 export const hospitalDepartmentsRepo = createTenantRepo<HospitalDepartment>("hospital_departments");
@@ -139,6 +169,16 @@ export async function addCharge(charge: Omit<HospitalCharge, "id" | "created_at"
   const id = newId();
   const now = nowIso();
   const amount = Math.round(charge.qty * charge.rate * (1 - discount / 100) * 100) / 100;
+  // Shares: those given, else the service's per unit (Service Master).
+  let doctorShare = charge.doctor_share ?? null;
+  let staffShare = charge.staff_share ?? null;
+  if (charge.service_id && doctorShare == null && staffShare == null) {
+    const svc = (await dbSelect<{ doctor_share: number | null; staff_share: number | null }>(
+      `SELECT doctor_share, staff_share FROM hospital_services WHERE id = ? AND tenant_id = ?`, [charge.service_id, tenantId]
+    ).catch(() => []))[0];
+    if (svc?.doctor_share) doctorShare = Math.round(Number(svc.doctor_share) * charge.qty * 100) / 100;
+    if (svc?.staff_share) staffShare = Math.round(Number(svc.staff_share) * charge.qty * 100) / 100;
+  }
   try {
     await dbExecute(
       `INSERT INTO hospital_charges (id, tenant_id, episode_id, service_id, description, department, category, qty, rate, discount_pct, amount, doctor_id, performed_by, charge_date, notes, invoice_id, created_at, updated_at, deleted_at)
@@ -151,7 +191,10 @@ export async function addCharge(charge: Omit<HospitalCharge, "id" | "created_at"
   } catch (e) {
     throw friendlyDbError(e);
   }
-  return { ...charge, tenant_id: tenantId, id, amount, discount_pct: discount, created_at: now, updated_at: now, deleted_at: null };
+  if (doctorShare != null || staffShare != null) {
+    await dbExecute(`UPDATE hospital_charges SET doctor_share = ?, staff_share = ? WHERE id = ? AND tenant_id = ?`, [doctorShare, staffShare, id, tenantId]).catch(() => undefined);
+  }
+  return { ...charge, tenant_id: tenantId, id, amount, discount_pct: discount, doctor_share: doctorShare, staff_share: staffShare, created_at: now, updated_at: now, deleted_at: null };
 }
 
 /** Removes a charge (soft delete). Only from this hospital, and only while the episode is open. */
@@ -287,14 +330,51 @@ export async function getHospitalStats(): Promise<HospitalStats> {
 
 // ── MR number generation ───────────────────────────────────────────────────
 
-export async function nextMrNo(): Promise<string> {
+/** The next MR: the number after the highest given (never restarts), today's
+ * date as the registration date, this year. */
+export async function nextMrNo(regDate: string = localDate()): Promise<string> {
   const tenantId = requireCurrentTenantId();
-  const rows = await dbSelect<{ n: number }>(`SELECT COUNT(*) AS n FROM hospital_patients WHERE tenant_id = ?`, [tenantId]);
-  let seq = (rows[0]?.n ?? 0) + 1;
+  // Before the v97 database update there is no mr_seq: count the patients instead.
+  const hasSeq = await dbSelect(`SELECT mr_seq FROM hospital_patients WHERE tenant_id = ? LIMIT 0`, [tenantId]).then(() => true, () => false);
+  const rows = await dbSelect<{ n: number | null }>(
+    hasSeq ? `SELECT MAX(mr_seq) AS n FROM hospital_patients WHERE tenant_id = ?` : `SELECT COUNT(*) AS n FROM hospital_patients WHERE tenant_id = ?`, [tenantId]);
+  let seq = (Number(rows[0]?.n) || 0) + 1;
   for (;;) {
-    const mr = `MR-${String(seq).padStart(6, "0")}`;
-    const taken = await dbSelect(`SELECT 1 FROM hospital_patients WHERE tenant_id = ? AND mr_no = ?`, [tenantId, mr]);
+    const mr = formatMr(seq, regDate, Number(regDate.slice(0, 4)));
+    const taken = await dbSelect(
+      hasSeq ? `SELECT 1 FROM hospital_patients WHERE tenant_id = ? AND (mr_no = ? OR mr_seq = ?)` : `SELECT 1 FROM hospital_patients WHERE tenant_id = ? AND mr_no LIKE ?`,
+      hasSeq ? [tenantId, mr, seq] : [tenantId, `MR-${String(seq).padStart(4, "0")}-%`]);
     if (!taken.length) return mr;
     seq++;
   }
+}
+
+/** At a patient's first visit of a new year the MR's year part is renewed
+ * (MR-0001-23112026-2026 becomes ...-2027); the earlier MR goes to the
+ * history. Returns the MR to use for the visit. */
+export async function renewMrForVisit(patientId: string, visitDate: string = localDate()): Promise<string | null> {
+  const tenantId = requireCurrentTenantId();
+  const p = (await dbSelect<{ mr_no: string; mr_seq: number | null; mr_reg_date: string | null; mr_year: number | null }>(
+    `SELECT mr_no, mr_seq, mr_reg_date, mr_year FROM hospital_patients WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+    [patientId, tenantId]
+  ).catch(() => []))[0];
+  if (!p) return null;
+  const year = Number(visitDate.slice(0, 4));
+  if (p.mr_seq == null || !p.mr_reg_date || !(year > Number(p.mr_year ?? 0))) return p.mr_no;
+  const mr = formatMr(Number(p.mr_seq), p.mr_reg_date, year);
+  const now = nowIso();
+  await dbExecute(
+    `INSERT INTO hospital_patient_mr_history (id, tenant_id, patient_id, mr_no, replaced_on, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [newId(), tenantId, patientId, p.mr_no, visitDate.slice(0, 10), now, now]
+  );
+  await patientsBase.update(patientId, { mr_no: mr, mr_year: year } as Partial<HospitalPatient>);
+  return mr;
+}
+
+/** A patient's earlier MR numbers, newest first. */
+export async function mrHistory(patientId: string): Promise<{ mr_no: string; replaced_on: string }[]> {
+  return dbSelect<{ mr_no: string; replaced_on: string }>(
+    `SELECT mr_no, replaced_on FROM hospital_patient_mr_history WHERE tenant_id = ? AND patient_id = ? AND deleted_at IS NULL ORDER BY replaced_on DESC, created_at DESC`,
+    [requireCurrentTenantId(), patientId]
+  ).catch(() => []);
 }

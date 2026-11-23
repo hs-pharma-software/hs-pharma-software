@@ -44,6 +44,9 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
   const [rate, setRate] = useState(String(service?.rate ?? ""));
   const [isActive, setIsActive] = useState(service ? Boolean(service.is_active) : true);
   const [notes, setNotes] = useState(service?.notes ?? "");
+  const [doctorShare, setDoctorShare] = useState(service?.doctor_share != null ? String(service.doctor_share) : "");
+  const [staffShare, setStaffShare] = useState(service?.staff_share != null ? String(service.staff_share) : "");
+  const hospitalShare = (Number(rate) || 0) - (Number(doctorShare) || 0) - (Number(staffShare) || 0);
   const [saving, setSaving] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
 
@@ -55,6 +58,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
 
   async function save() {
     if (!code.trim() || !name.trim()) return;
+    if (hospitalShare < 0) { window.alert("The doctor's and staff's shares are more than the rate."); return; }
     setSaving(true);
     try {
       const payload = {
@@ -66,6 +70,10 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
         rate: Number(rate) || 0,
         is_active: isActive ? 1 : 0,
         notes: notes.trim() || null,
+        // Only once set, so a service still saves before the v97 database update.
+        ...(doctorShare.trim() || staffShare.trim() || service?.doctor_share != null || service?.staff_share != null
+          ? { doctor_share: doctorShare.trim() ? Number(doctorShare) : null, staff_share: staffShare.trim() ? Number(staffShare) : null }
+          : {}),
       };
       if (isEdit) {
         await hospitalServicesRepo.update(service.id, payload);
@@ -108,6 +116,16 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
         <Field label="Standard Rate (Rs)">
           <Input type="number" min="0" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0" />
         </Field>
+        <div className="md:col-span-2 rounded-xl bg-neutral-50 p-3 ring-1 ring-black/[0.04]">
+          <p className="mb-2 text-xs font-semibold text-neutral-600">Charges breakdown (per unit)</p>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Doctor share (Rs)"><Input type="number" min="0" step="any" value={doctorShare} onChange={(e) => setDoctorShare(e.target.value)} placeholder="0" /></Field>
+            <Field label="Staff share (Rs)"><Input type="number" min="0" step="any" value={staffShare} onChange={(e) => setStaffShare(e.target.value)} placeholder="0" /></Field>
+            <Field label="Hospital share (Rs)">
+              <p className={`py-1.5 text-sm font-semibold tabular-nums ${hospitalShare < 0 ? "text-rose-700" : "text-neutral-800"}`}>{hospitalShare.toFixed(0)}</p>
+            </Field>
+          </div>
+        </div>
         <Field label="Notes">
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>

@@ -23,8 +23,9 @@ test("Episodes & Billing holds Episodes and Billing; Invoices is reachable throu
   const n = nav();
   assert.deepEqual(kids(find(n, "Episodes & Billing")), ["Episodes", "Billing"]);
   const billing = find(n, "Episodes & Billing")!.children!.find((c) => c.label === "Billing")!;
-  assert.equal(billing.href, "/invoices");
-  assert.deepEqual((billing.children ?? []).map((c) => c.href), ["/invoices", "/invoices/returns", "/invoices/item-return", "/invoices/memorized"]);
+  // Episode bills first; no pharmacy-style returns or memorized invoices for a hospital.
+  assert.equal(billing.href, "/hospital/billing");
+  assert.deepEqual((billing.children ?? []).map((c) => c.href), ["/hospital/billing", "/invoices"]);
   assert.ok(!top(n).includes("Invoices"));
 });
 

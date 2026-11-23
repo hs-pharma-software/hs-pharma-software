@@ -8,6 +8,7 @@
  * "seen" only when a doctor records it, an MLC report is issued only after
  * the police were informed and a doctor examined the patient. */
 import { dbSelect } from "../db";
+import { mrSearchSql } from "../hospitalMr";
 import { createTenantRepo, requireCurrentTenantId } from "./base";
 import { nowIso } from "../id";
 import { currentActor, roleAllowed, type Actor } from "./medicalRecord";
@@ -262,8 +263,9 @@ export async function listMlc(opts: { status?: MlcCase["status"] | ""; search?: 
   if (opts.status) { where.push("m.status = ?"); params.push(opts.status); }
   if (opts.search?.trim()) {
     const q = `%${opts.search.trim()}%`;
-    where.push("(m.mlc_no LIKE ? OR p.name LIKE ? OR p.mr_no LIKE ? OR m.police_station LIKE ?)");
-    params.push(q, q, q, q);
+    const mr = mrSearchSql("p", opts.search);
+    where.push(`(m.mlc_no LIKE ? OR p.name LIKE ? OR ${mr.sql} OR m.police_station LIKE ?)`);
+    params.push(q, q, ...mr.params, q);
   }
   return dbSelect<MlcRow>(
     `SELECT m.*, p.name AS patient_name, p.mr_no, e.episode_no FROM hospital_mlc_cases m

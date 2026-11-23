@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { mrMatches } from "@/lib/hospitalMr";
 import { Search, Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -25,7 +26,7 @@ export default function HospitalPatientsPage() {
   const filtered = search.trim()
     ? rows.filter((r) =>
         r.name.toLowerCase().includes(search.toLowerCase()) ||
-        r.mr_no.toLowerCase().includes(search.toLowerCase()) ||
+        mrMatches(r, search) ||
         (r.phone ?? "").includes(search) ||
         (r.cnic ?? "").includes(search)
       )

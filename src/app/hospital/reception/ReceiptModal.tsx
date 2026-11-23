@@ -11,7 +11,7 @@ import { visitReceiptFor, collectVisitFees, type FeeScope, type ScopedReceipt } 
 import type { PaymentMethod } from "@/lib/types-hospital";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
 
-const METHOD: Record<string, string> = { cash: "Cash", card: "Card", online: "Online transfer", bank: "Bank deposit" };
+const METHOD: Record<string, string> = { cash: "Cash", card: "Card", online: "QR payment", bank: "Bank transfer" };
 const rs = (n: number) => n.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const when = (s: string) => s.replace("T", " ").slice(0, 16);
 

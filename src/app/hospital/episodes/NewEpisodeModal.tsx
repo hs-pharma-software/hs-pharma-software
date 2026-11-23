@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { mrMatches } from "@/lib/hospitalMr";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
@@ -47,7 +48,7 @@ export default function NewEpisodeModal({ defaultType, onClose, onSaved }: Props
   const selected = patients.find((p) => p.id === patientId) ?? null;
   const term = patientSearch.trim().toLowerCase();
   const filteredPatients = term
-    ? patients.filter((p) => p.name.toLowerCase().includes(term) || p.mr_no.toLowerCase().includes(term) || (p.phone ?? "").includes(term))
+    ? patients.filter((p) => p.name.toLowerCase().includes(term) || mrMatches(p, term) || (p.phone ?? "").includes(term))
     : [];
 
   function pick(p: HospitalPatient) {

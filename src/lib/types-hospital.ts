@@ -21,6 +21,10 @@ export interface HospitalPatient extends TenantRow {
   next_of_kin_phone: string | null;
   next_of_kin_relation: string | null;
   notes: string | null;
+  /** MR parts (v97): the number (never restarts), registration date (yyyy-mm-dd) and the MR's year. */
+  mr_seq?: number | null;
+  mr_reg_date?: string | null;
+  mr_year?: number | null;
 }
 
 export type HospitalServiceCategory =
@@ -60,6 +64,9 @@ export interface HospitalService extends TenantRow {
   modality?: string | null;
   /** Surgery types: the charge breakdown as JSON (v45); see config/surgeryCharges. */
   fee_breakdown?: string | null;
+  /** Per unit (v97): the doctor's and the staff's share; the rest is the hospital's. */
+  doctor_share?: number | null;
+  staff_share?: number | null;
 }
 
 export type EpisodeType = "opd" | "ipd" | "emergency";
@@ -164,6 +171,9 @@ export interface HospitalCharge extends TenantRow {
   charge_date: string;
   notes: string | null;
   invoice_id: string | null;
+  /** This charge's doctor / staff share in Rs (v97), kept as charged. */
+  doctor_share?: number | null;
+  staff_share?: number | null;
 }
 
 export type PaymentType = "deposit" | "payment" | "refund";

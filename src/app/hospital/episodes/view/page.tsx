@@ -418,8 +418,8 @@ export default function EpisodeDetailPage() {
                   <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}>
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
-                    <option value="online">Online Transfer</option>
-                    <option value="bank">Bank Deposit</option>
+                    <option value="online">QR payment</option>
+                    <option value="bank">Bank transfer</option>
                   </Select>
                 </Field>
                 <Field label="Reference">

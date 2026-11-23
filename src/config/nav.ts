@@ -600,8 +600,17 @@ const HOSPITAL_NAV: NavItem[] = [
     onlyFor: ["hospital"],
     children: [
       { label: "Episodes", href: "/hospital/episodes" },
-      // Invoices live under Billing for hospitals (no separate top-level Invoices tab).
-      shared("Billing", "invoices"),
+      // Billing: the episodes' bills, and the invoices (surgery invoices) for hospitals.
+      // No separate top-level Invoices tab, and no pharmacy-style returns / memorized invoices.
+      {
+        label: "Billing",
+        href: "/hospital/billing",
+        moduleKey: "invoices",
+        children: [
+          { label: "Episode Bills", href: "/hospital/billing" },
+          { label: "Invoices", href: "/invoices" },
+        ],
+      },
     ],
   },
   { label: "Departments", href: "/hospital/departments", icon: Building2, moduleKey: "hospital_departments", onlyFor: ["hospital"] },

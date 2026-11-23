@@ -11,7 +11,7 @@ import { localDate } from "@/lib/localDate";
 import { hospitalEpisodesRepo, hospitalPatientsRepo, hospitalServicesRepo, type HospitalPatient, type HospitalService } from "@/lib/repo/hospital";
 import { getPatientHistory, type HistoryVisit } from "@/lib/repo/hospitalCare";
 import {
-  staffForCurrentUser, listHospitalDoctors, listOpdQueue, saveConsultationNotes, listRx, saveRx, sendRxToPharmacy,
+  staffForCurrentUser, listHospitalDoctors, listOpdQueue, ownDoctorScope, saveConsultationNotes, listRx, saveRx, sendRxToPharmacy,
   orderInvestigation, listVisitOrders, type OpdQueueRow, type RxDraft,
 } from "@/lib/repo/hospitalOpd";
 import { getPharmacyLink, listPharmacyTenants, searchProductsForPharmacy } from "@/lib/repo/clinic";
@@ -23,6 +23,9 @@ import type { HospitalEpisode } from "@/lib/types-hospital";
 import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
 import { VisitChecklist } from "@/components/hospital/record/EpisodeRecord";
 import type { Staff } from "@/lib/types";
+import { listVitals, recordVitals } from "@/lib/repo/medicalRecord";
+import { VitalsFields } from "@/components/hospital/VitalsFields";
+import { cToF, fToC, vitalsSummary, type VitalValues } from "@/config/vitalNorms";
 
 type Product = { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null };
 type VisitOrder = Awaited<ReturnType<typeof listVisitOrders>>[number];
@@ -127,9 +130,15 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<Product[]>([]);
   const [busy, setBusy] = useState(false);
+  const [vit, setVit] = useState<VitalValues>({});
+  const [vitDirty, setVitDirty] = useState(false);
+  const [denied, setDenied] = useState(false);
 
   async function load() {
     const e = await hospitalEpisodesRepo.get(episodeId);
+    // A doctor opens only their own patients' visits.
+    const own = await ownDoctorScope();
+    if (e && own && e.doctor_id !== own) { setDenied(true); return; }
     setEp(e);
     if (!e) return;
     setPatient(await hospitalPatientsRepo.get(e.patient_id));
@@ -143,6 +152,31 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
     setLines(rx.length ? rx.map((r) => ({ product_id: r.product_id, product_name: r.product_name, generic_name: r.generic_name, dose: r.dose, route: r.route, frequency: r.frequency, duration: r.duration, qty: r.qty, instructions: r.instructions })) : []);
     setSentAt(rx.find((r) => r.sent_at)?.sent_at ?? null);
     setOrders(await listVisitOrders(episodeId));
+    // The latest vital signs of this visit (taken by the nurse or the doctor).
+    const last = (await listVitals(episodeId).catch(() => [])).at(-1);
+    const str = (n: number | null | undefined) => (n == null ? "" : String(n));
+    setVit(last ? {
+      bp_systolic: str(last.bp_systolic), bp_diastolic: str(last.bp_diastolic), pulse: str(last.pulse),
+      temperature_f: last.temperature_c == null ? "" : String(cToF(last.temperature_c)), spo2: str(last.spo2), resp_rate: str(last.resp_rate),
+      weight_kg: str(last.weight_kg), blood_sugar: str(last.blood_sugar),
+    } : {});
+    setVitDirty(false);
+  }
+
+  /** Saves the notes; vital signs entered here are recorded as a reading and summarised in the notes. */
+  async function saveNotes(status: "in_consultation" | "done") {
+    if (!ep) return;
+    let vitals = notes.vitals;
+    if (vitDirty && Object.values(vit).some((x) => (x ?? "").trim() !== "")) {
+      const num = (x: string | undefined) => ((x ?? "").trim() === "" ? null : Number(x));
+      const t = num(vit.temperature_f);
+      await recordVitals(ep.id, {
+        bp_systolic: num(vit.bp_systolic), bp_diastolic: num(vit.bp_diastolic), pulse: num(vit.pulse), temperature_c: t == null ? null : fToC(t),
+        spo2: num(vit.spo2), resp_rate: num(vit.resp_rate), weight_kg: num(vit.weight_kg), blood_sugar: num(vit.blood_sugar),
+      });
+      vitals = vitalsSummary(vit);
+    }
+    await saveConsultationNotes(ep.id, { ...notes, vitals, followup_date: notes.followup_date || null, consult_status: status });
   }
 
   useEffect(() => {
@@ -193,6 +227,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
 
   const setLine = (i: number, patch: Partial<RxDraft>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
+  if (denied) return <p className="p-6 text-sm text-rose-600">This patient is another doctor&apos;s. You see only your own patients.</p>;
   if (!ep) return <p className="p-6 text-sm text-neutral-400">Loading…</p>;
   const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 
@@ -218,7 +253,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
             <Button onClick={() => void run("start", () => saveConsultationNotes(ep.id, { consult_status: "in_consultation" }))}>Start</Button>
           )}
           {ep.consult_status !== "done" && (
-            <Button variant="primary" onClick={() => void run("finish", () => saveConsultationNotes(ep.id, { ...notes, followup_date: notes.followup_date || null, consult_status: "done" }))}>Finish visit</Button>
+            <Button variant="primary" onClick={() => void run("finish", () => saveNotes("done"))}>Finish visit</Button>
           )}
         </div>
       </div>
@@ -227,16 +262,19 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
 
       <div className={card}>
         <h3 className="mb-3 text-sm font-semibold text-neutral-700">Consultation</h3>
+        <div className="mb-3 rounded-xl bg-neutral-50 p-3 ring-1 ring-black/[0.04]">
+          <p className="mb-2 text-xs font-semibold text-neutral-600">Vitals</p>
+          <VitalsFields value={vit} onChange={(v) => { setVit(v); setVitDirty(true); }} />
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="Complaint"><Textarea rows={2} value={notes.complaint} onChange={(e) => setNotes({ ...notes, complaint: e.target.value })} /></Field>
-          <Field label="Vitals"><Textarea rows={2} value={notes.vitals} onChange={(e) => setNotes({ ...notes, vitals: e.target.value })} placeholder="BP, pulse, temp, SpO2, weight" /></Field>
           <Field label="Examination"><Textarea rows={2} value={notes.findings} onChange={(e) => setNotes({ ...notes, findings: e.target.value })} /></Field>
           <Field label="Diagnosis"><Textarea rows={2} value={notes.diagnosis} onChange={(e) => setNotes({ ...notes, diagnosis: e.target.value })} /></Field>
           <Field label="Advice"><Textarea rows={2} value={notes.advice} onChange={(e) => setNotes({ ...notes, advice: e.target.value })} /></Field>
           <Field label="Follow-up date"><Input type="date" value={notes.followup_date} onChange={(e) => setNotes({ ...notes, followup_date: e.target.value })} /></Field>
         </div>
         <div className="mt-3 flex justify-end">
-          <Button onClick={() => void run("save the notes", () => saveConsultationNotes(ep.id, { ...notes, followup_date: notes.followup_date || null, consult_status: ep.consult_status === "done" ? "done" : "in_consultation" }))} disabled={busy}>
+          <Button onClick={() => void run("save the notes", () => saveNotes(ep.consult_status === "done" ? "done" : "in_consultation"))} disabled={busy}>
             Save notes
           </Button>
         </div>

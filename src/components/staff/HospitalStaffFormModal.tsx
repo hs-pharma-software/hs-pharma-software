@@ -28,6 +28,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   const [department, setDepartment] = useState(staff?.department ?? "");
   const [specialization, setSpecialization] = useState(staff?.specialization ?? "");
   const [fee, setFee] = useState(String(staff?.consultation_fee ?? 0));
+  const [docShare, setDocShare] = useState(staff?.consultation_doctor_share != null ? String(staff.consultation_doctor_share) : "");
   const [address, setAddress] = useState(staff?.address ?? "");
   const [phone, setPhone] = useState(staff?.phone ?? "");
   const [cnic, setCnic] = useState(staff?.cnic ?? "");
@@ -77,6 +78,8 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         collection_center_id: centerId || null,
         specialization,
         consultation_fee: Number(fee) || 0,
+        // Only once set, so staff still save before the v97 database update.
+        ...(docShare.trim() || staff?.consultation_doctor_share != null ? { consultation_doctor_share: docShare.trim() ? Number(docShare) : null } : {}),
         address: address || null,
         phone: phone || null,
         cnic: cnic || null,
@@ -148,6 +151,10 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
               </Field>
               <Field label="OPD consultation fee (Rs)">
                 <Input type="number" min="0" step="any" value={fee} onChange={(e) => setFee(e.target.value)} />
+              </Field>
+              <Field label="Doctor share of the fee (Rs)">
+                <Input type="number" min="0" step="any" value={docShare} onChange={(e) => setDocShare(e.target.value)} placeholder="e.g. 1500" />
+                <span className="text-[11px] text-neutral-500">Hospital share: Rs {Math.max(0, (Number(fee) || 0) - (Number(docShare) || 0)).toFixed(0)}{(Number(docShare) || 0) > (Number(fee) || 0) ? " (the doctor's share is more than the fee)" : ""}</span>
               </Field>
             </>
           )}

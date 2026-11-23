@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { isTauri } from "@/lib/platform";
-import { hospitalEpisodesRepo, hospitalPatientsRepo, type HospitalPatient } from "@/lib/repo/hospital";
+import { hospitalEpisodesRepo, hospitalPatientsRepo, mrHistory, type HospitalPatient } from "@/lib/repo/hospital";
 import { getPatientHistory, type HistoryVisit } from "@/lib/repo/hospitalCare";
 import { listForms, roleAllowed, currentActor } from "@/lib/repo/medicalRecord";
 import { formDef } from "@/config/forms";
@@ -28,6 +28,7 @@ export default function PatientRecordPage() {
   const [forms, setForms] = useState<FormRecord[]>([]);
   const [open, setOpen] = useState<{ record: FormRecord; episode: HospitalEpisode | null; canFinalize: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mrs, setMrs] = useState<{ mr_no: string; replaced_on: string }[]>([]);
 
   async function load() {
     if (!isTauri() || !id) return;
@@ -35,7 +36,8 @@ export default function PatientRecordPage() {
       const p = await hospitalPatientsRepo.get(id);
       if (!p) throw new Error("Patient not found in this hospital.");
       setPatient(p);
-      const [v, f] = await Promise.all([getPatientHistory(id, null, 200), listForms({ patientId: id, includeVoided: true })]);
+      const [v, f, h] = await Promise.all([getPatientHistory(id, null, 200), listForms({ patientId: id, includeVoided: true }), mrHistory(id)]);
+      setMrs(h);
       setVisits(v);
       setForms(f);
     } catch (e) {
@@ -61,7 +63,14 @@ export default function PatientRecordPage() {
     <div>
       <PageHeader title={`Medical record · ${patient.name}`} />
       <div className={`${card} mb-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4`}>
-        <div><p className="text-xs text-neutral-400">MR No</p><p className="font-mono">{patient.mr_no}</p></div>
+        <div>
+          <p className="text-xs text-neutral-400">MR No</p><p className="font-mono">{patient.mr_no}</p>
+          {mrs.length > 0 && (
+            <p className="mt-0.5 text-[11px] text-neutral-500" title="Earlier MR numbers of this patient">
+              Earlier: {mrs.map((m) => <span key={m.mr_no} className="mr-2 font-mono">{m.mr_no}</span>)}
+            </p>
+          )}
+        </div>
         <div><p className="text-xs text-neutral-400">Age / sex</p><p>{[patient.age_years != null ? `${patient.age_years} y` : null, patient.gender].filter(Boolean).join(" / ") || "—"}</p></div>
         <div><p className="text-xs text-neutral-400">Blood group</p><p>{patient.blood_group ?? "—"}</p></div>
         <div><p className="text-xs text-neutral-400">Allergies</p><p className={patient.allergies ? "font-medium text-rose-600" : ""}>{patient.allergies ?? "None recorded"}</p></div>

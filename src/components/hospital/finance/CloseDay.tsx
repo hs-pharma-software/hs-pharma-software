@@ -8,7 +8,7 @@ import { Field, Input, Textarea } from "@/components/ui/Field";
 import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { hospitalHeader } from "@/lib/repo/hospitalCare";
-import { myOpenCollections, closeMyDay, closingPayments, METHOD_LABEL, type CashClosing, type PaymentRow, type Totals } from "@/lib/repo/cashClosing";
+import { myOpenCollections, closeMyDay, closingPayments, collectionsByDepartment, DEPT_LABEL, DEPT_ORDER, METHOD_LABEL, type CashClosing, type CollectionDept, type PaymentRow, type Totals } from "@/lib/repo/cashClosing";
 
 export const rs = (n: number) => Number(n).toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const when = (s: string | null) => (s ? s.replace("T", " ").slice(0, 16) : "—");
@@ -16,7 +16,8 @@ const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String
 
 /** Totals by method, as a small table. */
 export function TotalsTable({ t, expectedCash }: { t: Totals; expectedCash: number }) {
-  const rows: [string, number][] = [["Cash", t.cash], ["Card", t.card], ["Online transfer", t.online], ["Bank deposit", t.bank]];
+  // Card only when some was taken by card.
+  const rows: [string, number][] = [["Total cash collection", t.cash], ["Bank transfer", t.bank], ["QR payments", t.online], ...(t.card ? [["Card", t.card] as [string, number]] : [])];
   return (
     <table className="w-full text-sm">
       <tbody>
@@ -24,6 +25,21 @@ export function TotalsTable({ t, expectedCash }: { t: Totals; expectedCash: numb
         {t.refunds > 0 && <tr><td className="py-0.5 text-neutral-600">Refunds paid out</td><td className="py-0.5 text-right tabular-nums">−{rs(t.refunds)}</td></tr>}
         <tr className="border-t border-neutral-300 font-semibold"><td className="py-0.5">Net collected ({t.count} entries)</td><td className="py-0.5 text-right tabular-nums">{rs(t.net)}</td></tr>
         <tr className="font-semibold text-emerald-800"><td className="py-0.5">Cash that should be in the drawer</td><td className="py-0.5 text-right tabular-nums">{rs(expectedCash)}</td></tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** Collections by department: OPD, consultation, emergency, lab, radiology (and admissions when any). */
+export function DeptTable({ rows }: { rows: PaymentRow[] }) {
+  const [d, setD] = useState<Record<CollectionDept, number> | null>(null);
+  useEffect(() => { void collectionsByDepartment(rows).then(setD).catch(() => setD(null)); }, [rows]);
+  if (!d) return null;
+  const shown = DEPT_ORDER.filter((k) => k !== "ipd" || d.ipd !== 0);
+  return (
+    <table className="w-full text-sm">
+      <tbody>
+        {shown.map((k) => <tr key={k}><td className="py-0.5 text-neutral-600">{DEPT_LABEL[k]}</td><td className="py-0.5 text-right tabular-nums">{rs(d[k])}</td></tr>)}
       </tbody>
     </table>
   );
@@ -58,7 +74,8 @@ export function CloseDayModal({ onClose, onClosed }: { onClose: () => void; onCl
       ) : (
         <div className="flex flex-col gap-4">
           <p className="text-xs text-neutral-500">Everything you collected since {when(data.since)}. Count the cash in your drawer and enter it below.</p>
-          <TotalsTable t={data.totals} expectedCash={data.expectedCash} />
+          <DeptTable rows={data.rows} />
+          <div className="border-t border-neutral-200 pt-2"><TotalsTable t={data.totals} expectedCash={data.expectedCash} /></div>
           <details className="text-xs">
             <summary className="cursor-pointer text-neutral-600">Show the {data.rows.length} entries</summary>
             <PaymentList rows={data.rows} />
@@ -127,6 +144,7 @@ export function ClosingSlipModal({ closing: c, onClose, actions }: { closing: Ca
           <p><span className="text-neutral-500">From:</span> {when(c.from_at)}</p>
           <p><span className="text-neutral-500">To:</span> {when(c.to_at)}</p>
         </div>
+        {rows.length > 0 && <div className="border-b border-neutral-300 py-1.5"><DeptTable rows={rows} /></div>}
         <div className="py-1.5"><TotalsTable t={t} expectedCash={Math.round((c.cash - c.refunds) * 100) / 100} /></div>
         <div className="grid grid-cols-2 gap-x-4 border-t border-neutral-300 py-1.5 text-[12px]">
           <p><span className="text-neutral-500">Cash counted:</span> <b className="tabular-nums">{rs(c.counted_cash)}</b></p>

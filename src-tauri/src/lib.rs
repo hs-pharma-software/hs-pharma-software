@@ -1877,6 +1877,62 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v97() -> &'static str {
+    r#"
+    -- Hospital MR numbers: MR-<number>-<registration date DDMMYYYY>-<year>.
+    -- The number counts on for ever; the year part is renewed at the
+    -- patient's first visit of a new year, each earlier MR kept in the history.
+    -- Existing patients are converted: MR-000123 keeps its number 123, the
+    -- registration date is when the patient was added, the year that of the
+    -- latest visit (else the registration).
+    -- Shares (Service Master and consultation fees): the doctor's and staff's
+    -- share per unit, the rest the hospital's; each charge keeps its shares.
+    ALTER TABLE hospital_services ADD COLUMN doctor_share REAL;
+    ALTER TABLE hospital_services ADD COLUMN staff_share REAL;
+    ALTER TABLE staff ADD COLUMN consultation_doctor_share REAL;
+    ALTER TABLE hospital_charges ADD COLUMN doctor_share REAL;
+    ALTER TABLE hospital_charges ADD COLUMN staff_share REAL;
+    ALTER TABLE hospital_patients ADD COLUMN mr_seq INTEGER;
+    ALTER TABLE hospital_patients ADD COLUMN mr_reg_date TEXT;
+    ALTER TABLE hospital_patients ADD COLUMN mr_year INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_hosp_patient_mr_seq ON hospital_patients (tenant_id, mr_seq);
+    CREATE TABLE IF NOT EXISTS hospital_patient_mr_history (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, patient_id TEXT NOT NULL, mr_no TEXT NOT NULL,
+        replaced_on TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_mr_history_patient ON hospital_patient_mr_history (tenant_id, patient_id);
+    CREATE INDEX IF NOT EXISTS idx_hosp_mr_history_mr ON hospital_patient_mr_history (tenant_id, mr_no);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patient_mr_history_ins AFTER INSERT ON hospital_patient_mr_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patient_mr_history', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patient_mr_history_upd AFTER UPDATE ON hospital_patient_mr_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patient_mr_history', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patient_mr_history_del AFTER DELETE ON hospital_patient_mr_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patient_mr_history', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    UPDATE hospital_patients SET mr_seq = CAST(substr(mr_no, 4) AS INTEGER) WHERE mr_seq IS NULL AND (mr_no GLOB 'MR-[0-9]*' AND substr(mr_no, 4) NOT GLOB '*[^0-9]*');
+    UPDATE hospital_patients SET mr_seq = CAST(substr(mr_no, 4, instr(substr(mr_no, 4), '-') - 1) AS INTEGER) WHERE mr_seq IS NULL AND (mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]');
+    UPDATE hospital_patients SET mr_seq =
+        COALESCE((SELECT MAX(CASE WHEN (h2.mr_no GLOB 'MR-[0-9]*' AND substr(h2.mr_no, 4) NOT GLOB '*[^0-9]*') THEN CAST(substr(h2.mr_no, 4) AS INTEGER) WHEN (h2.mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]') THEN CAST(substr(h2.mr_no, 4, instr(substr(h2.mr_no, 4), '-') - 1) AS INTEGER) END) FROM hospital_patients h2 WHERE h2.tenant_id = hospital_patients.tenant_id), 0)
+        + (SELECT COUNT(*) FROM hospital_patients h3 WHERE h3.tenant_id = hospital_patients.tenant_id
+             AND NOT (h3.mr_no GLOB 'MR-[0-9]*' AND substr(h3.mr_no, 4) NOT GLOB '*[^0-9]*') AND NOT (h3.mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]')
+             AND (h3.created_at < hospital_patients.created_at OR (h3.created_at = hospital_patients.created_at AND h3.id <= hospital_patients.id)))
+      WHERE mr_seq IS NULL AND NOT (mr_no GLOB 'MR-[0-9]*' AND substr(mr_no, 4) NOT GLOB '*[^0-9]*') AND NOT (mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]');
+    UPDATE hospital_patients SET mr_reg_date = substr(created_at, 1, 10) WHERE mr_reg_date IS NULL;
+    UPDATE hospital_patients SET mr_year = COALESCE(
+        (SELECT CAST(substr(MAX(e.date), 1, 4) AS INTEGER) FROM hospital_episodes e WHERE e.patient_id = hospital_patients.id AND e.tenant_id = hospital_patients.tenant_id AND e.deleted_at IS NULL),
+        CAST(substr(mr_reg_date, 1, 4) AS INTEGER)) WHERE mr_year IS NULL;
+    INSERT INTO hospital_patient_mr_history (id, tenant_id, patient_id, mr_no, replaced_on, created_at, updated_at)
+        SELECT lower(hex(randomblob(16))), p.tenant_id, p.id, p.mr_no, strftime('%Y-%m-%d', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        FROM hospital_patients p
+        WHERE NOT (p.mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]') AND p.mr_seq IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM hospital_patient_mr_history h WHERE h.tenant_id = p.tenant_id AND h.patient_id = p.id AND h.mr_no = p.mr_no);
+    UPDATE hospital_patients SET mr_no = 'MR-' || printf('%04d', mr_seq) || '-' || substr(mr_reg_date, 9, 2) || substr(mr_reg_date, 6, 2) || substr(mr_reg_date, 1, 4) || '-' || mr_year
+      WHERE NOT (mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]') AND mr_seq IS NOT NULL AND mr_reg_date IS NOT NULL AND mr_year IS NOT NULL
+    "#
+}
+
 fn schema_sql_v96() -> &'static str {
     r#"
     -- Pharmacies: insurance. A business's insurance companies; a customer's
@@ -6617,6 +6673,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 96,
             description: "pharmacy_insurance",
             sql: schema_sql_v96(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 97,
+            description: "hospital_mr_number_and_shares",
+            sql: schema_sql_v97(),
             kind: MigrationKind::Up,
         },
     ]

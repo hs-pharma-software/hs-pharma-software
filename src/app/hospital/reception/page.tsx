@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { mrMatches } from "@/lib/hospitalMr";
 import { Plus, Printer } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,7 @@ import type { Staff } from "@/lib/types";
 import PatientFormModal from "../patients/PatientFormModal";
 import { ReceiptModal } from "./ReceiptModal";
 import { CloseDayModal } from "@/components/hospital/finance/CloseDay";
+import { EpisodeBillsPanel } from "@/components/hospital/EpisodeBills";
 import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, FEE_SCOPE_LABEL, type FeeScope, type ScopedQueueRow } from "@/lib/repo/receptionFees";
 
 const STATUS_LABEL: Record<string, string> = { waiting: "Waiting", in_consultation: "With doctor", done: "Seen" };
@@ -70,7 +72,7 @@ export default function ReceptionPage() {
   const doctor = doctors.find((d) => d.id === doctorId) ?? null;
   const fee = Number(doctor?.consultation_fee) || 0;
   const term = search.trim().toLowerCase();
-  const matches = term ? patients.filter((p) => p.name.toLowerCase().includes(term) || p.mr_no.toLowerCase().includes(term) || (p.phone ?? "").includes(term)).slice(0, 8) : [];
+  const matches = term ? patients.filter((p) => p.name.toLowerCase().includes(term) || mrMatches(p, term) || (p.phone ?? "").includes(term)).slice(0, 8) : [];
 
   async function book() {
     if (!selected || !doctor || booking) return;
@@ -172,8 +174,8 @@ export default function ReceptionPage() {
               <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
                 <option value="cash">Cash</option>
                 <option value="card">Card</option>
-                <option value="online">Online transfer</option>
-                <option value="bank">Bank deposit</option>
+                <option value="online">QR payment</option>
+                <option value="bank">Bank transfer</option>
               </Select>
             </Field>
           </div>
@@ -255,6 +257,13 @@ export default function ReceptionPage() {
           )}
         </div>
       </div>
+
+      {scope === "all" && (
+        <div className="mt-4 rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+          <h2 className="mb-3 text-sm font-semibold text-neutral-700">Bills</h2>
+          <EpisodeBillsPanel defaultStatus="unpaid" compact />
+        </div>
+      )}
 
       {receiptFor && <ReceiptModal episodeId={receiptFor} scope={scope ?? "all"} onClose={() => setReceiptFor(null)} onChanged={() => void reload()} />}
       {registering && (

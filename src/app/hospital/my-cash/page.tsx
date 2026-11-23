@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { myOpenCollections, myClosings, type CashClosing } from "@/lib/repo/cashClosing";
-import { CloseDayModal, ClosingSlipModal, PaymentList, TotalsTable, rs } from "@/components/hospital/finance/CloseDay";
+import { CloseDayModal, ClosingSlipModal, DeptTable, PaymentList, TotalsTable, rs } from "@/components/hospital/finance/CloseDay";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 
@@ -28,7 +28,8 @@ export default function MyCashPage() {
           <h2 className="mb-2 text-sm font-semibold text-neutral-700">Since my last closing</h2>
           {!open ? <p className="text-sm text-neutral-400">Loading…</p> : open.rows.length === 0 ? <p className="text-sm text-neutral-400">Nothing collected since your last closing.</p> : (
             <>
-              <TotalsTable t={open.totals} expectedCash={open.expectedCash} />
+              <DeptTable rows={open.rows} />
+              <div className="mt-2 border-t border-neutral-200 pt-2"><TotalsTable t={open.totals} expectedCash={open.expectedCash} /></div>
               <PaymentList rows={[...open.rows].reverse()} />
             </>
           )}

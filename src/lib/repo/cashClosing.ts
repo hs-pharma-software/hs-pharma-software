@@ -49,7 +49,69 @@ export interface CashClosing {
 export const closingsRepo = createTenantRepo<CashClosing>("hospital_cash_closings");
 
 const round = (n: number) => Math.round(n * 100) / 100;
-export const METHOD_LABEL: Record<PaymentMethod | string, string> = { cash: "Cash", card: "Card", online: "Online transfer", bank: "Bank deposit" };
+export const METHOD_LABEL: Record<PaymentMethod | string, string> = { cash: "Cash", card: "Card", online: "QR payment", bank: "Bank transfer" };
+
+/** Where the money of a day came from. */
+export type CollectionDept = "opd" | "consultation" | "emergency" | "lab" | "radiology" | "ipd";
+export const DEPT_LABEL: Record<CollectionDept, string> = {
+  opd: "OPD collection", consultation: "Consultation collection", emergency: "Emergency collection",
+  lab: "Lab collection", radiology: "Radiology collection", ipd: "Admission (IPD) collection",
+};
+export const DEPT_ORDER: CollectionDept[] = ["opd", "consultation", "emergency", "lab", "radiology", "ipd"];
+
+/** Collections by department (refunds taken off). An investigation fee goes
+ * to the lab or radiology by its order, a token fee to consultation; any other
+ * payment is shared over what the visit still owed by department (lab tests,
+ * scans, the consultation, other OPD / emergency / admission charges). */
+export async function collectionsByDepartment(rows: Pick<PaymentRow, "episode_id" | "type" | "amount" | "reference" | "notes" | "episode_type">[]): Promise<Record<CollectionDept, number>> {
+  const out: Record<CollectionDept, number> = { opd: 0, consultation: 0, emergency: 0, lab: 0, radiology: 0, ipd: 0 };
+  if (!rows.length) return out;
+  const T = requireCurrentTenantId();
+  const ids = [...new Set(rows.map((r) => r.episode_id))];
+  const marks = ids.map(() => "?").join(", ");
+  const [charges, lab, img, payments] = await Promise.all([
+    dbSelect<{ episode_id: string; category: string | null; amount: number }>(
+      `SELECT episode_id, category, SUM(amount) AS amount FROM hospital_charges WHERE tenant_id = ? AND deleted_at IS NULL AND episode_id IN (${marks}) GROUP BY episode_id, category`, [T, ...ids]),
+    dbSelect<{ order_no: string }>(`SELECT order_no FROM hospital_lab_orders WHERE tenant_id = ? AND episode_id IN (${marks})`, [T, ...ids]).catch(() => []),
+    dbSelect<{ order_no: string }>(`SELECT order_no FROM hospital_imaging_orders WHERE tenant_id = ? AND episode_id IN (${marks})`, [T, ...ids]).catch(() => []),
+    dbSelect<{ episode_id: string; type: string; amount: number; reference: string | null; notes: string | null }>(
+      `SELECT episode_id, type, amount, reference, notes FROM hospital_payments WHERE tenant_id = ? AND deleted_at IS NULL AND episode_id IN (${marks})`, [T, ...ids]),
+  ]);
+  const labNos = new Set(lab.map((o) => o.order_no));
+  const imgNos = new Set(img.map((o) => o.order_no));
+  const typeOf = new Map(rows.map((r) => [r.episode_id, r.episode_type]));
+  const own = (episodeType: string | undefined): CollectionDept => (episodeType === "emergency" ? "emergency" : episodeType === "ipd" ? "ipd" : "opd");
+  const specific = (p: { type: string; reference: string | null; notes: string | null }): CollectionDept | null => {
+    if (p.type === "refund") return null;
+    if (p.reference && labNos.has(p.reference)) return "lab";
+    if (p.reference && imgNos.has(p.reference)) return "radiology";
+    if (p.notes === "OPD fee") return "consultation";
+    return null;
+  };
+  // What each visit still owed by department after its investigation and token fees.
+  const owed = new Map<string, Record<CollectionDept, number>>();
+  for (const id of ids) owed.set(id, { opd: 0, consultation: 0, emergency: 0, lab: 0, radiology: 0, ipd: 0 });
+  for (const c of charges) {
+    const d: CollectionDept = c.category === "lab" ? "lab" : c.category === "imaging" ? "radiology" : c.category === "consultation" ? "consultation" : own(typeOf.get(c.episode_id));
+    owed.get(c.episode_id)![d] += Number(c.amount) || 0;
+  }
+  for (const p of payments) {
+    const d = specific(p);
+    if (d) owed.get(p.episode_id)![d] -= Number(p.amount) || 0;
+  }
+  for (const r of rows) {
+    const sign = r.type === "refund" ? -1 : 1;
+    const amount = sign * (Number(r.amount) || 0);
+    const d = specific(r);
+    if (d) { out[d] += amount; continue; }
+    const left = owed.get(r.episode_id)!;
+    const total = DEPT_ORDER.reduce((a, k) => a + Math.max(0, left[k]), 0);
+    if (total <= 0) { out[own(r.episode_type)] += amount; continue; }
+    for (const k of DEPT_ORDER) if (left[k] > 0) out[k] += (amount * left[k]) / total;
+  }
+  for (const k of DEPT_ORDER) out[k] = round(out[k]);
+  return out;
+}
 
 export interface PaymentRow {
   id: string;

@@ -6,6 +6,7 @@
  * inbox) and orders lab / radiology from the Service Master. Each order adds its
  * fee to the episode bill; the lab / radiology can only process it once paid. */
 import { dbExecute, dbSelect } from "../db";
+import { mrSearchSql } from "../hospitalMr";
 import { friendlyDbError, requireCurrentTenantId } from "./base";
 import { newId, nowIso } from "../id";
 import { recordOutbox } from "../sync/outbox";
@@ -71,6 +72,9 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
     license_type: d.license && licenseNo ? d.license : null,
     license_no: d.license ? licenseNo || null : null,
     consultation_fee: d.doctor ? Math.max(0, Number(data.consultation_fee) || 0) : 0,
+    ...(data.consultation_doctor_share !== undefined
+      ? { consultation_doctor_share: d.doctor && data.consultation_doctor_share != null ? Math.min(Math.max(0, Number(data.consultation_fee) || 0), Math.max(0, Number(data.consultation_doctor_share) || 0)) : null }
+      : {}),
     specialization: d.doctor ? data.specialization?.trim() || null : null,
   };
   if (licenseNo && d.license) {
@@ -98,6 +102,15 @@ export async function staffForCurrentUser(): Promise<Staff | null> {
   const userId = useAuthStore.getState().currentUser?.id;
   if (!userId) return null;
   return (await staffRepo.list({ where: "user_id = ?", params: [userId] }))[0] ?? null;
+}
+
+/** A doctor's own login sees only their own patients: their staff id, or
+ * null for everyone else (owner, admin, reception...). */
+export async function ownDoctorScope(): Promise<string | null> {
+  const user = useAuthStore.getState().currentUser;
+  if (!user || user.role !== "staff") return null;
+  const me = await staffForCurrentUser().catch(() => null);
+  return me && (DOCTOR_CATEGORIES as readonly string[]).includes(String(me.staff_category ?? "")) ? me.id : null;
 }
 
 /** The pages a login for this designation may open (null = everything). */
@@ -152,6 +165,7 @@ export async function bookOpdVisit(input: { patientId: string; doctorId: string;
     await addCharge({
       tenant_id: "", episode_id: episode.id, service_id: null, description: `Consultation: ${doctor.name}`, department: doctor.department ?? null,
       category: "consultation", qty: 1, rate: fee, discount_pct: 0, amount: 0, doctor_id: doctor.id, performed_by: null, charge_date: date, notes: null, invoice_id: null,
+      doctor_share: doctor.consultation_doctor_share != null ? Math.min(fee, Math.max(0, Number(doctor.consultation_doctor_share))) : null,
     });
     if (input.pay) {
       await addPayment({ tenant_id: "", episode_id: episode.id, type: "payment", amount: fee, method: input.pay.method, reference: `Token ${token}`, notes: "OPD fee", received_at: localDateTime() });
@@ -183,11 +197,14 @@ export interface OpdQueueRow {
 export async function listOpdQueue(opts: { date?: string; doctorId?: string | null; search?: string } = {}): Promise<OpdQueueRow[]> {
   const where = ["e.tenant_id = ?", "e.type = 'opd'", "e.deleted_at IS NULL", "e.date = ?"];
   const params: unknown[] = [requireCurrentTenantId(), opts.date ?? localDate()];
-  if (opts.doctorId) { where.push("e.doctor_id = ?"); params.push(opts.doctorId); }
+  // A doctor's login: their own patients only, whatever was asked.
+  const doctorId = (await ownDoctorScope()) ?? opts.doctorId;
+  if (doctorId) { where.push("e.doctor_id = ?"); params.push(doctorId); }
   const term = opts.search?.trim();
   if (term) {
-    where.push("(e.episode_no LIKE ? OR p.name LIKE ? OR p.mr_no LIKE ? OR p.phone LIKE ? OR CAST(e.token_no AS TEXT) = ?)");
-    params.push(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, term);
+    const mr = mrSearchSql("p", term);
+    where.push(`(e.episode_no LIKE ? OR p.name LIKE ? OR ${mr.sql} OR p.phone LIKE ? OR CAST(e.token_no AS TEXT) = ?)`);
+    params.push(`%${term}%`, `%${term}%`, ...mr.params, `%${term}%`, term);
   }
   return dbSelect<OpdQueueRow>(
     `SELECT e.id, e.episode_no, e.token_no, e.consult_status, e.status, e.date, e.time, e.patient_id,

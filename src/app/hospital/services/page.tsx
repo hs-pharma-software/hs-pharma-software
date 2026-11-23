@@ -5,6 +5,7 @@ import { Plus, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { Input } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { hospitalServicesRepo, type HospitalService } from "@/lib/repo/hospital";
 import ServiceFormModal from "./ServiceFormModal";
@@ -12,6 +13,7 @@ import ServiceFormModal from "./ServiceFormModal";
 export default function HospitalServicesPage() {
   const [rows, setRows] = useState<HospitalService[]>([]);
   const [editing, setEditing] = useState<HospitalService | null | "new">(null);
+  const [search, setSearch] = useState("");
 
   async function reload() {
     if (!isTauri()) return;
@@ -33,6 +35,15 @@ export default function HospitalServicesPage() {
     { header: "Category", render: (r) => CATEGORY_LABELS[r.category] ?? r.category },
     { header: "Billing Unit", render: (r) => r.billing_unit },
     { header: "Rate", render: (r) => <span className="font-mono">Rs {r.rate.toFixed(0)}</span> },
+    {
+      header: "Shares (doctor / staff / hospital)",
+      render: (r) => {
+        const doc = Number(r.doctor_share) || 0, staff = Number(r.staff_share) || 0;
+        return doc || staff
+          ? <span className="font-mono text-xs">{doc.toFixed(0)} / {staff.toFixed(0)} / {(Number(r.rate) - doc - staff).toFixed(0)}</span>
+          : <span className="text-xs text-neutral-400">All hospital</span>;
+      },
+    },
     {
       header: "Status",
       render: (r) => (
@@ -66,7 +77,13 @@ export default function HospitalServicesPage() {
           </Button>
         }
       />
-      <DataTable columns={columns} rows={rows} />
+      <div className="mb-3 max-w-md">
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search services: name, code, department or category" aria-label="Search services" />
+      </div>
+      <DataTable columns={columns} rows={rows.filter((r) => {
+        const q = search.trim().toLowerCase();
+        return !q || `${r.name} ${r.code} ${r.department} ${CATEGORY_LABELS[r.category] ?? r.category}`.toLowerCase().includes(q);
+      })} />
       {editing !== null && (
         <ServiceFormModal
           service={editing === "new" ? null : editing}

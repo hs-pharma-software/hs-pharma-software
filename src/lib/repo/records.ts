@@ -8,6 +8,7 @@
  * written consent, a legal order, or for the patient's continuing care, and
  * only after the records officer or an HoD approves. */
 import { dbSelect } from "../db";
+import { mrSearchSql } from "../hospitalMr";
 import { createTenantRepo, requireCurrentTenantId } from "./base";
 import { nowIso } from "../id";
 
@@ -186,9 +187,10 @@ export async function listReleases(opts: { status?: RecordRelease["status"] | ""
 export async function findPatients(q: string): Promise<{ id: string; name: string; mr_no: string | null; phone: string | null }[]> {
   if (!q.trim()) return [];
   const like = `%${q.trim()}%`;
+  const mr = mrSearchSql("p", q);
   return dbSelect(
-    `SELECT id, name, mr_no, phone FROM hospital_patients WHERE tenant_id = ? AND deleted_at IS NULL AND (name LIKE ? OR mr_no LIKE ? OR phone LIKE ?) ORDER BY name LIMIT 20`,
-    [requireCurrentTenantId(), like, like, like]
+    `SELECT p.id, p.name, p.mr_no, p.phone FROM hospital_patients p WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND (p.name LIKE ? OR ${mr.sql} OR p.phone LIKE ?) ORDER BY p.name LIMIT 20`,
+    [requireCurrentTenantId(), like, ...mr.params, like]
   );
 }
 

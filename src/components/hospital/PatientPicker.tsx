@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { mrMatches } from "@/lib/hospitalMr";
 import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/Field";
 import PatientFormModal from "@/app/hospital/patients/PatientFormModal";
@@ -16,7 +17,7 @@ export function PatientPicker({ patients, value, onChange }: { patients: Hospita
   const selected = all.find((p) => p.id === value) ?? null;
   const term = search.trim().toLowerCase();
   const matches = term
-    ? all.filter((p) => p.name.toLowerCase().includes(term) || p.mr_no.toLowerCase().includes(term) || (p.phone ?? "").includes(term)).slice(0, 8)
+    ? all.filter((p) => p.name.toLowerCase().includes(term) || mrMatches(p, term) || (p.phone ?? "").includes(term)).slice(0, 8)
     : [];
 
   const choose = (id: string) => { onChange(id); setSearch(""); };

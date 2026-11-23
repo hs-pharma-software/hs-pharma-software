@@ -390,6 +390,7 @@ const MIGRATIONS = [
   { version: 94, label: 'Pharmacy: prescribing doctor on invoices, flat discount per product, initiated stock audits', statements: rustSchemaStatementsWithTriggers(94) },
   { version: 95, label: 'Pharmacy: Pre Invoices (saved invoice patterns)', statements: rustSchemaStatementsWithTriggers(95) },
   { version: 96, label: 'Pharmacy: insurance companies, customer policies and invoice claims', statements: rustSchemaStatementsWithTriggers(96) },
+  { version: 97, label: 'Hospital: MR number MR-<no>-<registration date>-<year> renewed yearly with MR history (existing patients converted); doctor / staff shares on services, consultation fees and charges', statements: rustSchemaStatementsWithTriggers(97) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

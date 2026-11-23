@@ -8,6 +8,7 @@ import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { friendlyDbError } from "@/lib/repo/base";
+import { formatMr } from "@/lib/hospitalMr";
 import { localDate, localDateTime } from "@/lib/localDate";
 import {
   hospitalPatientsRepo, hospitalServicesRepo, hospitalEpisodesRepo, hospitalDepartmentsRepo, hospitalLabRepo, hospitalImagingRepo,
@@ -15,6 +16,9 @@ import {
   addCharge, deleteCharge, addPayment, getHospitalStats,
 } from "@/lib/repo/hospital";
 import type { EpisodeType } from "@/lib/types-hospital";
+
+/** The n-th MR registered today: MR-000n-<DDMMYYYY>-<year>. */
+const mrOf = (n: number) => formatMr(n, localDate(), Number(localDate().slice(0, 4)));
 
 const A = "hosp-a";
 const B = "hosp-b";
@@ -59,7 +63,7 @@ test("patients: register with every field, read back, edit, list; MR numbers are
     blood_group: "A+", allergies: "Penicillin", chronic_conditions: "Asthma", insurance_company: "State Life", insurance_no: "SL-1",
     next_of_kin_name: "Noor", next_of_kin_phone: "0300-6", next_of_kin_relation: "Father", address: "Street 1", city: "Lahore", notes: "n",
   });
-  assert.equal(p.mr_no, "MR-000001");
+  assert.equal(p.mr_no, mrOf(1));
   const back = await hospitalPatientsRepo.get(p.id);
   assert.equal(back?.allergies, "Penicillin");
   assert.equal(back?.next_of_kin_relation, "Father");
@@ -68,10 +72,10 @@ test("patients: register with every field, read back, edit, list; MR numbers are
   assert.equal((await hospitalPatientsRepo.list()).length, 1);
 
   const second = await patient("Second");
-  assert.equal(second.mr_no, "MR-000002");
+  assert.equal(second.mr_no, mrOf(2));
   await hospitalPatientsRepo.remove(p.id);
   const third = await patient("Third");
-  assert.equal(third.mr_no, "MR-000003", "a deleted patient's number is not handed out again");
+  assert.equal(third.mr_no, mrOf(3), "a deleted patient's number is not handed out again");
 });
 
 test("a repeated value gives a readable message, not a database error", async () => {
@@ -251,7 +255,7 @@ test("tenant isolation: another hospital sees and changes nothing here", async (
   await hospitalEpisodesRepo.update(ep.id, { status: "cancelled" });
   assert.equal((sql.prepare(`SELECT status FROM hospital_episodes WHERE id = ?`).get(ep.id) as { status: string }).status, "open");
   // Each hospital numbers from the start.
-  assert.equal((await patient("B's first")).mr_no, "MR-000001");
+  assert.equal((await patient("B's first")).mr_no, mrOf(1));
 
   loginAs(A);
   assert.equal((await listChargesForEpisode(ep.id)).length, 1);
