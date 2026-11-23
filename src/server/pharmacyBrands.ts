@@ -25,7 +25,7 @@ const STOCKED = `FROM products p
   JOIN (SELECT product_id, SUM(qty) AS stock FROM product_batches WHERE tenant_id = ? AND deleted_at IS NULL AND qty > 0 GROUP BY product_id) st ON st.product_id = p.id
   WHERE p.deleted_at IS NULL AND (p.tenant_id = ? OR p.tenant_id IS NULL) AND TRIM(COALESCE(p.description, '')) <> ''`;
 
-export async function pharmacyCatalogue(sql: Sql, caller: Caller, input: Row): Promise<PharmacyGeneric[] | PharmacyBrand[] | PharmacyPreInvoice[]> {
+export async function pharmacyCatalogue(sql: Sql, caller: Caller, input: Row): Promise<PharmacyGeneric[] | PharmacyBrand[] | PharmacyPreInvoice[] | PharmacyHospitalInvoice[]> {
   const P = await linkedPharmacy(sql, caller);
   const action = String(input.action ?? "");
   if (action === "generics") {
@@ -53,7 +53,29 @@ export async function pharmacyCatalogue(sql: Sql, caller: Caller, input: Row): P
     }));
   }
   if (action === "preInvoices") return pharmacyPreInvoices(sql, P);
+  if (action === "invoices") return pharmacyInvoicesForHospital(sql, P, caller.tenantId!);
   throw new HttpError(400, "Unknown request.");
+}
+
+export interface PharmacyHospitalInvoice { invoiceId: string; invoiceNo: number | null; date: string; patientId: string | null; patientName: string; amount: number; paid: number; balance: number; status: "paid" | "unpaid" }
+
+/** The pharmacy's invoices of this hospital's prescriptions (Finance > Pharmacy Payments). */
+async function pharmacyInvoicesForHospital(sql: Sql, P: string, hospital: string): Promise<PharmacyHospitalInvoice[]> {
+  const rows = (await sql.execute(
+    `SELECT i.id, i.invoice_no, i.date, n.patient_id, n.patient_name, i.payable, i.paid, i.balance
+     FROM pharmacy_rx_notifications n JOIN invoices i ON i.id = n.invoice_id AND i.tenant_id = ? AND i.deleted_at IS NULL
+     WHERE n.pharmacy_tenant_id = ? AND n.clinic_tenant_id = ? AND n.invoice_id IS NOT NULL
+     ORDER BY i.date DESC, i.invoice_no DESC LIMIT 500`,
+    [P, P, hospital]
+  )).rows as Row[];
+  return rows.map((r) => {
+    const balance = Math.round((Number(r.balance) || 0) * 100) / 100;
+    return {
+      invoiceId: String(r.id), invoiceNo: r.invoice_no == null ? null : Number(r.invoice_no), date: String(r.date).slice(0, 10),
+      patientId: r.patient_id == null ? null : String(r.patient_id), patientName: String(r.patient_name ?? ""),
+      amount: Number(r.payable) || 0, paid: Number(r.paid) || 0, balance, status: balance > 0.004 ? "unpaid" : "paid",
+    };
+  });
 }
 
 export interface PharmacyPreInvoice { id: string; name: string; description: string | null; items: number; total: number }

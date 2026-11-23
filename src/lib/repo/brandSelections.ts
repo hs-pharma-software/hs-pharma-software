@@ -90,3 +90,10 @@ export interface PharmacyPreInvoice { id: string; name: string; description: str
 export async function pharmacyPreInvoices(): Promise<PharmacyPreInvoice[]> {
   return (await serverJson<{ result: PharmacyPreInvoice[] }>("/api/hospital/pharmacy-catalogue/", { action: "preInvoices" })).result;
 }
+
+export interface PharmacyHospitalInvoice { invoiceId: string; invoiceNo: number | null; date: string; patientId: string | null; patientName: string; amount: number; paid: number; balance: number; status: "paid" | "unpaid" }
+
+/** The linked pharmacy's invoices of this hospital's prescriptions (Finance > Pharmacy Payments). */
+export async function pharmacyInvoicesForHospital(): Promise<PharmacyHospitalInvoice[]> {
+  return (await serverJson<{ result: PharmacyHospitalInvoice[] }>("/api/hospital/pharmacy-catalogue/", { action: "invoices" })).result;
+}

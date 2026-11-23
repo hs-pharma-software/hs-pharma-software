@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { Field, Input, Textarea } from "@/components/ui/Field";
+import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { useAuthStore } from "@/store/authStore";
+import { saveVendor } from "@/lib/repo/vendors";
 import { Button } from "@/components/ui/Button";
 import { suppliersRepo } from "@/lib/repo/suppliers";
 import type { Supplier } from "@/lib/types";
@@ -27,12 +29,29 @@ export function SupplierFormModal({
   const [openingBalance, setOpeningBalance] = useState(String(supplier?.opening_balance ?? 0));
   const [description, setDescription] = useState(supplier?.description ?? "");
   const [saving, setSaving] = useState(false);
+  // Hospitals: Supplier & Vendors, each with its vendor number and bank details for payment.
+  const hospital = useAuthStore((st) => st.currentTenant?.businessType) === "hospital";
+  const [kind, setKind] = useState<"supplier" | "vendor" | "both">(supplier?.party_kind ?? "supplier");
+  const [proprietor, setProprietor] = useState(supplier?.proprietor ?? "");
+  const [bankName, setBankName] = useState(supplier?.bank_name ?? "");
+  const [bankTitle, setBankTitle] = useState(supplier?.bank_title ?? "");
+  const [iban, setIban] = useState(supplier?.iban ?? "");
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setSaving(true);
+    setError(null);
     try {
+      if (hospital) {
+        await saveVendor(supplier?.id ?? null, {
+          name, company_name: companyName, email, cnic, phone, address, discount_pct: Number(discountPct) || 0, opening_balance: Number(openingBalance) || 0,
+          description, party_kind: kind, proprietor, bank_name: bankName, bank_title: bankTitle, iban,
+        });
+        onSaved();
+        return;
+      }
       const payload = {
         name: name.trim(),
         company_name: companyName || null,
@@ -51,13 +70,15 @@ export function SupplierFormModal({
         await suppliersRepo.create(payload);
       }
       onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal title={isEdit ? "Edit Supplier" : "Add Supplier"} onClose={onClose} width="max-w-2xl">
+    <Modal title={hospital ? (isEdit ? `Edit Supplier / Vendor${supplier?.vendor_no ? ` · ${supplier.vendor_no}` : ""}` : "Add Supplier / Vendor") : isEdit ? "Edit Supplier" : "Add Supplier"} onClose={onClose} width="max-w-2xl">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Name" required>
@@ -93,9 +114,23 @@ export function SupplierFormModal({
             <Input type="number" step="any" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} required />
           </Field>
         </div>
+        {hospital && (
+          <div className="grid grid-cols-1 gap-3 rounded-xl bg-neutral-50 p-3 ring-1 ring-black/[0.04] sm:grid-cols-2">
+            <Field label="Type">
+              <Select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+                <option value="supplier">Supplier (goods)</option><option value="vendor">Vendor (services)</option><option value="both">Both</option>
+              </Select>
+            </Field>
+            <Field label="Proprietor"><Input value={proprietor} onChange={(e) => setProprietor(e.target.value)} /></Field>
+            <Field label="Bank name"><Input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. Meezan Bank" /></Field>
+            <Field label="Account title"><Input value={bankTitle} onChange={(e) => setBankTitle(e.target.value)} /></Field>
+            <div className="sm:col-span-2"><Field label="IBAN number"><Input value={iban} onChange={(e) => setIban(e.target.value.toUpperCase())} placeholder="PK36SCBL0000001123456702" /></Field></div>
+          </div>
+        )}
         <Field label="Description">
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
+        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="form-actions">
           <Button type="button" onClick={onClose}>
             Reset

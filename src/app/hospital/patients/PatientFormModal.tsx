@@ -7,6 +7,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { hospitalPatientsRepo, nextMrNo, type HospitalPatient } from "@/lib/repo/hospital";
 import { radiologyCall, radiologyOffline } from "@/lib/offline/radiologyCalls";
 import { useAuthStore } from "@/store/authStore";
+import { InsuranceCompanySelect } from "@/components/customers/InsuranceCompanySelect";
 
 interface Props {
   patient: HospitalPatient | null;
@@ -37,6 +38,10 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
   const [chronicConditions, setChronicConditions] = useState(patient?.chronic_conditions ?? "");
   const [insuranceCompany, setInsuranceCompany] = useState(patient?.insurance_company ?? "");
   const [insuranceNo, setInsuranceNo] = useState(patient?.insurance_no ?? "");
+  const [insured, setInsured] = useState(Number(patient?.insured ?? 0) === 1);
+  const [insCompanyId, setInsCompanyId] = useState(patient?.insurance_company_id ?? "");
+  const [validTill, setValidTill] = useState(patient?.insurance_valid_till ?? "");
+  const [insuredAmount, setInsuredAmount] = useState(patient?.insured_amount != null ? String(patient.insured_amount) : "");
   const [nokName, setNokName] = useState(patient?.next_of_kin_name ?? "");
   const [nokPhone, setNokPhone] = useState(patient?.next_of_kin_phone ?? "");
   const [nokRelation, setNokRelation] = useState(patient?.next_of_kin_relation ?? "");
@@ -55,7 +60,10 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
     }
   }, [isEdit, offline]);
 
+  const hospitalInsurance = useAuthStore((st) => st.currentTenant?.businessType) === "hospital";
+
   async function save() {
+    if (hospitalInsurance && insured && (!insCompanyId || !insuranceNo.trim())) { window.alert("An insured patient needs the insurance company and the policy number."); return; }
     if (!name.trim() || (!mrNo.trim() && !offline)) return;
     setSaving(true);
     try {
@@ -76,6 +84,10 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         chronic_conditions: chronicConditions.trim() || null,
         insurance_company: insuranceCompany.trim() || null,
         insurance_no: insuranceNo.trim() || null,
+        // Hospitals (v100): only when used, so a patient still saves before the database update.
+        ...(hospitalInsurance && (insured || patient?.insured)
+          ? { insured: insured ? 1 : 0, insurance_company_id: insured ? insCompanyId || null : null, insurance_valid_till: insured ? validTill || null : null, insured_amount: insured && insuredAmount ? Number(insuredAmount) : null }
+          : {}),
         next_of_kin_name: nokName.trim() || null,
         next_of_kin_phone: nokPhone.trim() || null,
         next_of_kin_relation: nokRelation.trim() || null,
@@ -178,8 +190,25 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
       )}
 
       {/* Insurance */}
+      {hospitalInsurance && !shortForm && (
+        <div className="mb-4 rounded-xl bg-sky-50/60 p-3 ring-1 ring-sky-100">
+          <div className="mb-2 flex items-center gap-4 text-sm">
+            <span className="font-semibold text-sky-800">Insured?</span>
+            <label className="flex items-center gap-1.5"><input type="radio" checked={insured} onChange={() => setInsured(true)} />Yes</label>
+            <label className="flex items-center gap-1.5"><input type="radio" checked={!insured} onChange={() => setInsured(false)} />No</label>
+          </div>
+          {insured && (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Field label="Insurance company *"><InsuranceCompanySelect id="pt-ins-company" value={insCompanyId} onChange={(v, c) => { setInsCompanyId(v); setInsuranceCompany(c?.name ?? ""); }} /></Field>
+              <Field label="Policy number *"><Input value={insuranceNo} onChange={(e) => setInsuranceNo(e.target.value)} /></Field>
+              <Field label="Valid till"><Input type="date" value={validTill} onChange={(e) => setValidTill(e.target.value)} /></Field>
+              <Field label="Insured amount (Rs)"><Input type="number" min="0" step="any" value={insuredAmount} onChange={(e) => setInsuredAmount(e.target.value)} placeholder="Above it the patient pays" /></Field>
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        {!shortForm && (
+        {!shortForm && !hospitalInsurance && (
           <>
             <Field label="Insurance Company">
               <Input value={insuranceCompany} onChange={(e) => setInsuranceCompany(e.target.value)} />

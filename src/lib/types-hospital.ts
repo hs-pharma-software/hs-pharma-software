@@ -21,6 +21,11 @@ export interface HospitalPatient extends TenantRow {
   next_of_kin_phone: string | null;
   next_of_kin_relation: string | null;
   notes: string | null;
+  /** Insurance (v100): insured (1), the company (Insurance Companies), valid till, and the insured amount (the rest of a bill is the patient's). The policy number is insurance_no. */
+  insured?: number | null;
+  insurance_company_id?: string | null;
+  insurance_valid_till?: string | null;
+  insured_amount?: number | null;
   /** MR parts (v97): the number (never restarts), registration date (yyyy-mm-dd) and the MR's year. */
   mr_seq?: number | null;
   mr_reg_date?: string | null;

@@ -128,6 +128,13 @@ export interface Customer extends TenantRow {
 }
 
 export interface Supplier extends TenantRow {
+  /** Hospitals (v100): the vendor's own number (V-0001), supplier / vendor, and bank details for payment. */
+  vendor_no?: string | null;
+  party_kind?: "supplier" | "vendor" | "both" | null;
+  proprietor?: string | null;
+  bank_name?: string | null;
+  bank_title?: string | null;
+  iban?: string | null;
   name: string;
   company_name: string | null;
   email: string | null;

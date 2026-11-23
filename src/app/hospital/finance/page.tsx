@@ -8,6 +8,8 @@ import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { financeOverview, type FinanceOverview } from "@/lib/repo/cashClosing";
 import { rs } from "@/components/hospital/finance/CloseDay";
+import { recentVendorPayments, vendorPaymentSummary, VENDOR_PAY_METHODS, type VendorPaymentRow } from "@/lib/repo/vendorPayments";
+import { useAuthStore } from "@/store/authStore";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -23,6 +25,15 @@ export default function FinanceOverviewPage() {
     if (!isTauri()) return;
     void financeOverview({ from, to }).then(setOv).catch((e) => window.alert(e instanceof Error ? e.message : String(e)));
   }, [from, to]);
+  // Hospitals: the Purchase Cell's bills waiting for Finance, and the last vendor payments.
+  const hospital = useAuthStore((st) => st.currentTenant?.businessType) === "hospital";
+  const [vendors, setVendors] = useState<{ pending: number; pendingTotal: number; paidTotal: number; paidCount: number } | null>(null);
+  const [lastPaid, setLastPaid] = useState<VendorPaymentRow[]>([]);
+  useEffect(() => {
+    if (!isTauri() || !hospital) return;
+    void vendorPaymentSummary({ from, to }).then(setVendors).catch(() => setVendors(null));
+    void recentVendorPayments(5).then(setLastPaid).catch(() => setLastPaid([]));
+  }, [from, to, hospital]);
   const tiles: [string, string, string][] = ov ? [
     ["Net collected", rs(ov.totals.net), `${ov.totals.count} entries`],
     ["Cash", rs(ov.totals.cash), ov.totals.refunds ? `refunds −${rs(ov.totals.refunds)}` : ""],
@@ -35,6 +46,26 @@ export default function FinanceOverviewPage() {
     <div>
       <PageHeader title="Finance" />
       <div className="flex flex-col gap-4">
+        {hospital && vendors && (
+          <div className={card}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-neutral-700">Vendor payments</h2>
+              <Link href="/hospital/finance/vendor-payments" className="text-sm font-medium text-sky-700 hover:underline">
+                Open{vendors.pending ? <span className="ml-1.5 rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold text-white">{vendors.pending}</span> : null}
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-neutral-50 p-3"><p className="text-xs text-neutral-500">Invoices waiting</p><p className="text-xl font-semibold tabular-nums text-rose-700">{vendors.pending}</p><p className="text-[11px] text-neutral-500">Rs {rs(vendors.pendingTotal)} owed</p></div>
+              <div className="rounded-xl bg-neutral-50 p-3"><p className="text-xs text-neutral-500">Vendors paid (period)</p><p className="text-xl font-semibold tabular-nums">{rs(vendors.paidTotal)}</p><p className="text-[11px] text-neutral-500">{vendors.paidCount} payments</p></div>
+              <div className="rounded-xl bg-neutral-50 p-3 text-xs">
+                <p className="mb-1 text-neutral-500">Last payments</p>
+                {lastPaid.length === 0 ? <p className="text-neutral-400">None yet</p> : lastPaid.map((p) => (
+                  <p key={p.id} className="flex justify-between gap-2"><span className="truncate">{p.vendor_name ?? "—"} · {VENDOR_PAY_METHODS[p.method] ?? p.method}</span><span className="tabular-nums">{rs(p.amount)}</span></p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         <div className={card}>
           <div className="mb-4 flex flex-wrap items-end gap-2">
             <Field label="From"><Input id="fo-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>

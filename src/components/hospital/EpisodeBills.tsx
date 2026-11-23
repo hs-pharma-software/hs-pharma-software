@@ -9,6 +9,7 @@ import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { billLines, listEpisodeBills, pctForAmount, setBillDiscounts, type EpisodeBill } from "@/lib/repo/episodeBills";
 import type { HospitalCharge } from "@/lib/types-hospital";
+import { insuredEpisodes, type InsuredEpisode } from "@/lib/repo/hospitalInsurance";
 
 const rs = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 0 });
 const TYPE: Record<string, string> = { opd: "OPD", ipd: "Admission", emergency: "Emergency" };
@@ -24,6 +25,8 @@ export function EpisodeBillsPanel({ defaultStatus = "all", compact = false }: { 
   const [rows, setRows] = useState<EpisodeBill[]>([]);
   const [editing, setEditing] = useState<EpisodeBill | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [insured, setInsured] = useState<Map<string, InsuredEpisode>>(new Map());
+  useEffect(() => { if (isTauri()) void insuredEpisodes().then((r) => setInsured(new Map(r.map((x) => [x.episodeId, x])))).catch(() => setInsured(new Map())); }, [rows]);
 
   async function reload() {
     if (!isTauri()) return;
@@ -68,7 +71,11 @@ export function EpisodeBillsPanel({ defaultStatus = "all", compact = false }: { 
                   <td className="py-1.5 pr-3 text-right tabular-nums">{rs(r.total)}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums text-neutral-600">{r.discount ? rs(r.discount) : "—"}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{rs(r.paid)}</td>
-                  <td className={`py-1.5 pr-3 text-right tabular-nums font-semibold ${r.balance > 0 ? "text-rose-700" : "text-emerald-700"}`}>{rs(r.balance)}</td>
+                  <td className={`py-1.5 pr-3 text-right tabular-nums font-semibold ${r.balance > 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                    {insured.get(r.id) && insured.get(r.id)!.cover > 0
+                      ? <>{rs(Math.max(0, r.total - insured.get(r.id)!.cover - r.paid))}<span className="block text-[10px] font-normal text-sky-700">Insurance Rs {rs(insured.get(r.id)!.cover)}</span></>
+                      : rs(r.balance)}
+                  </td>
                   <td className="whitespace-nowrap py-1.5 text-right">
                     <a href={`/hospital/episodes/view?id=${r.id}`} title="Open the bill" className="mr-2 inline-flex text-neutral-500 hover:text-neutral-900"><Eye size={15} /></a>
                     <button type="button" title="Edit discount" onClick={() => setEditing(r)} className="inline-flex text-neutral-500 hover:text-neutral-900"><Pencil size={15} /></button>

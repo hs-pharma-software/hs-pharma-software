@@ -1877,6 +1877,91 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v100() -> &'static str {
+    r#"
+    -- Hospital Purchase Cell: Supplier & Vendors (a vendor number of its own,
+    -- bank details for payment), bills for services bought from vendors
+    -- (tenting, catering, welding, repairs, buildings...) with their types,
+    -- and payments made by Finance against purchases and service bills.
+    ALTER TABLE suppliers ADD COLUMN vendor_no TEXT;
+    ALTER TABLE suppliers ADD COLUMN party_kind TEXT;
+    ALTER TABLE suppliers ADD COLUMN proprietor TEXT;
+    ALTER TABLE suppliers ADD COLUMN bank_name TEXT;
+    ALTER TABLE suppliers ADD COLUMN bank_title TEXT;
+    ALTER TABLE suppliers ADD COLUMN iban TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_suppliers_vendor_no ON suppliers (tenant_id, vendor_no) WHERE vendor_no IS NOT NULL AND deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS hospital_service_types (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_service_types ON hospital_service_types (tenant_id, name) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_types_ins AFTER INSERT ON hospital_service_types BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_types', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_types_upd AFTER UPDATE ON hospital_service_types BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_types', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_types_del AFTER DELETE ON hospital_service_types BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_types', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_service_bills (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, bill_no TEXT NOT NULL, vendor_id TEXT NOT NULL, vendor_invoice_no TEXT,
+        service_type TEXT, description TEXT, date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0, tax REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0, total REAL NOT NULL DEFAULT 0,
+        paid REAL NOT NULL DEFAULT 0, balance REAL NOT NULL DEFAULT 0, created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_service_bills_vendor ON hospital_service_bills (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_bills_ins AFTER INSERT ON hospital_service_bills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_bills', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_bills_upd AFTER UPDATE ON hospital_service_bills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_bills', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_bills_del AFTER DELETE ON hospital_service_bills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_bills', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_vendor_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_type TEXT NOT NULL, doc_id TEXT NOT NULL, vendor_id TEXT,
+        amount REAL NOT NULL DEFAULT 0, method TEXT NOT NULL, reference TEXT, dated TEXT NOT NULL, notes TEXT, paid_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_vendor_payments_doc ON hospital_vendor_payments (tenant_id, doc_type, doc_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_payments_ins AFTER INSERT ON hospital_vendor_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_payments_upd AFTER UPDATE ON hospital_vendor_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_payments_del AFTER DELETE ON hospital_vendor_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_payments', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    -- Insured patients: the company (Insurance Companies), policy (insurance_no),
+    -- valid till and the insured amount; the bill above it is the patient's.
+    -- A claim per episode for what the insurance covers, with its status.
+    ALTER TABLE hospital_patients ADD COLUMN insured INTEGER;
+    ALTER TABLE hospital_patients ADD COLUMN insurance_company_id TEXT;
+    ALTER TABLE hospital_patients ADD COLUMN insurance_valid_till TEXT;
+    ALTER TABLE hospital_patients ADD COLUMN insured_amount REAL;
+    CREATE TABLE IF NOT EXISTS hospital_insurance_claims (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, episode_id TEXT NOT NULL, patient_id TEXT NOT NULL, company_id TEXT,
+        claim_amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'sent', paid_amount REAL NOT NULL DEFAULT 0,
+        claim_ref TEXT, sent_on TEXT, settled_on TEXT, updated_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_claims_episode ON hospital_insurance_claims (tenant_id, episode_id) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_insurance_claims_ins AFTER INSERT ON hospital_insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_insurance_claims_upd AFTER UPDATE ON hospital_insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_insurance_claims_del AFTER DELETE ON hospital_insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_insurance_claims', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
 fn schema_sql_v99() -> &'static str {
     r#"
     -- Surgery shares and expenses (consultant, MO, nurses, anaesthesia, other,
@@ -6725,6 +6810,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 99,
             description: "hospital_surgery_shares",
             sql: schema_sql_v99(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 100,
+            description: "hospital_vendors_service_bills",
+            sql: schema_sql_v100(),
             kind: MigrationKind::Up,
         },
     ]

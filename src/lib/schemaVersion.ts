@@ -3,7 +3,7 @@ import { isTauriShell } from "./platform";
 
 /** The schema version this code needs: the last migration in
  * src-tauri/src/lib.rs (a test keeps the two equal). */
-export const REQUIRED_SCHEMA_VERSION = 99;
+export const REQUIRED_SCHEMA_VERSION = 100;
 
 export type SchemaStatus =
   | { state: "ok"; version: number }

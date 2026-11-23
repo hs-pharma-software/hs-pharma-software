@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { bankLine } from "@/lib/repo/vendors";
 import { enterToNextField, useFieldHotkeys } from "@/lib/formKeys";
 import { AlertCircle, ChevronDown, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
@@ -668,6 +669,9 @@ export function PurchaseFormModal({
               +
             </Button>
           </div>
+          {bankLine(suppliers.find((s) => s.id === supplierId)) && (
+            <p className="text-xs text-neutral-600 sm:col-span-2"><span className="font-medium text-neutral-500">Pay to:</span> {bankLine(suppliers.find((s) => s.id === supplierId))}</p>
+          )}
           <Field label="Invoice #">
             <Input value={supplierInvoiceNo} onChange={(e) => setSupplierInvoiceNo(e.target.value)} />
           </Field>
