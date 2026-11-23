@@ -1,4 +1,5 @@
 import { assertOwnedRefs, createTenantRepo, requireCurrentTenantId } from "./base";
+import { productFlatDiscount } from "./flatDiscounts";
 import { dbSelect } from "../db";
 import { sharedCatalogGroupsFor } from "../catalogAccess";
 import { useAuthStore } from "../../store/authStore";
@@ -63,6 +64,9 @@ export async function listSubCategoriesWithShared(categoryId: string): Promise<S
  * when a product is first added to an invoice line instead of always
  * starting at 0. */
 export async function getEffectiveDiscountPct(product: Product): Promise<number> {
+  // The business's own discount on this product (Products > Flat Discounts) comes first.
+  const own = await productFlatDiscount(product.id);
+  if (own > 0) return own;
   if (product.sub_category_id) {
     const sc = await subCategoriesRepo.get(product.sub_category_id);
     if (sc && sc.flat_discount_pct > 0) return sc.flat_discount_pct;

@@ -52,6 +52,7 @@ export default function NarcoticsPage() {
       for (const candidate of [
         r.customer_name,
         r.customer_phone ?? "",
+        r.doctor_name ?? "",
         String(r.invoice_no ?? ""),
         ...r.narcotic_items.split(",").map((s) => s.trim()),
       ]) {
@@ -96,12 +97,14 @@ export default function NarcoticsPage() {
     return (
       r.customer_name.toLowerCase().includes(term) ||
       (r.customer_phone ?? "").includes(term) ||
+      (r.doctor_name ?? "").toLowerCase().includes(term) ||
       String(r.invoice_no ?? "").includes(term) ||
       r.narcotic_items.toLowerCase().includes(term)
     );
   });
 
   const missingContact = filtered.filter((r) => !r.customer_phone || r.customer_name === "Walk-in").length;
+  const missingDoctor = filtered.filter((r) => !r.doctor_name).length;
 
   const columns: Column<NarcoticInvoiceRow>[] = [
     { header: "Bill #", render: (r) => r.invoice_no ?? "—" },
@@ -112,6 +115,12 @@ export default function NarcoticsPage() {
       render: (r) => r.customer_phone ?? <span className="text-rose-500">Missing</span>,
     },
     { header: "CNIC / NTN", render: (r) => r.buyer_ntn_cnic ?? "—" },
+    {
+      header: "Prescribed by",
+      render: (r) => r.doctor_name
+        ? <span>{r.doctor_name}{r.doctor_reg_no && <span className="block text-[11px] text-neutral-500">PMDC {r.doctor_reg_no}</span>}</span>
+        : <span className="text-rose-500">Missing</span>,
+    },
     { header: "Salesman", render: (r) => r.salesman_name ?? "—" },
     {
       header: "Narcotic Products",
@@ -133,7 +142,7 @@ export default function NarcoticsPage() {
             <div className="flex gap-2" ref={searchRef}>
               <div className="relative flex-1">
                 <input
-                  placeholder="Customer, mobile, bill # or product..."
+                  placeholder="Customer, mobile, doctor, bill # or product..."
                   value={search}
                   onChange={(e) => handleSearchInput(e.target.value)}
                   onKeyDown={handleSearchKey}
@@ -202,6 +211,9 @@ export default function NarcoticsPage() {
             <span>
               Total: <span className="font-semibold">{filtered.reduce((s, r) => s + r.total, 0).toFixed(2)}</span>
             </span>
+            {missingDoctor > 0 && (
+              <span className="text-rose-600">{missingDoctor} invoice(s) without the prescribing doctor (sold before it was required)</span>
+            )}
             {missingContact > 0 && (
               <span className="text-rose-600">
                 {missingContact} older invoice(s) missing customer name or mobile

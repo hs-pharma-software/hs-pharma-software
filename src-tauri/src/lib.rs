@@ -1877,6 +1877,105 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v96() -> &'static str {
+    r#"
+    -- Pharmacies: insurance. A business's insurance companies; a customer's
+    -- company, policy number and expiry; and a claim per invoice (the whole
+    -- invoice) with its status: sent, in_process, paid or unpaid. An insured
+    -- customer's invoice with no claim row is "not claimed".
+    CREATE TABLE IF NOT EXISTS insurance_companies (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, phone TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_insurance_companies_name ON insurance_companies (tenant_id, name) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_companies_ins AFTER INSERT ON insurance_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_companies', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_companies_upd AFTER UPDATE ON insurance_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_companies', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_companies_del AFTER DELETE ON insurance_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_companies', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    ALTER TABLE customers ADD COLUMN insurance_company_id TEXT;
+    ALTER TABLE customers ADD COLUMN insurance_policy_no TEXT;
+    ALTER TABLE customers ADD COLUMN insurance_expiry TEXT;
+    CREATE INDEX IF NOT EXISTS idx_customers_insurance ON customers (tenant_id, insurance_company_id);
+    CREATE TABLE IF NOT EXISTS insurance_claims (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, invoice_id TEXT NOT NULL, customer_id TEXT, company_id TEXT,
+        amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'sent', claim_ref TEXT, notes TEXT,
+        sent_on TEXT, settled_on TEXT, updated_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_insurance_claims_invoice ON insurance_claims (tenant_id, invoice_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_insurance_claims_company ON insurance_claims (tenant_id, company_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_claims_ins AFTER INSERT ON insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_claims_upd AFTER UPDATE ON insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_claims_del AFTER DELETE ON insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_claims', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
+fn schema_sql_v95() -> &'static str {
+    r#"
+    -- Pharmacies: Pre Invoices, saved invoice patterns (e.g. a Gynae operation's
+    -- medicines) used again and again: lines kept as JSON [{productId, name,
+    -- qty, unit}], billed at the day's prices and batches when used.
+    CREATE TABLE IF NOT EXISTS invoice_templates (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
+        lines TEXT NOT NULL DEFAULT '[]', created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_invoice_templates_tenant ON invoice_templates (tenant_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_templates_ins AFTER INSERT ON invoice_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_templates', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_templates_upd AFTER UPDATE ON invoice_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_templates', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_templates_del AFTER DELETE ON invoice_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_templates', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
+fn schema_sql_v94() -> &'static str {
+    r#"
+    -- Pharmacies: the prescribing doctor on a narcotics sale (required for
+    -- narcotics, PMDC number optional), a business's own flat discount per
+    -- product (used on every invoice before the category's; a table, not a
+    -- products column, because pharmacies share catalogue products), and
+    -- audits that are started, counted and closed, keeping each line's system
+    -- stock and unit cost as they were (for the audit report's shortage amount).
+    ALTER TABLE invoices ADD COLUMN doctor_name TEXT;
+    ALTER TABLE invoices ADD COLUMN doctor_reg_no TEXT;
+    CREATE TABLE IF NOT EXISTS product_flat_discounts (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, discount_pct REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_product_flat_discounts ON product_flat_discounts (tenant_id, product_id) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_flat_discounts_ins AFTER INSERT ON product_flat_discounts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_flat_discounts', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_flat_discounts_upd AFTER UPDATE ON product_flat_discounts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_flat_discounts', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_flat_discounts_del AFTER DELETE ON product_flat_discounts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_flat_discounts', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    ALTER TABLE audits ADD COLUMN status TEXT;
+    ALTER TABLE audits ADD COLUMN closed_at TEXT;
+    ALTER TABLE audits ADD COLUMN closed_by_name TEXT;
+    ALTER TABLE audit_items ADD COLUMN system_qty REAL;
+    ALTER TABLE audit_items ADD COLUMN unit_cost REAL;
+    "#
+}
+
 fn schema_sql_v92() -> &'static str {
     r#"
     -- PRA findings: production whitelisting tracked per PNTN + POS ID (per
@@ -6500,6 +6599,24 @@ fn all_migrations() -> Vec<Migration> {
             version: 93,
             description: "ultrasound_structured_reports",
             sql: schema_sql_v93(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 94,
+            description: "pharmacy_doctor_flat_discount_audits",
+            sql: schema_sql_v94(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 95,
+            description: "pharmacy_pre_invoices",
+            sql: schema_sql_v95(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 96,
+            description: "pharmacy_insurance",
+            sql: schema_sql_v96(),
             kind: MigrationKind::Up,
         },
     ]

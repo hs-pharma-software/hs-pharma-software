@@ -388,13 +388,17 @@ test("loose units: quantities and money stay exact", async () => {
   assert.equal(serverQty("b1a"), 0);
 });
 
-test("controlled medicines need the buyer; IMEI products stay online-only", async () => {
+test("controlled medicines need the buyer and the prescribing doctor; IMEI products stay online-only", async () => {
   const d = await provisioned();
   assert.throws(() => d.createSale({ lines: [{ productId: "pn", unit: "pack", qty: 1 }], tendered: 300 }), /buyer's name and mobile/);
-  d.createSale({ lines: [{ productId: "pn", unit: "pack", qty: 1 }], customerName: "Ali", customerPhone: "03001234567", tendered: 300 });
+  assert.throws(() => d.createSale({ lines: [{ productId: "pn", unit: "pack", qty: 1 }], customerName: "Ali", customerPhone: "03001234567", tendered: 300 }), /prescribing doctor/);
+  const { sale } = d.createSale({ lines: [{ productId: "pn", unit: "pack", qty: 1 }], customerName: "Ali", customerPhone: "03001234567", doctorName: "Dr. Saima", doctorRegNo: "12345-P", tendered: 300 });
   assert.match(String(d.search("phone z")[0]?.onlineOnly), /IMEI/);
   assert.throws(() => d.createSale({ lines: [{ productId: "pi", unit: "pack", qty: 1 }], tendered: 30000 }), /IMEI/);
   assert.equal((await d.sync()).applied, 1);
+  // The doctor reaches the invoice MAVIN.pk books.
+  const inv = one(`SELECT doctor_name, doctor_reg_no FROM invoices WHERE id = ?`, sale.saleId);
+  assert.deepEqual([inv.doctor_name, inv.doctor_reg_no], ["Dr. Saima", "12345-P"]);
 });
 
 test("a staff login enrolled online can sell offline; the server keeps captured prices", async () => {

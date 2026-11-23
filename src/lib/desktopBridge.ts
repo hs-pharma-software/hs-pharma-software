@@ -36,6 +36,9 @@ export interface OfflineSaleInput {
   lines: { productId: string; unit: "pack" | "loose"; qty: number; bonusQty: number; discountPct: number }[];
   customerName: string | null;
   customerPhone: string | null;
+  /** Narcotics: the prescribing doctor (required when the bill has one) and the PMDC number (optional). */
+  doctorName?: string | null;
+  doctorRegNo?: string | null;
   /** A customer of the business (needed for credit). */
   customerId: string | null;
   /** Cloth store: the customer's saved custom size on the bill. */

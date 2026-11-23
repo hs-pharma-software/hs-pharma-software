@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Eye, Pencil, Printer, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { isTauri, useIsTauri } from "@/lib/platform";
@@ -14,8 +15,10 @@ import {
   auditItemsRepo,
   listItemsForAudit,
   deleteAuditWithItems,
+  initiateAudit,
   type AuditItemWithProduct,
 } from "@/lib/repo/audits";
+import { flatDiscountCompanies } from "@/lib/repo/flatDiscounts";
 import { productsRepo } from "@/lib/repo/products";
 import { dbSelect } from "@/lib/db";
 import { useAppStore } from "@/store/appStore";
@@ -31,7 +34,27 @@ interface Line {
 }
 
 export default function AuditDetailPage() {
+  const router = useRouter();
   const [audits, setAudits] = useState<AuditRow[]>([]);
+  // Initiate audit: every product with stock (or one company's), counted on its own screen.
+  const [initOpen, setInitOpen] = useState(false);
+  const [initName, setInitName] = useState("");
+  const [initCompany, setInitCompany] = useState("");
+  const [companies, setCompanies] = useState<string[]>([]);
+  const [initBusy, setInitBusy] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
+  async function startAudit() {
+    setInitBusy(true);
+    setInitError(null);
+    try {
+      const a = await initiateAudit({ name: initName, company: initCompany || null });
+      router.push(`/utilities/audit/count?id=${a.id}`);
+    } catch (e) {
+      setInitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInitBusy(false);
+    }
+  }
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AuditRow | null>(null);
   const [viewing, setViewing] = useState<{ audit: AuditRow; items: AuditItemWithProduct[] } | null>(null);
@@ -134,9 +157,22 @@ export default function AuditDetailPage() {
     { header: "Audit Name", render: (a) => a.audit_name ?? "\u2014" },
     { header: "Description", render: (a) => a.description ?? "\u2014" },
     {
+      header: "Status",
+      render: (a) => a.status === "open"
+        ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Counting</span>
+        : a.status === "closed"
+          ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Closed</span>
+          : <span className="text-xs text-neutral-400">-</span>,
+    },
+    {
       header: "Actions",
       render: (a) => (
         <div className="flex items-center gap-2.5 text-neutral-500">
+          {a.status && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/utilities/audit/count?id=${a.id}`); }} className="text-xs font-medium text-sky-700 hover:underline">
+              {a.status === "open" ? "Continue counting" : "Report"}
+            </button>
+          )}
           <button type="button" title="View" onClick={(e) => { e.stopPropagation(); void openView(a); }} className="hover:text-amber-700">
             <Eye size={16} />
           </button>
@@ -168,7 +204,10 @@ export default function AuditDetailPage() {
         title="Audit Detail"
         actions={
           <>
-            <Button variant="primary" onClick={openAdd}>
+            <Button variant="primary" onClick={() => { setInitName(`Stock audit ${localDate()}`); setInitCompany(""); setInitError(null); setInitOpen(true); void flatDiscountCompanies().then(setCompanies).catch(() => setCompanies([])); }}>
+              Initiate Audit
+            </Button>
+            <Button onClick={openAdd}>
               Add
             </Button>
             <Button onClick={() => void reload()}>Refresh</Button>
@@ -182,6 +221,26 @@ export default function AuditDetailPage() {
         </p>
       ) : (
         <DataTable columns={columns} rows={audits} onRowClick={(a) => void openView(a)} />
+      )}
+
+      {initOpen && (
+        <Modal title="Initiate audit" onClose={() => setInitOpen(false)} width="max-w-md">
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-neutral-600">Lists every product with stock and its system stock. Enter the stock actually available, then close the audit for the report of differences and their amount.</p>
+            <Field label="Audit name"><Input value={initName} onChange={(e) => setInitName(e.target.value)} /></Field>
+            <Field label="Products">
+              <Select value={initCompany} onChange={(e) => setInitCompany(e.target.value)}>
+                <option value="">All products with stock</option>
+                {companies.map((c) => <option key={c} value={c}>Only {c}</option>)}
+              </Select>
+            </Field>
+            {initError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{initError}</p>}
+            <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+              <Button onClick={() => setInitOpen(false)}>Cancel</Button>
+              <Button variant="primary" disabled={initBusy || !initName.trim()} onClick={() => void startAudit()}>{initBusy ? "Starting…" : "Start audit"}</Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {modalOpen && (

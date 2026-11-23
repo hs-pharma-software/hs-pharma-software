@@ -189,6 +189,7 @@ export function InvoiceViewModal({
       phone: inv.customer_phone ?? null,
       ntn: inv.buyer_ntn_cnic ?? null,
       address: inv.buyer_address ? `${inv.buyer_address}${inv.buyer_province ? `, ${inv.buyer_province}` : ""}` : null,
+      doctor: inv.doctor_name ? `${inv.doctor_name}${inv.doctor_reg_no ? ` (PMDC ${inv.doctor_reg_no})` : ""}` : null,
     },
     // Lines sold in the secondary unit are shown in that unit.
     items: invoicePrintItems(items.map((item) => ({

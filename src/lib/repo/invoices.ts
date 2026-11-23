@@ -80,6 +80,23 @@ export interface NarcoticInvoiceRow {
   salesman_name: string | null;
   narcotic_items: string;
   total: number;
+  /** The prescribing doctor (v94); null on sales from before it was asked. */
+  doctor_name: string | null;
+  doctor_reg_no: string | null;
+}
+
+/** Doctors named on earlier narcotics sales (most recent first), offered while typing. */
+export async function recentDoctorNames(): Promise<{ name: string; regNo: string | null }[]> {
+  try {
+    return (await dbSelect<{ name: string; reg: string | null }>(
+      `SELECT doctor_name AS name, MAX(doctor_reg_no) AS reg FROM invoices
+       WHERE tenant_id = ? AND deleted_at IS NULL AND TRIM(COALESCE(doctor_name, '')) <> ''
+       GROUP BY UPPER(TRIM(doctor_name)) ORDER BY MAX(created_at) DESC LIMIT 60`,
+      [currentTenantId()]
+    )).map((r) => ({ name: r.name, regNo: r.reg }));
+  } catch {
+    return []; // before migration v94
+  }
 }
 
 /** Sale invoices that contain at least one product flagged is_narcotic. */
@@ -91,6 +108,7 @@ export async function listNarcoticInvoices(): Promise<NarcoticInvoiceRow[]> {
            COALESCE(NULLIF(i.customer_phone, ''), c.phone) AS customer_phone,
            COALESCE(NULLIF(i.buyer_ntn_cnic, ''), c.cnic_ntn) AS buyer_ntn_cnic,
            sm.name AS salesman_name,
+           i.doctor_name, i.doctor_reg_no,
            GROUP_CONCAT(
              p.name || ' x' ||
              CASE

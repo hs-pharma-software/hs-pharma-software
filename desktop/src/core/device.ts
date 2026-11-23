@@ -49,6 +49,9 @@ export interface SaleInput {
   lines: { productId: string; unit: "pack" | "loose"; qty: number; bonusQty?: number; discountPct?: number }[];
   customerName?: string | null;
   customerPhone?: string | null;
+  /** Narcotics: the prescribing doctor (required when the bill has one) and the PMDC number (optional). */
+  doctorName?: string | null;
+  doctorRegNo?: string | null;
   /** A customer of the business, from this computer's copy (needed for credit). */
   customerId?: string | null;
   /** Cloth store: a saved custom size (measurements) from this computer's copy. */
@@ -317,6 +320,7 @@ export class OfflineDevice {
    * paid quantity. `known` keeps an edited invoice's own price and tax for the
    * products already on it (an edit does not reprice them). */
   private buildLines(input: SaleInput, name: string | null, phone: string | null, known: Map<string, { price: number; taxPct: number }>): SaleLine[] {
+    const doctor = input.doctorName?.trim() || null;
     const { db } = this.need();
     if (!Array.isArray(input.lines) || !input.lines.length) throw new Error("Add at least one product.");
     const lines: SaleLine[] = [];
@@ -326,6 +330,7 @@ export class OfflineDevice {
       if (!p) throw new Error("A product on the bill is no longer in the catalogue.");
       if (p.track_imei) throw new Error(`${p.name} needs IMEI numbers: sell it online.`);
       if (p.is_narcotic && (!name || !phone)) throw new Error(`${p.name} is a controlled medicine: enter the buyer's name and mobile.`);
+      if (p.is_narcotic && !doctor) throw new Error(`${p.name} is a controlled medicine: enter the prescribing doctor.`);
       const price = known.get(p.id)?.price ?? this.priceOf(p.id);
       const taxPct = known.get(p.id)?.taxPct ?? p.tax_pct;
       if (price == null) throw new Error(`${p.name} has no sale price. Set it online first.`);
@@ -397,7 +402,7 @@ export class OfflineDevice {
       const now = this.now();
       const sale: SalePayload = {
         saleId: randomUUID(), offlineRef: `${b.deviceCode}-${String(n).padStart(6, "0")}`, date: localDate(now), occurredAt: now.toISOString(), userId: user.id,
-        customerName: name, customerPhone: phone, customerId: input.customerId || null, ...(input.measurementId ? { measurementId: input.measurementId } : {}), lines, totals, payment: { method, amount: totals.paid },
+        customerName: name, customerPhone: phone, customerId: input.customerId || null, ...(input.measurementId ? { measurementId: input.measurementId } : {}), ...doctorOf(input), lines, totals, payment: { method, amount: totals.paid },
       };
       const problems = checkSale(sale);
       if (problems.length) throw new Error(`The sale did not pass its checks (${problems.join(", ")}). Nothing was saved.`);
@@ -520,7 +525,7 @@ export class OfflineDevice {
       const now = this.now();
       const sale: SalePayload = {
         saleId: id, offlineRef, date, occurredAt: now.toISOString(), userId: user.id,
-        customerName: name, customerPhone: phone, customerId: input.customerId || null, ...(input.measurementId ? { measurementId: input.measurementId } : {}), lines, totals, payment: { method, amount: totals.paid }, edit,
+        customerName: name, customerPhone: phone, customerId: input.customerId || null, ...(input.measurementId ? { measurementId: input.measurementId } : {}), ...doctorOf(input), lines, totals, payment: { method, amount: totals.paid }, edit,
       };
       const problems = checkSale(sale);
       if (problems.length) throw new Error(`The edit did not pass its checks (${problems.join(", ")}). Nothing was saved.`);
@@ -780,4 +785,11 @@ export function receiptText(s: SalePayload, g: GrantPayload | null, cashier: str
   else out.push(row("Cash", t.tendered.toFixed(2)), row("Change", t.change.toFixed(2)));
   out.push("-".repeat(w), "Saved offline. Not submitted to FBR.", "FBR status is set online after sync.");
   return out.join("\n");
+}
+
+/** The prescribing doctor of a narcotics sale, when given (kept off sales without one). */
+function doctorOf(input: SaleInput): { doctorName?: string; doctorRegNo?: string } {
+  const name = input.doctorName?.trim();
+  const reg = input.doctorRegNo?.trim();
+  return { ...(name ? { doctorName: name } : {}), ...(name && reg ? { doctorRegNo: reg } : {}) };
 }

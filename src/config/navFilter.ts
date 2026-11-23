@@ -112,10 +112,14 @@ export function visibleNavFor(
     return inPlan(child.moduleKey) && (has(child.moduleKey) || has(parentKey));
   };
 
+  // Pages only for some business types (onlyFor) or integrations, at every level (e.g. Billing > Invoices pages).
+  const forThisType = (cs: NavChild[]): NavChild[] => cs
+    .filter((c) => integrated(c) && (!c.onlyFor || c.onlyFor.includes(typeId)))
+    .map((c) => (c.children ? { ...c, children: forThisType(c.children) } : c));
   const items: NavItem[] = [];
   for (const entry of NAV) {
     if (!integrated(entry)) continue;
-    const item = entry.children?.some((c) => c.requires) ? { ...entry, children: entry.children.filter(integrated) } : entry;
+    const item = entry.children ? { ...entry, children: forThisType(entry.children) } : entry;
     if (item.onlyFor) {
       if (!item.onlyFor.includes(typeId)) continue;
       if (ownSectionsGated(typeId, allowedModules) && !allowedModules!.includes(item.moduleKey)) continue;

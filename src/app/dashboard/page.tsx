@@ -37,6 +37,8 @@ import { DistDashboard } from "@/components/dist/DistDashboard";
 import { useFormTabs, canOpenKind } from "@/store/formTabsStore";
 import { usePraContractor } from "@/lib/praClient";
 import { FileText, ShoppingCart } from "lucide-react";
+import { PharmacyDayPopup } from "@/components/dashboard/PharmacyDayPopup";
+import { isPharmacyFamilyType } from "@/lib/catalogAccess";
 
 interface DashboardStats {
   customers: number;
@@ -556,6 +558,7 @@ function GeneralDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isPharmacyFamilyType(sessionTenant?.businessType) && <PharmacyDayPopup />}
           {!tauriReady && (
             <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
               Browser preview {"\u2014"} no live data

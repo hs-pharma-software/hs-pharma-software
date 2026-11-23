@@ -70,7 +70,7 @@ export function FormTabsHost() {
         return (
           <div key={t.id} className={visible ? "" : "hidden"}>
             {t.kind === "invoice" ? (
-              <InvoiceFormModal invoice={t.invoice ?? null} rxId={t.rxId} webOrderId={t.webOrderId} cloneFrom={t.cloneFrom} active={visible} onClose={() => close(t.id)} onSaved={done} />
+              <InvoiceFormModal invoice={t.invoice ?? null} rxId={t.rxId} webOrderId={t.webOrderId} preInvoiceId={t.preInvoiceId} cloneFrom={t.cloneFrom} active={visible} onClose={() => close(t.id)} onSaved={done} />
             ) : (
               <PurchaseFormModal
                 purchase={t.purchase ?? null}

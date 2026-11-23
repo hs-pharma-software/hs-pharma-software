@@ -211,6 +211,10 @@ export interface Invoice extends TenantRow {
   buyer_province: string | null;
   buyer_address: string | null;
   buyer_registration_type: string | null;
+  /** Pharmacy: the doctor who prescribed a narcotic on this sale (v94; required when it has one). */
+  doctor_name?: string | null;
+  /** The prescribing doctor's PMDC number, optional (v94). */
+  doctor_reg_no?: string | null;
   /** Cloth store: the customer's saved custom size (v67). */
   measurement_id?: string | null;
   /** The hospital admission a surgery invoice bills (v45). */
@@ -245,12 +249,19 @@ export interface AuditRow extends TenantRow {
   date: string;
   audit_name: string | null;
   description: string | null;
+  /** v94: "open" while counting, "closed" when finished; null = an audit from before (one product at a time). */
+  status?: "open" | "closed" | null;
+  closed_at?: string | null;
+  closed_by_name?: string | null;
 }
 
 export interface AuditItem extends TenantRow {
   audit_id: string;
   product_id: string;
   counted_qty: number;
+  /** v94: the system stock and unit cost when the audit was started (for the shortage amount). */
+  system_qty?: number | null;
+  unit_cost?: number | null;
 }
 
 export interface FinancialClosing extends TenantRow {

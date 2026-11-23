@@ -110,6 +110,9 @@ export interface SalePayload {
   userId: string;
   customerName: string | null;
   customerPhone: string | null;
+  /** Narcotics: the prescribing doctor and PMDC number (optional fields; apps before them send none). */
+  doctorName?: string | null;
+  doctorRegNo?: string | null;
   /** A customer of the business (needed for credit). Version 2. */
   customerId?: string | null;
   /** Cloth store: the customer's saved custom size (measurements) on the bill. Version 2. */
@@ -192,6 +195,8 @@ export function checkSale(p: unknown): string[] {
   if (!isStr(s.userId)) e.push("userId");
   if (s.customerName != null && (typeof s.customerName !== "string" || s.customerName.length > 120)) e.push("customerName");
   if (s.customerPhone != null && (typeof s.customerPhone !== "string" || s.customerPhone.length > 30)) e.push("customerPhone");
+  if (s.doctorName != null && (typeof s.doctorName !== "string" || s.doctorName.length > 120)) e.push("doctorName");
+  if (s.doctorRegNo != null && (typeof s.doctorRegNo !== "string" || s.doctorRegNo.length > 40)) e.push("doctorRegNo");
   if (!Array.isArray(s.lines) || s.lines.length === 0 || s.lines.length > 300) return [...e, "lines"];
   const seen = new Set<string>();
   s.lines.forEach((l, i) => {

@@ -39,7 +39,7 @@ export interface PrintData {
   payment: string;
   invoiceType: string | null;
   salesman: string | null;
-  customer: { name: string; phone: string | null; ntn: string | null; address: string | null };
+  customer: { name: string; phone: string | null; ntn: string | null; address: string | null; /** Narcotics: the prescribing doctor. */ doctor?: string | null };
   items: PrintItem[];
   /** total = gross before discount and tax; discount = line + bill discount. */
   totals: { total: number; discount: number; tax: number; charges: number; payable: number; paid: number; balance: number };
@@ -544,6 +544,7 @@ export function InvoicePrintLayout({
             {data.customer.phone && <div><span style={label}>{tx(blk, "mobile")}</span> {data.customer.phone}</div>}
             {data.customer.ntn && <div><span style={label}>{tx(blk, "ntn")}</span> {data.customer.ntn}</div>}
             {data.customer.address && <div><span style={label}>{tx(blk, "address")}</span> {data.customer.address}</div>}
+            {data.customer.doctor && <div><span style={label}>Prescribed by:</span> {data.customer.doctor}</div>}
           </div>
         );
       case "items":

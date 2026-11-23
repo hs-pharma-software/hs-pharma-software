@@ -125,6 +125,7 @@ const BASE_NAV: NavItem[] = [
       { label: "Invoice Return Details", href: "/invoices/returns" },
       { label: "Sale Item Return", href: "/invoices/item-return" },
       { label: "Memorized Invoice Detail", href: "/invoices/memorized" },
+      { label: "Pre Invoices", href: "/invoices/pre", onlyFor: ["retail_pharmacy", "medical_store", "hospital_pharmacy"] },
     ],
   },
   { label: "Quotation", href: "/quotations", icon: FileCheck2, moduleKey: "quotation" },
@@ -154,6 +155,7 @@ const BASE_NAV: NavItem[] = [
       { label: "Product Types", href: "/products/types", moduleKey: "products", onlyFor: ["cloth_store"] },
       { label: "Companies", href: "/products/companies" },
       { label: "Assign To Supplier", href: "/products/assign-supplier" },
+      { label: "Flat Discounts", href: "/products/flat-discounts" },
     ],
   },
   { label: "Stock", href: "/stock", icon: Boxes, moduleKey: "stock" },
@@ -167,7 +169,8 @@ const BASE_NAV: NavItem[] = [
       { label: "Customer Detail", href: "/customers" },
       { label: "Accounts Receivable", href: "/customers/receivable" },
       { label: "Outstanding", href: "/customers/outstanding" },
-      { label: "Narcotics", href: "/customers/narcotics", onlyFor: ["retail_pharmacy", "medical_store", "distributor"] },
+      { label: "Narcotics", href: "/customers/narcotics", onlyFor: ["retail_pharmacy", "medical_store", "hospital_pharmacy", "distributor"] },
+      { label: "Insured", href: "/customers/insured", onlyFor: ["retail_pharmacy", "medical_store", "hospital_pharmacy"] },
     ],
   },
   {
@@ -247,6 +250,10 @@ const BASE_NAV: NavItem[] = [
       { label: "Bonus Claim And Discount Report", href: "/reports/bonus-discount" },
       { label: "Product Wise Sales Report", href: "/reports/product-sales" },
       { label: "Category Wise Sales", href: "/reports/category-sales" },
+      { label: "Stock in Hand", href: "/reports/stock-in-hand" },
+      { label: "Stock Register", href: "/reports/stock-register" },
+      { label: "Dead Stock", href: "/reports/dead-stock" },
+      { label: "Insurance", href: "/reports/insurance", onlyFor: ["retail_pharmacy", "medical_store", "hospital_pharmacy"] },
       { label: "Trial Balance Report", href: "/reports/trial-balance" },
       { label: "Balance Sheet", href: "/reports/balance-sheet" },
     ],
@@ -550,7 +557,7 @@ const BASE_NAV: NavItem[] = [
 function pagesOf(moduleKey: string): NavChild[] {
   const item = BASE_NAV.find((i) => i.moduleKey === moduleKey);
   if (!item?.children) throw new Error(`nav: no section "${moduleKey}"`);
-  return item.children.map(({ label, href, labelKey }) => ({ label, href, labelKey }));
+  return item.children.map(({ label, href, labelKey, onlyFor }) => (onlyFor ? { label, href, labelKey, onlyFor } : { label, href, labelKey }));
 }
 
 /** A shared section shown as one sub-tab of a group: it expands to its own pages. */

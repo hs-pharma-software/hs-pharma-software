@@ -121,6 +121,10 @@ export interface Customer extends TenantRow {
   description: string | null;
   /** 1 = this customer's bills can have an extra discount % (v83). Set by the owner or allowed staff. */
   extra_discount?: number | null;
+  /** Insurance (v96, pharmacies): the customer's company, policy number and expiry. */
+  insurance_company_id?: string | null;
+  insurance_policy_no?: string | null;
+  insurance_expiry?: string | null;
 }
 
 export interface Supplier extends TenantRow {

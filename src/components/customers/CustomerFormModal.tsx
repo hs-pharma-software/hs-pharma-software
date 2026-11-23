@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { customersRepo } from "@/lib/repo/customers";
 import type { Customer } from "@/lib/types";
 import { can } from "@/lib/actionPermissions";
+import { useAuthStore } from "@/store/authStore";
+import { isPharmacyFamilyType } from "@/lib/catalogAccess";
+import { InsuranceCompanySelect } from "@/components/customers/InsuranceCompanySelect";
 
 const PAKISTAN_PROVINCES = [
   "AZAD JAMMU AND KASHMIR",
@@ -51,6 +54,12 @@ export function CustomerFormModal({
   const [salesTaxStatus, setSalesTaxStatus] = useState(customer?.sales_tax_status ?? "unknown");
   const [fbrActiveStatus, setFbrActiveStatus] = useState(customer?.fbr_active_status ?? "unknown");
   const [description, setDescription] = useState(customer?.description ?? "");
+  // Insurance (pharmacies): company, policy number and expiry.
+  const pharmacy = isPharmacyFamilyType(useAuthStore((s) => s.currentTenant?.businessType));
+  const [insCompany, setInsCompany] = useState(customer?.insurance_company_id ?? "");
+  const [insPolicy, setInsPolicy] = useState(customer?.insurance_policy_no ?? "");
+  const [insExpiry, setInsExpiry] = useState(customer?.insurance_expiry ?? "");
+  const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const needsBusiness = registrationType === "Registered" || registrationType === "Unregistered";
@@ -58,6 +67,9 @@ export function CustomerFormModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
+    setFormError(null);
+    if (!insCompany && (insPolicy.trim() || insExpiry)) { setFormError("Choose the insurance company of this policy."); return; }
+    if (insCompany && !insPolicy.trim()) { setFormError("Enter the insurance policy number."); return; }
     setSaving(true);
     try {
       const payload = {
@@ -84,6 +96,10 @@ export function CustomerFormModal({
         description: description || null,
         // Only sent by those allowed to set it (the server refuses it from anyone else).
         ...(mayExtra ? { extra_discount: extraDiscount ? 1 : 0 } : {}),
+        // Only when used, so customers still save before the v96 database update.
+        ...(pharmacy && (insCompany || customer?.insurance_company_id)
+          ? { insurance_company_id: insCompany || null, insurance_policy_no: insCompany ? insPolicy.trim() : null, insurance_expiry: insCompany ? insExpiry || null : null }
+          : {}),
       };
       if (isEdit && customer) {
         await customersRepo.update(customer.id, payload);
@@ -91,6 +107,8 @@ export function CustomerFormModal({
         await customersRepo.create(payload);
       }
       onSaved();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -260,10 +278,28 @@ export function CustomerFormModal({
           </div>
         </div>
 
+        {pharmacy && (
+          <div className="rounded-xl bg-sky-50/60 p-3 ring-1 ring-sky-100">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-800">Insurance</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Field label="Insurance company">
+                <InsuranceCompanySelect id="cust-ins-company" value={insCompany} onChange={(v) => setInsCompany(v)} />
+              </Field>
+              <Field label="Policy number">
+                <Input value={insPolicy} onChange={(e) => setInsPolicy(e.target.value)} disabled={!insCompany} />
+              </Field>
+              <Field label="Policy expiry">
+                <Input type="date" value={insExpiry} onChange={(e) => setInsExpiry(e.target.value)} disabled={!insCompany} />
+              </Field>
+            </div>
+          </div>
+        )}
+
         <Field label="Notes">
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
+        {formError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p>}
         <div className="form-actions">
           <Button type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>

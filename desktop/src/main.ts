@@ -615,6 +615,7 @@ function saleInput(v: unknown): SaleInput {
       return { productId: str(x.productId, 64, "product"), unit: x.unit === "loose" ? "loose" : "pack", qty: Number(x.qty), bonusQty: num(x.bonusQty), discountPct: num(x.discountPct) };
     }),
     customerName: optStr(o.customerName, 120), customerPhone: optStr(o.customerPhone, 30), customerId: optStr(o.customerId, 64), measurementId: optStr(o.measurementId, 64),
+    doctorName: optStr(o.doctorName, 120), doctorRegNo: optStr(o.doctorRegNo, 40),
     method: o.method === "credit" ? "credit" : "cash", paid: num(o.paid), billDiscountRs: num(o.billDiscountRs), charges: num(o.charges), tendered: Number(o.tendered),
     ...(editId ? { edit: { invoiceId: editId, original: originalInvoice(editId) } } : {}),
   };

@@ -20,6 +20,7 @@ import { ProductPicker, type ProductPickerHandle } from "@/components/products/P
 import { customersRepo } from "@/lib/repo/customers";
 import { salesmenRepo } from "@/lib/repo/salesmen";
 import {
+  recentDoctorNames,
   invoicesRepo,
   invoiceItemsRepo,
   nextInvoiceNo,
@@ -31,6 +32,7 @@ import {
 import { deductStock, listAvailableBatches, type ProductBatchOption } from "@/lib/repo/stock";
 import { allocateBatches, batchLabel, totalStock, STOCK_EPS } from "@/lib/batchAllocation";
 import { getLatestPrice, productsRepo } from "@/lib/repo/products";
+import { getPreInvoice } from "@/lib/repo/preInvoices";
 import { getEffectiveDiscountPct } from "@/lib/repo/categories";
 import { listUomsWithShared } from "@/lib/repo/uoms";
 import { useAuthStore } from "@/store/authStore";
@@ -100,6 +102,7 @@ export function InvoiceFormModal({
   invoice,
   rxId,
   webOrderId,
+  preInvoiceId,
   cloneFrom,
   onClose,
   onSaved,
@@ -111,6 +114,8 @@ export function InvoiceFormModal({
   rxId?: string;
   /** Website order: pre-populate lines (the order's prices) and link the saved invoice to it. */
   webOrderId?: string;
+  /** Pre invoice: pre-populate lines from this saved pattern at today's prices and batches. */
+  preInvoiceId?: string;
   /** Start a new invoice as a copy of this one (customer, buyer details, lines). */
   cloneFrom?: Invoice | null;
   onClose: () => void;
@@ -166,6 +171,10 @@ export function InvoiceFormModal({
   const [buyerProvince, setBuyerProvince] = useState(base?.buyer_province ?? "");
   const [buyerAddress, setBuyerAddress] = useState(base?.buyer_address ?? "");
   const [buyerRegType, setBuyerRegType] = useState(base?.buyer_registration_type ?? "Unregistered");
+  // Narcotics: the prescribing doctor (required), PMDC number optional (v94).
+  const [doctorName, setDoctorName] = useState(base?.doctor_name ?? "");
+  const [doctorRegNo, setDoctorRegNo] = useState(base?.doctor_reg_no ?? "");
+  const [doctorSuggestions, setDoctorSuggestions] = useState<{ name: string; regNo: string | null }[]>([]);
   const [fbrEnabled, setFbrEnabled] = useState(false);
 
   const [lines, setLines] = useState<Line[]>([]);
@@ -316,6 +325,9 @@ export function InvoiceFormModal({
     if (narcoticNames.length > 0) {
       if (!customerName.trim() || !customerPhone.trim()) {
         return `Customer name and mobile number are required for narcotic products (${narcoticNames.join(", ")}).`;
+      }
+      if (!doctorName.trim()) {
+        return `Enter the name of the doctor who prescribed the narcotic (${narcoticNames.join(", ")}).`;
       }
     }
     if (customerPhone.trim() && !isValidPkMobile(customerPhone)) {
@@ -518,6 +530,39 @@ export function InvoiceFormModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [webOrderId]);
 
+  // Pre-populate from a pre invoice (saved pattern): today's batch (FEFO), price and discount per line.
+  useEffect(() => {
+    if (!preInvoiceId || invoice) return;
+    (async () => {
+      const pre = await getPreInvoice(preInvoiceId).catch(() => null);
+      if (!pre) { setError("This pre invoice was not found."); return; }
+      const newLines: Line[] = [];
+      const missing: string[] = [];
+      for (const item of pre.lines) {
+        const product = await productsRepo.get(item.productId).catch(() => null);
+        const batches = product ? await listAvailableBatches(product.id).catch(() => []) : [];
+        if (!product || !batches[0]) { missing.push(item.name || "a removed product"); continue; }
+        const [priceObj, discPct] = await Promise.all([
+          getLatestPrice(product.id).catch(() => null),
+          getEffectiveDiscountPct(product).catch(() => 0),
+        ]);
+        const packPrice = priceObj?.salePrice ?? batches[0].purchase_price ?? 0;
+        const secondary = item.unit === "secondary" && hasSecondaryUnit(product);
+        newLines.push({
+          product, batch: batches[0], batches, extraAvail: 0,
+          qty: item.qty, bonusQty: 0,
+          salePrice: secondary ? roundPrice(packPrice / (product.packing || 1)) : packPrice,
+          taxPct: product.tax_rate_pct, discountPct: discPct, extraPct: 0,
+          unit: secondary ? "secondary" : "base",
+        });
+      }
+      if (newLines.length) setLines(newLines);
+      setDescription(`Pre invoice: ${pre.name}`);
+      if (missing.length) setError(`No stock for: ${missing.join(", ")}. Add them by hand or leave them out.`);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preInvoiceId]);
+
   /** No manual batch picker: picking a product adds it straight away, using
    * the batch with the earliest expiry (FEFO) that `listAvailableBatches`
    * already sorts to the front. If the same product is scanned twice, bump
@@ -707,6 +752,8 @@ export function InvoiceFormModal({
       buyer_province: buyerProvince || null,
       buyer_address: buyerAddress.trim() || null,
       buyer_registration_type: buyerRegType,
+      // Kept only when the invoice has a narcotic.
+      ...(narcoticNames.length > 0 || base?.doctor_name ? { doctor_name: narcoticNames.length > 0 ? doctorName.trim() || null : null, doctor_reg_no: narcoticNames.length > 0 ? doctorRegNo.trim() || null : null } : {}),
       ...(isClothStore ? { measurement_id: measurement?.id ?? null } : {}),
       total,
       charges: Number(charges) || 0,
@@ -853,6 +900,7 @@ export function InvoiceFormModal({
         customerPhone: customerPhone.trim() || null,
         customerId: customerId || null,
         measurementId: isClothStore ? measurement?.id ?? null : null,
+        ...(narcoticNames.length > 0 ? { doctorName: doctorName.trim() || null, doctorRegNo: doctorRegNo.trim() || null } : {}),
         method: credit ? "credit" : "cash",
         paid: Number(paid) || 0,
         billDiscountRs: Number(discountRs) || 0,
@@ -1037,9 +1085,33 @@ export function InvoiceFormModal({
           </button>
           <div className={buyerShown ? "mt-2 sm:mt-0" : "max-sm:hidden"}>
           {narcoticNames.length > 0 && (
-            <p className="mb-2 rounded-lg bg-rose-50 px-3 py-1.5 text-xs text-rose-700 ring-1 ring-rose-200">
-              Narcotic product on this invoice ({narcoticNames.join(", ")}). Customer name and mobile number are required.
-            </p>
+            <div className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+              <p>Narcotic product on this invoice ({narcoticNames.join(", ")}). Customer name, mobile number and the prescribing doctor are required.</p>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1.4fr_1fr]">
+                <label className="flex flex-col gap-0.5">
+                  <span className="font-semibold">Prescribed by (doctor) *</span>
+                  <input
+                    list="narcotic-doctors"
+                    value={doctorName}
+                    onFocus={() => { if (!doctorSuggestions.length) void recentDoctorNames().then(setDoctorSuggestions); }}
+                    onChange={(e) => {
+                      setDoctorName(e.target.value);
+                      const known = doctorSuggestions.find((d) => d.name.toLowerCase() === e.target.value.trim().toLowerCase());
+                      if (known?.regNo && !doctorRegNo.trim()) setDoctorRegNo(known.regNo);
+                    }}
+                    placeholder="Dr. name"
+                    aria-label="Prescribing doctor"
+                    className="rounded-lg border border-rose-300 bg-white px-2 py-1 text-sm text-neutral-900"
+                  />
+                  <datalist id="narcotic-doctors">{doctorSuggestions.map((d) => <option key={d.name} value={d.name} />)}</datalist>
+                </label>
+                <label className="flex flex-col gap-0.5">
+                  <span className="font-semibold">PMDC no. (optional)</span>
+                  <input value={doctorRegNo} onChange={(e) => setDoctorRegNo(e.target.value)} placeholder="e.g. 12345-P" aria-label="Doctor PMDC number"
+                    className="rounded-lg border border-rose-300 bg-white px-2 py-1 text-sm text-neutral-900" />
+                </label>
+              </div>
+            </div>
           )}
           {isClothStore && (
             <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-900 ring-1 ring-violet-200">

@@ -614,6 +614,7 @@ function headerValues(s: SalePayload) {
   const t = s.totals;
   return {
     measurement_id: s.measurementId || null,
+    doctor_name: s.doctorName?.trim() || null, doctor_reg_no: s.doctorRegNo?.trim() || null,
     inv_on: s.payment.method, customer_id: s.customerId || null, customer_name: s.customerName?.trim() || null, customer_phone: s.customerPhone?.trim() || null,
     total: t.total, charges: t.charges ?? 0, discount_rs: t.billDiscountRs ?? 0, payable: t.payable, paid: t.paid, balance: t.balance,
   };
@@ -639,9 +640,9 @@ export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: s
     // The invoice: next number of the business, the device's receipt number kept alongside.
     {
       sql: `INSERT INTO invoices (id, invoice_no, date, inv_on, invoice_type, description, customer_id, customer_name, customer_phone, total, charges, discount_pct, discount_rs, tax_pct, payable, paid, balance,
-              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, measurement_id, created_at, updated_at)
-            VALUES (?, (SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM invoices WHERE tenant_id = ? AND COALESCE(is_quotation, 0) = 0), ?, ?, 'retail', ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, ?, ?, ?, ${MEASUREMENT}, ?, ?)`,
-      args: [s.saleId, T, s.date, h.inv_on, `Offline sale ${s.offlineRef}`, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, T, B, s.offlineRef, h.measurement_id, T, now, now],
+              is_return, is_memorized, is_quotation, tenant_id, branch_id, offline_ref, measurement_id, doctor_name, doctor_reg_no, created_at, updated_at)
+            VALUES (?, (SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM invoices WHERE tenant_id = ? AND COALESCE(is_quotation, 0) = 0), ?, ?, 'retail', ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 0, 0, ?, ?, ?, ${MEASUREMENT}, ?, ?, ?, ?)`,
+      args: [s.saleId, T, s.date, h.inv_on, `Offline sale ${s.offlineRef}`, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, T, B, s.offlineRef, h.measurement_id, T, h.doctor_name, h.doctor_reg_no, now, now],
     },
     ...lines.items,
   ];
@@ -760,8 +761,8 @@ export async function applyEdit(sql: Sql, d: Device, op: Operation, decidedBy: s
     { sql: `UPDATE invoice_items SET deleted_at = ?, updated_at = ? WHERE invoice_id = ? AND tenant_id = ? AND deleted_at IS NULL`, args: [now, now, s.saleId, T] },
     {
       sql: `UPDATE invoices SET inv_on = ?, customer_id = ?, customer_name = ?, customer_phone = ?, total = ?, charges = ?, discount_rs = ?, payable = ?, paid = ?, balance = ?,
-              measurement_id = CASE WHEN ? IS NULL THEN measurement_id ELSE ${MEASUREMENT} END, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-      args: [h.inv_on, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, h.measurement_id, h.measurement_id, T, now, s.saleId, T],
+              measurement_id = CASE WHEN ? IS NULL THEN measurement_id ELSE ${MEASUREMENT} END, doctor_name = COALESCE(?, doctor_name), doctor_reg_no = COALESCE(?, doctor_reg_no), updated_at = ? WHERE id = ? AND tenant_id = ?`,
+      args: [h.inv_on, h.customer_id, h.customer_name, h.customer_phone, h.total, h.charges, h.discount_rs, h.payable, h.paid, h.balance, h.measurement_id, h.measurement_id, T, h.doctor_name, h.doctor_reg_no, now, s.saleId, T],
     },
     ...lines.items,
   ];
