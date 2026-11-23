@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { canSeeEpisode } from "@/lib/repo/deptScope";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, CheckCircle2, ArrowLeft, BedDouble } from "lucide-react";
 import { AdmitModal, AdmissionBadge } from "@/components/hospital/AdmitModal";
@@ -60,6 +61,7 @@ export default function EpisodeDetailPage() {
   const [showAdmit, setShowAdmit] = useState(false);
   const [surgeries, setSurgeries] = useState<SurgeryBooking[]>([]);
   const [theatreId, setTheatreId] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
   async function reload() {
     if (!isTauri() || !id) return;
@@ -67,6 +69,8 @@ export default function EpisodeDetailPage() {
       hospitalEpisodesRepo.get(id),
       hospitalServicesRepo.list({ orderBy: "name ASC" }),
     ]);
+    // MOs, nurses and paramedics open only their department's patients.
+    if (ep && !(await canSeeEpisode(ep))) { setBlocked(true); return; }
     setEpisode(ep);
     setServices(svcList);
     if (ep?.type === "ipd") setSurgeries(await surgeryBookingsRepo.list({ where: "episode_id = ?", params: [ep.id], orderBy: "created_at ASC" }).catch(() => []));
@@ -185,6 +189,7 @@ export default function EpisodeDetailPage() {
     emergency: "bg-red-100 text-red-700",
   };
 
+  if (blocked) return <div className="p-8 text-sm text-rose-600">This patient is in another department. You see the patients of the department you are on duty in.</div>;
   if (!episode) {
     return <div className="p-8 text-neutral-400 text-sm">Loading episode…</div>;
   }

@@ -25,7 +25,7 @@ const STOCKED = `FROM products p
   JOIN (SELECT product_id, SUM(qty) AS stock FROM product_batches WHERE tenant_id = ? AND deleted_at IS NULL AND qty > 0 GROUP BY product_id) st ON st.product_id = p.id
   WHERE p.deleted_at IS NULL AND (p.tenant_id = ? OR p.tenant_id IS NULL) AND TRIM(COALESCE(p.description, '')) <> ''`;
 
-export async function pharmacyCatalogue(sql: Sql, caller: Caller, input: Row): Promise<PharmacyGeneric[] | PharmacyBrand[]> {
+export async function pharmacyCatalogue(sql: Sql, caller: Caller, input: Row): Promise<PharmacyGeneric[] | PharmacyBrand[] | PharmacyPreInvoice[]> {
   const P = await linkedPharmacy(sql, caller);
   const action = String(input.action ?? "");
   if (action === "generics") {
@@ -52,5 +52,42 @@ export async function pharmacyCatalogue(sql: Sql, caller: Caller, input: Row): P
       stock: Number(r.stock) || 0, price: r.price == null ? null : Number(r.price),
     }));
   }
+  if (action === "preInvoices") return pharmacyPreInvoices(sql, P);
   throw new HttpError(400, "Unknown request.");
+}
+
+export interface PharmacyPreInvoice { id: string; name: string; description: string | null; items: number; total: number }
+
+/** The pharmacy's Pre Invoices (e.g. "Gynae case (C-Section)") with today's
+ * total at its sale prices: a surgery's OT / IPD medicine cost. */
+async function pharmacyPreInvoices(sql: Sql, P: string): Promise<PharmacyPreInvoice[]> {
+  const rows = (await sql.execute(
+    `SELECT id, name, description, lines FROM invoice_templates WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY name COLLATE NOCASE`, [P]
+  ).catch(() => ({ rows: [] as Row[] }))).rows as Row[];
+  const parsed = rows.map((r) => {
+    let lines: { productId: string; qty: number; unit: string }[] = [];
+    try {
+      const v = JSON.parse(String(r.lines ?? "[]"));
+      if (Array.isArray(v)) lines = v.filter((l) => l && typeof l.productId === "string" && Number(l.qty) > 0).map((l) => ({ productId: l.productId, qty: Number(l.qty), unit: String(l.unit ?? "base") }));
+    } catch { lines = []; }
+    return { r, lines };
+  });
+  const ids = [...new Set(parsed.flatMap((p) => p.lines.map((l) => l.productId)))];
+  const prices = new Map<string, { price: number; packing: number }>();
+  if (ids.length) {
+    const pr = (await sql.execute(
+      `SELECT p.id, COALESCE(p.packing, 1) AS packing,
+              (SELECT pl.sale_price FROM price_list pl WHERE pl.product_id = p.id AND pl.tenant_id = ? AND pl.deleted_at IS NULL ORDER BY pl.created_at DESC LIMIT 1) AS price
+       FROM products p WHERE p.id IN (${ids.map(() => "?").join(", ")}) AND (p.tenant_id = ? OR p.tenant_id IS NULL)`,
+      [P, ...ids, P]
+    )).rows as Row[];
+    for (const x of pr) prices.set(String(x.id), { price: Number(x.price) || 0, packing: Number(x.packing) || 1 });
+  }
+  return parsed.map(({ r, lines }) => ({
+    id: String(r.id), name: String(r.name), description: r.description == null ? null : String(r.description), items: lines.length,
+    total: Math.round(lines.reduce((a, l) => {
+      const p = prices.get(l.productId);
+      return a + (p ? l.qty * (l.unit === "secondary" ? p.price / p.packing : p.price) : 0);
+    }, 0) * 100) / 100,
+  }));
 }

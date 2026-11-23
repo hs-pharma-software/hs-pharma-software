@@ -15,6 +15,7 @@ import { invoicesRepo, nextInvoiceNo } from "./invoices";
 import type { AdmissionStatus, HospitalCharge, HospitalEpisode, HospitalPatient, HospitalPayment, HospitalRxItem, HospitalService, SurgeryBooking } from "../types-hospital";
 import type { Invoice } from "../types2";
 import { SURGERY_CHARGES, breakdownTotal, chargeLabel, cleanBreakdown, parseBreakdown, type SurgeryFeeBreakdown } from "../../config/surgeryCharges";
+import { cleanShares, type SurgeryShares } from "../../config/surgeryShares";
 
 export const surgeryBookingsRepo = createTenantRepo<SurgeryBooking>("hospital_surgery_bookings", {
   refs: [["episode_id", "hospital_episodes", "Admission"], ["patient_id", "hospital_patients", "Patient"], ["service_id", "hospital_services", "Surgery"]],
@@ -43,6 +44,7 @@ async function nextSurgeryCode(): Promise<string> {
  * With a charge breakdown, the fee is the total of its charges. */
 export async function saveSurgeryType(id: string | null, s: {
   name: string; code?: string | null; department?: string | null; rate?: number; breakdown?: Partial<SurgeryFeeBreakdown> | null; notes?: string | null; is_active?: number;
+  shares?: Partial<SurgeryShares> | null;
 }): Promise<HospitalService> {
   const name = s.name?.trim();
   if (!name) throw new Error("Enter the surgery name.");
@@ -66,6 +68,8 @@ export async function saveSurgeryType(id: string | null, s: {
     fee_breakdown: breakdown ? JSON.stringify(breakdown) : null,
     notes: s.notes?.trim() || null,
     is_active: s.is_active ?? existing?.is_active ?? 1,
+    // Only when given, so a surgery still saves before the v99 database update.
+    ...(s.shares !== undefined ? { surgery_shares: s.shares ? JSON.stringify(cleanShares(s.shares)) : null } : {}),
   };
   const saved = id ? await hospitalServicesRepo.update(id, payload) : await hospitalServicesRepo.create(payload);
   if (!saved) throw new Error("Surgery not found.");
@@ -172,6 +176,7 @@ export async function admitFromVisit(input: AdmitInput): Promise<{ admission: Ho
     booking = await surgeryBookingsRepo.create({
       episode_id: admission.id, patient_id: visit.patient_id, service_id: surgery.id, surgery_name: surgery.name, fee, charge_id: lines[0]?.id ?? null,
       fee_breakdown: JSON.stringify(charges), invoice_id: invoice?.id ?? null,
+      ...(surgery.surgery_shares ? { surgery_shares: surgery.surgery_shares } : {}),
       surgeon_id: input.surgeonId || visit.doctor_id || null, planned_date: input.plannedDate || null, status: "planned", notes: reason, performed_at: null,
     });
   }

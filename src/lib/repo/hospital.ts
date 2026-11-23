@@ -17,6 +17,7 @@ import { invoicesRepo } from "./invoices";
 import { useAuthStore } from "../../store/authStore";
 import { settlingCreate } from "./docNumbers";
 import { formatMr, parseMr } from "../hospitalMr";
+import { departmentScope, deptScopeSql } from "./deptScope";
 
 export type { HospitalDepartment, HospitalLabOrder, HospitalImagingOrder, HospitalPatient, HospitalService, HospitalEpisode, HospitalCharge, HospitalPayment };
 
@@ -131,6 +132,9 @@ export async function listEpisodes(opts: {
   if (opts.status) { where.push("e.status = ?"); params.push(opts.status); }
   if (opts.type) { where.push("e.type = ?"); params.push(opts.type); }
   if (opts.date) { where.push("e.date = ?"); params.push(opts.date); }
+  // MOs, nurses and paramedics: only the department they are on duty in.
+  const depts = await departmentScope();
+  if (depts) { const d = deptScopeSql("e", depts); where.push(d.sql); params.push(...d.params); }
   const limit = opts.limit ?? 100;
   return dbSelect<EpisodeListRow>(
     // e.* rather than a column list: works on a database from before newer

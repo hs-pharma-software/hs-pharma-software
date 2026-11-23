@@ -14,6 +14,8 @@ import { parseBreakdown } from "@/config/surgeryCharges";
 import { SurgeryChargesFields, draftFrom, draftToBreakdown, draftTotal } from "@/components/hospital/SurgeryChargesFields";
 import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
 import { TheatreRecord } from "@/components/hospital/record/TheatreRecord";
+import { SurgerySharesFields } from "@/components/hospital/SurgerySharesFields";
+import { parseShares, sharesTotal, surgeryProfit } from "@/config/surgeryShares";
 
 const STATUS_COLOR: Record<string, string> = {
   planned: "bg-amber-100 text-amber-700",
@@ -56,6 +58,14 @@ export default function SurgeryPage() {
     { header: "Surgery", render: (s) => <span className="font-medium">{s.name}</span> },
     { header: "Department", render: (s) => s.department || "—" },
     { header: "Fee (Rs)", render: (s) => <span className="tabular-nums">{Number(s.rate).toLocaleString()}</span> },
+    {
+      header: "Profit (Rs)",
+      render: (s) => {
+        if (!s.surgery_shares) return <span className="text-xs text-neutral-400">No shares set</span>;
+        const p = surgeryProfit(Number(s.rate), parseShares(s.surgery_shares));
+        return <span className={`tabular-nums ${p < 0 ? "text-rose-700" : "text-emerald-700"}`}>{p.toLocaleString()}</span>;
+      },
+    },
     { header: "Notes", render: (s) => s.notes ?? "—" },
     { header: "Status", render: (s) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${s.is_active ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>{s.is_active ? "Performed" : "Not performed"}</span> },
     { header: "", render: (s) => <Button variant="ghost" onClick={() => setEditing(s)}>Edit</Button> },
@@ -68,6 +78,15 @@ export default function SurgeryPage() {
     { header: "Surgery", render: (b) => b.surgery_name },
     { header: "Surgeon", render: (b) => b.surgeon_name ?? "—" },
     { header: "Fee (Rs)", render: (b) => <span className="tabular-nums">{Number(b.fee).toLocaleString()}</span> },
+    {
+      header: "Shares / profit",
+      render: (b) => {
+        if (!b.surgery_shares) return <span className="text-xs text-neutral-400">—</span>;
+        const sh = parseShares(b.surgery_shares);
+        const p = surgeryProfit(Number(b.fee), sh);
+        return <span className="text-xs tabular-nums">{sharesTotal(sh).toLocaleString()} / <b className={p < 0 ? "text-rose-700" : "text-emerald-700"}>{p.toLocaleString()}</b></span>;
+      },
+    },
     { header: "Status", render: (b) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[b.status] ?? ""}`}>{b.status}</span> },
     {
       header: "",
@@ -136,6 +155,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   const [charges, setCharges] = useState(() => draftFrom(parseBreakdown(surgery?.fee_breakdown, surgery?.rate ?? 0)));
   const [notes, setNotes] = useState(surgery?.notes ?? "");
   const [active, setActive] = useState(surgery ? Boolean(surgery.is_active) : true);
+  const [shares, setShares] = useState(() => parseShares(surgery?.surgery_shares));
   const [departments, setDepartments] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -147,7 +167,8 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   async function save() {
     setSaving(true);
     try {
-      await saveSurgeryType(surgery?.id ?? null, { name, code, department, breakdown: draftToBreakdown(charges), notes, is_active: active ? 1 : 0 });
+      const touched = sharesTotal(shares) > 0 || Boolean(surgery?.surgery_shares);
+      await saveSurgeryType(surgery?.id ?? null, { name, code, department, breakdown: draftToBreakdown(charges), notes, is_active: active ? 1 : 0, ...(touched ? { shares } : {}) });
       onSaved();
     } catch (e) {
       window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
@@ -184,6 +205,10 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
       <p className="mb-2 text-xs font-semibold text-neutral-700">Charges</p>
       <div className="mb-4">
         <SurgeryChargesFields idPrefix="surgery-type" value={charges} onChange={setCharges} />
+      </div>
+      <p className="mb-2 text-xs font-semibold text-neutral-700">Shares (paid out by the hospital for this procedure)</p>
+      <div className="mb-4">
+        <SurgerySharesFields value={shares} onChange={setShares} chargesTotal={draftTotal(charges)} />
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>

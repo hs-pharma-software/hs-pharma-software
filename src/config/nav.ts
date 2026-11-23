@@ -703,7 +703,9 @@ const HOSPITAL_NAV: NavItem[] = [
     moduleKey: "hospital_finance",
     onlyFor: ["hospital", "radiology_center"],
     children: [
-      { label: "Overview", href: "/hospital/finance" },
+      // Overview and Reports are given to a login on their own (User Logins), or with Finance.
+      { label: "Overview", href: "/hospital/finance", moduleKey: "hospital_finance_overview" },
+      { label: "Reports", href: "/hospital/finance/reports", moduleKey: "hospital_finance_reports" },
       { label: "Collections", href: "/hospital/finance/collections" },
       { label: "Day Closings", href: "/hospital/finance/closings" },
     ],

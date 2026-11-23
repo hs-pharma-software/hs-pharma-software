@@ -8,6 +8,7 @@
  * "seen" only when a doctor records it, an MLC report is issued only after
  * the police were informed and a doctor examined the patient. */
 import { dbSelect } from "../db";
+import { departmentScope, deptScopeSql } from "./deptScope";
 import { mrSearchSql } from "../hospitalMr";
 import { createTenantRepo, requireCurrentTenantId } from "./base";
 import { nowIso } from "../id";
@@ -157,10 +158,13 @@ export interface ErBoardRow {
 /** Open emergency visits, most urgent and longest waiting first. */
 export async function erBoard(now: Date = new Date()): Promise<ErBoardRow[]> {
   const tenantId = requireCurrentTenantId();
+  // MOs, nurses and paramedics: only the department they are on duty in.
+  const depts = await departmentScope();
+  const scope = depts ? deptScopeSql("e", depts) : null;
   const eps = await dbSelect<{ id: string; episode_no: string; created_at: string; name: string; mr_no: string | null }>(
     `SELECT e.id, e.episode_no, e.created_at, p.name, p.mr_no FROM hospital_episodes e JOIN hospital_patients p ON p.id = e.patient_id
-     WHERE e.tenant_id = ? AND e.type = 'emergency' AND e.status = 'open' AND e.deleted_at IS NULL ORDER BY e.created_at ASC`,
-    [tenantId]
+     WHERE e.tenant_id = ? AND e.type = 'emergency' AND e.status = 'open' AND e.deleted_at IS NULL${scope ? ` AND ${scope.sql}` : ""} ORDER BY e.created_at ASC`,
+    [tenantId, ...(scope?.params ?? [])]
   );
   if (!eps.length) return [];
   const ids = eps.map((e) => e.id);

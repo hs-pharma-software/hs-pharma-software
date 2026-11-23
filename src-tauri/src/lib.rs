@@ -1877,6 +1877,16 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v99() -> &'static str {
+    r#"
+    -- Surgery shares and expenses (consultant, MO, nurses, anaesthesia, other,
+    -- and the OT / IPD medicine of the linked pharmacy's Pre Invoice), as JSON
+    -- on the surgery type and kept on each booking as it was then.
+    ALTER TABLE hospital_services ADD COLUMN surgery_shares TEXT;
+    ALTER TABLE hospital_surgery_bookings ADD COLUMN surgery_shares TEXT
+    "#
+}
+
 fn schema_sql_v98() -> &'static str {
     r#"
     -- Hospital Pharmacy Department > Selected Brands: for each generic the
@@ -6709,6 +6719,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 98,
             description: "hospital_brand_selections",
             sql: schema_sql_v98(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 99,
+            description: "hospital_surgery_shares",
+            sql: schema_sql_v99(),
             kind: MigrationKind::Up,
         },
     ]

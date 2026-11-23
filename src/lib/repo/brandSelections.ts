@@ -83,3 +83,10 @@ export async function pharmacyGenerics(term: string): Promise<PharmacyGeneric[]>
 export async function pharmacyBrands(generic: string): Promise<PharmacyBrand[]> {
   return (await serverJson<{ result: PharmacyBrand[] }>("/api/hospital/pharmacy-catalogue/", { action: "brands", generic })).result;
 }
+
+export interface PharmacyPreInvoice { id: string; name: string; description: string | null; items: number; total: number }
+
+/** The linked pharmacy's Pre Invoices with today's totals (a surgery's OT / IPD medicine). */
+export async function pharmacyPreInvoices(): Promise<PharmacyPreInvoice[]> {
+  return (await serverJson<{ result: PharmacyPreInvoice[] }>("/api/hospital/pharmacy-catalogue/", { action: "preInvoices" })).result;
+}

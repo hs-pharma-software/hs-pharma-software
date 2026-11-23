@@ -67,6 +67,8 @@ export interface HospitalService extends TenantRow {
   /** Per unit (v97): the doctor's and the staff's share; the rest is the hospital's. */
   doctor_share?: number | null;
   staff_share?: number | null;
+  /** Surgery types: shares and expenses as JSON (v99); see config/surgeryShares. */
+  surgery_shares?: string | null;
 }
 
 export type EpisodeType = "opd" | "ipd" | "emergency";
@@ -333,6 +335,8 @@ export interface SurgeryBooking extends TenantRow {
   status: SurgeryStatus;
   notes: string | null;
   performed_at: string | null;
+  /** The surgery type's shares and expenses when booked, as JSON (v99). */
+  surgery_shares?: string | null;
 }
 
 // ── Medical record forms, checklists, vital signs (v48) ──────────────────
