@@ -10,11 +10,13 @@ const COLS = ["30%", "14%", "18%", "12%", "26%"];
 
 /** The laboratory report as printed and as shown online (QR code). Only the
  * verified results are in `report.tests`. */
-export function LabReportSheet({ report: r, qrUrl }: { report: LabReport; qrUrl: string | null }) {
+export function LabReportSheet({ report: r, qrUrl, logo = null }: { report: LabReport; qrUrl: string | null; logo?: string | null }) {
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b-2 border-neutral-800 pb-2">
-        <div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {logo && <img src={logo} alt="" className="h-14 w-auto shrink-0 object-contain" />}
+        <div className="flex-1">
           <p className="text-xl font-bold leading-tight">{r.hospital.name}</p>
           <p className="text-xs text-neutral-600">Department of Pathology / Laboratory</p>
           {(r.hospital.address || r.hospital.phone) && <p className="text-xs text-neutral-600">{[r.hospital.address, r.hospital.phone].filter(Boolean).join(" · ")}</p>}

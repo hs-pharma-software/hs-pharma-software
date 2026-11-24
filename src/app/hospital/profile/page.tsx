@@ -8,6 +8,7 @@ import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { LinkedPharmacyCard } from "@/components/clinic/LinkedPharmacyCard";
+import { PrintTemplatesCard } from "@/components/hospital/PrintTemplatesCard";
 
 const KEY = "hospital.profile";
 
@@ -83,6 +84,7 @@ export default function HospitalProfilePage() {
         </div>
         {savedAt && <p className="mt-3 text-xs text-emerald-600">Saved at {savedAt}.</p>}
       </div>
+      {!isCentre && <PrintTemplatesCard />}
       {!isCentre && <div className="mt-4"><LinkedPharmacyCard /></div>}
     </div>
   );

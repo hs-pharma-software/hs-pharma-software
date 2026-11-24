@@ -46,6 +46,8 @@ export const HOSPITAL_NAV_ORDER = [
   "hospital_services",
   "hospital_finance",
   "hospital_purchase_cell",
+  "hospital_store",
+  "hospital_indent",
   "hospital_hr",
   "hospital_logins",
 ];

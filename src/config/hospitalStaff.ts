@@ -1,6 +1,8 @@
 /** Hospital HR: designations, their employee-id prefix, the professional
  * licence each needs, and what a login for that role may open. */
 
+import { STORE_ROLES, staffStores, storeKey } from "./hospitalStores";
+
 export type LicenseKind = "PMDC" | "PNC" | "LICENSE";
 
 export interface Designation {
@@ -55,7 +57,9 @@ export const DESIGNATIONS: Designation[] = [
   { key: "paramedic", label: "Paramedic (other)", prefix: "PM", license: "LICENSE", licenseRequired: false, doctor: false, pages: ["hospital_patients", "hospital_episodes"] },
   { key: "pharmacist", label: "Pharmacist", prefix: "PH", license: "LICENSE", licenseRequired: true, doctor: false,
     pages: ["hospital_episodes", "hospital_patients", "hospital_medicines", "products", "suppliers"] },
-  { key: "store_keeper", label: "Store Keeper", prefix: "SK", license: null, licenseRequired: false, doctor: false, pages: ["products", "suppliers", "tasks"] },
+  // A store keeper's stores are added to these pages from their store list (config/hospitalStores).
+  { key: "store_keeper", label: "Store Keeper", prefix: "SK", license: null, licenseRequired: false, doctor: false, pages: ["products", "tasks"] },
+  { key: "purchase_officer", label: "Purchase Officer", prefix: "PO", license: null, licenseRequired: false, doctor: false, pages: ["hospital_purchase_cell", "hospital_finance_reports"] },
   { key: "quality_manager", label: "Quality Manager / Patient Safety Officer", prefix: "QM", license: null, licenseRequired: false, doctor: false,
     pages: ["hospital_quality", "hospital_facility", "hospital_records", "hospital_dashboard", "hospital_patients", "hospital_episodes"] },
   { key: "facility_manager", label: "Facility Manager / Biomedical Engineer", prefix: "FM", license: null, licenseRequired: false, doctor: false,
@@ -167,6 +171,14 @@ export function extraRoles(raw: string | null | undefined): string[] {
 /** Every role of a staff member: the designation first, then the others. */
 export function staffRoles(s: { staff_category?: string | null; extra_roles?: string | null } | null | undefined): string[] {
   return [...new Set([s?.staff_category ?? "", ...extraRoles(s?.extra_roles)].filter(Boolean))];
+}
+
+/** The pages of a staff member's login: every role's, and the stores they work in (store keepers, purchase officers). */
+export function pagesForStaff(s: { staff_category?: string | null; extra_roles?: string | null; stores?: string | null }): string[] | null {
+  const roles = staffRoles(s);
+  const pages = pagesForRoles(roles);
+  if (pages === null || !roles.some((r) => STORE_ROLES.includes(r))) return pages;
+  return [...new Set([...pages, ...staffStores(s.stores).map(storeKey)])];
 }
 
 /** The pages a login with these roles opens: all of each role's (null = every section). */

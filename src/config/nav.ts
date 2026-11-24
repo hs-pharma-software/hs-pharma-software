@@ -721,7 +721,9 @@ const HOSPITAL_NAV: NavItem[] = [
     onlyFor: ["hospital"],
     children: [
       { label: "Dashboard", href: "/hospital/purchase-cell" },
-      shared("Purchase", "purchase"),
+      // The purchase officer's store purchases: each item's store; verified by the store keepers.
+      { label: "Purchase", href: "/hospital/purchase-cell/purchases" },
+      { label: "Indent Books", href: "/hospital/purchase-cell/indent-books" },
       shared("Products", "products"),
       shared("Supplier & Vendors", "suppliers"),
       {
@@ -738,6 +740,23 @@ const HOSPITAL_NAV: NavItem[] = [
       shared("Other Revenue", "other_revenue"),
       shared("Tasks", "tasks"),
       shared("Utilities", "utilities"),
+    ],
+  },
+  // A head nurse / department in-charge with an issued indent book (the key is added when the book is issued).
+  { label: "Indent Book", href: "/hospital/indent", icon: ClipboardList, moduleKey: "hospital_indent", onlyFor: ["hospital"] },
+  {
+    label: "Store",
+    href: "/hospital/store/general",
+    icon: Warehouse,
+    moduleKey: "hospital_store",
+    onlyFor: ["hospital"],
+    // Each store has its own key: a store keeper's login opens only their stores.
+    children: [
+      { label: "Stationery & Printing Store", href: "/hospital/store/stationery", moduleKey: "hospital_store_stationery" },
+      { label: "General Store", href: "/hospital/store/general", moduleKey: "hospital_store_general" },
+      { label: "Lab Store", href: "/hospital/store/lab", moduleKey: "hospital_store_lab" },
+      { label: "Radiology Store", href: "/hospital/store/radiology", moduleKey: "hospital_store_radiology" },
+      { label: "Medicine Store", href: "/hospital/store/medicine", moduleKey: "hospital_store_medicine" },
     ],
   },
   {

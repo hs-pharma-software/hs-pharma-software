@@ -1877,6 +1877,128 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v104() -> &'static str {
+    r#"
+    -- Store indents. The purchase officer orders an indent book for a head
+    -- nurse / department in-charge; a store keeper issues it, and the holder
+    -- then demands items from a store. The store keeper issues them (stock
+    -- out); the holder confirms what was received (with a comment) or returns
+    -- items, which the store keeper accepts back into stock or refuses.
+    CREATE TABLE IF NOT EXISTS hospital_indent_books (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, book_no TEXT NOT NULL, holder_staff_id TEXT NOT NULL, holder_name TEXT, department TEXT,
+        status TEXT NOT NULL DEFAULT 'requested', requested_by_name TEXT, requested_at TEXT, issued_by_name TEXT, issued_at TEXT, note TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_books_ins AFTER INSERT ON hospital_indent_books BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_books', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_books_upd AFTER UPDATE ON hospital_indent_books BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_books', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_books_del AFTER DELETE ON hospital_indent_books BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_books', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_indents (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, indent_no TEXT NOT NULL, book_id TEXT NOT NULL, store TEXT NOT NULL, department TEXT,
+        requested_by_staff_id TEXT, requested_by_name TEXT, status TEXT NOT NULL DEFAULT 'pending', note TEXT,
+        issued_by_name TEXT, issued_at TEXT, received_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_indents_store ON hospital_indents (tenant_id, store, status);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indents_ins AFTER INSERT ON hospital_indents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indents_upd AFTER UPDATE ON hospital_indents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indents_del AFTER DELETE ON hospital_indents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indents', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_indent_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, indent_id TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL, company_name TEXT,
+        qty_requested REAL NOT NULL DEFAULT 0, qty_issued REAL, qty_received REAL, received_note TEXT,
+        return_qty REAL, return_status TEXT, return_note TEXT, return_decided_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_indent_items ON hospital_indent_items (tenant_id, indent_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_ins AFTER INSERT ON hospital_indent_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_upd AFTER UPDATE ON hospital_indent_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_del AFTER DELETE ON hospital_indent_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
+fn schema_sql_v103() -> &'static str {
+    r#"
+    -- Hospital stores (Stationery & Printing, General, Lab, Radiology,
+    -- Medicine). The purchase officer's purchase names each item's store; once
+    -- posted it is locked. The store keeper verifies (received quantities, a
+    -- stock entry number per item) or returns it with a reason; verified, the
+    -- stock enters the store and the bill goes to Finance. The stock ledger
+    -- holds every movement of every store (+ in, - out). A store keeper /
+    -- purchase officer works in all stores or chosen ones (staff.stores).
+    ALTER TABLE staff ADD COLUMN stores TEXT;
+    CREATE TABLE IF NOT EXISTS hospital_store_purchases (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, purchase_no TEXT NOT NULL, vendor_id TEXT, vendor_invoice_no TEXT, date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft', total REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, balance REAL NOT NULL DEFAULT 0,
+        note TEXT, return_reason TEXT, created_by_name TEXT, posted_at TEXT, posted_by_name TEXT, returned_at TEXT, returned_by_name TEXT,
+        verified_at TEXT, cancelled_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_store_purchases_no ON hospital_store_purchases (tenant_id, purchase_no) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchases_ins AFTER INSERT ON hospital_store_purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchases_upd AFTER UPDATE ON hospital_store_purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchases_del AFTER DELETE ON hospital_store_purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchases', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_store_purchase_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, purchase_id TEXT NOT NULL, store TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL,
+        company_name TEXT, qty REAL NOT NULL DEFAULT 0, received_qty REAL, rate REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending',
+        entry_no TEXT, entered_on TEXT, verified_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_store_purchase_items ON hospital_store_purchase_items (tenant_id, purchase_id);
+    CREATE INDEX IF NOT EXISTS idx_hospital_store_purchase_items_store ON hospital_store_purchase_items (tenant_id, store, status);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchase_items_ins AFTER INSERT ON hospital_store_purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchase_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchase_items_upd AFTER UPDATE ON hospital_store_purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchase_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchase_items_del AFTER DELETE ON hospital_store_purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchase_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_store_stock (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL, company_name TEXT, vendor_id TEXT,
+        qty REAL NOT NULL, unit_cost REAL NOT NULL DEFAULT 0, kind TEXT NOT NULL, ref_type TEXT, ref_id TEXT, entry_no TEXT, date TEXT NOT NULL,
+        notes TEXT, by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_store_stock ON hospital_store_stock (tenant_id, store, product_name);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_ins AFTER INSERT ON hospital_store_stock BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_upd AFTER UPDATE ON hospital_store_stock BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_del AFTER DELETE ON hospital_store_stock BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
+fn schema_sql_v102() -> &'static str {
+    r#"
+    -- A doctor's qualification (MBBS, FCPS ...), printed on the prescription under the name.
+    ALTER TABLE staff ADD COLUMN qualification TEXT
+    "#
+}
+
 fn schema_sql_v101() -> &'static str {
     r#"
     -- Hospital staff with more than one role (a ward nurse who is also the
@@ -6835,6 +6957,24 @@ fn all_migrations() -> Vec<Migration> {
             version: 101,
             description: "hospital_multi_role_ordering_share",
             sql: schema_sql_v101(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 102,
+            description: "staff_qualification",
+            sql: schema_sql_v102(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 103,
+            description: "hospital_stores",
+            sql: schema_sql_v103(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 104,
+            description: "hospital_store_indents",
+            sql: schema_sql_v104(),
             kind: MigrationKind::Up,
         },
     ]

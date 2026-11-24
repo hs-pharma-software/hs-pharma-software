@@ -152,6 +152,10 @@ export interface Staff extends TenantRow {
   consultation_doctor_share?: number | null;
   /** Hospital staff (v101): other roles as a JSON list of designation keys (e.g. ["infection_control_nurse"]). */
   extra_roles?: string | null;
+  /** Doctors (v102): qualification printed on the prescription, e.g. "MBBS, FCPS (Medicine)". */
+  qualification?: string | null;
+  /** Store keepers / purchase officers (v103): the stores they work in, as JSON (["all"] or store ids). */
+  stores?: string | null;
   name: string;
   designation: string | null;
   phone: string | null;

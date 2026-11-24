@@ -6,6 +6,7 @@
  * inbox) and orders lab / radiology from the Service Master. Each order adds its
  * fee to the episode bill; the lab / radiology can only process it once paid. */
 import { dbExecute, dbSelect } from "../db";
+import { usersRepo } from "./users";
 import { mrSearchSql } from "../hospitalMr";
 import { friendlyDbError, requireCurrentTenantId } from "./base";
 import { newId, nowIso } from "../id";
@@ -19,7 +20,8 @@ import {
   nextEpisodeNo, nextOrderNo, addCharge, addPayment,
 } from "./hospital";
 import { getPharmacyLink, postToPharmacyMailbox } from "./clinic";
-import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, extraRoles, formatEmployeeId, pagesForRoles, staffRoles } from "../../config/hospitalStaff";
+import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, extraRoles, formatEmployeeId, pagesForStaff, staffRoles } from "../../config/hospitalStaff";
+import { STORE_ROLES, staffStores } from "../../config/hospitalStores";
 import { updateUserPermissions } from "../auth";
 import type { Staff } from "../types";
 import { createLabRequest, enterLabResult, labCapabilities, labRequestsRepo, collectionCentersRepo, type LabResultInput } from "./labReports";
@@ -81,6 +83,12 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
     ...(data.extra_roles !== undefined
       ? { extra_roles: JSON.stringify(extraRoles(data.extra_roles).filter((k) => k !== d.key)) }
       : {}),
+    // Stores (v103): "all" or chosen ones, only for store keepers / purchase officers.
+    ...(data.stores !== undefined
+      ? { stores: staffRoles({ staff_category: d.key, extra_roles: data.extra_roles ?? existing?.extra_roles }).some((r) => STORE_ROLES.includes(r))
+          ? (data.stores && JSON.parse(data.stores).includes?.("all") ? JSON.stringify(["all"]) : JSON.stringify(staffStores(data.stores)))
+          : null }
+      : {}),
   };
   if (licenseNo && d.license) {
     const clash = await dbSelect<{ name: string }>(
@@ -92,8 +100,13 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
   const saved = id ? await staffRepo.update(id, payload) : await staffRepo.create(payload);
   if (!saved) throw new Error("Staff member not found.");
   // The roles changed: the login opens the pages of every role now.
-  if (saved.user_id && existing && staffRoles(existing).join() !== staffRoles(saved).join()) {
-    await updateUserPermissions(saved.user_id, pagesForRoles(staffRoles(saved)));
+  if (saved.user_id && existing && (staffRoles(existing).join() !== staffRoles(saved).join() || (existing.stores ?? "") !== (saved.stores ?? ""))) {
+    // An issued indent book stays in their sidebar.
+    const cur = await usersRepo.get(saved.user_id);
+    let hadIndent = false;
+    try { hadIndent = (JSON.parse(cur?.permissions ?? "[]") as string[]).includes("hospital_indent"); } catch { hadIndent = false; }
+    const next = pagesForStaff(saved);
+    await updateUserPermissions(saved.user_id, next && hadIndent ? [...next, "hospital_indent"] : next);
   }
   // Remember the highest number issued for this prefix so it is never reused.
   const issuedNo = Number(employeeId.split("-").pop());

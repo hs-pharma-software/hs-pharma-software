@@ -7,10 +7,11 @@ import { createTenantRepo, requireCurrentTenantId, type TenantRow } from "./base
 import { currentActor, roleAllowed } from "./medicalRecord";
 import { serviceBillsRepo } from "./vendors";
 import { purchasesRepo } from "./purchases";
+import { storePurchasesRepo } from "./hospitalStores";
 import { localDate } from "../localDate";
 import { FINANCE_ROLES } from "../../config/hospitalStaff";
 
-export type VendorDocType = "purchase" | "service_bill";
+export type VendorDocType = "purchase" | "service_bill" | "store_purchase";
 export type VendorPayMethod = "bank" | "cash" | "cheque";
 export const VENDOR_PAY_METHODS: Record<VendorPayMethod, string> = { bank: "Bank transfer", cash: "Cash", cheque: "Cheque" };
 
@@ -30,7 +31,7 @@ export interface PayableDoc {
 /** Purchases and service bills with something left to pay, oldest first. */
 export async function pendingVendorBills(search = ""): Promise<PayableDoc[]> {
   const T = requireCurrentTenantId();
-  const [purchases, bills] = await Promise.all([
+  const [purchases, bills, stores] = await Promise.all([
     dbSelect<Record<string, unknown>>(
       `SELECT pu.id, pu.purchase_no, pu.date, pu.supplier_id, pu.supplier_invoice_no, pu.payable, pu.paid_amount, pu.balance,
               s.name AS vendor_name, s.vendor_no, s.bank_title, s.bank_name, s.iban
@@ -41,6 +42,13 @@ export async function pendingVendorBills(search = ""): Promise<PayableDoc[]> {
               s.name AS vendor_name, s.vendor_no, s.bank_title, s.bank_name, s.iban
        FROM hospital_service_bills b LEFT JOIN suppliers s ON s.id = b.vendor_id
        WHERE b.tenant_id = ? AND b.deleted_at IS NULL AND b.balance > 0.004`, [T]).catch(() => []),
+    // Store purchases come to Finance once the store keepers verified every item.
+    dbSelect<Record<string, unknown>>(
+      `SELECT p.id, p.purchase_no, p.date, p.vendor_id, p.vendor_invoice_no, p.total, p.paid, p.balance,
+              s.name AS vendor_name, s.vendor_no, s.bank_title, s.bank_name, s.iban,
+              (SELECT GROUP_CONCAT(i.entry_no, ', ') FROM hospital_store_purchase_items i WHERE i.purchase_id = p.id AND i.tenant_id = p.tenant_id AND i.deleted_at IS NULL AND i.entry_no IS NOT NULL) AS entries
+       FROM hospital_store_purchases p LEFT JOIN suppliers s ON s.id = p.vendor_id
+       WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND p.status = 'verified' AND p.balance > 0.004`, [T]).catch(() => []),
   ]);
   const str = (v: unknown) => (v == null || v === "" ? null : String(v));
   const rows: PayableDoc[] = [
@@ -57,6 +65,14 @@ export async function pendingVendorBills(search = ""): Promise<PayableDoc[]> {
       total: Number(b.total) || 0, paid: Number(b.paid) || 0, balance: Number(b.balance) || 0,
     })),
   ];
+  for (const b of stores) {
+    rows.push({
+      docType: "store_purchase", docId: String(b.id), no: `Store purchase ${b.purchase_no}`, date: String(b.date).slice(0, 10), vendorId: str(b.vendor_id),
+      vendorName: str(b.vendor_name) ?? "Vendor", vendorNo: str(b.vendor_no), bankTitle: str(b.bank_title), bankName: str(b.bank_name), iban: str(b.iban),
+      detail: [b.vendor_invoice_no && `Invoice ${b.vendor_invoice_no}`, b.entries && `Stock entries ${b.entries}`].filter(Boolean).join(" · ") || null,
+      total: Number(b.total) || 0, paid: Number(b.paid) || 0, balance: Number(b.balance) || 0,
+    });
+  }
   const q = search.trim().toLowerCase();
   return rows.filter((r) => !q || `${r.no} ${r.vendorName} ${r.vendorNo ?? ""} ${r.detail ?? ""}`.toLowerCase().includes(q)).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -74,6 +90,10 @@ export async function payVendorBill(x: { docType: VendorDocType; docId: string; 
     const p = await purchasesRepo.get(x.docId);
     if (!p || p.is_return) throw new Error("Purchase not found.");
     balance = Number(p.balance) || 0; vendorId = p.supplier_id ?? null;
+  } else if (x.docType === "store_purchase") {
+    const b = await storePurchasesRepo.get(x.docId);
+    if (!b || b.status !== "verified") throw new Error("This store purchase is not verified by the store yet.");
+    balance = Number(b.balance) || 0; vendorId = b.vendor_id;
   } else {
     const b = await serviceBillsRepo.get(x.docId);
     if (!b) throw new Error("Service bill not found.");
@@ -87,6 +107,9 @@ export async function payVendorBill(x: { docType: VendorDocType; docId: string; 
   if (x.docType === "purchase") {
     const p = (await purchasesRepo.get(x.docId))!;
     await purchasesRepo.update(x.docId, { paid_amount: round((Number(p.paid_amount) || 0) + amount), balance: left });
+  } else if (x.docType === "store_purchase") {
+    const b = (await storePurchasesRepo.get(x.docId))!;
+    await storePurchasesRepo.update(x.docId, { paid: round((Number(b.paid) || 0) + amount), balance: left });
   } else {
     const b = (await serviceBillsRepo.get(x.docId))!;
     await serviceBillsRepo.update(x.docId, { paid: round((Number(b.paid) || 0) + amount), balance: left });

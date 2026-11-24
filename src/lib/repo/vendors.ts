@@ -71,14 +71,15 @@ export async function listVendors(search = "", kind: "" | "supplier" | "vendor" 
   const rows = await dbSelect<VendorRow>(
     `SELECT s.*,
        COALESCE((SELECT SUM(CASE WHEN is_return = 0 THEN balance ELSE -balance END) FROM purchases WHERE supplier_id = s.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS purchase_balance,
-       COALESCE((SELECT SUM(balance) FROM hospital_service_bills WHERE vendor_id = s.id AND tenant_id = ? AND deleted_at IS NULL), 0) AS service_balance,
+       COALESCE((SELECT SUM(balance) FROM hospital_service_bills WHERE vendor_id = s.id AND tenant_id = ? AND deleted_at IS NULL), 0)
+         + COALESCE((SELECT SUM(balance) FROM hospital_store_purchases WHERE vendor_id = s.id AND tenant_id = ? AND deleted_at IS NULL AND status = 'verified'), 0) AS service_balance,
        COALESCE((SELECT SUM(paid_amount) FROM ledger_adjustments WHERE tenant_id = ? AND party_type = 'supplier' AND party_id = s.id AND deleted_at IS NULL), 0) AS paid_on_account
      FROM suppliers s
      WHERE s.tenant_id = ? AND s.deleted_at IS NULL
        ${q ? "AND (s.name LIKE ? OR s.company_name LIKE ? OR s.vendor_no LIKE ? OR s.phone LIKE ?)" : ""}
        ${kind === "vendor" ? "AND COALESCE(s.party_kind, 'supplier') IN ('vendor', 'both')" : kind === "supplier" ? "AND COALESCE(s.party_kind, 'supplier') IN ('supplier', 'both')" : ""}
      ORDER BY s.name COLLATE NOCASE`,
-    [T, T, T, T, ...(q ? [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`] : [])]
+    [T, T, T, T, T, ...(q ? [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`] : [])]
   );
   return rows.map((r) => ({ ...r, balance: round(Number(r.opening_balance) + Number(r.purchase_balance) + Number(r.service_balance) - Number(r.paid_on_account)) }));
 }

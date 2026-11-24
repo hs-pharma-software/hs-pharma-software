@@ -15,7 +15,7 @@ const find = (n: NavItem[], label: string) => n.find((i) => i.label === label);
 
 test("hospital sidebar: the tabs in the requested order (Reception and Doctor Desk after Dashboard)", () => {
   assert.deepEqual(top(nav()), [
-    "Dashboard", "Reception", "My Cash", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Medicines", "Pharmacy Department", "Infection Control", "Quality & Safety", "Facility", "Service Master", "Finance", "Purchase Cell", "HR Department", "User Logins",
+    "Dashboard", "Reception", "My Cash", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Medicines", "Pharmacy Department", "Infection Control", "Quality & Safety", "Facility", "Service Master", "Finance", "Purchase Cell", "Store", "Indent Book", "HR Department", "User Logins",
   ]);
 });
 
@@ -31,7 +31,7 @@ test("Episodes & Billing holds Episodes and Billing; Invoices is reachable throu
 
 test("Purchase Cell sub-tabs, exact order, each keeping its existing pages", () => {
   const pc = find(nav(), "Purchase Cell")!;
-  assert.deepEqual(kids(pc), ["Dashboard", "Purchase", "Products", "Supplier & Vendors", "Vendor Services", "Cash Register", "Banks", "Expenses", "Other Revenue", "Tasks", "Utilities"]);
+  assert.deepEqual(kids(pc), ["Dashboard", "Purchase", "Indent Books", "Products", "Supplier & Vendors", "Vendor Services", "Cash Register", "Banks", "Expenses", "Other Revenue", "Tasks", "Utilities"]);
   const byLabel = (l: string) => pc.children!.find((c) => c.label === l)!;
   assert.equal(byLabel("Products").href, "/products");
   assert.ok(byLabel("Products").children!.some((c) => c.href === "/products/uom"));
@@ -81,7 +81,7 @@ test("no duplicate entries: labels unique per level, no link repeated across the
 
 test("permissions: a group key grants all its sub-tabs; a child key grants just that one; none hides the group", () => {
   const pc = (perms: string[]) => find(nav(null, perms), "Purchase Cell");
-  assert.equal(kids(pc(["hospital_purchase_cell"])).length, 11);
+  assert.equal(kids(pc(["hospital_purchase_cell"])).length, 12);
   assert.deepEqual(kids(pc(["banks"])), ["Banks"]);
   assert.deepEqual(kids(pc(["products", "tasks"])), ["Products", "Tasks"]);
   assert.equal(pc(["hospital_patients"]), undefined, "no key for any Purchase Cell child: group hidden");
@@ -94,7 +94,7 @@ test("permissions: a group key grants all its sub-tabs; a child key grants just 
 
 test("the subscription plan still limits the shared sub-tabs, not the hospital's own tabs", () => {
   const n = nav(["products", "banks"]);
-  assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Products", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
+  assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Indent Books", "Products", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
   assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records", "Duty Roster", "Trainees"], "shared Staff is not in this plan; the hospital's own HR tabs are");
   assert.ok(find(n, "Patient") && find(n, "Labs"), "hospital sections are not plan-limited");
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { STORES, STORE_ROLES, staffStores, type StoreId } from "@/config/hospitalStores";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -25,12 +26,17 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   const [otherTitle, setOtherTitle] = useState(staff?.staff_category === "other" ? staff?.designation ?? "" : "");
   // Other roles of the same person (a ward nurse who is also the infection control nurse).
   const [extra, setExtra] = useState<string[]>(() => extraRoles(staff?.extra_roles));
+  // Store keepers / purchase officers: all stores or chosen ones (they see only those).
+  const [allStores, setAllStores] = useState(() => { try { return (JSON.parse(staff?.stores ?? "[]") as string[]).includes("all"); } catch { return false; } });
+  const [stores, setStores] = useState<StoreId[]>(() => staffStores(staff?.stores));
+  const worksInStores = [category, ...extra].some((r) => STORE_ROLES.includes(r));
   const [name, setName] = useState(staff?.name ?? "");
   const [licenseNo, setLicenseNo] = useState(staff?.license_no ?? "");
   const [department, setDepartment] = useState(staff?.department ?? "");
   const [specialization, setSpecialization] = useState(staff?.specialization ?? "");
   const [fee, setFee] = useState(String(staff?.consultation_fee ?? 0));
   const [docShare, setDocShare] = useState(staff?.consultation_doctor_share != null ? String(staff.consultation_doctor_share) : "");
+  const [qualification, setQualification] = useState(staff?.qualification ?? "");
   const [address, setAddress] = useState(staff?.address ?? "");
   const [phone, setPhone] = useState(staff?.phone ?? "");
   const [cnic, setCnic] = useState(staff?.cnic ?? "");
@@ -76,6 +82,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         staff_category: category,
         designation: category === "other" ? otherTitle : undefined,
         ...(extra.length || staff?.extra_roles ? { extra_roles: JSON.stringify(extra.filter((k) => k !== category)) } : {}),
+        ...(worksInStores || staff?.stores ? { stores: worksInStores ? JSON.stringify(allStores ? ["all"] : stores) : null } : {}),
         license_no: licenseNo,
         department: department || null,
         collection_center_id: centerId || null,
@@ -83,6 +90,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         consultation_fee: Number(fee) || 0,
         // Only once set, so staff still save before the v97 database update.
         ...(docShare.trim() || staff?.consultation_doctor_share != null ? { consultation_doctor_share: docShare.trim() ? Number(docShare) : null } : {}),
+        ...(qualification.trim() || staff?.qualification ? { qualification: qualification.trim() || null } : {}),
         address: address || null,
         phone: phone || null,
         cnic: cnic || null,
@@ -136,6 +144,22 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
               <p className="mt-1 text-[11px] text-neutral-500">The login opens the pages of every role, and can do what each role does.</p>
             </details>
           )}
+          {worksInStores && (
+            <div className="sm:col-span-2 rounded-xl bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100">
+              <p className="text-xs font-semibold text-neutral-700">Stores this person works in</p>
+              <label className="mt-1 flex items-center gap-2 text-sm"><input type="checkbox" checked={allStores} onChange={(e) => setAllStores(e.target.checked)} />All stores</label>
+              {!allStores && (
+                <div className="mt-1 grid grid-cols-1 gap-1 text-sm sm:grid-cols-3">
+                  {STORES.map((st) => (
+                    <label key={st.id} className="flex items-center gap-2">
+                      <input type="checkbox" checked={stores.includes(st.id)} onChange={(e) => setStores((p) => (e.target.checked ? [...p, st.id] : p.filter((k) => k !== st.id)))} />{st.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <p className="mt-1 text-[11px] text-neutral-500">Their login shows only these stores.</p>
+            </div>
+          )}
           {category === "other" && (
             <Field label="Job title">
               <Input value={otherTitle} onChange={(e) => setOtherTitle(e.target.value)} placeholder="e.g. Ward Boy" />
@@ -165,6 +189,9 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
           </Field>
           {d?.doctor && (
             <>
+              <Field label="Qualification (printed on prescriptions)">
+                <Input value={qualification} onChange={(e) => setQualification(e.target.value)} placeholder="e.g. MBBS, FCPS (Medicine)" />
+              </Field>
               <Field label="Specialization">
                 <Input value={specialization} onChange={(e) => setSpecialization(e.target.value)} placeholder="e.g. Neurology" />
               </Field>

@@ -9,6 +9,8 @@ import { publicReportUrl } from "@/lib/publicUrl";
 import { LabReportSheet } from "@/components/hospital/LabReportSheet";
 import { ReportWithFooterLine } from "@/components/brand/PageFooterLine";
 import { recordReportPrint, listReportLog, type LabReport, type ReportLogRow } from "@/lib/repo/labReports";
+import { loadHospitalPrint, type LabPaper } from "@/lib/hospitalPrint";
+import { loadLogo } from "@/lib/printTemplates";
 
 /** A lab report on screen: print (counted and logged) and the access log. */
 export function LabReportModal({ report, onClose }: { report: LabReport; onClose: () => void }) {
@@ -16,6 +18,13 @@ export function LabReportModal({ report, onClose }: { report: LabReport; onClose
   const [printing, setPrinting] = useState(false);
   const [copies, setCopies] = useState(report.request.print_count);
   const [log, setLog] = useState<ReportLogRow[]>([]);
+  // Hospital Profile > Print templates: A4 or A5, with the logo.
+  const [paper, setPaper] = useState<LabPaper>("a4");
+  const [logo, setLogo] = useState<string | null>(null);
+  useEffect(() => {
+    void loadHospitalPrint().then((p) => setPaper(p.labPaper)).catch(() => undefined);
+    void loadLogo().then(setLogo).catch(() => setLogo(null));
+  }, []);
 
   const loadLog = () => void listReportLog(report.request.id).then(setLog).catch(() => setLog([]));
   useEffect(loadLog, [report.request.id]);
@@ -26,7 +35,7 @@ export function LabReportModal({ report, onClose }: { report: LabReport; onClose
     try {
       const r = await recordReportPrint(report.request.id);
       setCopies(r.printCount);
-      await printDirect("a4", areaRef.current);
+      await printDirect(paper, areaRef.current);
       loadLog();
     } catch (err) {
       window.alert(`Could not print: ${err instanceof Error ? err.message : String(err)}`);
@@ -38,8 +47,8 @@ export function LabReportModal({ report, onClose }: { report: LabReport; onClose
   const r = report;
   return (
     <Modal title={`Report ${r.request.lab_no}`} onClose={onClose} width="max-w-4xl">
-      <div ref={areaRef} className="print-area mx-auto w-full max-w-[190mm] bg-white text-[13px] text-neutral-900">
-        <ReportWithFooterLine><LabReportSheet report={r} qrUrl={publicReportUrl(r.publicToken)} /></ReportWithFooterLine>
+      <div ref={areaRef} className={`print-area mx-auto w-full bg-white text-neutral-900 ${paper === "a5" ? "max-w-[134mm] text-[11px]" : "max-w-[190mm] text-[13px]"}`}>
+        <ReportWithFooterLine><LabReportSheet report={r} qrUrl={publicReportUrl(r.publicToken)} logo={logo} /></ReportWithFooterLine>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
