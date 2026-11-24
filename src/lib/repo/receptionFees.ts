@@ -6,6 +6,7 @@
  * already covered by an earlier lump payment is marked paid without taking
  * the money twice. */
 import { dbSelect } from "../db";
+import { mrSearchSql } from "../hospitalMr";
 import { requireCurrentTenantId } from "./base";
 import { localDateTime } from "../localDate";
 import { currentActor, roleAllowed } from "./medicalRecord";
@@ -40,6 +41,55 @@ export async function listUnpaidOrdersFor(scope: FeeScope): Promise<UnpaidOrderR
 export interface ScopedQueueRow extends OpdQueueRow {
   /** What this desk has to collect on the visit. */
   due: number;
+}
+
+export interface RecentReceiptRow {
+  episodeId: string;
+  episodeNo: string;
+  date: string;
+  patientName: string;
+  mrNo: string | null;
+  phone: string | null;
+  total: number;
+  paid: number;
+  due: number;
+  receivedAt: string | null;
+}
+
+/** Recent bills for the reception reprint window. */
+export async function recentReceiptsFor(search = "", limit = 100): Promise<RecentReceiptRow[]> {
+  const tenantId = requireCurrentTenantId();
+  const term = search.trim();
+  const mr = mrSearchSql("p", term);
+  const searchClause = term ? `AND (p.name LIKE ? OR p.phone LIKE ? OR e.episode_no LIKE ? OR ${mr.sql})` : "";
+  const searchParams = term ? [`%${term}%`, `%${term}%`, `%${term}%`, ...mr.params] : [];
+  const rows = await dbSelect<Record<string, unknown>>(
+    `SELECT e.id AS episode_id, e.episode_no, e.date, p.name AS patient_name, p.mr_no, p.phone,
+            COALESCE((SELECT SUM(amount) FROM hospital_charges c WHERE c.episode_id=e.id AND c.tenant_id=e.tenant_id AND c.deleted_at IS NULL), 0) AS total,
+            COALESCE((SELECT SUM(CASE WHEN py.type='refund' THEN -py.amount ELSE py.amount END)
+                      FROM hospital_payments py WHERE py.episode_id=e.id AND py.tenant_id=e.tenant_id AND py.deleted_at IS NULL), 0) AS paid,
+            (SELECT MAX(py.received_at) FROM hospital_payments py WHERE py.episode_id=e.id AND py.tenant_id=e.tenant_id AND py.deleted_at IS NULL) AS received_at
+     FROM hospital_episodes e
+     JOIN hospital_patients p ON p.id=e.patient_id AND p.tenant_id=e.tenant_id
+     WHERE e.tenant_id=? AND e.deleted_at IS NULL
+       AND EXISTS (SELECT 1 FROM hospital_payments py WHERE py.episode_id=e.id AND py.tenant_id=? AND py.deleted_at IS NULL)
+       ${searchClause}
+     ORDER BY received_at DESC, e.id DESC
+     LIMIT ?`,
+    [tenantId, tenantId, ...searchParams, limit]
+  );
+  return rows.map((r) => ({
+    episodeId: String(r.episode_id),
+    episodeNo: String(r.episode_no),
+    date: String(r.date),
+    patientName: String(r.patient_name),
+    mrNo: r.mr_no == null ? null : String(r.mr_no),
+    phone: r.phone == null ? null : String(r.phone),
+    total: round(Number(r.total) || 0),
+    paid: round(Number(r.paid) || 0),
+    due: round((Number(r.total) || 0) - (Number(r.paid) || 0)),
+    receivedAt: r.received_at == null ? null : String(r.received_at),
+  }));
 }
 
 /** Today's OPD with the amount due for this desk: the whole bill at the main

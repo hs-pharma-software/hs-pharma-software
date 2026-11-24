@@ -20,7 +20,7 @@ const TITLE: Record<FeeScope, string> = { all: "PAYMENT RECEIPT", lab: "LABORATO
 /** The payment receipt of a visit (opened from the Due amount): every charge,
  * every payment, and the balance; at the lab or radiology counter only that
  * department's charges. Collecting the balance marks each test / scan paid. */
-export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: { episodeId: string; scope?: FeeScope; onClose: () => void; onChanged: () => void }) {
+export function ReceiptModal({ episodeId, scope = "all", readOnly = false, onClose, onChanged }: { episodeId: string; scope?: FeeScope; readOnly?: boolean; onClose: () => void; onChanged: () => void }) {
   const areaRef = useRef<HTMLDivElement>(null);
   const [r, setR] = useState<ScopedReceipt | null>(null);
   const [method, setMethod] = useState<PaymentMethod>("cash");
@@ -127,7 +127,7 @@ export function ReceiptModal({ episodeId, scope = "all", onClose, onChanged }: {
                 {current ? "Show the whole visit" : "Show this time only"}
               </button>
             )}
-            {r.due > 0 && (
+            {!readOnly && r.due > 0 && (
               <>
                 <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className="!w-40" aria-label="Payment method">
                   {Object.entries(METHOD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

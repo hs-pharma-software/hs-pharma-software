@@ -21,6 +21,7 @@ const TABS: { key: AdmissionStatus; label: string }[] = [
 const when = (s: string | null) => (s ? s.replace("T", " ").slice(0, 16) : "—");
 /** The reason the doctor wrote: the first line of the admission notes. */
 const reasonOf = (notes: string | null) => notes?.split("\n")[0]?.replace(/^Admitted( for surgery)?: /, "") ?? "—";
+const PAYMENT_LABEL: Record<AdmissionRequestRow["payment_status"], string> = { no_charges: "No charges", unpaid: "Unpaid", partial: "Partially paid", paid: "Paid" };
 
 /** Admissions made by a consultant or referred from Emergency wait here for
  * the department's Head Nurse (or the Nursing Superintendent) to confirm. */
@@ -61,6 +62,7 @@ export default function AdmissionRequestsPage() {
     { header: "Department", render: (r) => r.department ?? "—" },
     { header: "Reason", render: (r) => <span className="whitespace-normal">{reasonOf(r.notes)}{r.surgery_name ? <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">Surgery: {r.surgery_name}</span> : null}</span> },
     { header: "Admission", render: (r) => <span className="font-mono text-xs">{r.episode_no}</span> },
+    { header: "Payment", render: (r) => PAYMENT_LABEL[r.payment_status] },
     ...(tab === "pending" ? [{
       header: "",
       render: (r: AdmissionRequestRow) => (
@@ -130,6 +132,7 @@ function ConfirmModal({ row, onClose, onDone }: { row: AdmissionRequestRow; onCl
         <p className="text-sm text-neutral-600">
           {row.episode_no} to <b>{row.department}</b>{row.doctor_name ? `, admitted by ${row.doctor_name}` : ""}. Reason: {reasonOf(row.notes)}
         </p>
+        <p className="text-sm">Payment status: <b>{PAYMENT_LABEL[row.payment_status]}</b></p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Ward / room *"><Input id="confirm-ward" value={wardRoom} onChange={(e) => setWardRoom(e.target.value)} placeholder="e.g. Surgical ward" autoFocus /></Field>
           <Field label="Bed no *"><Input id="confirm-bed" value={bedNo} onChange={(e) => setBedNo(e.target.value)} placeholder="e.g. 12" /></Field>

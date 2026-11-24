@@ -11,7 +11,7 @@ import { staffRepo } from "@/lib/repo/staff";
 import { hospitalPatientsRepo, hospitalServicesRepo, hospitalLabRepo, hospitalImagingRepo, addPayment, nextMrNo } from "@/lib/repo/hospital";
 import { saveHospitalStaff, bookOpdVisit, orderInvestigation } from "@/lib/repo/hospitalOpd";
 import { getVisitReceipt } from "@/lib/repo/hospitalCare";
-import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, visitReceiptFor, collectVisitFees } from "@/lib/repo/receptionFees";
+import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, visitReceiptFor, collectVisitFees, recentReceiptsFor } from "@/lib/repo/receptionFees";
 import { designation } from "@/config/hospitalStaff";
 import { localDate, localDateTime } from "@/lib/localDate";
 import type { Staff } from "@/lib/types";
@@ -100,4 +100,21 @@ test("a fee already covered by an earlier lump payment is marked paid, not charg
   assert.equal((await hospitalImagingRepo.get(s.scan.id))!.paid, 1);
   assert.equal((await getVisitReceipt(s.episode.id)).due, 0, "nothing paid twice");
   assert.equal((await listUnpaidOrdersFor("all")).length, 0);
+});
+
+test("recent receipt search finds paid visits by patient, phone, MR and episode before applying the limit", async () => {
+  const s = await setup();
+  await hospitalPatientsRepo.update(s.patient.id, { phone: "03001234567" });
+  const other = await hospitalPatientsRepo.create({ mr_no: await nextMrNo(), name: "Another Patient", gender: "Male" });
+  const newer = await bookOpdVisit({ patientId: other.id, doctorId: s.doctor.id, pay: { method: "cash" } });
+  await addPayment({ tenant_id: "", episode_id: newer.episode.id, type: "payment", amount: 1, method: "cash", reference: null, notes: null, received_at: "9999-12-31T23:59:59" });
+
+  assert.equal((await recentReceiptsFor("", 1))[0].episodeId, newer.episode.id);
+  for (const term of ["bilal", "03001234567", s.patient.mr_no, s.episode.episode_no]) {
+    const matches = await recentReceiptsFor(term, 1);
+    assert.equal(matches.length, 1, `search for ${term}`);
+    assert.equal(matches[0].episodeId, s.episode.id);
+    assert.equal(matches[0].paid, 1000);
+  }
+  assert.deepEqual(await recentReceiptsFor("not a patient"), []);
 });

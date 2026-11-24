@@ -7,7 +7,7 @@ import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
 import { staffRepo } from "@/lib/repo/staff";
-import { hospitalEpisodesRepo, hospitalPatientsRepo, nextMrNo, nextEpisodeNo, listChargesForEpisode, listEpisodes } from "@/lib/repo/hospital";
+import { hospitalEpisodesRepo, hospitalPatientsRepo, nextMrNo, nextEpisodeNo, listChargesForEpisode, listEpisodes, addCharge, addPayment } from "@/lib/repo/hospital";
 import { saveHospitalStaff, bookOpdVisit } from "@/lib/repo/hospitalOpd";
 import { invoicesRepo } from "@/lib/repo/invoices";
 import {
@@ -162,4 +162,21 @@ test("an admission with other charges on its bill cannot be declined", async () 
   await as(s.hnOrtho);
   await assert.rejects(declineAdmission(admission.id, "No bed"), /other charges/);
   assert.equal((await hospitalEpisodesRepo.get(admission.id))!.admission_status, "pending", "nothing changed");
+});
+
+test("admission requests show payment status without blocking confirmation", async () => {
+  const s = await setup();
+  const { episode: visit } = await bookOpdVisit({ patientId: s.patient.id, doctorId: s.consultant.id });
+  const { admission } = await admitFromVisit({ fromEpisodeId: visit.id, reason: "Observation", plan: "ipd" });
+  await as(s.hnOrtho);
+  assert.equal((await listAdmissionRequests())[0].payment_status, "no_charges");
+  await addCharge({ tenant_id: "", episode_id: admission.id, service_id: null, description: "Bed", department: null, category: "bed", qty: 1, rate: 1000, discount_pct: 0, amount: 0, doctor_id: null, performed_by: null, charge_date: localDate(), notes: null, invoice_id: null });
+  assert.equal((await listAdmissionRequests())[0].payment_status, "unpaid");
+  await addPayment({ tenant_id: "", episode_id: admission.id, type: "payment", amount: 400, method: "cash", reference: null, notes: null, received_at: localDate() });
+  assert.equal((await listAdmissionRequests())[0].payment_status, "partial");
+  await addPayment({ tenant_id: "", episode_id: admission.id, type: "payment", amount: 600, method: "cash", reference: null, notes: null, received_at: localDate() });
+  assert.equal((await listAdmissionRequests())[0].payment_status, "paid");
+  await addPayment({ tenant_id: "", episode_id: admission.id, type: "refund", amount: 100, method: "cash", reference: null, notes: null, received_at: localDate() });
+  assert.equal((await listAdmissionRequests())[0].payment_status, "partial");
+  assert.equal((await confirmAdmission(admission.id, { wardRoom: "Ward", bedNo: "1" })).admission_status, "confirmed");
 });

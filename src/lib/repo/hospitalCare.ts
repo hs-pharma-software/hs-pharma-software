@@ -411,6 +411,7 @@ export interface AdmissionRequestRow {
   from_episode_no: string | null;
   from_type: string | null;
   surgery_name: string | null;
+  payment_status: "no_charges" | "unpaid" | "partial" | "paid";
 }
 
 /** Admissions waiting for (or given) confirmation; a Head Nurse sees her or his own department only. */
@@ -427,7 +428,14 @@ export async function listAdmissionRequests(status: AdmissionStatus = "pending")
     `SELECT e.id, e.episode_no, e.department, e.admission_status, e.created_at, e.notes, e.room_ward, e.bed_no, e.admission_confirmed_at,
             c.name AS confirmed_by_name, p.name AS patient_name, p.mr_no, p.gender, d.name AS doctor_name,
             f.episode_no AS from_episode_no, f.type AS from_type,
-            (SELECT b.surgery_name FROM hospital_surgery_bookings b WHERE b.episode_id = e.id AND b.deleted_at IS NULL AND b.status != 'cancelled' LIMIT 1) AS surgery_name
+            (SELECT b.surgery_name FROM hospital_surgery_bookings b WHERE b.episode_id = e.id AND b.deleted_at IS NULL AND b.status != 'cancelled' LIMIT 1) AS surgery_name,
+            CASE
+              WHEN COALESCE((SELECT SUM(ch.amount) FROM hospital_charges ch WHERE ch.episode_id = e.id AND ch.tenant_id = e.tenant_id AND ch.deleted_at IS NULL), 0) <= 0 THEN 'no_charges'
+              WHEN ROUND(COALESCE((SELECT SUM(ch.amount) FROM hospital_charges ch WHERE ch.episode_id = e.id AND ch.tenant_id = e.tenant_id AND ch.deleted_at IS NULL), 0)
+                   - COALESCE((SELECT SUM(CASE WHEN py.type = 'refund' THEN -py.amount ELSE py.amount END) FROM hospital_payments py WHERE py.episode_id = e.id AND py.tenant_id = e.tenant_id AND py.deleted_at IS NULL), 0), 2) <= 0 THEN 'paid'
+              WHEN COALESCE((SELECT SUM(CASE WHEN py.type = 'refund' THEN -py.amount ELSE py.amount END) FROM hospital_payments py WHERE py.episode_id = e.id AND py.tenant_id = e.tenant_id AND py.deleted_at IS NULL), 0) > 0 THEN 'partial'
+              ELSE 'unpaid'
+            END AS payment_status
      FROM hospital_episodes e
      JOIN hospital_patients p ON p.id = e.patient_id
      LEFT JOIN staff d ON d.id = e.doctor_id

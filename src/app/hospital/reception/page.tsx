@@ -17,6 +17,7 @@ import type { PaymentMethod } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
 import PatientFormModal from "../patients/PatientFormModal";
 import { ReceiptModal } from "./ReceiptModal";
+import { ReprintModal } from "./ReprintModal";
 import { CloseDayModal } from "@/components/hospital/finance/CloseDay";
 import { EpisodeBillsPanel } from "@/components/hospital/EpisodeBills";
 import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, FEE_SCOPE_LABEL, type FeeScope, type ScopedQueueRow } from "@/lib/repo/receptionFees";
@@ -46,6 +47,8 @@ export default function ReceptionPage() {
   const [slip, setSlip] = useState<{ visit: BookedVisit; patient: HospitalPatient; doctor: Staff } | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  const [reprinting, setReprinting] = useState(false);
+  const [reprintReceiptFor, setReprintReceiptFor] = useState<string | null>(null);
   const [closingDay, setClosingDay] = useState(false);
 
   async function reload(s: FeeScope | null = scope) {
@@ -113,6 +116,7 @@ export default function ReceptionPage() {
               {(Object.keys(FEE_SCOPE_LABEL) as FeeScope[]).map((k) => <option key={k} value={k}>{FEE_SCOPE_LABEL[k]}</option>)}
             </Select>
           ) : <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600">{FEE_SCOPE_LABEL[scope]}</span>)}
+          {scope === "all" && <Button onClick={() => setReprinting(true)}><Printer size={14} className="mr-1" />Reprint slips</Button>}
           <Button onClick={() => setClosingDay(true)}>Close my day</Button>
           <Button onClick={() => void reload()}>Refresh</Button>
         </div>
@@ -266,6 +270,8 @@ export default function ReceptionPage() {
       )}
 
       {receiptFor && <ReceiptModal episodeId={receiptFor} scope={scope ?? "all"} onClose={() => setReceiptFor(null)} onChanged={() => void reload()} />}
+      {reprinting && <ReprintModal onClose={() => setReprinting(false)} onSelect={(id) => { setReprinting(false); setReprintReceiptFor(id); }} />}
+      {reprintReceiptFor && <ReceiptModal episodeId={reprintReceiptFor} readOnly onClose={() => setReprintReceiptFor(null)} onChanged={() => void reload()} />}
       {registering && (
         <PatientFormModal
           patient={null}
