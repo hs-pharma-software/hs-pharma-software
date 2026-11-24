@@ -190,13 +190,15 @@ function KeyModal({ machine, keyValue, onClose }: { machine: MachineWithQueue; k
         <div>
           <h3 className="mb-1 font-semibold">API addresses</h3>
           <ul className="flex flex-col gap-1 font-mono text-xs">
-            <li>GET  {base}/api/dicom/ping</li>
-            <li>GET  {base}/api/dicom/worklist</li>
-            <li>POST {base}/api/dicom/mpps</li>
-            <li>POST {base}/api/dicom/studies</li>
+            <li>GET  {base}/api/dicom/ping/</li>
+            <li>GET  {base}/api/dicom/worklist/</li>
+            <li>POST {base}/api/dicom/mpps/</li>
+            <li>POST {base}/api/dicom/studies/</li>
           </ul>
           <p className="mt-1 text-xs text-neutral-500">Send the key in the header <code>Authorization: Bearer {keyValue.slice(0, 9)}…</code>. Test it with:</p>
-          <code className="mt-1 block break-all rounded-lg bg-neutral-100 px-3 py-2 font-mono text-xs">curl -H &quot;Authorization: Bearer {keyValue}&quot; {base}/api/dicom/ping</code>
+          <code className="mt-1 block break-all rounded-lg bg-neutral-100 px-3 py-2 font-mono text-xs">curl -H &quot;Authorization: Bearer {keyValue}&quot; {base}/api/dicom/ping/</code>
+          <p className="mt-2 text-xs text-neutral-500">The addresses end with &quot;/&quot;. For the Orthanc bridge, add this line under <code>HmsBridge</code> › <code>Machines</code> in orthanc.json:</p>
+          <code className="mt-1 block break-all rounded-lg bg-neutral-100 px-3 py-2 font-mono text-xs">&quot;{(machine.ae_title ?? "AE_TITLE").toUpperCase()}&quot;: &quot;{keyValue}&quot;</code>
         </div>
       </div>
       <div className="mt-4 flex justify-end"><Button variant="primary" onClick={onClose}>I have copied the key</Button></div>

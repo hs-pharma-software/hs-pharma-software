@@ -93,10 +93,10 @@ export default function PacsPage() {
 
       <Panel title="How the machines connect" className="mt-4">
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-neutral-700">
-          <li>Install Orthanc on a computer in the radiology department, with its Python plugin and the bridge script <code className="rounded bg-neutral-100 px-1">integrations/orthanc/hms_bridge.py</code> from this software.</li>
+          <li>Install Orthanc on a computer in the radiology department (Windows or Linux), with its Python and Stone Web Viewer plugins and the bridge script <code className="rounded bg-neutral-100 px-1">integrations/orthanc/hms_bridge.py</code> from this software (step-by-step: integrations/orthanc/README.md).</li>
           <li>On Radiology › Machines, add each machine with the AE Title set on the machine, and create its key. Put the AE Title and key in the bridge settings.</li>
           <li>On each machine, set the worklist server and the storage (PACS) server to the Orthanc computer: host {pacs?.dicom_host ?? "<host>"}, port {pacs?.dicom_port ?? 4242}, AE Title {pacs?.ae_title ?? "ORTHANC"}.</li>
-          <li>The machine&apos;s worklist then lists its waiting patients from {site}/api/dicom/worklist. Images it sends to Orthanc are linked to the order, and View images opens them.</li>
+          <li>The machine&apos;s worklist then lists its waiting patients from {site}/api/dicom/worklist/. Images it sends to Orthanc are linked to the order, and View images opens them.</li>
         </ol>
       </Panel>
     </div>

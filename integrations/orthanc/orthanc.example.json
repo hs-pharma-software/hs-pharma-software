@@ -9,20 +9,24 @@
 
   "DicomModalities": {
     "xray01": ["XRAY01", "192.168.1.31", 104],
-    "ct01": ["CT01", "192.168.1.32", 104]
+    "us01": ["US01", "192.168.1.33", 104]
   },
+  "DicomAlwaysAllowStore": true,
+  "DicomAlwaysAllowFind": false,
+  "DicomCheckCalledAet": false,
 
   "Worklists": { "Enable": false },
   "Plugins": ["/usr/share/orthanc/plugins"],
   "PythonScript": "/etc/orthanc/hms_bridge.py",
 
   "HmsBridge": {
-    "ApiBase": "https://your-hospital-website",
+    "ApiBase": "https://www.mavin.pk",
     "Machines": {
       "XRAY01": "hmsk_paste-the-key-from-Radiology-Machines",
-      "CT01": "hmsk_paste-the-key-from-Radiology-Machines"
+      "US01": "hmsk_paste-the-key-from-Radiology-Machines"
     },
     "DefaultMachine": "",
-    "TimeoutSeconds": 10
+    "TimeoutSeconds": 10,
+    "StateDirectory": ""
   }
 }
