@@ -20,7 +20,7 @@ interface Status {
   pending?: number; conflicts?: number; held?: number; rejected?: number; catalogReady?: boolean; downloading?: boolean; products?: number;
   user?: { id: string; name: string; role: string; online: boolean } | null; sellBlock?: string | null;
 }
-interface Hit { id: string; name: string; barcode: string | null; packing: number; price: number | null; available: number; isNarcotic: boolean; onlineOnly: string | null }
+interface Hit { id: string; name: string; barcode: string | null; packing: number; price: number | null; available: number; isNarcotic: boolean; onlineOnly: string | null; discountPct?: number }
 interface Line { hit: Hit; unit: "pack" | "loose"; qty: number; discountPct: number }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -147,7 +147,7 @@ function add(h: Hit | undefined) {
   if (!h || h.onlineOnly || h.price == null) return;
   const same = cart.find((l) => l.hit.id === h.id && l.unit === "pack");
   if (same) same.qty += 1;
-  else cart.push({ hit: h, unit: "pack", qty: 1, discountPct: 0 });
+  else cart.push({ hit: h, unit: "pack", qty: 1, discountPct: Math.min(100, Math.max(0, Number(h.discountPct) || 0)) });
   renderCart();
   search.focus();
 }
@@ -186,6 +186,7 @@ function renderCart() {
   }));
   $("estTotal").textContent = money(cart.reduce((s, l) => s + lineEstimate(l), 0));
   show("rxNote", cart.some((l) => l.hit.isNarcotic));
+  show("rxDoctor", cart.some((l) => l.hit.isNarcotic));
   ($("saveBtn") as HTMLButtonElement).disabled = !cart.length || !!status?.sellBlock;
 }
 
@@ -204,11 +205,12 @@ $("saveBtn").addEventListener("click", async () => {
     const r = await call<{ sale: { saleId: string; offlineRef: string; totals: { payable: number; change: number } } }>("createSale", {
       lines: cart.map((l) => ({ productId: l.hit.id, unit: l.unit, qty: l.qty, discountPct: l.discountPct })),
       customerName: ($("custName") as HTMLInputElement).value, customerPhone: ($("custPhone") as HTMLInputElement).value,
+      ...(cart.some((l) => l.hit.isNarcotic) ? { doctorName: ($("docName") as HTMLInputElement).value, doctorRegNo: ($("docReg") as HTMLInputElement).value } : {}),
       tendered: Number(($("tendered") as HTMLInputElement).value),
     });
     cart = [];
     renderCart();
-    for (const id of ["custName", "custPhone", "tendered"]) ($(id) as HTMLInputElement).value = "";
+    for (const id of ["custName", "custPhone", "docName", "docReg", "tendered"]) ($(id) as HTMLInputElement).value = "";
     // Stock figures changed: clear the old search results.
     search.value = "";
     $("results").replaceChildren();

@@ -277,6 +277,10 @@ export interface PullResponse {
   more: boolean;
   /** The cursor was too old for the change log: the device starts a full download again. */
   reset: boolean;
+  /** With the last page of a sync: every product's discount % that is not 0 (the business's own flat
+   * discount, else its sub-category's, else its category's). The device replaces its list with it.
+   * Absent on older servers; older devices ignore it. */
+  discounts?: { productId: string; pct: number }[];
   grant: SignedGrant;
   serverTime: string;
 }

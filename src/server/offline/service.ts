@@ -14,6 +14,7 @@
  * - A revoked device (or a business whose offline switch was turned off) can
  *   still hand in its sales: they are held for review, not applied. */
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
+import { formatMr } from "@/lib/hospitalMr";
 import type { Sql } from "../subSupers";
 import { callerCan, type Caller } from "../sqlPolicy";
 import { HttpError } from "../db";
@@ -404,8 +405,26 @@ export async function pull(sql: Sql, d: Device, cursorIn: unknown, status?: { pe
     out.more = ch.length === PAGE;
     out.cursor = { phase: "live", seq: out.more ? Number(ch[ch.length - 1].seq) : Math.max(cursor.seq, top) };
   }
+  // The end of a sync: the products' discounts, as the invoice screen works them out.
+  if (!out.more) out.discounts = await productDiscounts(sql, T, B);
   await touch(sql, d, status, !out.more);
   return out;
+}
+
+/** The discount % of this branch's products that have one: the business's own flat discount
+ * (Products > Flat Discounts), else the sub-category's, else the category's. */
+async function productDiscounts(sql: Sql, T: string, B: string): Promise<{ productId: string; pct: number }[]> {
+  const rows = (await sql.execute(
+    `SELECT p.id, COALESCE(NULLIF(fd.discount_pct, 0), NULLIF(sc.flat_discount_pct, 0), NULLIF(c.flat_discount_pct, 0), 0) AS pct
+     FROM products p
+     LEFT JOIN product_flat_discounts fd ON fd.product_id = p.id AND fd.tenant_id = ? AND fd.deleted_at IS NULL
+     LEFT JOIN categories c ON c.id = p.category_id
+     LEFT JOIN sub_categories sc ON sc.id = p.sub_category_id
+     WHERE ${BRANCH_PRODUCTS} AND p.deleted_at IS NULL
+       AND (fd.id IS NOT NULL OR COALESCE(c.flat_discount_pct, 0) > 0 OR COALESCE(sc.flat_discount_pct, 0) > 0)`,
+    [T, T, T, B]
+  ).catch(() => ({ rows: [] as Row[] }))).rows;
+  return rows.map((r) => ({ productId: String(r.id), pct: Math.max(0, Math.min(100, Number(r.pct) || 0)) })).filter((r) => r.pct > 0);
 }
 
 function parseCursor(c: unknown): PullCursor | null {
@@ -651,6 +670,33 @@ export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: s
   return finish(sql, d, op, stmts, firstTake, takes, shortfalls.length, status);
 }
 
+/** A radiology centre's patient registered offline gets the next continuous
+ * MR in the hospital format (MR-<number>-<DDMMYYYY>-<year>, the day it was
+ * registered); an order in a new year renews the year part. The MR used
+ * offline stays in the patient's MR history, so the printed slip still finds
+ * them. Before the v97 database update this does nothing. */
+async function settleRadiologyMr(x: Pick<Sql, "execute">, tenantId: string, c: { fn: string; day: string; args: unknown[] }, out: unknown) {
+  const input = (c.args?.[0] ?? {}) as Row;
+  const patientId = c.fn === "registerPatient" ? String((out as Row | null)?.id ?? "") : c.fn === "orderStudy" ? String(input.patientId ?? "") : "";
+  if (!patientId) return;
+  const p = (await x.execute(`SELECT mr_no, mr_seq, mr_reg_date, mr_year FROM hospital_patients WHERE id = ? AND tenant_id = ?`, [patientId, tenantId]).catch(() => ({ rows: [] as Row[] }))).rows[0];
+  if (!p) return;
+  // The day the receptionist recorded it (the store dates its rows the same way).
+  const day = /^\d{4}-\d{2}-\d{2}/.test(String(input.time ?? "")) ? String(input.time).slice(0, 10) : c.day;
+  const year = Number(day.slice(0, 4));
+  let seq = p.mr_seq == null ? null : Number(p.mr_seq);
+  let reg = p.mr_reg_date ? String(p.mr_reg_date) : day;
+  if (seq == null) {
+    // A new patient (an offline MR): the number after the highest given.
+    seq = Number((await x.execute(`SELECT COALESCE(MAX(mr_seq), 0) AS n FROM hospital_patients WHERE tenant_id = ?`, [tenantId])).rows[0]?.n ?? 0) + 1;
+    reg = day;
+  } else if (Number(p.mr_year ?? 0) >= year) return;
+  const mr = formatMr(seq, reg, year);
+  const now = iso();
+  await x.execute(`INSERT INTO hospital_patient_mr_history (id, tenant_id, patient_id, mr_no, replaced_on, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [randomUUID(), tenantId, patientId, String(p.mr_no), day, now, now]);
+  await x.execute(`UPDATE hospital_patients SET mr_no = ?, mr_seq = ?, mr_reg_date = ?, mr_year = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`, [mr, seq, reg, year, now, patientId, tenantId]);
+}
+
 /** A save made offline in a business module (distribution, electronics):
  * the module's own code runs again here as the same login, with the ids and
  * clock the computer used, all in one transaction with its operation record.
@@ -675,6 +721,7 @@ export async function applyCall(sql: Sql, d: Device, op: CallOperation, decidedB
     };
     const ids = idSource(c.ids, randomUUID);
     const out = await runCall(db, ctx, { ...c, branchId: d.branch_id }, ids.next);
+    if (c.module === "radiology") await settleRadiologyMr(x, d.tenant_id, c, out);
     const s = callSummary(c.module, c.fn, out);
     const doc = (out as { doc?: { id?: unknown; doc_no?: unknown } } | null)?.doc;
     const st = opStmt(d, op, "applied", now, decidedBy);

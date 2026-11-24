@@ -176,12 +176,14 @@ export async function addCharge(charge: Omit<HospitalCharge, "id" | "created_at"
   // Shares: those given, else the service's per unit (Service Master).
   let doctorShare = charge.doctor_share ?? null;
   let staffShare = charge.staff_share ?? null;
+  let orderingShare = charge.ordering_doctor_share ?? null;
   if (charge.service_id && doctorShare == null && staffShare == null) {
-    const svc = (await dbSelect<{ doctor_share: number | null; staff_share: number | null }>(
-      `SELECT doctor_share, staff_share FROM hospital_services WHERE id = ? AND tenant_id = ?`, [charge.service_id, tenantId]
+    const svc = (await dbSelect<{ doctor_share: number | null; staff_share: number | null; ordering_doctor_share?: number | null }>(
+      `SELECT * FROM hospital_services WHERE id = ? AND tenant_id = ?`, [charge.service_id, tenantId]
     ).catch(() => []))[0];
     if (svc?.doctor_share) doctorShare = Math.round(Number(svc.doctor_share) * charge.qty * 100) / 100;
     if (svc?.staff_share) staffShare = Math.round(Number(svc.staff_share) * charge.qty * 100) / 100;
+    if (svc?.ordering_doctor_share) orderingShare = Math.round(Number(svc.ordering_doctor_share) * charge.qty * 100) / 100;
   }
   try {
     await dbExecute(
@@ -198,7 +200,10 @@ export async function addCharge(charge: Omit<HospitalCharge, "id" | "created_at"
   if (doctorShare != null || staffShare != null) {
     await dbExecute(`UPDATE hospital_charges SET doctor_share = ?, staff_share = ? WHERE id = ? AND tenant_id = ?`, [doctorShare, staffShare, id, tenantId]).catch(() => undefined);
   }
-  return { ...charge, tenant_id: tenantId, id, amount, discount_pct: discount, doctor_share: doctorShare, staff_share: staffShare, created_at: now, updated_at: now, deleted_at: null };
+  if (orderingShare != null) {
+    await dbExecute(`UPDATE hospital_charges SET ordering_doctor_share = ? WHERE id = ? AND tenant_id = ?`, [orderingShare, id, tenantId]).catch(() => undefined);
+  }
+  return { ...charge, tenant_id: tenantId, id, amount, discount_pct: discount, doctor_share: doctorShare, staff_share: staffShare, ordering_doctor_share: orderingShare, created_at: now, updated_at: now, deleted_at: null };
 }
 
 /** Removes a charge (soft delete). Only from this hospital, and only while the episode is open. */

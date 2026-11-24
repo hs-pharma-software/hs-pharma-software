@@ -1182,7 +1182,9 @@ test("radiology centre offline: register, order, fee and signed report print her
   for (const k of ["order_no", "status", "impression", "findings", "reported_at", "radiologist", "structured_report", "public_token", "branch_id", "fee", "paid"]) assert.equal(srv[k], local[k], k);
   assert.equal(srv.branch_id, "main-t1");
   assert.match(String(srv.public_token), /^[0-9a-f]{32}$/, "the printed QR code opens the online copy");
-  assert.equal(one(`SELECT mr_no FROM hospital_patients WHERE id = ?`, p.id).mr_no, p.mr_no);
+  // MAVIN.pk gives the next continuous MR in the hospital format; the offline MR stays in the history.
+  assert.equal(one(`SELECT mr_no FROM hospital_patients WHERE id = ?`, p.id).mr_no, "MR-0001-19112026-2026");
+  assert.equal(one(`SELECT mr_no FROM hospital_patient_mr_history WHERE patient_id = ?`, p.id).mr_no, p.mr_no);
   assert.equal(one(`SELECT episode_no FROM hospital_episodes WHERE id = ?`, episode.id).episode_no, episode.episode_no);
   const pay = all(`SELECT * FROM hospital_payments WHERE episode_id = ?`, episode.id);
   assert.equal(pay.length, 1, "the fee is taken once");
@@ -1239,4 +1241,21 @@ test("radiology centre: its reception staff can use the computer offline; a logi
   const dev = all(`SELECT * FROM offline_devices`)[0] as never;
   await off.enrolUser(sql, dev, LOGINS.reception.caller);
   await assert.rejects(off.enrolUser(sql, dev, LOGINS.cleaner.caller), /radiology sections/);
+});
+
+test("each sync brings the products' discounts (own flat discount, else the category's); the counter starts lines with them", async () => {
+  run(`INSERT INTO categories (id, tenant_id, name, flat_discount_pct, created_at, updated_at) VALUES ('c1', 't1', 'Tablets', 5, ?, ?)`, T, T);
+  run(`UPDATE products SET category_id = 'c1' WHERE id IN ('p1', 'p2')`);
+  run(`INSERT INTO product_flat_discounts (id, tenant_id, product_id, discount_pct, created_at, updated_at) VALUES ('fd1', 't1', 'p1', 12.5, ?, ?)`, T, T);
+  run(`INSERT INTO product_flat_discounts (id, tenant_id, product_id, discount_pct, created_at, updated_at) VALUES ('fd2', 't2', 'p2', 40, ?, ?)`, T, T);
+  const d = await provisioned();
+  assert.deepEqual(["panadol", "syrup", "controlled"].map((t) => d.search(t)[0].discountPct), [12.5, 5, 0], "own flat discount first, then the category's; another business's is not this one's");
+  // The discount changes online: the next sync brings it.
+  run(`UPDATE product_flat_discounts SET deleted_at = ? WHERE id = 'fd1'`, T);
+  await d.sync();
+  assert.equal(d.search("panadol")[0].discountPct, 5);
+  net.down = true;
+  const { sale } = d.createSale({ lines: [{ productId: "p1", unit: "pack", qty: 1, discountPct: d.search("panadol")[0].discountPct }], tendered: 200 });
+  assert.equal(sale.lines[0].discountPct, 5);
+  assert.equal(sale.totals.payable, 95);
 });

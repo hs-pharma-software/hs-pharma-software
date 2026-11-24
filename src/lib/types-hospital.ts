@@ -72,6 +72,8 @@ export interface HospitalService extends TenantRow {
   /** Per unit (v97): the doctor's and the staff's share; the rest is the hospital's. */
   doctor_share?: number | null;
   staff_share?: number | null;
+  /** Lab / radiology (v101): the ordering doctor's share per unit (doctor_share is the performing doctor's). */
+  ordering_doctor_share?: number | null;
   /** Surgery types: shares and expenses as JSON (v99); see config/surgeryShares. */
   surgery_shares?: string | null;
 }
@@ -181,6 +183,8 @@ export interface HospitalCharge extends TenantRow {
   /** This charge's doctor / staff share in Rs (v97), kept as charged. */
   doctor_share?: number | null;
   staff_share?: number | null;
+  /** Lab / radiology (v101): the ordering doctor's (doctor_id) share in Rs. */
+  ordering_doctor_share?: number | null;
 }
 
 export type PaymentType = "deposit" | "payment" | "refund";

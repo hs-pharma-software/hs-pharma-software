@@ -19,6 +19,16 @@ export const hospitalClaimsRepo = createTenantRepo<HospitalClaim>("hospital_insu
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+/** The last day of the policy year a date falls in: the policy year ends on the Valid Till day each year
+ * (valid till 30 June: 1 July to 30 June); without Valid Till, the calendar year. */
+export function policyYearEnd(date: string, validTill: string | null): string {
+  const y = Number(date.slice(0, 4));
+  if (!validTill || !/^\d{4}-\d{2}-\d{2}/.test(validTill)) return `${y}-12-31`;
+  const md = validTill.slice(5, 10);
+  const thisYear = `${y}-${md}`;
+  return thisYear >= date.slice(0, 10) ? thisYear : `${y + 1}-${md}`;
+}
+
 export interface InsuredEpisode {
   episodeId: string; episodeNo: string; date: string; type: string; patientId: string; patientName: string; mrNo: string | null;
   policyNo: string | null; validTill: string | null; insuredAmount: number; companyId: string | null; companyName: string;
@@ -44,17 +54,18 @@ export async function insuredEpisodes(f: { companyId?: string | null; patientId?
      ORDER BY p.id, e.date, e.created_at`,
     [T, T, T]
   );
-  // The insured amount is used up by the patient's bills in date order.
+  // The insured amount is per policy year: used up by the patient's bills of that year in date order, from 0 again the next year.
   const used = new Map<string, number>();
   const out: InsuredEpisode[] = [];
   for (const r of rows) {
     const pid = String(r.patient_id);
+    const yearKey = `${pid}|${policyYearEnd(String(r.date), r.valid_till == null ? null : String(r.valid_till))}`;
     const total = round(Number(r.total) || 0);
     const status = (r.status ? String(r.status) : "not_claimed") as ClaimStatus;
     const insured = Number(r.insured_amount) || 0;
-    const left = insured > 0 ? Math.max(0, insured - (used.get(pid) ?? 0)) : total;
+    const left = insured > 0 ? Math.max(0, insured - (used.get(yearKey) ?? 0)) : total;
     const cover = r.claim_id ? round(Number(r.claim_amount) || 0) : round(Math.min(total, left));
-    if (status !== "unpaid") used.set(pid, (used.get(pid) ?? 0) + cover);
+    if (status !== "unpaid") used.set(yearKey, (used.get(yearKey) ?? 0) + cover);
     out.push({
       episodeId: String(r.episode_id), episodeNo: String(r.episode_no), date: String(r.date), type: String(r.type), patientId: pid,
       patientName: String(r.patient_name ?? ""), mrNo: r.mr_no == null ? null : String(r.mr_no), policyNo: r.policy_no == null ? null : String(r.policy_no),

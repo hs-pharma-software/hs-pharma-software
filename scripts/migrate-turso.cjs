@@ -394,6 +394,7 @@ const MIGRATIONS = [
   { version: 98, label: 'Hospital: Pharmacy Department selected brands (generic -> linked pharmacy brand)', statements: rustSchemaStatementsWithTriggers(98) },
   { version: 99, label: 'Hospital: surgery shares and expenses (consultant, MO, nurses, anaesthesia, other, OT / IPD medicine)', statements: rustSchemaStatementsWithTriggers(99) },
   { version: 100, label: 'Hospital: Supplier & Vendors (vendor no., bank details), vendor service bills and types, vendor payments, insured patients and their claims', statements: rustSchemaStatementsWithTriggers(100) },
+  { version: 101, label: 'Hospital: staff with more than one role; ordering doctor share on lab / radiology services and charges', statements: rustSchemaStatementsWithTriggers(101) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

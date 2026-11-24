@@ -77,7 +77,7 @@ export interface OriginalInvoice {
   editable: boolean;
   items: { productId: string; batchNo: string | null; qty: number; bonusQty: number; salePrice: number; taxPct: number }[];
 }
-export interface ProductHit { id: string; name: string; barcode: string | null; packing: number; price: number | null; available: number; isNarcotic: boolean; onlineOnly: string | null }
+export interface ProductHit { id: string; name: string; barcode: string | null; packing: number; price: number | null; available: number; isNarcotic: boolean; onlineOnly: string | null; discountPct: number }
 
 const CLOCK_SLACK_MS = 10 * 60_000;
 const MAX_BACKOFF_MS = 10 * 60_000;
@@ -266,6 +266,10 @@ export class OfflineDevice {
                 ON CONFLICT(id) DO UPDATE SET sale_price = excluded.sale_price, created_at = excluded.created_at, deleted = excluded.deleted`,
           p.id, p.productId, p.salePrice, p.createdAt, p.deleted ? 1 : 0);
       }
+      if (Array.isArray(r.discounts)) {
+        db.run(`DELETE FROM discounts`);
+        for (const x of r.discounts) db.run(`INSERT OR REPLACE INTO discounts (product_id, pct) VALUES (?, ?)`, x.productId, Math.max(0, Math.min(100, Number(x.pct) || 0)));
+      }
       for (const x of r.batches) {
         db.run(`INSERT INTO batches (id, product_id, batch_no, expiry_date, server_qty, purchase_price, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET product_id = excluded.product_id, batch_no = excluded.batch_no, expiry_date = excluded.expiry_date, server_qty = excluded.server_qty, purchase_price = excluded.purchase_price, deleted = excluded.deleted`,
@@ -308,6 +312,7 @@ export class OfflineDevice {
     );
     return rows.map((p) => ({
       id: p.id, name: p.name, barcode: p.barcode, packing: p.packing, price: this.priceOf(p.id), isNarcotic: p.is_narcotic === 1,
+      discountPct: db.get<{ pct: number }>(`SELECT pct FROM discounts WHERE product_id = ?`, p.id)?.pct ?? 0,
       available: Math.round(this.batchesFor(p.id).reduce((s, b) => s + b.qty, 0) * 1e6) / 1e6,
       onlineOnly: p.track_imei ? "Needs IMEI numbers: sell online." : null,
     }));

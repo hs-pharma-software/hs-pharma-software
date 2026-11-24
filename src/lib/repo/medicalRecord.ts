@@ -10,7 +10,7 @@ import { recordOutbox } from "../sync/outbox";
 import { useAuthStore } from "../../store/authStore";
 import { staffRepo } from "./staff";
 import { hospitalEpisodesRepo, hospitalPatientsRepo } from "./hospital";
-import { DOCTOR_CATEGORIES } from "../../config/hospitalStaff";
+import { DOCTOR_CATEGORIES, staffRoles } from "../../config/hospitalStaff";
 import { formDef, validateForm, cleanData, type FormDef, type FormData, type RoleRef } from "../../config/forms";
 import { applicableItems, checklistDef, validateChecklist, type ChecklistAnswer, type ChecklistContext } from "../../config/forms/checklists";
 import type { ChecklistEntry, FormRecord, FormRevision, HospitalEpisode, VitalSigns } from "../types-hospital";
@@ -29,6 +29,8 @@ export interface Actor {
   name: string;
   /** HR designation key of the user's staff record (consultant, nurse ...). */
   role: string | null;
+  /** Every role of the staff member (designation and other roles, v101). */
+  roles?: string[];
   designation: string | null;
   /** Owner / full-access user: may do everything. */
   full: boolean;
@@ -44,6 +46,7 @@ export async function currentActor(): Promise<Actor> {
     userId: u?.id ?? null,
     name: staff?.name ?? u?.displayName ?? u?.username ?? "User",
     role: staff?.staff_category ?? null,
+    roles: staffRoles(staff),
     designation: staff?.designation ?? null,
     full: !u || u.role !== "staff" || u.permissions === null,
   };
@@ -51,14 +54,15 @@ export async function currentActor(): Promise<Actor> {
 
 export function roleAllowed(roles: RoleRef[], a: Actor): boolean {
   if (a.full) return true;
-  const r = a.role ?? "";
-  return roles.some((x) =>
+  // Any of the person's roles (a ward nurse who is also the infection control nurse).
+  const mine = a.roles?.length ? a.roles : [a.role ?? ""];
+  return mine.some((r) => roles.some((x) =>
     x === r
     || (x === "doctor" && DOCTOR_CATEGORIES.includes(r))
     || (x === "senior_doctor" && SENIOR_DOCTORS.includes(r))
     || (x === "nurse" && NURSES.includes(r))
     || (x === "any_clinical" && (DOCTOR_CATEGORIES.includes(r) || NURSES.includes(r) || r === "paramedic"))
-  );
+  ));
 }
 
 /** "Dr Ayesha Khan, Consultant": the digital stamp printed on an entry (IMS-1 Ind. 147). */

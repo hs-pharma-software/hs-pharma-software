@@ -26,6 +26,7 @@ export function periodOf(date: string, period: Period, range: { from: string; to
 
 interface ChargeRow {
   charge_date: string; category: string | null; amount: number; doctor_share: number | null; staff_share: number | null; doctor_id: string | null;
+  ordering_doctor_share: number | null;
   performed_by: string | null; performer_name: string | null;
   episode_id: string; episode_no: string; episode_type: string; episode_date: string; patient_name: string | null; mr_no: string | null;
   insurance_company: string | null; doctor_name: string | null;
@@ -35,7 +36,7 @@ interface SurgeryRow { id: string; episode_id: string; surgeon_id: string | null
 async function charges(range: { from: string; to: string }): Promise<ChargeRow[]> {
   const T = requireCurrentTenantId();
   return dbSelect<ChargeRow>(
-    `SELECT substr(c.charge_date, 1, 10) AS charge_date, c.category, c.amount, c.doctor_share, c.staff_share, c.doctor_id,
+    `SELECT substr(c.charge_date, 1, 10) AS charge_date, c.category, c.amount, c.doctor_share, c.staff_share, c.doctor_id, c.ordering_doctor_share,
             c.performed_by, pf.name AS performer_name,
             e.id AS episode_id, e.episode_no, e.type AS episode_type, e.date AS episode_date, p.name AS patient_name, p.mr_no,
             NULLIF(TRIM(p.insurance_company), '') AS insurance_company, s.name AS doctor_name
@@ -86,7 +87,7 @@ export async function departmentPl(kind: DeptReport, range: { from: string; to: 
     const isLab = c.category === "lab", isImg = c.category === "imaging";
     if (kind === "lab" ? !isLab : kind === "radiology" ? !isImg : c.episode_type !== "opd" || isLab || isImg) continue;
     const k = periodOf(c.charge_date, period, range);
-    add(m, k, k, { revenue: Number(c.amount) || 0, doctor: Number(c.doctor_share) || 0, staff: Number(c.staff_share) || 0, count: 1 });
+    add(m, k, k, { revenue: Number(c.amount) || 0, doctor: (Number(c.doctor_share) || 0) + (Number(c.ordering_doctor_share) || 0), staff: Number(c.staff_share) || 0, count: 1 });
   }
   return finish(m);
 }
@@ -99,7 +100,7 @@ export async function insurancePl(range: { from: string; to: string }): Promise<
     if (!c.insurance_company) continue;
     const k = c.insurance_company.toLowerCase();
     const seen = episodes.get(k) ?? new Set<string>();
-    add(m, k, c.insurance_company, { revenue: Number(c.amount) || 0, doctor: Number(c.doctor_share) || 0, staff: Number(c.staff_share) || 0, count: seen.has(c.episode_id) ? 0 : 1 });
+    add(m, k, c.insurance_company, { revenue: Number(c.amount) || 0, doctor: (Number(c.doctor_share) || 0) + (Number(c.ordering_doctor_share) || 0), staff: Number(c.staff_share) || 0, count: seen.has(c.episode_id) ? 0 : 1 });
     seen.add(c.episode_id);
     episodes.set(k, seen);
   }
@@ -110,7 +111,7 @@ export async function insurancePl(range: { from: string; to: string }): Promise<
 export async function episodePl(range: { from: string; to: string }): Promise<PlRow[]> {
   const m = new Map<string, PlRow>();
   for (const c of await charges(range)) {
-    add(m, c.episode_id, c.episode_no, { revenue: Number(c.amount) || 0, doctor: Number(c.doctor_share) || 0, staff: Number(c.staff_share) || 0 },
+    add(m, c.episode_id, c.episode_no, { revenue: Number(c.amount) || 0, doctor: (Number(c.doctor_share) || 0) + (Number(c.ordering_doctor_share) || 0), staff: Number(c.staff_share) || 0 },
       [c.patient_name, c.mr_no, c.episode_type === "ipd" ? "Admission" : c.episode_type === "emergency" ? "Emergency" : "OPD"].filter(Boolean).join(" · "));
   }
   for (const s of await surgeries(range)) {
@@ -127,16 +128,16 @@ export async function episodePl(range: { from: string; to: string }): Promise<Pl
 
 const UNASSIGNED = "__not_recorded";
 
-export interface DoctorShareRow { key: string; period: string; doctorId: string; doctor: string; consultation: number; services: number; surgery: number; total: number }
+export interface DoctorShareRow { key: string; period: string; doctorId: string; doctor: string; consultation: number; services: number; ordered: number; surgery: number; total: number }
 
 /** What each doctor earned: their share of consultation fees and services, and their surgeries' consultant share, per period. */
 export async function doctorShares(range: { from: string; to: string }, period: Period): Promise<DoctorShareRow[]> {
   const m = new Map<string, DoctorShareRow>();
-  const put = (day: string, id: string | null, name: string | null, part: "consultation" | "services" | "surgery", amount: number) => {
+  const put = (day: string, id: string | null, name: string | null, part: "consultation" | "services" | "ordered" | "surgery", amount: number) => {
     if (!id || !(amount > 0)) return;
     const p = periodOf(day, period, range);
     const key = `${p}|${id}`;
-    const r = m.get(key) ?? { key, period: p, doctorId: id, doctor: name ?? "Doctor", consultation: 0, services: 0, surgery: 0, total: 0 };
+    const r = m.get(key) ?? { key, period: p, doctorId: id, doctor: name ?? "Doctor", consultation: 0, services: 0, ordered: 0, surgery: 0, total: 0 };
     r[part] += amount;
     r.total += amount;
     m.set(key, r);
@@ -146,9 +147,11 @@ export async function doctorShares(range: { from: string; to: string }, period: 
     const investigation = c.category === "lab" || c.category === "imaging";
     const [id, name] = investigation ? (c.performed_by ? [c.performed_by, c.performer_name] : [UNASSIGNED, "Doctor not recorded (lab / radiology)"]) : [c.doctor_id, c.doctor_name];
     put(c.charge_date, id, name, c.category === "consultation" ? "consultation" : "services", Number(c.doctor_share) || 0);
+    // The doctor who ordered the test or scan: their share (Service Master).
+    if (investigation) put(c.charge_date, c.doctor_id, c.doctor_name, "ordered", Number(c.ordering_doctor_share) || 0);
   }
   for (const s of await surgeries(range)) put(s.day, s.surgeon_id, s.surgeon_name, "surgery", parseShares(s.surgery_shares).consultant);
   return [...m.values()]
-    .map((r) => ({ ...r, consultation: round(r.consultation), services: round(r.services), surgery: round(r.surgery), total: round(r.total) }))
+    .map((r) => ({ ...r, consultation: round(r.consultation), services: round(r.services), ordered: round(r.ordered), surgery: round(r.surgery), total: round(r.total) }))
     .sort((a, b) => a.period.localeCompare(b.period) || b.total - a.total);
 }

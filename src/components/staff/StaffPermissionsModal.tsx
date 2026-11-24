@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { usersRepo } from "@/lib/repo/users";
 import { updateUserPermissions } from "@/lib/auth";
 import { visibleNavFor } from "@/config/navFilter";
-import { designation } from "@/config/hospitalStaff";
+import { pagesForRoles, staffRoles } from "@/config/hospitalStaff";
 import { useAuthStore } from "@/store/authStore";
 import type { Staff } from "@/lib/types";
 
@@ -20,7 +20,8 @@ export function StaffPermissionsModal({ staff, onClose, onSaved }: { staff: Staf
   const [full, setFull] = useState(false);
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
-  const defaults = designation(staff.staff_category)?.pages ?? null;
+  // Every role's pages (a nurse who is also the infection control nurse gets both).
+  const defaults = pagesForRoles(staffRoles(staff));
   const typeId = useAuthStore((s) => s.currentTenant?.businessType ?? "hospital");
   const menu = visibleNavFor(typeId, allowedModules, null);
 

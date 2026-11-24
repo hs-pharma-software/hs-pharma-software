@@ -77,16 +77,16 @@ export default function HospitalReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-xs text-neutral-500">
-                  <th className={th}>Period</th><th className={th}>Doctor</th><th className={`${th} text-right`}>Consultations</th><th className={`${th} text-right`}>Services</th><th className={`${th} text-right`}>Surgeries</th><th className={`${th} text-right`}>Total (Rs)</th>
+                  <th className={th}>Period</th><th className={th}>Doctor</th><th className={`${th} text-right`}>Consultations</th><th className={`${th} text-right`}>Services</th><th className={`${th} text-right`}>Tests ordered</th><th className={`${th} text-right`}>Surgeries</th><th className={`${th} text-right`}>Total (Rs)</th>
                 </tr></thead>
                 <tbody>
                   {shares.map((r) => (
                     <tr key={r.key} className="border-t border-neutral-100">
                       <td className={`${td} whitespace-nowrap`}>{r.period}</td><td className={td}>{r.doctor}</td>
-                      <td className={num}>{money(r.consultation)}</td><td className={num}>{money(r.services)}</td><td className={num}>{money(r.surgery)}</td><td className={`${num} font-semibold`}>{money(r.total)}</td>
+                      <td className={num}>{money(r.consultation)}</td><td className={num}>{money(r.services)}</td><td className={num}>{money(r.ordered)}</td><td className={num}>{money(r.surgery)}</td><td className={`${num} font-semibold`}>{money(r.total)}</td>
                     </tr>
                   ))}
-                  <tr className="border-t-2 border-neutral-300 font-semibold"><td className={td} colSpan={5}>Total</td><td className={num}>{money(shareTotal)}</td></tr>
+                  <tr className="border-t-2 border-neutral-300 font-semibold"><td className={td} colSpan={6}>Total</td><td className={num}>{money(shareTotal)}</td></tr>
                 </tbody>
               </table>
             </div>

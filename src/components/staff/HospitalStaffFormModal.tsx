@@ -9,7 +9,7 @@ import { hospitalDepartmentsRepo, type HospitalDepartment } from "@/lib/repo/hos
 import { createStaffLogin, linkStaffLogin, listLinkableLogins } from "@/lib/hospitalLogins";
 import { listCollectionCenters } from "@/lib/repo/labReports";
 import type { CollectionCenter } from "@/lib/types-hospital";
-import { LICENSE_LABEL, designation as findDesignation, designationsFor } from "@/config/hospitalStaff";
+import { LICENSE_LABEL, designation as findDesignation, designationsFor, extraRoles } from "@/config/hospitalStaff";
 import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
@@ -23,6 +23,8 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   const designations = designationsFor(businessType(useAuthStore((s) => s.currentTenant?.businessType)).id);
   const [category, setCategory] = useState(staff?.staff_category ?? "");
   const [otherTitle, setOtherTitle] = useState(staff?.staff_category === "other" ? staff?.designation ?? "" : "");
+  // Other roles of the same person (a ward nurse who is also the infection control nurse).
+  const [extra, setExtra] = useState<string[]>(() => extraRoles(staff?.extra_roles));
   const [name, setName] = useState(staff?.name ?? "");
   const [licenseNo, setLicenseNo] = useState(staff?.license_no ?? "");
   const [department, setDepartment] = useState(staff?.department ?? "");
@@ -73,6 +75,7 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         name,
         staff_category: category,
         designation: category === "other" ? otherTitle : undefined,
+        ...(extra.length || staff?.extra_roles ? { extra_roles: JSON.stringify(extra.filter((k) => k !== category)) } : {}),
         license_no: licenseNo,
         department: department || null,
         collection_center_id: centerId || null,
@@ -117,6 +120,22 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
           <Field label="Employee ID (automatic)">
             <Input value={employeeId} readOnly tabIndex={-1} placeholder="Choose a designation" className="bg-neutral-50 font-mono text-neutral-500" />
           </Field>
+          {category && (
+            <details className="sm:col-span-2 rounded-xl bg-neutral-50 px-3 py-2 ring-1 ring-black/[0.04]" open={extra.length > 0}>
+              <summary className="cursor-pointer text-xs font-semibold text-neutral-700">
+                Also works as{extra.length ? `: ${extra.map((k) => findDesignation(k)?.label ?? k).join(", ")}` : " (other roles, optional)"}
+              </summary>
+              <div className="mt-2 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+                {designations.filter((x) => x.key !== category && x.key !== "other").map((x) => (
+                  <label key={x.key} className="flex items-center gap-2">
+                    <input type="checkbox" checked={extra.includes(x.key)} onChange={(e) => setExtra((p) => (e.target.checked ? [...p, x.key] : p.filter((k) => k !== x.key)))} />
+                    {x.label}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-[11px] text-neutral-500">The login opens the pages of every role, and can do what each role does.</p>
+            </details>
+          )}
           {category === "other" && (
             <Field label="Job title">
               <Input value={otherTitle} onChange={(e) => setOtherTitle(e.target.value)} placeholder="e.g. Ward Boy" />

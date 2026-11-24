@@ -42,6 +42,10 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_outbox_status ON outbox (status, seq);
   `,
+  // 2: each product's discount % (Flat Discounts, else its category's), from the server with each sync
+  `
+  CREATE TABLE IF NOT EXISTS discounts (product_id TEXT PRIMARY KEY, pct REAL NOT NULL);
+  `,
 ];
 
 export function openDb(path: string, opts: { backupDir?: string; now?: () => Date } = {}): LocalDb {

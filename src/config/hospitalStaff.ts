@@ -154,6 +154,29 @@ export function designation(key: string | null | undefined): Designation | null 
   return DESIGNATIONS.find((d) => d.key === key) ?? null;
 }
 
+/** A staff member's other roles (v101), read from their stored JSON list. */
+export function extraRoles(raw: string | null | undefined): string[] {
+  try {
+    const v = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && Boolean(designation(k))) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Every role of a staff member: the designation first, then the others. */
+export function staffRoles(s: { staff_category?: string | null; extra_roles?: string | null } | null | undefined): string[] {
+  return [...new Set([s?.staff_category ?? "", ...extraRoles(s?.extra_roles)].filter(Boolean))];
+}
+
+/** The pages a login with these roles opens: all of each role's (null = every section). */
+export function pagesForRoles(roles: string[]): string[] | null {
+  const ds = roles.map((r) => designation(r)).filter((d): d is Designation => Boolean(d));
+  if (!ds.length) return ["hospital_dashboard"];
+  if (ds.some((d) => d.pages === null)) return null;
+  return [...new Set(ds.flatMap((d) => d.pages ?? []))];
+}
+
 /** Business types whose staff have designations, licences and role-based logins. */
 export const usesHospitalStaff = (typeId: string | null | undefined) => typeId === "hospital" || typeId === "radiology_center";
 

@@ -47,3 +47,14 @@ export function mrSearchSql(alias: string, term: string): { sql: string; params:
   if (old) { parts.push(`${alias}.mr_seq = ?`); params.push(Number(old[1])); }
   return { sql: `(${parts.join(" OR ")})`, params };
 }
+
+/** Age in whole years and months on a day (yyyy-mm-dd) from a date of birth; null for a date in the future or not a date. */
+export function ageFromDob(dob: string, today: string): { years: number; months: number } | null {
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob ?? "");
+  const t = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today ?? "");
+  if (!b || !t) return null;
+  let months = (Number(t[1]) - Number(b[1])) * 12 + (Number(t[2]) - Number(b[2]));
+  if (Number(t[3]) < Number(b[3])) months -= 1;
+  if (months < 0) return null;
+  return { years: Math.floor(months / 12), months: months % 12 };
+}

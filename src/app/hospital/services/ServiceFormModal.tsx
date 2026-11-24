@@ -46,7 +46,10 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
   const [notes, setNotes] = useState(service?.notes ?? "");
   const [doctorShare, setDoctorShare] = useState(service?.doctor_share != null ? String(service.doctor_share) : "");
   const [staffShare, setStaffShare] = useState(service?.staff_share != null ? String(service.staff_share) : "");
-  const hospitalShare = (Number(rate) || 0) - (Number(doctorShare) || 0) - (Number(staffShare) || 0);
+  // Lab and radiology: the doctor who performs (reports) it and the doctor who ordered it each have a share.
+  const [orderingShare, setOrderingShare] = useState(service?.ordering_doctor_share != null ? String(service.ordering_doctor_share) : "");
+  const investigation = category === "lab" || category === "imaging";
+  const hospitalShare = (Number(rate) || 0) - (Number(doctorShare) || 0) - (Number(staffShare) || 0) - (investigation ? Number(orderingShare) || 0 : 0);
   const [saving, setSaving] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
 
@@ -74,6 +77,9 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
         ...(doctorShare.trim() || staffShare.trim() || service?.doctor_share != null || service?.staff_share != null
           ? { doctor_share: doctorShare.trim() ? Number(doctorShare) : null, staff_share: staffShare.trim() ? Number(staffShare) : null }
           : {}),
+        ...(investigation && (orderingShare.trim() || service?.ordering_doctor_share != null)
+          ? { ordering_doctor_share: orderingShare.trim() ? Number(orderingShare) : null }
+          : !investigation && service?.ordering_doctor_share != null ? { ordering_doctor_share: null } : {}),
       };
       if (isEdit) {
         await hospitalServicesRepo.update(service.id, payload);
@@ -118,8 +124,9 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
         </Field>
         <div className="md:col-span-2 rounded-xl bg-neutral-50 p-3 ring-1 ring-black/[0.04]">
           <p className="mb-2 text-xs font-semibold text-neutral-600">Charges breakdown (per unit)</p>
-          <div className="grid grid-cols-3 gap-2">
-            <Field label="Doctor share (Rs)"><Input type="number" min="0" step="any" value={doctorShare} onChange={(e) => setDoctorShare(e.target.value)} placeholder="0" /></Field>
+          <div className={`grid gap-2 ${investigation ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+            <Field label={investigation ? "Performing doctor share (Rs)" : "Doctor share (Rs)"}><Input type="number" min="0" step="any" value={doctorShare} onChange={(e) => setDoctorShare(e.target.value)} placeholder="0" /></Field>
+            {investigation && <Field label="Ordering doctor share (Rs)"><Input type="number" min="0" step="any" value={orderingShare} onChange={(e) => setOrderingShare(e.target.value)} placeholder="0" /></Field>}
             <Field label="Staff share (Rs)"><Input type="number" min="0" step="any" value={staffShare} onChange={(e) => setStaffShare(e.target.value)} placeholder="0" /></Field>
             <Field label="Hospital share (Rs)">
               <p className={`py-1.5 text-sm font-semibold tabular-nums ${hospitalShare < 0 ? "text-rose-700" : "text-neutral-800"}`}>{hospitalShare.toFixed(0)}</p>

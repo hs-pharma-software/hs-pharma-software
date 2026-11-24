@@ -38,9 +38,9 @@ export default function HospitalServicesPage() {
     {
       header: "Shares (doctor / staff / hospital)",
       render: (r) => {
-        const doc = Number(r.doctor_share) || 0, staff = Number(r.staff_share) || 0;
+        const doc = (Number(r.doctor_share) || 0) + (Number(r.ordering_doctor_share) || 0), staff = Number(r.staff_share) || 0;
         return doc || staff
-          ? <span className="font-mono text-xs">{doc.toFixed(0)} / {staff.toFixed(0)} / {(Number(r.rate) - doc - staff).toFixed(0)}</span>
+          ? <span className="font-mono text-xs" title={r.ordering_doctor_share ? `Performing ${Number(r.doctor_share) || 0} + ordering ${r.ordering_doctor_share}` : undefined}>{doc.toFixed(0)} / {staff.toFixed(0)} / {(Number(r.rate) - doc - staff).toFixed(0)}</span>
           : <span className="text-xs text-neutral-400">All hospital</span>;
       },
     },

@@ -1877,6 +1877,19 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v101() -> &'static str {
+    r#"
+    -- Hospital staff with more than one role (a ward nurse who is also the
+    -- infection control nurse; an MO who is also on infection control): the
+    -- other roles as a JSON list; the login opens the pages of every role.
+    -- Lab and radiology services: the ordering doctor's share besides the
+    -- performing doctor's, kept on each charge.
+    ALTER TABLE staff ADD COLUMN extra_roles TEXT;
+    ALTER TABLE hospital_services ADD COLUMN ordering_doctor_share REAL;
+    ALTER TABLE hospital_charges ADD COLUMN ordering_doctor_share REAL
+    "#
+}
+
 fn schema_sql_v100() -> &'static str {
     r#"
     -- Hospital Purchase Cell: Supplier & Vendors (a vendor number of its own,
@@ -6816,6 +6829,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 100,
             description: "hospital_vendors_service_bills",
             sql: schema_sql_v100(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 101,
+            description: "hospital_multi_role_ordering_share",
+            sql: schema_sql_v101(),
             kind: MigrationKind::Up,
         },
     ]

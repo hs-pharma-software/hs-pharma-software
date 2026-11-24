@@ -19,7 +19,8 @@ import {
   nextEpisodeNo, nextOrderNo, addCharge, addPayment,
 } from "./hospital";
 import { getPharmacyLink, postToPharmacyMailbox } from "./clinic";
-import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, formatEmployeeId } from "../../config/hospitalStaff";
+import { DESIGNATIONS, DOCTOR_CATEGORIES, designation, extraRoles, formatEmployeeId, pagesForRoles, staffRoles } from "../../config/hospitalStaff";
+import { updateUserPermissions } from "../auth";
 import type { Staff } from "../types";
 import { createLabRequest, enterLabResult, labCapabilities, labRequestsRepo, collectionCentersRepo, type LabResultInput } from "./labReports";
 
@@ -76,6 +77,10 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
       ? { consultation_doctor_share: d.doctor && data.consultation_doctor_share != null ? Math.min(Math.max(0, Number(data.consultation_fee) || 0), Math.max(0, Number(data.consultation_doctor_share) || 0)) : null }
       : {}),
     specialization: d.doctor ? data.specialization?.trim() || null : null,
+    // Other roles (v101): valid designations, not the main one; only when given.
+    ...(data.extra_roles !== undefined
+      ? { extra_roles: JSON.stringify(extraRoles(data.extra_roles).filter((k) => k !== d.key)) }
+      : {}),
   };
   if (licenseNo && d.license) {
     const clash = await dbSelect<{ name: string }>(
@@ -86,6 +91,10 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
   }
   const saved = id ? await staffRepo.update(id, payload) : await staffRepo.create(payload);
   if (!saved) throw new Error("Staff member not found.");
+  // The roles changed: the login opens the pages of every role now.
+  if (saved.user_id && existing && staffRoles(existing).join() !== staffRoles(saved).join()) {
+    await updateUserPermissions(saved.user_id, pagesForRoles(staffRoles(saved)));
+  }
   // Remember the highest number issued for this prefix so it is never reused.
   const issuedNo = Number(employeeId.split("-").pop());
   if (Number(await getSetting(counterKey(d.prefix))) < issuedNo) await setSetting(counterKey(d.prefix), String(issuedNo));

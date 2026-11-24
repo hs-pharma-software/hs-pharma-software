@@ -2,7 +2,7 @@ import { createUser, updateUserPermissions } from "./auth";
 import { dbSelect } from "./db";
 import { requireCurrentTenantId } from "./repo/base";
 import { staffRepo } from "./repo/staff";
-import { designation } from "../config/hospitalStaff";
+import { designation, pagesForRoles, staffRoles } from "../config/hospitalStaff";
 import type { UserAccount } from "./types2";
 
 /** Gives a hospital staff member a login whose pages follow their designation
@@ -17,7 +17,7 @@ export async function createStaffLogin(staffId: string, username: string, passwo
   if (!d) throw new Error("Set this staff member's designation first.");
   if (username.trim().length < 3) throw new Error("The username must have at least 3 characters.");
   if (password.length < 4) throw new Error("The password must have at least 4 characters.");
-  const user = await createUser({ username, password, role: "staff", tenantId, displayName: staff.name, permissions: d.pages });
+  const user = await createUser({ username, password, role: "staff", tenantId, displayName: staff.name, permissions: pagesForRoles(staffRoles(staff)) });
   await staffRepo.update(staff.id, { user_id: user.id });
   return user;
 }
@@ -42,5 +42,5 @@ export async function linkStaffLogin(staffId: string, userId: string): Promise<v
   if (!d) throw new Error("Set this staff member's designation first.");
   if (!(await listLinkableLogins()).some((u) => u.id === userId)) throw new Error("Choose a staff login that is not linked to anyone yet.");
   await staffRepo.update(staff.id, { user_id: userId });
-  await updateUserPermissions(userId, d.pages);
+  await updateUserPermissions(userId, pagesForRoles(staffRoles(staff)));
 }

@@ -7,6 +7,8 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { hospitalPatientsRepo, nextMrNo, type HospitalPatient } from "@/lib/repo/hospital";
 import { radiologyCall, radiologyOffline } from "@/lib/offline/radiologyCalls";
 import { useAuthStore } from "@/store/authStore";
+import { ageFromDob } from "@/lib/hospitalMr";
+import { localDate } from "@/lib/localDate";
 import { InsuranceCompanySelect } from "@/components/customers/InsuranceCompanySelect";
 
 interface Props {
@@ -126,7 +128,12 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         </Field>
         {!shortForm && (
           <Field label="Date of Birth">
-            <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+            <Input type="date" value={dob} max={localDate()} onChange={(e) => {
+              setDob(e.target.value);
+              // The age follows from the date of birth.
+              const age = ageFromDob(e.target.value, localDate());
+              if (age) { setAgeYears(String(age.years)); setAgeMonths(String(age.months)); }
+            }} />
           </Field>
         )}
         <div className="flex gap-2">
@@ -202,7 +209,7 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
               <Field label="Insurance company *"><InsuranceCompanySelect id="pt-ins-company" value={insCompanyId} onChange={(v, c) => { setInsCompanyId(v); setInsuranceCompany(c?.name ?? ""); }} /></Field>
               <Field label="Policy number *"><Input value={insuranceNo} onChange={(e) => setInsuranceNo(e.target.value)} /></Field>
               <Field label="Valid till"><Input type="date" value={validTill} onChange={(e) => setValidTill(e.target.value)} /></Field>
-              <Field label="Insured amount (Rs)"><Input type="number" min="0" step="any" value={insuredAmount} onChange={(e) => setInsuredAmount(e.target.value)} placeholder="Above it the patient pays" /></Field>
+              <Field label="Insured amount per year (Rs)"><Input type="number" min="0" step="any" value={insuredAmount} onChange={(e) => setInsuredAmount(e.target.value)} placeholder="Starts from 0 each policy year" /></Field>
             </div>
           )}
         </div>

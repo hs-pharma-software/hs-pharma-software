@@ -150,6 +150,8 @@ export interface Supplier extends TenantRow {
 export interface Staff extends TenantRow {
   /** Hospital doctors (v97): the doctor's share of the OPD consultation fee; the rest is the hospital's. */
   consultation_doctor_share?: number | null;
+  /** Hospital staff (v101): other roles as a JSON list of designation keys (e.g. ["infection_control_nurse"]). */
+  extra_roles?: string | null;
   name: string;
   designation: string | null;
   phone: string | null;
