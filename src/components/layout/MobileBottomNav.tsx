@@ -37,9 +37,9 @@ export function MobileBottomNav({ items, onMore, moreOpen, badges = {} }: {
               <Link
                 href={i.href}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex h-full flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium ${active ? "text-[var(--accent)]" : "text-neutral-500"}`}
+                className={`relative flex h-full flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-[color,transform] duration-150 active:scale-90 ${active ? "text-[var(--accent)]" : "text-neutral-500"}`}
               >
-                {active && <span className="absolute inset-x-4 top-0 h-[3px] rounded-b-full bg-[var(--accent)]" aria-hidden />}
+                {active && <span className="fade-in absolute inset-x-4 top-0 h-[3px] rounded-b-full bg-[var(--accent)]" aria-hidden />}
                 <span className="relative">
                   <Icon size={21} strokeWidth={active ? 2.4 : 1.9} />
                   {badge ? <span className="absolute -right-2.5 -top-1.5 min-w-[1.1rem] rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold leading-4 text-white">{badge > 99 ? "99+" : badge}</span> : null}
@@ -54,7 +54,7 @@ export function MobileBottomNav({ items, onMore, moreOpen, badges = {} }: {
             type="button"
             onClick={onMore}
             aria-expanded={moreOpen}
-            className={`flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium ${moreOpen || !match ? "text-[var(--accent)]" : "text-neutral-500"}`}
+            className={`flex h-full w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-[color,transform] duration-150 active:scale-90 ${moreOpen || !match ? "text-[var(--accent)]" : "text-neutral-500"}`}
           >
             <Menu size={21} />
             <span>More</span>

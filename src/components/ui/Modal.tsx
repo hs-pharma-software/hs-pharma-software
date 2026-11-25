@@ -80,6 +80,23 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [closeOnEscape, id]);
 
+  // Tab and Shift+Tab stay inside the top dialog instead of walking into the page behind it.
+  useEffect(() => {
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || stack[stack.length - 1] !== id || !panel.current) return;
+      const items = Array.from(panel.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (!items.length) { e.preventDefault(); panel.current.focus(); return; }
+      const first = items[0], last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === panel.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (active === last || !panel.current.contains(active))) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onTab);
+    return () => window.removeEventListener("keydown", onTab);
+  }, [id]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}

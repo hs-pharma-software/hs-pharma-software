@@ -1,23 +1,21 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
+import { DUR, EASE_OUT } from "@/lib/motion";
 
-/** Fades/slides each route's content in on navigation. Keyed by pathname so
- * AnimatePresence treats every route change as a mount/unmount pair. */
+/** Each page glides in when it opens. The old page is not kept for an exit
+ * animation: waiting for it would make every click feel slower. */
 export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={pathname}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.18, ease: "easeOut" }}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key={pathname}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: DUR.slow, ease: EASE_OUT }}
+    >
+      {children}
+    </motion.div>
   );
 }

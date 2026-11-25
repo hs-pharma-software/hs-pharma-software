@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { MotionConfig } from "motion/react";
 import { isTauri } from "@/lib/platform";
 import { getSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, type AppTheme } from "@/lib/theme";
@@ -39,5 +40,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => undefined);
   }, [signedIn, tenantId]);
 
-  return <>{children}</>;
+  // Every animation in the app follows the device's "reduce motion" setting.
+  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }

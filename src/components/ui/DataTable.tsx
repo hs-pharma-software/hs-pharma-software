@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
 import { MoreVertical } from "lucide-react";
 
 export interface Column<T> {
@@ -45,7 +44,16 @@ export function DataTable<T extends { id: string }>({
       {mobile && (
         <div className="rounded-xl bg-white ring-1 ring-black/[0.06] sm:hidden">
           {rows.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-neutral-400">{loading ? "Loading…" : emptyMessage}</p>
+            loading ? (
+              <ul aria-hidden="true" className="divide-y divide-neutral-100">
+                {[0, 1, 2].map((k) => (
+                  <li key={k} className="flex min-h-14 items-center gap-3 px-3 py-2">
+                    <div className="flex-1 space-y-2"><span className="skeleton block h-3 w-3/4 rounded-full" /><span className="skeleton block h-2.5 w-1/2 rounded-full" /></div>
+                    <span className="skeleton block h-3 w-14 rounded-full" />
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="fade-in px-3 py-8 text-center text-sm text-neutral-400">{emptyMessage}</p>
           ) : (
             <ul className="divide-y divide-neutral-100">
               {rows.map((row) => <CompactRow key={row.id} m={mobile(row)} onOpen={onRowClick ? () => onRowClick(row) : undefined} />)}
@@ -56,6 +64,7 @@ export function DataTable<T extends { id: string }>({
       <div
         role="region"
         aria-label="Table"
+        aria-busy={loading || undefined}
         tabIndex={0}
         className={`overflow-x-auto rounded-2xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:bg-white sm:shadow-[0_1px_4px_rgba(0,0,0,0.07)] sm:ring-1 sm:ring-black/[0.04] ${mobile ? "max-sm:hidden" : ""}`}
       >
@@ -70,23 +79,30 @@ export function DataTable<T extends { id: string }>({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {rows.length === 0 && loading ? (
+              [0, 1, 2, 3].map((k) => (
+                <tr key={`sk-${k}`} aria-hidden="true" className="border-b border-neutral-50 last:border-0">
+                  {columns.map((col, c) => (
+                    <td key={col.header} data-label="" className="px-4 py-3">
+                      <span className="skeleton block h-3 rounded-full" style={{ width: `${c === 0 ? 70 : 45 + ((k * 17 + c * 23) % 40)}%` }} />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-3 py-10 text-center text-neutral-400">
-                  {loading ? "Loading…" : emptyMessage}
+                <td colSpan={columns.length} className="fade-in px-3 py-10 text-center text-neutral-400">
+                  {emptyMessage}
                 </td>
               </tr>
             ) : (
               rows.map((row, i) => (
-                <motion.tr
+                <tr
                   key={row.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.18, delay: Math.min(i, 12) * 0.02 }}
                   onClick={() => onRowClick?.(row)}
-                  whileHover={onRowClick ? { backgroundColor: "rgba(0,0,0,0.025)" } : undefined}
-                  className={`border-b border-neutral-50 last:border-0 ${
-                    onRowClick ? "cursor-pointer" : ""
+                  style={i < 12 ? { animationDelay: `${i * 25}ms` } : undefined}
+                  className={`border-b border-neutral-50 last:border-0 ${i < 12 ? "row-in" : ""} ${
+                    onRowClick ? "row-clickable cursor-pointer" : ""
                   }`}
                 >
                   {columns.map((col, c) => (
@@ -94,7 +110,7 @@ export function DataTable<T extends { id: string }>({
                       {col.render(row)}
                     </td>
                   ))}
-                </motion.tr>
+                </tr>
               ))
             )}
           </tbody>
@@ -149,7 +165,7 @@ function CompactRow({ m, onOpen }: { m: MobileRow; onOpen?: () => void }) {
         </button>
       )}
       {menu && (
-        <div role="menu" className="absolute right-2 top-full z-20 -mt-1 min-w-40 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 text-sm shadow-xl">
+        <div role="menu" className="pop-in absolute right-2 top-full z-20 -mt-1 min-w-40 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 text-sm shadow-xl">
           {actions.map((a) => (
             <button
               key={a.label}
