@@ -136,6 +136,12 @@ function NewBooking({ c, onClose, onDone }: { c: DistCtx; onClose: () => void; o
   const clear = () => { setLines([]); setNotes(""); setMsg(null); setClientRef(crypto.randomUUID()); };
   const blocked = !!loc.data && loc.data.required && !loc.data.ok;
   const send = async () => {
+    if (!customerId) { setMsg({ ok: false, text: "Choose the customer first." }); return; }
+    if (!lines.some((l) => Number(l.qty) > 0)) {
+      setMsg({ ok: false, text: lines.length ? "Type a quantity for at least one product." : "Add at least one product: search above (↑ ↓ Enter)." });
+      if (lines[0]) document.getElementById(`bq-${lines[0].key}`)?.focus();
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -218,7 +224,7 @@ function NewBooking({ c, onClose, onDone }: { c: DistCtx; onClose: () => void; o
         <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="me-auto text-[11px] text-neutral-500">Final prices, scheme and tax are worked out when saved.</span>
           <Button onClick={clear} disabled={busy || (!lines.length && !notes)}>Clear</Button>
-          <Button variant="primary" disabled={busy || !customerId || !lines.some((l) => Number(l.qty) > 0) || blocked} onClick={() => void send()}>
+          <Button variant="primary" loading={busy} disabled={busy || blocked} onClick={() => void send()}>
             <Send size={14} /> {c.can("bookings.submit") ? "Submit booking" : "Save booking"}
           </Button>
         </div>
@@ -527,7 +533,8 @@ function PaidModal({ doc, onClose, onDone }: { doc: DistDoc; onClose: () => void
         <Err error={error} />
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy || (due > 0 && !(pay > 0))} onClick={async () => {
+          <Button variant="primary" loading={busy} disabled={busy} onClick={async () => {
+            if (due > 0 && !(pay > 0)) { setError("Enter the amount received."); return; }
             setBusy(true);
             setError(null);
             try {

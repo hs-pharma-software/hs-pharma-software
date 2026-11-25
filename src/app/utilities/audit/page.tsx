@@ -40,11 +40,13 @@ export default function AuditDetailPage() {
   // Initiate audit: every product with stock (or one company's), counted on its own screen.
   const [initOpen, setInitOpen] = useState(false);
   const [initName, setInitName] = useState("");
+  const [initTried, setInitTried] = useState(false);
   const [initCompany, setInitCompany] = useState("");
   const [companies, setCompanies] = useState<string[]>([]);
   const [initBusy, setInitBusy] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   async function startAudit() {
+    if (!initName.trim()) { setInitTried(true); document.getElementById("audit-name")?.focus(); return; }
     setInitBusy(true);
     setInitError(null);
     try {
@@ -228,7 +230,7 @@ export default function AuditDetailPage() {
         <Modal title="Initiate audit" onClose={() => setInitOpen(false)} width="max-w-md">
           <div className="flex flex-col gap-3">
             <p className="text-sm text-neutral-600">Lists every product with stock and its system stock. Enter the stock actually available, then close the audit for the report of differences and their amount.</p>
-            <Field label="Audit name"><Input value={initName} onChange={(e) => setInitName(e.target.value)} /></Field>
+            <Field label="Audit name" required error={initTried && !initName.trim() ? "Name the audit, e.g. Year-end count" : undefined}><Input id="audit-name" aria-invalid={(initTried && !initName.trim()) || undefined} value={initName} onChange={(e) => setInitName(e.target.value)} /></Field>
             <Field label="Products">
               <Select value={initCompany} onChange={(e) => setInitCompany(e.target.value)}>
                 <option value="">All products with stock</option>
@@ -238,7 +240,7 @@ export default function AuditDetailPage() {
             <FormError message={initError} />
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button onClick={() => setInitOpen(false)}>Cancel</Button>
-              <Button loading={initBusy} variant="primary" disabled={initBusy || !initName.trim()} onClick={() => void startAudit()}>{initBusy ? "Starting…" : "Start audit"}</Button>
+              <Button loading={initBusy} variant="primary" disabled={initBusy} onClick={() => void startAudit()}>{initBusy ? "Starting…" : "Start audit"}</Button>
             </div>
           </div>
         </Modal>

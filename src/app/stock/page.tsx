@@ -30,6 +30,8 @@ export default function StockPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   const [productQuery, setProductQuery] = useState("");
+  const [pickTried, setPickTried] = useState(false);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
   const [productResults, setProductResults] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [batchNo, setBatchNo] = useState("");
@@ -234,6 +236,8 @@ export default function StockPage() {
               onClick={() => {
                 resetForm();
                 setModalOpen(true);
+                setPickTried(false);
+                setReceiveError(null);
               }}
             >
               Add
@@ -407,8 +411,9 @@ export default function StockPage() {
             className="flex flex-col gap-3"
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!selectedProduct) return;
+              if (!selectedProduct) { setPickTried(true); document.getElementById("stk-product")?.focus(); return; }
               setSaving(true);
+              setReceiveError(null);
               try {
                 await receiveStock({
                   productId: selectedProduct.id,
@@ -420,13 +425,17 @@ export default function StockPage() {
                 });
                 setModalOpen(false);
                 void reload();
+              } catch (err) {
+                setReceiveError(`Could not add the stock: ${err instanceof Error ? err.message : String(err)}`);
               } finally {
                 setSaving(false);
               }
             }}
           >
-            <Field label="Barcode/Product Name" required>
+            <Field label="Barcode/Product Name" required error={pickTried && !selectedProduct ? (productQuery.trim() ? "Choose the product from the list" : "Type the product's name or barcode") : undefined}>
               <Input
+                id="stk-product"
+                aria-invalid={(pickTried && !selectedProduct) || undefined}
                 value={selectedProduct ? selectedProduct.name : productQuery}
                 onChange={(e) => {
                   setSelectedProduct(null);
@@ -474,11 +483,12 @@ export default function StockPage() {
             <Field label="Expiry Date">
               <Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
             </Field>
+            <FormError message={receiveError} />
             <div className="form-actions">
               <Button type="button" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button loading={saving} type="submit" variant="primary" disabled={saving || !selectedProduct}>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving}>
                 {saving ? "Saving..." : "Save"}
               </Button>
             </div>

@@ -204,7 +204,9 @@ export function DeadStockTab({ store }: { store: StoreId }) {
   useEffect(() => { void reload(); }, [store]); // eslint-disable-line react-hooks/exhaustive-deps
   async function add() {
     const s = stock.find((x) => `${x.product_id ?? x.product_name}` === item);
-    if (!s) return;
+    if (!s) return setError("Choose the item to write off.");
+    if (!(Number(qty) > 0)) return setError("Enter the quantity written off.");
+    if (Number(qty) > s.qty) return setError(`Only ${s.qty} of ${s.product_name} in the store.`);
     try { await recordDeadStock(store, { productId: s.product_id, productName: s.product_name, qty: Number(qty), reason, note }); setQty(""); setNote(""); await reload(); } catch (e) { setError(msg(e)); }
   }
   return (
@@ -216,7 +218,7 @@ export function DeadStockTab({ store }: { store: StoreId }) {
           <Field label="Quantity"><Input type="number" min="0" step="any" value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
           <Field label="Reason"><Select value={reason} onChange={(e) => setReason(e.target.value)}>{DEAD_REASONS.map((r) => <option key={r}>{r}</option>)}</Select></Field>
           <Field label="Note"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Condemned by the IPC committee" /></Field>
-          <Button variant="primary" disabled={!item || !(Number(qty) > 0)} onClick={() => void add()}>Record</Button>
+          <Button variant="primary" onClick={() => void add()}>Record</Button>
         </div>
         {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       </div>

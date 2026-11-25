@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { FormError } from "@/components/ui/FormError";
 import { SERVER_DB } from "@/lib/serverMode";
 import { branchApi, money, useBranchStore, type Branch } from "@/lib/branchClient";
 
@@ -110,6 +111,7 @@ function NewTransfer({ branches, managed, active, onClose, onSaved }: { branches
   async function send() {
     setError(null);
     if (!to) return setError("Choose the receiving branch.");
+    if (!lines.length) return setError("Add at least one product: find it above and press Add.");
     const bad = lines.find((l) => !(Number(l.send) > 0) || Number(l.send) > l.qty);
     if (bad) return setError(`${bad.name}: send between 1 and ${bad.qty}.`);
     setSaving(true);
@@ -142,7 +144,7 @@ function NewTransfer({ branches, managed, active, onClose, onSaved }: { branches
           {found.map((b) => (
             <li key={b.batchId} className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-1.5 last:border-0">
               <span>{b.name} <span className="text-xs text-neutral-500">Batch {b.batchNo ?? "—"} · Exp {b.expiry ?? "—"} · {b.qty} in stock</span></span>
-              <button type="button" className="text-xs text-[var(--accent)] hover:underline" onClick={() => add(b)}>Add</button>
+              <button type="button" className="min-h-8 rounded-md px-2 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-neutral-100" onClick={() => add(b)}>Add</button>
             </li>
           ))}
           {!found.length && <li className="px-3 py-3 text-neutral-500">No stock found in this branch.</li>}
@@ -163,10 +165,10 @@ function NewTransfer({ branches, managed, active, onClose, onSaved }: { branches
           </table>
         )}
         <Field label="Note"><Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></Field>
-        {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button loading={saving} type="button" variant="primary" disabled={saving || !lines.length} onClick={() => void send()}>{saving ? "Sending..." : "Send stock"}</Button>
+          <Button loading={saving} type="button" variant="primary" disabled={saving} onClick={() => void send()}>{saving ? "Sending..." : "Send stock"}</Button>
         </div>
       </div>
     </Modal>

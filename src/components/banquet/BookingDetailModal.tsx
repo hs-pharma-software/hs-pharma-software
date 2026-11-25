@@ -31,6 +31,7 @@ export function BookingDetailModal({ bookingId, onClose, onChanged }: { bookingI
   }
   useEffect(() => { void reload().catch((e) => { notify(e instanceof Error ? e.message : String(e)); onClose(); }); }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [amountTried, setAmountTried] = useState(false);
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
     try {
@@ -95,10 +96,10 @@ export function BookingDetailModal({ bookingId, onClose, onChanged }: { bookingI
         </div>
         {paying && (
           <div className="flex flex-wrap items-end gap-2 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
-            <div className="w-36"><Field label="Amount"><Input id="bd-amount" type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus /></Field></div>
+            <div className="w-36"><Field label="Amount" error={amountTried && !(Number(amount) > 0) ? "Enter the amount" : undefined}><Input id="bd-amount" aria-invalid={(amountTried && !(Number(amount) > 0)) || undefined} type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus /></Field></div>
             <div className="w-36"><Field label="Paid by"><Select id="bd-method" value={method} onChange={(e) => setMethod(e.target.value)}><option value="cash">Cash</option><option value="bank">Bank</option><option value="cheque">Cheque</option><option value="digital">Digital</option></Select></Field></div>
             <Button onClick={() => setPaying(false)}>Cancel</Button>
-            <Button variant="primary" disabled={busy || !(Number(amount) > 0)} onClick={() => void run(async () => { await addBookingPayment(b.id, Number(amount), method); setPaying(false); })}>Receive</Button>
+            <Button variant="primary" loading={busy} disabled={busy} onClick={() => { if (!(Number(amount) > 0)) { setAmountTried(true); document.getElementById("bd-amount")?.focus(); return; } void run(async () => { await addBookingPayment(b.id, Number(amount), method); setPaying(false); setAmountTried(false); }); }}>Receive</Button>
           </div>
         )}
         <div className="flex flex-wrap justify-end gap-2 border-t border-neutral-200 pt-3">
