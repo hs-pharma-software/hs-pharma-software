@@ -44,14 +44,32 @@ staff browser ──"View images"──────▶ Orthanc's Stone Web Viewe
 1. Download the **Orthanc Windows installer** from orthanc.uclouvain.be (Downloads › Windows, 64-bit). Install it with its plugins, including **Python** and **Stone Web Viewer**.
 2. The Python plugin needs the **matching version of Python** installed for all users. The installer's plugin list says which version, for example Python 3.11 64-bit. Install that version from python.org, ticking "Install for all users" and "Add to PATH".
 3. Copy `hms_bridge.py` into Orthanc's **Configuration** folder. By default this is `C:\Program Files\Orthanc Server\Configuration\`.
-4. In that folder, create `mavin.json` with the content of `orthanc.example.json`, then change it:
-   - `"PythonScript": "C:\\Program Files\\Orthanc Server\\Configuration\\hms_bridge.py"`
-   - Remove the `"Plugins"` line. The Windows installer already loads its plugins.
-   - `"StateDirectory": "C:\\OrthancState"` (a folder the Orthanc service can write to).
-   - `DicomModalities`: one line per machine, with its AE Title, IP address and DICOM port (often 104).
-   - `HmsBridge.Machines`: the line copied from Radiology › Machines for each machine.
-   - Change the `RegisteredUsers` password.
-5. Restart Orthanc: **Services** (`services.msc`) › **Orthanc** › Restart.
+4. Create the folder `C:\OrthancState`, then set up two files in the Configuration folder.
+
+   The Windows installer already has an `orthanc.json` there. **Don't copy the whole example into a second file.** Orthanc reads every `.json` in the folder, and a setting that appears twice stops it from starting.
+
+   - **`mavin.json` (new):** only the bridge settings:
+     ```json
+     {
+       "PythonScript": "C:\\Program Files\\Orthanc Server\\Configuration\\hms_bridge.py",
+       "HmsBridge": {
+         "ApiBase": "https://www.mavin.pk",
+         "StateDirectory": "C:\\OrthancState",
+         "Machines": {
+           "XRAY01": "hmsk_… (the line copied from Radiology › Machines)"
+         }
+       }
+     }
+     ```
+   - **`orthanc.json` (existing):** open it in Notepad as administrator. Use Ctrl+F to find each of these settings and change its value; don't add new lines:
+     - `"RemoteAccessAllowed": true`
+     - `"AuthenticationEnabled": true`
+     - `"RegisteredUsers": { "admin": "a-strong-password" }`
+     - `"DicomModalities"`: one line per machine, for example `"XRAY01": ["XRAY01", "192.168.1.31", 104]` (AE Title, IP address, DICOM port).
+     - `"DicomAlwaysAllowStore": true` and `"DicomCheckCalledAet": false`.
+5. Start Orthanc with the folder, not one file:
+   - **As a service:** **Services** (`services.msc`) › **Orthanc** › Restart.
+   - **By hand:** `.\Orthanc.exe "C:\Program Files\Orthanc Server\Configuration"`.
 6. Allow ports **4242** (DICOM) and **8042** (web) in Windows Firewall, for the hospital network only.
 
 ### Ubuntu
