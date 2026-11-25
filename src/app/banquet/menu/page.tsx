@@ -75,7 +75,9 @@ function DishForm({ dish, onClose, onSaved }: { dish: BanquetDish | null; onClos
   const [price, setPrice] = useState(dish ? String(dish.price_per_head) : "");
   const [active, setActive] = useState(dish ? Boolean(dish.is_active) : true);
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
   async function save() {
+    if (!name.trim()) { setTried(true); document.getElementById("ds-name")?.focus(); return; }
     setSaving(true);
     try {
       await saveDish(dish?.id ?? null, { name, category, price_per_head: Number(price) || 0, is_active: active });
@@ -89,7 +91,7 @@ function DishForm({ dish, onClose, onSaved }: { dish: BanquetDish | null; onClos
   return (
     <Modal title={dish ? `Edit ${dish.name}` : "Add dish"} onClose={onClose} width="max-w-md">
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><Field label="Dish" required><Input id="ds-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chicken Karahi" autoFocus /></Field></div>
+        <div className="col-span-2"><Field label="Dish" required error={tried && !name.trim() ? "Enter the dish's name" : undefined}><Input id="ds-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Chicken Karahi" autoFocus /></Field></div>
         <Field label="Category" required>
           <Select id="ds-cat" value={category} onChange={(e) => setCategory(e.target.value)}>{DISH_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select>
         </Field>
@@ -98,7 +100,7 @@ function DishForm({ dish, onClose, onSaved }: { dish: BanquetDish | null; onClos
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );
@@ -110,8 +112,10 @@ function PackageForm({ pkg, dishes, onClose, onSaved }: { pkg: BanquetPackage | 
   const [ids, setIds] = useState<string[]>(parseDishIds(pkg?.dish_ids));
   const [active, setActive] = useState(pkg ? Boolean(pkg.is_active) : true);
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
   const sum = ids.reduce((t, id) => t + Number(dishes.find((d) => d.id === id)?.price_per_head ?? 0), 0);
   async function save() {
+    if (!name.trim()) { setTried(true); document.getElementById("pk-name")?.focus(); return; }
     setSaving(true);
     try {
       await savePackage(pkg?.id ?? null, { name, price_per_head: Number(price) || 0, dish_ids: ids, is_active: active });
@@ -126,7 +130,7 @@ function PackageForm({ pkg, dishes, onClose, onSaved }: { pkg: BanquetPackage | 
   return (
     <Modal title={pkg ? `Edit ${pkg.name}` : "Add package"} onClose={onClose} width="max-w-2xl">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Package" required><Input id="pk-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gold" autoFocus /></Field>
+        <Field label="Package" required error={tried && !name.trim() ? "Enter the package's name" : undefined}><Input id="pk-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Gold" autoFocus /></Field>
         <Field label="Price per head (Rs)" required><Input id="pk-price" type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={sum ? String(sum) : ""} /></Field>
       </div>
       <p className="mb-1 mt-3 text-xs text-neutral-500">Dishes ({ids.length} chosen, Rs {money(sum)} per head separately)</p>
@@ -146,7 +150,7 @@ function PackageForm({ pkg, dishes, onClose, onSaved }: { pkg: BanquetPackage | 
       <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Offered</label>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

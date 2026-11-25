@@ -52,6 +52,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
   const investigation = category === "lab" || category === "imaging";
   const hospitalShare = (Number(rate) || 0) - (Number(doctorShare) || 0) - (Number(staffShare) || 0) - (investigation ? Number(orderingShare) || 0 : 0);
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
   const [departments, setDepartments] = useState<string[]>([]);
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
   const departmentOptions = department && !departments.includes(department) ? [department, ...departments] : departments;
 
   async function save() {
-    if (!code.trim() || !name.trim()) return;
+    if (!code.trim() || !name.trim()) { setTried(true); document.getElementById(!code.trim() ? "sv-code" : "sv-name")?.focus(); return; }
     if (hospitalShare < 0) { notify("The doctor's and staff's shares are more than the rate."); return; }
     setSaving(true);
     try {
@@ -98,11 +99,11 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
   return (
     <Modal title={isEdit ? "Edit Service" : "Add Service"} onClose={onClose}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <Field label="Service Code *">
-          <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. CONS-OPD" autoFocus={!isEdit} />
+        <Field label="Service Code" required error={tried && !code.trim() ? "Enter a code, e.g. CONS-OPD" : undefined}>
+          <Input id="sv-code" aria-invalid={(tried && !code.trim()) || undefined} value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. CONS-OPD" autoFocus={!isEdit} />
         </Field>
-        <Field label="Service Name *">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. OPD Consultation" />
+        <Field label="Service Name" required error={tried && !name.trim() ? "Enter the service's name" : undefined}>
+          <Input id="sv-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. OPD Consultation" />
         </Field>
         <Field label="Department">
           <Select value={department} onChange={(e) => setDepartment(e.target.value)}>
@@ -146,7 +147,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !code.trim() || !name.trim()}>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>
           {saving ? "Saving…" : isEdit ? "Update" : "Add Service"}
         </Button>
       </div>

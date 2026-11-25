@@ -63,9 +63,10 @@ function DepartmentModal({ dept, onClose, onSaved }: { dept: HospitalDepartment 
   const [notes, setNotes] = useState(dept?.notes ?? "");
   const [active, setActive] = useState(dept ? Boolean(dept.is_active) : true);
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
 
   async function save() {
-    if (!name.trim()) return;
+    if (!name.trim()) { setTried(true); document.getElementById("dp-name")?.focus(); return; }
     setSaving(true);
     try {
       const payload = { name: name.trim(), type, head: head.trim() || null, phone: phone.trim() || null, notes: notes.trim() || null, is_active: active ? 1 : 0 };
@@ -82,7 +83,7 @@ function DepartmentModal({ dept, onClose, onSaved }: { dept: HospitalDepartment 
   return (
     <Modal title={dept ? "Edit Department" : "Add Department"} onClose={onClose}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <Field label="Name *"><Input value={name} onChange={(e) => setName(e.target.value)} autoFocus /></Field>
+        <Field label="Name" required error={tried && !name.trim() ? "Enter the department's name" : undefined}><Input id="dp-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></Field>
         <Field label="Type">
           <Select value={type} onChange={(e) => setType(e.target.value as HospitalDepartment["type"])}>
             <option value="clinical">Clinical</option>
@@ -103,7 +104,7 @@ function DepartmentModal({ dept, onClose, onSaved }: { dept: HospitalDepartment 
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

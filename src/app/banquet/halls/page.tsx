@@ -52,7 +52,9 @@ function HallForm({ hall, onClose, onSaved }: { hall: BanquetHall | null; onClos
   const [rent, setRent] = useState(hall ? String(hall.rent) : "");
   const [active, setActive] = useState(hall ? Boolean(hall.is_active) : true);
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
   async function save() {
+    if (!name.trim()) { setTried(true); document.getElementById("hl-name")?.focus(); return; }
     setSaving(true);
     try {
       await saveHall(hall?.id ?? null, { name, capacity: Number(capacity) || null, rent: Number(rent) || 0, is_active: active });
@@ -66,14 +68,14 @@ function HallForm({ hall, onClose, onSaved }: { hall: BanquetHall | null; onClos
   return (
     <Modal title={hall ? `Edit ${hall.name}` : "Add hall"} onClose={onClose} width="max-w-md">
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><Field label="Name" required><Input id="hl-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Crystal Hall" autoFocus /></Field></div>
+        <div className="col-span-2"><Field label="Name" required error={tried && !name.trim() ? "Enter the hall's name" : undefined}><Input id="hl-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Crystal Hall" autoFocus /></Field></div>
         <Field label="Capacity (guests)"><Input id="hl-cap" type="number" min="0" step="1" value={capacity} onChange={(e) => setCapacity(e.target.value)} /></Field>
         <Field label="Rent (Rs)"><Input id="hl-rent" type="number" min="0" step="any" value={rent} onChange={(e) => setRent(e.target.value)} /></Field>
         <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Bookable</label>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

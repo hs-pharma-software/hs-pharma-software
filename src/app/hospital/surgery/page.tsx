@@ -159,6 +159,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   const [shares, setShares] = useState(() => parseShares(surgery?.surgery_shares));
   const [departments, setDepartments] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
 
   useEffect(() => {
     void hospitalDepartmentsRepo.list({ orderBy: "name ASC" }).then((ds) => setDepartments(ds.filter((d) => d.is_active).map((d) => d.name))).catch(() => setDepartments([]));
@@ -166,6 +167,11 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   const deptOptions = department && !departments.includes(department) ? [department, ...departments] : departments;
 
   async function save() {
+    if (!name.trim() || !(draftTotal(charges) > 0)) {
+      setTried(true);
+      if (!name.trim()) document.getElementById("sg-name")?.focus();
+      return;
+    }
     setSaving(true);
     try {
       const touched = sharesTotal(shares) > 0 || Boolean(surgery?.surgery_shares);
@@ -181,8 +187,8 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
   return (
     <Modal title={surgery ? "Edit Surgery" : "Add Surgery"} onClose={onClose}>
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="Surgery name *">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Appendectomy (laparoscopic)" autoFocus />
+        <Field label="Surgery name" required error={tried && !name.trim() ? "Enter the surgery's name" : undefined}>
+          <Input id="sg-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Appendectomy (laparoscopic)" autoFocus />
         </Field>
         <Field label="Code">
           <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Blank = next SURG number" />
@@ -206,6 +212,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
       <p className="mb-2 text-xs font-semibold text-neutral-700">Charges</p>
       <div className="mb-4">
         <SurgeryChargesFields idPrefix="surgery-type" value={charges} onChange={setCharges} />
+        {tried && !(draftTotal(charges) > 0) && <p role="alert" className="field-msg mt-1 text-xs text-rose-600">Enter at least one charge: the total cannot be zero.</p>}
       </div>
       <p className="mb-2 text-xs font-semibold text-neutral-700">Shares (paid out by the hospital for this procedure)</p>
       <div className="mb-4">
@@ -213,7 +220,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim() || !(draftTotal(charges) > 0)}>{saving ? "Saving…" : surgery ? "Update" : "Add Surgery"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : surgery ? "Update" : "Add Surgery"}</Button>
       </div>
     </Modal>
   );

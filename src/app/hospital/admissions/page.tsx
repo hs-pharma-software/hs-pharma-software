@@ -86,9 +86,10 @@ export default function AdmissionRequestsPage() {
       <PageHeader
         title="Admission Requests"
         actions={
-          <div className="flex overflow-hidden rounded-lg border border-neutral-200 text-sm">
+          <div role="tablist" aria-label="Admission requests" className="flex overflow-hidden rounded-lg border border-neutral-200 text-sm">
             {TABS.map((t) => (
-              <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`px-3 py-1.5 ${tab === t.key ? "bg-amber-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}>{t.label}</button>
+              <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
+                className={`min-h-9 px-3 py-1.5 transition-colors duration-150 ${tab === t.key ? "bg-amber-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}>{t.label}</button>
             ))}
           </div>
         }
@@ -114,8 +115,16 @@ function ConfirmModal({ row, onClose, onDone }: { row: AdmissionRequestRow; onCl
   const [wardRoom, setWardRoom] = useState(row.room_ward ?? "");
   const [bedNo, setBedNo] = useState(row.bed_no ?? "");
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
+  const wardMissing = tried && !wardRoom.trim();
+  const bedMissing = tried && !bedNo.trim();
 
   async function save() {
+    if (!wardRoom.trim() || !bedNo.trim()) {
+      setTried(true);
+      document.getElementById(!wardRoom.trim() ? "confirm-ward" : "confirm-bed")?.focus();
+      return;
+    }
     setSaving(true);
     try {
       await confirmAdmission(row.id, { wardRoom, bedNo });
@@ -135,12 +144,16 @@ function ConfirmModal({ row, onClose, onDone }: { row: AdmissionRequestRow; onCl
         </p>
         <p className="text-sm">Payment status: <b>{PAYMENT_LABEL[row.payment_status]}</b></p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Ward / room *"><Input id="confirm-ward" value={wardRoom} onChange={(e) => setWardRoom(e.target.value)} placeholder="e.g. Surgical ward" autoFocus /></Field>
-          <Field label="Bed no *"><Input id="confirm-bed" value={bedNo} onChange={(e) => setBedNo(e.target.value)} placeholder="e.g. 12" /></Field>
+          <Field label="Ward / room" required error={wardMissing ? "Enter the ward or room" : undefined}>
+            <Input id="confirm-ward" required aria-invalid={wardMissing || undefined} value={wardRoom} onChange={(e) => setWardRoom(e.target.value)} placeholder="e.g. Surgical ward" autoFocus />
+          </Field>
+          <Field label="Bed no" required error={bedMissing ? "Enter the bed number" : undefined}>
+            <Input id="confirm-bed" required aria-invalid={bedMissing || undefined} value={bedNo} onChange={(e) => setBedNo(e.target.value)} placeholder="e.g. 12" />
+          </Field>
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="form-actions flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !wardRoom.trim() || !bedNo.trim()}>{saving ? "Confirming…" : "Confirm admission"}</Button>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Confirming…" : "Confirm admission"}</Button>
         </div>
       </div>
     </Modal>

@@ -141,10 +141,12 @@ function SalesmanForm({ salesman: s, users, linkedIds, onClose, onSaved }: {
   const [userId, setUserId] = useState(s?.user_id ?? "");
   const [target, setTarget] = useState(s?.monthly_target ? String(s.monthly_target) : "");
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const choices = users.filter((u) => u.is_active && !linkedIds.has(u.id));
 
   async function save() {
+    if (!name.trim()) { setTried(true); document.getElementById("sm-name")?.focus(); return; }
     setSaving(true);
     setError(null);
     try {
@@ -160,7 +162,7 @@ function SalesmanForm({ salesman: s, users, linkedIds, onClose, onSaved }: {
   return (
     <Modal title={s ? `Edit ${s.name}` : "Add Salesman"} onClose={onClose} width="max-w-lg">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div className="md:col-span-2"><Field label="Name" required><Input id="sm-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></Field></div>
+        <div className="md:col-span-2"><Field label="Name" required error={tried && !name.trim() ? "Enter the salesman's name" : undefined}><Input id="sm-name" aria-invalid={(tried && !name.trim()) || undefined} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></Field></div>
         <Field label="Phone"><Input id="sm-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="03xx-xxxxxxx" /></Field>
         <Field label="Monthly target (Rs)"><Input id="sm-target" type="number" min="0" step="any" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="0 = no target" /></Field>
         <div className="md:col-span-2">
@@ -176,7 +178,7 @@ function SalesmanForm({ salesman: s, users, linkedIds, onClose, onSaved }: {
       <FormError message={error} className="mt-3" />
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

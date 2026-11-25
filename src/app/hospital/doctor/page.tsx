@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BedDouble, FileText, History, Printer, Send, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -42,8 +42,16 @@ export default function DoctorDeskPage() {
   const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(localDate());
   const [search, setSearch] = useState("");
-  const [queue, setQueue] = useState<OpdQueueRow[]>([]);
+  const [queue, setQueue] = useState<OpdQueueRow[] | null>(null);
   const [visitId, setVisitId] = useState<string | null>(null);
+  const visitRef = useRef<HTMLDivElement>(null);
+
+  // On a phone the visit sits below the queue: bring it into view when a patient is chosen.
+  useEffect(() => {
+    if (!visitId || window.matchMedia("(min-width: 1280px)").matches) return;
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    visitRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+  }, [visitId]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -59,7 +67,12 @@ export default function DoctorDeskPage() {
 
   async function reloadQueue() {
     if (!isTauri()) return;
-    setQueue(await listOpdQueue({ date, doctorId: doctorId || null, search }));
+    try {
+      setQueue(await listOpdQueue({ date, doctorId: doctorId || null, search }));
+    } catch (e) {
+      setQueue([]);
+      notify(`Could not load the patients: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   useEffect(() => { void reloadQueue(); }, [date, doctorId, search]);
 
@@ -80,11 +93,16 @@ export default function DoctorDeskPage() {
             <Field label="Date"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <Field label="Find patient"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Slip no, token, name, MR or phone" /></Field>
           </div>
-          {queue.length === 0 ? <p className="py-4 text-center text-sm text-neutral-400">No patients.</p> : (
+          {queue === null ? (
+            <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading the patients">
+              {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-neutral-100" />)}
+            </div>
+          ) : queue.length === 0 ? <p className="fade-in py-4 text-center text-sm text-neutral-400">No patients.</p> : (
             <div className="flex flex-col divide-y divide-neutral-100">
-              {queue.map((q) => (
-                <button key={q.id} type="button" onClick={() => setVisitId(q.id)}
-                  className={`flex items-center gap-3 px-2 py-2 text-left text-sm hover:bg-amber-50 ${visitId === q.id ? "bg-amber-50" : ""}`}>
+              {queue.map((q, i) => (
+                <button key={q.id} type="button" onClick={() => setVisitId(q.id)} aria-current={visitId === q.id ? "true" : undefined}
+                  style={i < 12 ? { animationDelay: `${i * 25}ms` } : undefined}
+                  className={`${i < 12 ? "row-in " : ""}flex min-h-12 items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition-colors duration-150 hover:bg-amber-50 ${visitId === q.id ? "bg-amber-50 shadow-[inset_3px_0_0_var(--accent)]" : ""}`}>
                   <span className="w-8 shrink-0 text-lg font-bold tabular-nums">{q.token_no ?? "—"}</span>
                   <span className="flex-1">
                     <span className="font-medium">{q.patient_name}</span>
@@ -99,7 +117,7 @@ export default function DoctorDeskPage() {
           )}
         </div>
 
-        <div className="xl:col-span-2">
+        <div ref={visitRef} className="scroll-mt-4 xl:col-span-2">
           {visitId ? <Visit key={visitId} episodeId={visitId} onChanged={() => void reloadQueue()} /> : (
             <div className="rounded-2xl bg-white p-8 text-center text-sm text-neutral-400 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
               Choose a patient from the list.
@@ -135,7 +153,12 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
   // The administrator's Selected Brands: doctors prescribe by generic; the brand goes on the print and to the pharmacy.
   const [brands, setBrands] = useState<BrandSelection[]>([]);
   const [printing, setPrinting] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Which action is running ("save the notes", "send the prescription"…): only its button spins.
+  const [busyWhat, setBusyWhat] = useState<string | null>(null);
+  const busy = busyWhat !== null;
+  const [savedNotes, setSavedNotes] = useState("");
+  const [rxTried, setRxTried] = useState(false);
+  const [active, setActive] = useState(0);
   const [vit, setVit] = useState<VitalValues>({});
   const [vitDirty, setVitDirty] = useState(false);
   const [denied, setDenied] = useState(false);
@@ -153,7 +176,9 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
     const fromHere = earlier.filter((x) => x.from_episode_id === e.id);
     setAdmission(fromHere.find((x) => x.status !== "cancelled") ?? null);
     setDeclined(fromHere.find((x) => x.admission_status === "declined") ?? null);
-    setNotes({ complaint: e.complaint ?? "", vitals: e.vitals ?? "", findings: e.findings ?? "", diagnosis: e.diagnosis ?? "", advice: e.advice ?? "", followup_date: e.followup_date ?? "" });
+    const loaded = { complaint: e.complaint ?? "", vitals: e.vitals ?? "", findings: e.findings ?? "", diagnosis: e.diagnosis ?? "", advice: e.advice ?? "", followup_date: e.followup_date ?? "" };
+    setNotes(loaded);
+    setSavedNotes(JSON.stringify(loaded));
     const rx = await listRx(episodeId);
     setLines(rx.length ? rx.map((r) => ({ product_id: r.product_id, product_name: r.product_name, generic_name: r.generic_name, dose: r.dose, route: r.route, frequency: r.frequency, duration: r.duration, qty: r.qty, instructions: r.instructions })) : []);
     setSentAt(rx.find((r) => r.sent_at)?.sent_at ?? null);
@@ -209,7 +234,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
 
   const run = async (what: string, fn: () => Promise<unknown>) => {
     if (busy) return;
-    setBusy(true);
+    setBusyWhat(what);
     try {
       await fn();
       await load();
@@ -217,8 +242,48 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
     } catch (e) {
       notify(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      setBusy(false);
+      setBusyWhat(null);
     }
+  };
+
+  // Medicine search: one list for both kinds of match, driven by the arrow keys too.
+  const options: { key: string; label: string; sub?: string; pick: () => void }[] = genericMatches.length > 0
+    ? genericMatches.map((b) => ({
+        key: b.id, label: b.generic_label,
+        pick: () => setLines((ls) => [...ls, { ...EMPTY_LINE, product_id: b.product_id, product_name: b.product_name, generic_name: b.generic_label }]),
+      }))
+    : results.map((p) => ({
+        key: p.id, label: p.name, sub: [p.description, p.company_name].filter(Boolean).join(" · ") || undefined,
+        pick: () => setLines((ls) => [...ls, { ...EMPTY_LINE, product_id: p.id, product_name: p.name, generic_name: p.description }]),
+      }));
+  const choose = (i: number) => {
+    const o = options[i];
+    if (!o) return;
+    o.pick();
+    setTerm("");
+    setResults([]);
+    setActive(0);
+  };
+  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") { setTerm(""); setResults([]); return; }
+    if (options.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => (a + 1) % options.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => (a - 1 + options.length) % options.length); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(Math.min(active, options.length - 1)); }
+  };
+
+  // A line the pharmacy cannot dispense as written: no frequency, or no quantity.
+  const lineProblem = (l: RxDraft) => (!l.frequency ? "frequency" : !(Number(l.qty) >= 1) ? "qty" : null);
+  /** Before printing or sending: every line needs a frequency and a quantity. */
+  const rxReady = () => {
+    const bad = lines.findIndex((l) => lineProblem(l) !== null);
+    if (bad < 0) return true;
+    setRxTried(true);
+    notify("Some medicines need a frequency or a quantity (marked in red).");
+    // The table (computer) or the cards (phone): focus whichever is on screen.
+    const field = lineProblem(lines[bad]);
+    [`rx-${bad}-${field}`, `rxm-${bad}-${field}`].map((id) => document.getElementById(id)).find((el) => el?.offsetParent)?.focus();
+    return false;
   };
 
   // The treating doctor opens the report of this visit's own order, so the
@@ -240,7 +305,11 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
 
   if (denied) return <p className="p-6 text-sm text-rose-600">This patient is another doctor&apos;s. You see only your own patients.</p>;
   if (!ep) return <p className="p-6 text-sm text-neutral-400">Loading…</p>;
-  const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
+  const card = "rise-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] sm:p-5";
+  const notesDirty = JSON.stringify(notes) !== savedNotes || vitDirty;
+  const followupPast = Boolean(notes.followup_date) && notes.followup_date < localDate();
+  const focusFollowup = () => document.getElementById("dd-followup")?.focus();
+  const listOpen = options.length > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -261,10 +330,11 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
           {ep.type !== "ipd" && <AdmissionBadge admission={admission} declined={declined} />}
           {ep.type !== "ipd" && !admission && <Button onClick={() => setShowAdmit(true)}><BedDouble size={13} className="mr-1" /> Admit</Button>}
           {ep.consult_status !== "in_consultation" && ep.consult_status !== "done" && (
-            <Button onClick={() => void run("start", () => saveConsultationNotes(ep.id, { consult_status: "in_consultation" }))}>Start</Button>
+            <Button loading={busyWhat === "start"} disabled={busy} onClick={() => void run("start", () => saveConsultationNotes(ep.id, { consult_status: "in_consultation" }))}>Start</Button>
           )}
           {ep.consult_status !== "done" && (
-            <Button variant="primary" onClick={() => void run("finish", () => saveNotes("done"))}>Finish visit</Button>
+            <Button variant="primary" loading={busyWhat === "finish"} disabled={busy}
+              onClick={() => { if (followupPast) { focusFollowup(); return; } void run("finish", () => saveNotes("done")); }}>Finish visit</Button>
           )}
         </div>
       </div>
@@ -282,10 +352,19 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
           <Field label="Examination"><Textarea rows={2} value={notes.findings} onChange={(e) => setNotes({ ...notes, findings: e.target.value })} /></Field>
           <Field label="Diagnosis"><Textarea rows={2} value={notes.diagnosis} onChange={(e) => setNotes({ ...notes, diagnosis: e.target.value })} /></Field>
           <Field label="Advice"><Textarea rows={2} value={notes.advice} onChange={(e) => setNotes({ ...notes, advice: e.target.value })} /></Field>
-          <Field label="Follow-up date"><Input type="date" value={notes.followup_date} onChange={(e) => setNotes({ ...notes, followup_date: e.target.value })} /></Field>
+          <Field label="Follow-up date" error={followupPast ? "The follow-up date has passed: choose a later day" : undefined}>
+            <Input id="dd-followup" type="date" min={localDate()} value={notes.followup_date} aria-invalid={followupPast || undefined}
+              onChange={(e) => setNotes({ ...notes, followup_date: e.target.value })} />
+          </Field>
         </div>
-        <div className="mt-3 flex justify-end">
-          <Button onClick={() => void run("save the notes", () => saveNotes(ep.consult_status === "done" ? "done" : "in_consultation"))} disabled={busy}>
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
+          {notesDirty && (
+            <span role="status" className="fade-in mr-auto flex items-center gap-1.5 text-xs font-medium text-amber-700">
+              <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />Changes not saved yet
+            </span>
+          )}
+          <Button loading={busyWhat === "save the notes"} disabled={busy}
+            onClick={() => { if (followupPast) { focusFollowup(); return; } void run("save the notes", () => saveNotes(ep.consult_status === "done" ? "done" : "in_consultation")); }}>
             Save notes
           </Button>
         </div>
@@ -294,7 +373,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
       <div className={card}>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <h3 className="text-sm font-semibold text-neutral-700">Prescription</h3>
-          <div className="w-64">
+          <div className="w-full sm:w-64">
             <p className="text-xs text-neutral-500">Linked pharmacy</p>
             <p className="text-sm font-medium text-neutral-800">
               {pharmacyId ? pharmacies.find((p) => p.id === pharmacyId)?.name ?? "Hospital pharmacy" : <span className="text-amber-700">None: link one in Hospital &gt; Profile</span>}
@@ -303,82 +382,119 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         </div>
 
         <div className="relative mb-3">
-          <Input value={term} onChange={(e) => setTerm(e.target.value)} disabled={!pharmacyId && !byGeneric}
+          <Input value={term} onChange={(e) => { setTerm(e.target.value); setActive(0); }} onKeyDown={onSearchKey} disabled={!pharmacyId && !byGeneric}
+            role="combobox" aria-expanded={listOpen} aria-controls="dd-med-list" aria-autocomplete="list" aria-label="Search medicine"
+            aria-activedescendant={listOpen ? `dd-med-${Math.min(active, options.length - 1)}` : undefined}
             placeholder={byGeneric ? "Search medicine by generic name, e.g. Omeprazole…" : pharmacyId ? "Search medicine by brand or generic name…" : "Link the hospital pharmacy to search its medicines"} />
           {!byGeneric && pharmacyId && <p className="mt-1 text-[11px] text-amber-700">The administrator has not chosen brands yet (Pharmacy Department › Selected Brands): brand names are shown.</p>}
-          {genericMatches.length > 0 && (
-            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
-              {genericMatches.map((b) => (
-                <button key={b.id} type="button" className="block w-full px-3 py-1.5 text-left text-sm font-medium hover:bg-amber-50"
-                  onClick={() => { setLines((ls) => [...ls, { ...EMPTY_LINE, product_id: b.product_id, product_name: b.product_name, generic_name: b.generic_label }]); setTerm(""); }}>
-                  {b.generic_label}
+          {listOpen && (
+            <div id="dd-med-list" role="listbox" className="pop-in absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+              {options.map((o, i) => (
+                <button key={o.key} id={`dd-med-${i}`} type="button" role="option" aria-selected={i === active} tabIndex={-1}
+                  onMouseEnter={() => setActive(i)} onClick={() => choose(i)}
+                  className={`block min-h-10 w-full px-3 py-2 text-left text-sm ${i === active ? "bg-amber-50" : ""}`}>
+                  <span className="font-medium">{o.label}</span>
+                  {o.sub && <span className="ml-2 text-xs text-neutral-500">{o.sub}</span>}
                 </button>
               ))}
             </div>
           )}
           {byGeneric && term.trim().length >= 2 && genericMatches.length === 0 && <p className="mt-1 text-[11px] text-neutral-500">Not among the hospital&apos;s selected medicines. Ask the administrator to add it in Pharmacy Department › Selected Brands.</p>}
-          {results.length > 0 && (
-            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
-              {results.map((p) => (
-                <button key={p.id} type="button" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-amber-50"
-                  onClick={() => { setLines((ls) => [...ls, { ...EMPTY_LINE, product_id: p.id, product_name: p.name, generic_name: p.description }]); setTerm(""); setResults([]); }}>
-                  <span className="font-medium">{p.name}</span>
-                  {p.description && <span className="ml-2 text-xs text-neutral-500">{p.description}</span>}
-                  {p.company_name && <span className="ml-2 text-xs text-neutral-400">{p.company_name}</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
-        {lines.length === 0 ? <p className="text-sm text-neutral-400">No medicines yet.</p> : (
-          <div className="overflow-x-auto">
+        {lines.length === 0 ? <p className="text-sm text-neutral-400">No medicines yet.</p> : (<>
+          {/* Phone: one card per medicine. */}
+          <ul className="flex flex-col gap-2 md:hidden">
+            {lines.map((l, i) => {
+              const bad = rxTried ? lineProblem(l) : null;
+              return (
+                <li key={i} className="row-in rounded-xl bg-neutral-50 p-3 ring-1 ring-black/[0.04]">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium">{byGeneric && l.generic_name ? l.generic_name : l.product_name}
+                      {!(byGeneric && l.generic_name) && l.generic_name && <span className="block text-xs font-normal text-neutral-400">{l.generic_name}</span>}</p>
+                    <button type="button" aria-label={`Remove ${l.product_name}`} onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
+                      className="-m-2 flex h-11 w-11 shrink-0 items-center justify-center text-neutral-400 hover:text-rose-500"><Trash2 size={16} /></button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Field label="Dose"><Input value={l.dose ?? ""} onChange={(e) => setLine(i, { dose: e.target.value })} /></Field>
+                    <Field label="Days"><Input inputMode="numeric" value={l.duration ?? ""} onChange={(e) => setLine(i, { duration: e.target.value })} placeholder="5" /></Field>
+                    <Field label="Qty" error={bad === "qty" ? "At least 1" : undefined}>
+                      <Input id={`rxm-${i}-qty`} type="number" inputMode="numeric" min="1" value={l.qty} aria-invalid={bad === "qty" || undefined} onChange={(e) => setLine(i, { qty: Number(e.target.value) })} />
+                    </Field>
+                    <div className="col-span-3">
+                      <Field label="Frequency" error={bad === "frequency" ? "Choose how often" : undefined}>
+                        <Select id={`rxm-${i}-frequency`} value={l.frequency ?? ""} aria-invalid={bad === "frequency" || undefined} onChange={(e) => setLine(i, { frequency: e.target.value })}>
+                          <option value="">—</option>
+                          {FREQUENCIES.map((f) => <option key={f} value={f}>{f}</option>)}
+                        </Select>
+                      </Field>
+                    </div>
+                    <div className="col-span-3">
+                      <Field label="Instructions"><Input value={l.instructions ?? ""} onChange={(e) => setLine(i, { instructions: e.target.value })} placeholder="After meals" /></Field>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-xs">
               <thead><tr className="border-b border-neutral-100 text-left text-neutral-500">
                 <th className="pb-1.5 pr-2 font-medium">Medicine</th><th className="pb-1.5 pr-2 font-medium">Dose</th><th className="pb-1.5 pr-2 font-medium">Frequency</th>
                 <th className="pb-1.5 pr-2 font-medium">Days</th><th className="pb-1.5 pr-2 font-medium">Qty</th><th className="pb-1.5 pr-2 font-medium">Instructions</th><th />
               </tr></thead>
               <tbody>
-                {lines.map((l, i) => (
-                  <tr key={i} className="border-b border-neutral-50 align-top">
+                {lines.map((l, i) => {
+                  const bad = rxTried ? lineProblem(l) : null;
+                  return (
+                  <tr key={i} className="row-in border-b border-neutral-50 align-top">
                     <td className="py-1 pr-2">{byGeneric && l.generic_name
                       ? <span className="font-medium">{l.generic_name}</span>
                       : <><span className="font-medium">{l.product_name}</span>{l.generic_name && <span className="block text-neutral-400">{l.generic_name}</span>}</>}</td>
-                    <td className="py-1 pr-2"><Input value={l.dose ?? ""} onChange={(e) => setLine(i, { dose: e.target.value })} className="w-16" /></td>
+                    <td className="py-1 pr-2"><Input aria-label="Dose" value={l.dose ?? ""} onChange={(e) => setLine(i, { dose: e.target.value })} className="w-16" /></td>
                     <td className="py-1 pr-2">
-                      <Select value={l.frequency ?? ""} onChange={(e) => setLine(i, { frequency: e.target.value })} className="w-40">
+                      <Select id={`rx-${i}-frequency`} aria-label="Frequency" value={l.frequency ?? ""} aria-invalid={bad === "frequency" || undefined}
+                        title={bad === "frequency" ? "Choose how often" : undefined} onChange={(e) => setLine(i, { frequency: e.target.value })} className="w-40">
                         <option value="">—</option>
                         {FREQUENCIES.map((f) => <option key={f} value={f}>{f}</option>)}
                       </Select>
                     </td>
-                    <td className="py-1 pr-2"><Input value={l.duration ?? ""} onChange={(e) => setLine(i, { duration: e.target.value })} className="w-16" placeholder="5" /></td>
-                    <td className="py-1 pr-2"><Input type="number" min="1" value={l.qty} onChange={(e) => setLine(i, { qty: Number(e.target.value) })} className="w-16" /></td>
-                    <td className="py-1 pr-2"><Input value={l.instructions ?? ""} onChange={(e) => setLine(i, { instructions: e.target.value })} placeholder="After meals" /></td>
-                    <td className="py-1"><button type="button" aria-label="Remove" onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))} className="text-neutral-300 hover:text-rose-500"><Trash2 size={14} /></button></td>
+                    <td className="py-1 pr-2"><Input aria-label="Days" value={l.duration ?? ""} onChange={(e) => setLine(i, { duration: e.target.value })} className="w-16" placeholder="5" /></td>
+                    <td className="py-1 pr-2"><Input id={`rx-${i}-qty`} aria-label="Quantity" type="number" min="1" value={l.qty} aria-invalid={bad === "qty" || undefined}
+                      title={bad === "qty" ? "At least 1" : undefined} onChange={(e) => setLine(i, { qty: Number(e.target.value) })} className="w-16" /></td>
+                    <td className="py-1 pr-2"><Input aria-label="Instructions" value={l.instructions ?? ""} onChange={(e) => setLine(i, { instructions: e.target.value })} placeholder="After meals" /></td>
+                    <td className="py-1"><button type="button" aria-label={`Remove ${l.product_name}`} onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
+                      className="flex h-9 w-9 items-center justify-center rounded-md text-neutral-300 transition-colors hover:bg-rose-50 hover:text-rose-500"><Trash2 size={14} /></button></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        )}
+          {rxTried && lines.some((l) => lineProblem(l)) && (
+            <p role="alert" className="field-msg mt-2 text-xs text-rose-600">Choose a frequency and a quantity for the medicines marked in red.</p>
+          )}
+        </>)}
         <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
           {sentAt && <span className="mr-auto text-xs text-emerald-700">Sent to the pharmacy.</span>}
-          <Button onClick={() => void run("save the prescription", () => saveRx(ep.id, lines))} disabled={busy}>Save prescription</Button>
-          <Button disabled={busy || lines.length === 0} onClick={() => void run("save the prescription", async () => { await saveRx(ep.id, lines); setPrinting(true); })}>
+          <Button loading={busyWhat === "save the prescription"} onClick={() => void run("save the prescription", () => saveRx(ep.id, lines))} disabled={busy}>Save prescription</Button>
+          <Button loading={busyWhat === "print the prescription"} disabled={busy || lines.length === 0}
+            onClick={() => { if (rxReady()) void run("print the prescription", async () => { await saveRx(ep.id, lines); setPrinting(true); }); }}>
             <Printer size={13} className="mr-1" /> Print
           </Button>
-          <Button variant="primary" disabled={busy || lines.length === 0 || !pharmacyId}
-            onClick={() => void run("send the prescription", async () => { await saveRx(ep.id, lines); await sendRxToPharmacy(ep.id); })}>
+          <Button variant="primary" loading={busyWhat === "send the prescription"} disabled={busy || lines.length === 0 || !pharmacyId}
+            title={!pharmacyId ? "Link the hospital pharmacy in Hospital > Profile first" : undefined}
+            onClick={() => { if (rxReady()) void run("send the prescription", async () => { await saveRx(ep.id, lines); await sendRxToPharmacy(ep.id); }); }}>
             <Send size={13} className="mr-1" /> Send to pharmacy
           </Button>
         </div>
       </div>
 
-      <OrderSection title="Lab tests" kind="lab" card={card} busy={busy} orders={orders.filter((o) => o.kind === "lab")}
+      <OrderSection title="Lab tests" kind="lab" card={card} busy={busy} ordering={busyWhat === "order the test"} orders={orders.filter((o) => o.kind === "lab")}
         services={services.filter((s) => s.category === "lab")} value={labId} onChange={setLabId}
         emptyHint="Add lab tests and their fees in Labs › Performing Tests."
         onOrder={() => void run("order the test", async () => { await orderInvestigation(ep.id, labId); setLabId(""); })} onView={(o) => void viewReport(o)} />
-      <OrderSection title="Radiology" kind="imaging" card={card} busy={busy} orders={orders.filter((o) => o.kind !== "lab")}
+      <OrderSection title="Radiology" kind="imaging" card={card} busy={busy} ordering={busyWhat === "order the scan"} orders={orders.filter((o) => o.kind !== "lab")}
         services={services.filter((s) => s.category === "imaging")} value={scanId} onChange={setScanId}
         emptyHint="Add radiology studies (X-ray, ultrasound, CT…) with their fees in Service Master, category Imaging / Radiology."
         onOrder={() => void run("order the scan", async () => { await orderInvestigation(ep.id, scanId); setScanId(""); })} onView={(o) => void viewReport(o)} />
@@ -392,23 +508,31 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
   );
 }
 
-function OrderSection({ title, kind, card, busy, orders, services, value, onChange, onOrder, onView, emptyHint }: {
-  title: string; kind: "lab" | "imaging"; card: string; busy: boolean; orders: VisitOrder[]; services: HospitalService[];
+function OrderSection({ title, kind, card, busy, ordering, orders, services, value, onChange, onOrder, onView, emptyHint }: {
+  title: string; kind: "lab" | "imaging"; card: string; busy: boolean; ordering: boolean; orders: VisitOrder[]; services: HospitalService[];
   value: string; onChange: (id: string) => void; onOrder: () => void; onView: (o: VisitOrder) => void; emptyHint: string;
 }) {
+  const [tried, setTried] = useState(false);
+  const selectId = `dd-order-${kind}`;
+  const missing = tried && !value;
   return (
     <div className={card}>
       <h3 className="mb-3 text-sm font-semibold text-neutral-700">{title}</h3>
-      <div className="mb-3 flex flex-wrap gap-2">
-        <div className="min-w-64 flex-1">
-          <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={services.length === 0}>
+      <div className="mb-3 flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1 basis-56">
+          <Select id={selectId} aria-label={title} value={value} aria-invalid={missing || undefined}
+            onChange={(e) => { onChange(e.target.value); setTried(false); }} disabled={services.length === 0}>
             <option value="">{kind === "lab" ? "— Choose a lab test —" : "— Choose a radiology study —"}</option>
             {services.map((s) => (
               <option key={s.id} value={s.id}>{s.name}{s.sample_type ? ` (${s.sample_type})` : ""} · Rs {Number(s.rate).toFixed(0)}</option>
             ))}
           </Select>
+          {missing && <p role="alert" className="field-msg mt-1 text-xs text-rose-600">{kind === "lab" ? "Choose the test first." : "Choose the study first."}</p>}
         </div>
-        <Button variant="primary" disabled={!value || busy} onClick={onOrder}>{kind === "lab" ? "Order test" : "Order scan"}</Button>
+        <Button variant="primary" loading={ordering} disabled={busy || services.length === 0}
+          onClick={() => { if (!value) { setTried(true); document.getElementById(selectId)?.focus(); return; } onOrder(); }}>
+          {kind === "lab" ? "Order test" : "Order scan"}
+        </Button>
       </div>
       {services.length === 0 && <p className="mb-2 text-xs text-neutral-400">{emptyHint}</p>}
       {orders.length === 0 ? <p className="text-sm text-neutral-400">Nothing ordered.</p> : (
@@ -416,8 +540,8 @@ function OrderSection({ title, kind, card, busy, orders, services, value, onChan
           {orders.map((o) => {
             const unpaid = o.fee > 0 && !o.paid;
             return (
-              <div key={o.id} className="flex items-center justify-between gap-3 py-2">
-                <div>
+              <div key={o.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2">
+                <div className="min-w-0">
                   <p className="font-medium">{o.name} <span className="text-xs font-normal text-neutral-400">{o.order_no}</span></p>
                   {o.result && <p className="text-xs text-neutral-600">Result: {o.result}</p>}
                 </div>
