@@ -25,13 +25,15 @@ import type { Invoice } from "@/lib/types2";
 import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
 import { ClinicVisitInvoiceModal } from "@/components/clinic/ClinicPrints";
 import { Modal } from "@/components/ui/Modal";
-import { Select } from "@/components/ui/Field";
+import { Input, Select } from "@/components/ui/Field";
 import { markInvoicePaid } from "@/lib/repo/invoicePayments";
 import type { PaymentMethod } from "@/lib/types-hospital";
 import { useInvoiceShare, WhatsAppShareDialog } from "@/components/invoices/InvoiceShare";
 import { usePraContractor } from "@/lib/praClient";
 import { isPraInvoice } from "@/lib/pra/services";
 import { fetchInvoicePdf, saveBlob } from "@/lib/invoiceShare";
+import { recentReceiptsFor, type RecentReceiptRow } from "@/lib/repo/receptionFees";
+import { ReceiptModal } from "@/app/hospital/reception/ReceiptModal";
 
 const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
 const isClinicVisit = (r: InvoiceListRow) => r.invoice_type === "clinic_visit";
@@ -51,6 +53,7 @@ export default function InvoicesPage() {
   const openEditTab = useFormTabs((s) => s.openEditInvoice);
   const openCloneTab = useFormTabs((s) => s.openCloneInvoice);
   const isContractor = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id === "contractor";
+  const isHospital = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id === "hospital";
   const savedTick = useFormTabs((s) => s.savedTick.invoice);
   const [viewing, setViewing] = useState<{ invoice: Invoice; customerName: string; salesmanName: string | null } | null>(
     null
@@ -309,13 +312,15 @@ export default function InvoicesPage() {
         title="Invoices Details"
         actions={
           <>
-            <Button
-              variant="primary"
-              onClick={() => openNewTab("invoice")}
-              title="Ctrl+N"
-            >
-              New Invoice
-            </Button>
+            {!isHospital && (
+              <Button
+                variant="primary"
+                onClick={() => openNewTab("invoice")}
+                title="Ctrl+N"
+              >
+                New Invoice
+              </Button>
+            )}
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
         }
@@ -356,6 +361,7 @@ export default function InvoicesPage() {
         />
       )}
 
+      {tauriReady && isHospital && <HospitalReceipts />}
 
       {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setPrinting(null)} />}
       {shareError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{shareError}</p>}
@@ -379,6 +385,53 @@ export default function InvoicesPage() {
         />
       )}
     </div>
+  );
+}
+
+function HospitalReceipts() {
+  const [search, setSearch] = useState("");
+  const [rows, setRows] = useState<RecentReceiptRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      void recentReceiptsFor(search, null).then((result) => {
+        if (active) { setRows(result); setError(null); }
+      }).catch((e: unknown) => {
+        if (active) { setRows([]); setError(`Could not load receipts: ${e instanceof Error ? e.message : String(e)}`); }
+      }).finally(() => { if (active) setLoading(false); });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [search]);
+
+  return (
+    <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
+      <h2 className="text-lg font-semibold">Visit receipts</h2>
+      <p className="mb-3 text-sm text-neutral-500">Each receipt shows the current visit bill and all its payments, not a historical snapshot.</p>
+      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient, mobile, MR or visit number" aria-label="Search visit receipts" />
+      {error && <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p>}
+      {loading ? <p className="mt-3 text-sm text-neutral-500">Loading receipts…</p> : !error && rows.length === 0 ? <p className="mt-3 text-sm text-neutral-500">No receipts found.</p> : !error && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead><tr><th>Visit</th><th>Patient</th><th>Last payment</th><th>Paid (Rs)</th><th /></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.episodeId} className="border-t border-neutral-100">
+                <td className="py-2 pr-3">{r.episodeNo}</td>
+                <td className="py-2 pr-3">{r.patientName}<span className="block text-xs text-neutral-500">{r.mrNo ?? "No MR"} · {r.phone ?? "No mobile"}</span></td>
+                <td className="py-2 pr-3">{r.receivedAt?.replace("T", " ").slice(0, 16) ?? r.date}</td>
+                <td className="py-2 pr-3 tabular-nums">{r.paid.toFixed(2)}</td>
+                <td className="py-2 text-right"><Button onClick={() => setReceiptFor(r.episodeId)}><Printer size={14} className="mr-1" />View / print</Button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      {receiptFor && <ReceiptModal episodeId={receiptFor} readOnly onClose={() => setReceiptFor(null)} onChanged={() => {}} />}
+    </section>
   );
 }
 

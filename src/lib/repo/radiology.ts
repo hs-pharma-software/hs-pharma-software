@@ -41,7 +41,7 @@ export interface ImagingStudyInput {
   code?: string | null;
   modality?: string | null;
   department?: string | null;
-  rate: number;
+  rate?: number;
   turnaround_hours?: number | null;
   notes?: string | null;
   is_active?: number;
@@ -52,7 +52,7 @@ export interface ImagingStudyInput {
 export async function saveImagingStudy(id: string | null, s: ImagingStudyInput): Promise<HospitalService> {
   const name = s.name?.trim();
   if (!name) throw new Error("Enter the study name.");
-  if (!(Number(s.rate) >= 0)) throw new Error("The fee cannot be negative.");
+  if (s.rate !== undefined && !(Number(s.rate) >= 0)) throw new Error("The fee cannot be negative.");
   if (s.turnaround_hours != null && !(Number(s.turnaround_hours) >= 0)) throw new Error("Reporting time cannot be negative.");
   const clash = await dbSelect<{ id: string }>(
     `SELECT id FROM hospital_services WHERE tenant_id = ? AND category = 'imaging' AND deleted_at IS NULL AND LOWER(TRIM(name)) = LOWER(?) AND id != ?`,
@@ -67,7 +67,7 @@ export async function saveImagingStudy(id: string | null, s: ImagingStudyInput):
     department: s.department?.trim() || existing?.department || "Radiology",
     category: "imaging",
     billing_unit: "test",
-    rate: Number(s.rate) || 0,
+    ...(s.rate !== undefined ? { rate: Number(s.rate) } : !id ? { rate: 0 } : {}),
     modality: s.modality?.trim() || null,
     turnaround_hours: s.turnaround_hours != null && String(s.turnaround_hours) !== "" ? Number(s.turnaround_hours) : null,
     notes: s.notes?.trim() || null,

@@ -9,6 +9,7 @@ import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { billLines, listEpisodeBills, pctForAmount, setBillDiscounts, type EpisodeBill } from "@/lib/repo/episodeBills";
 import type { HospitalCharge } from "@/lib/types-hospital";
+import { ReceiptModal } from "@/app/hospital/reception/ReceiptModal";
 
 const rs = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 0 });
 const TYPE: Record<string, string> = { opd: "OPD", ipd: "Admission", emergency: "Emergency" };
@@ -23,6 +24,7 @@ export function EpisodeBillsPanel({ defaultStatus = "all", compact = false }: { 
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<EpisodeBill[]>([]);
   const [editing, setEditing] = useState<EpisodeBill | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function reload() {
@@ -72,7 +74,9 @@ export function EpisodeBillsPanel({ defaultStatus = "all", compact = false }: { 
                     {rs(r.balance)}
                   </td>
                   <td className="whitespace-nowrap py-1.5 text-right">
-                    <a href={`/hospital/episodes/view?id=${r.id}`} title="Open the bill" className="mr-2 inline-flex text-neutral-500 hover:text-neutral-900"><Eye size={15} /></a>
+                    {compact
+                      ? <a href={`/hospital/episodes/view?id=${r.id}`} title="Open the bill" className="mr-2 inline-flex text-neutral-500 hover:text-neutral-900"><Eye size={15} /></a>
+                      : <button type="button" title="View bill and print receipt" onClick={() => setViewing(r.id)} className="mr-2 inline-flex text-neutral-500 hover:text-neutral-900"><Eye size={15} /></button>}
                     <button type="button" title="Edit discount" onClick={() => setEditing(r)} className="inline-flex text-neutral-500 hover:text-neutral-900"><Pencil size={15} /></button>
                   </td>
                 </tr>
@@ -82,6 +86,7 @@ export function EpisodeBillsPanel({ defaultStatus = "all", compact = false }: { 
         </div>
       )}
       {editing && <BillEditModal bill={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
+      {viewing && <ReceiptModal episodeId={viewing} readOnly onClose={() => setViewing(null)} onChanged={() => {}} />}
     </div>
   );
 }

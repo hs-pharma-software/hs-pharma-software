@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Plus, Pencil, ListPlus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -10,11 +11,13 @@ import { isTauri } from "@/lib/platform";
 import { listImagingStudies, saveImagingStudy, importStandardImagingStudies, setImagingFee, setImagingActive } from "@/lib/repo/radiology";
 import { MODALITIES, STANDARD_IMAGING_STUDIES } from "@/config/radiologyCatalog";
 import type { HospitalService } from "@/lib/types-hospital";
+import { useAuthStore } from "@/store/authStore";
 
 /** Performing Images: the radiology studies this hospital performs, with
  * modality, reporting time and fee. Doctors and the radiology counter order
  * from this list, and each order's fee comes from it. */
 export default function PerformingImagesPage() {
+  const hospital = useAuthStore((s) => s.currentTenant?.businessType) === "hospital";
   const [rows, setRows] = useState<HospitalService[]>([]);
   const [search, setSearch] = useState("");
   const [modality, setModality] = useState("");
@@ -45,7 +48,7 @@ export default function PerformingImagesPage() {
       const r = await importStandardImagingStudies((done, total) => setImporting(`Adding ${done} of ${total}…`));
       await reload();
       if (r.added) setShow("no_fee");
-      if (fromButton) window.alert(r.added ? `${r.added} studies added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Enter the fee of each study you perform.` : "All standard studies are already in your list.");
+      if (fromButton) window.alert(r.added ? `${r.added} studies added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. ${hospital ? "Set rates in Service Master." : "Enter the fee of each study you perform."}` : "All standard studies are already in your list.");
     } catch (e) {
       window.alert(`Could not add the standard studies: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -125,7 +128,9 @@ export default function PerformingImagesPage() {
             <thead>
               <tr className="border-b border-neutral-100 bg-neutral-50/80 text-left text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
                 <th className="px-3 py-2.5">Code</th><th className="px-3 py-2.5">Study</th><th className="px-3 py-2.5">Modality</th>
-                <th className="px-3 py-2.5">Reporting time</th><th className="px-3 py-2.5">Fee (Rs)</th><th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5" />
+                <th className="px-3 py-2.5">Reporting time</th><th className="px-3 py-2.5">Fee (Rs)</th>
+                {hospital && <><th className="px-3 py-2.5">Ordering doctor share (Rs)</th><th className="px-3 py-2.5">Performing doctor share (Rs)</th></>}
+                <th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -135,7 +140,7 @@ export default function PerformingImagesPage() {
                   <td className="px-3 py-2 font-medium">{r.name}</td>
                   <td className="px-3 py-2 text-neutral-600">{r.modality ?? "—"}</td>
                   <td className="px-3 py-2 text-neutral-600">{r.turnaround_hours != null ? `${r.turnaround_hours} h` : "—"}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2">{hospital ? <span className="tabular-nums">{Number(r.rate).toFixed(2)}</span> : (
                     <input
                       key={`${r.id}-${r.rate}`}
                       type="number" min="0" step="any" defaultValue={Number(r.rate) > 0 ? String(r.rate) : ""} placeholder="Set fee"
@@ -144,7 +149,11 @@ export default function PerformingImagesPage() {
                       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                       className={`w-24 rounded-lg border px-2 py-1 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-black/[0.06] ${Number(r.rate) > 0 ? "border-neutral-200" : "border-amber-300 bg-amber-50"}`}
                     />
-                  </td>
+                  )}</td>
+                  {hospital && <>
+                    <td className="px-3 py-2 tabular-nums">{r.ordering_doctor_share == null ? "—" : Number(r.ordering_doctor_share).toFixed(2)}</td>
+                    <td className="px-3 py-2 tabular-nums">{r.doctor_share == null ? "—" : Number(r.doctor_share).toFixed(2)}</td>
+                  </>}
                   <td className="px-3 py-2">
                     <button type="button" onClick={() => void toggle(r)} title={r.is_active ? "Stop performing" : "Start performing"}
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.is_active ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>
@@ -156,28 +165,28 @@ export default function PerformingImagesPage() {
                   </td>
                 </tr>
               ))}
-              {shown.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-neutral-400">No study matches.</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={hospital ? 9 : 7} className="px-3 py-8 text-center text-neutral-400">No study matches.</td></tr>}
             </tbody>
           </table>
         </div>
       )}
-      <p className="mt-2 text-xs text-neutral-400">Entering a fee starts performing the study. Doctors and the radiology counter can only order studies that are performed.</p>
+      <p className="mt-2 text-xs text-neutral-400">{hospital ? <>Set rates and doctor shares in <Link href="/hospital/services" className="underline">Service Master</Link>. </> : "Entering a fee starts performing the study. "}Doctors and the radiology counter can only order studies that are performed.</p>
 
       {editing !== null && (
-        <StudyModal study={editing === "new" ? null : editing} modalities={modalities} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />
+        <StudyModal study={editing === "new" ? null : editing} modalities={modalities} hospital={hospital} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />
       )}
     </div>
   );
 }
 
-function StudyModal({ study, modalities, onClose, onSaved }: { study: HospitalService | null; modalities: string[]; onClose: () => void; onSaved: () => void }) {
+function StudyModal({ study, modalities, hospital, onClose, onSaved }: { study: HospitalService | null; modalities: string[]; hospital: boolean; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(study?.name ?? "");
   const [code, setCode] = useState(study?.code ?? "");
   const [modality, setModality] = useState(study?.modality ?? "");
   const [tat, setTat] = useState(study?.turnaround_hours != null ? String(study.turnaround_hours) : "");
   const [fee, setFee] = useState(study && Number(study.rate) > 0 ? String(study.rate) : "");
   const [notes, setNotes] = useState(study?.notes ?? "");
-  const [active, setActive] = useState(study ? Boolean(study.is_active) : true);
+  const [active, setActive] = useState(study ? Boolean(study.is_active) : !hospital);
   const [saving, setSaving] = useState(false);
 
   async function save(e: React.FormEvent) {
@@ -186,7 +195,7 @@ function StudyModal({ study, modalities, onClose, onSaved }: { study: HospitalSe
     setSaving(true);
     try {
       await saveImagingStudy(study?.id ?? null, {
-        name, code, modality: modality || null, turnaround_hours: tat === "" ? null : Number(tat), rate: Number(fee) || 0, notes, is_active: active ? 1 : 0,
+        name, code, modality: modality || null, turnaround_hours: tat === "" ? null : Number(tat), ...(!hospital ? { rate: Number(fee) || 0 } : {}), notes, is_active: active ? 1 : 0,
       });
       onSaved();
     } catch (err) {
@@ -209,7 +218,7 @@ function StudyModal({ study, modalities, onClose, onSaved }: { study: HospitalSe
             </Select>
           </Field>
           <Field label="Reporting time (hours)"><Input type="number" min="0" step="any" value={tat} onChange={(e) => setTat(e.target.value)} placeholder="e.g. 2" /></Field>
-          <Field label="Fee (Rs)"><Input type="number" min="0" step="any" value={fee} onChange={(e) => { setFee(e.target.value); if (Number(e.target.value) > 0) setActive(true); }} placeholder="Not set" /></Field>
+          {!hospital && <Field label="Fee (Rs)"><Input type="number" min="0" step="any" value={fee} onChange={(e) => { setFee(e.target.value); if (Number(e.target.value) > 0) setActive(true); }} placeholder="Not set" /></Field>}
           <Field label="Status">
             <Select value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
               <option value="1">Performing</option>
@@ -220,7 +229,7 @@ function StudyModal({ study, modalities, onClose, onSaved }: { study: HospitalSe
             <Field label="Notes"><Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. with contrast, fasting needed" /></Field>
           </div>
         </div>
-        {active && !(Number(fee) > 0) && <p className="text-xs text-amber-700">No fee: this study will be ordered free of charge.</p>}
+        {active && !(Number(hospital ? study?.rate : fee) > 0) && <p className="text-xs text-amber-700">No fee: this study will be ordered free of charge.{hospital ? " Set its rate in Service Master." : ""}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>

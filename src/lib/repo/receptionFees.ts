@@ -56,8 +56,8 @@ export interface RecentReceiptRow {
   receivedAt: string | null;
 }
 
-/** Recent bills for the reception reprint window. */
-export async function recentReceiptsFor(search = "", limit = 100): Promise<RecentReceiptRow[]> {
+/** Paid visits for receipt reprints; pass null to include all matching visits. */
+export async function recentReceiptsFor(search = "", limit: number | null = 100): Promise<RecentReceiptRow[]> {
   const tenantId = requireCurrentTenantId();
   const term = search.trim();
   const mr = mrSearchSql("p", term);
@@ -75,8 +75,8 @@ export async function recentReceiptsFor(search = "", limit = 100): Promise<Recen
        AND EXISTS (SELECT 1 FROM hospital_payments py WHERE py.episode_id=e.id AND py.tenant_id=? AND py.deleted_at IS NULL)
        ${searchClause}
      ORDER BY received_at DESC, e.id DESC
-     LIMIT ?`,
-    [tenantId, tenantId, ...searchParams, limit]
+     ${limit === null ? "" : "LIMIT ?"}`,
+    [tenantId, tenantId, ...searchParams, ...(limit === null ? [] : [limit])]
   );
   return rows.map((r) => ({
     episodeId: String(r.episode_id),

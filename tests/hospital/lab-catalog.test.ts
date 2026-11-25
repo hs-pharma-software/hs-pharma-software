@@ -5,8 +5,9 @@ import assert from "node:assert/strict";
 import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
-import { hospitalPatientsRepo, nextMrNo, listChargesForEpisode } from "@/lib/repo/hospital";
+import { hospitalPatientsRepo, hospitalServicesRepo, nextMrNo, listChargesForEpisode } from "@/lib/repo/hospital";
 import { importStandardLabTests, listLabTests, saveLabTest, setLabTestFee, setLabTestActive, orderLabTests } from "@/lib/repo/hospitalOpd";
+import { saveImagingStudy } from "@/lib/repo/radiology";
 import { STANDARD_LAB_TESTS, SAMPLE_TYPES, LAB_SECTIONS } from "@/config/labTestCatalog";
 
 function login() {
@@ -80,4 +81,20 @@ test("entering a fee starts performing the test, and it is then ordered and bill
   await setLabTestActive(fbs.id, false);
   assert.ok(!(await listLabTests()).some((t) => t.id === fbs.id));
   await assert.rejects(setLabTestFee(fbs.id, -5), /cannot be negative/);
+});
+
+test("editing clinical test details without a rate preserves the latest Service Master rate and shares", async () => {
+  const lab = await saveLabTest(null, { name: "CBC", rate: 100 });
+  const imaging = await saveImagingStudy(null, { name: "X-Ray", rate: 200 });
+  for (const service of [lab, imaging]) {
+    await hospitalServicesRepo.update(service.id, { rate: 500, doctor_share: 100, ordering_doctor_share: 50 });
+  }
+  const savedLab = await saveLabTest(lab.id, { name: lab.name, ref_range: "Updated" });
+  const savedImaging = await saveImagingStudy(imaging.id, { name: imaging.name, modality: "XR" });
+  for (const saved of [savedLab, savedImaging]) {
+    assert.deepEqual([saved.rate, saved.doctor_share, saved.ordering_doctor_share], [500, 100, 50]);
+    const stored = await hospitalServicesRepo.get(saved.id);
+    assert.ok(stored);
+    assert.deepEqual([stored.rate, stored.doctor_share, stored.ordering_doctor_share], [500, 100, 50]);
+  }
 });

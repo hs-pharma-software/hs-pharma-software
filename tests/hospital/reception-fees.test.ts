@@ -110,6 +110,7 @@ test("recent receipt search finds paid visits by patient, phone, MR and episode 
   await addPayment({ tenant_id: "", episode_id: newer.episode.id, type: "payment", amount: 1, method: "cash", reference: null, notes: null, received_at: "9999-12-31T23:59:59" });
 
   assert.equal((await recentReceiptsFor("", 1))[0].episodeId, newer.episode.id);
+  assert.deepEqual((await recentReceiptsFor("", null)).map((r) => r.episodeId), [newer.episode.id, s.episode.id]);
   for (const term of ["bilal", "03001234567", s.patient.mr_no, s.episode.episode_no]) {
     const matches = await recentReceiptsFor(term, 1);
     assert.equal(matches.length, 1, `search for ${term}`);

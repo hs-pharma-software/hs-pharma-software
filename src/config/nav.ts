@@ -593,25 +593,16 @@ const HOSPITAL_NAV: NavItem[] = [
     ],
   },
   { label: "Patient", href: "/hospital/patients", icon: UserRoundPlus, moduleKey: "hospital_patients", onlyFor: ["hospital", "radiology_center"] },
+  { label: "Episodes", href: "/hospital/episodes", icon: ClipboardList, moduleKey: "hospital_episodes", onlyFor: ["hospital"] },
   {
-    label: "Episodes & Billing",
-    href: "/hospital/episodes",
-    icon: ClipboardList,
-    moduleKey: "hospital_episodes",
+    label: "Billing",
+    href: "/hospital/billing",
+    icon: Receipt,
+    moduleKey: "invoices",
     onlyFor: ["hospital"],
     children: [
-      { label: "Episodes", href: "/hospital/episodes" },
-      // Billing: the episodes' bills, and the invoices (surgery invoices) for hospitals.
-      // No separate top-level Invoices tab, and no pharmacy-style returns / memorized invoices.
-      {
-        label: "Billing",
-        href: "/hospital/billing",
-        moduleKey: "invoices",
-        children: [
-          { label: "Episode Bills", href: "/hospital/billing" },
-          { label: "Invoices", href: "/invoices" },
-        ],
-      },
+      { label: "Episode Bills", href: "/hospital/billing" },
+      { label: "Invoices", href: "/invoices" },
     ],
   },
   { label: "Departments", href: "/hospital/departments", icon: Building2, moduleKey: "hospital_departments", onlyFor: ["hospital"] },

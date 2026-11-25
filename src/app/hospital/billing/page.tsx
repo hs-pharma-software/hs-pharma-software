@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EpisodeBillsPanel } from "@/components/hospital/EpisodeBills";
 
-/** Episodes & Billing > Billing: every episode's bill, with Edit for its discount. */
+/** Billing: every episode's bill, with Edit for its discount. */
 export default function HospitalBillingPage() {
   return (
     <div>

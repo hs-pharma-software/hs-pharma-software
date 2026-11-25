@@ -456,7 +456,7 @@ export interface LabTestInput {
   unit?: string | null;
   ref_range?: string | null;
   turnaround_hours?: number | null;
-  rate: number;
+  rate?: number;
   is_active?: number;
   department?: string | null;
 }
@@ -485,7 +485,7 @@ async function nextLabCode(): Promise<string> {
 export async function saveLabTest(id: string | null, t: LabTestInput): Promise<HospitalService> {
   const name = t.name?.trim();
   if (!name) throw new Error("Enter the test name.");
-  if (!(Number(t.rate) >= 0)) throw new Error("The fee cannot be negative.");
+  if (t.rate !== undefined && !(Number(t.rate) >= 0)) throw new Error("The fee cannot be negative.");
   if (t.turnaround_hours != null && !(Number(t.turnaround_hours) >= 0)) throw new Error("Turnaround time cannot be negative.");
   const clash = await dbSelect<{ id: string }>(
     `SELECT id FROM hospital_services WHERE tenant_id = ? AND category = 'lab' AND deleted_at IS NULL AND LOWER(TRIM(name)) = LOWER(?) AND id != ?`,
@@ -500,7 +500,7 @@ export async function saveLabTest(id: string | null, t: LabTestInput): Promise<H
     department: t.department?.trim() || existing?.department || "Laboratory",
     category: "lab",
     billing_unit: "test",
-    rate: Number(t.rate) || 0,
+    ...(t.rate !== undefined ? { rate: Number(t.rate) } : !id ? { rate: 0 } : {}),
     is_active: t.is_active ?? existing?.is_active ?? 1,
     sample_type: t.sample_type?.trim() || null,
     unit: t.unit?.trim() || null,

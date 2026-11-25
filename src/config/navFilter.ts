@@ -33,6 +33,7 @@ export const HOSPITAL_NAV_ORDER = [
   "hospital_profile",
   "hospital_patients",
   "hospital_episodes",
+  "invoices",
   "hospital_departments",
   "hospital_lab",
   "hospital_blood_bank",
@@ -121,10 +122,12 @@ export function visibleNavFor(
     .map((c) => (c.children ? { ...c, children: forThisType(c.children) } : c));
   const items: NavItem[] = [];
   for (const entry of NAV) {
+    if (typeId === "hospital" && entry.moduleKey === "invoices" && !entry.onlyFor) continue;
     if (!integrated(entry)) continue;
     const item = entry.children ? { ...entry, children: forThisType(entry.children) } : entry;
     if (item.onlyFor) {
       if (!item.onlyFor.includes(typeId)) continue;
+      if (typeId === "hospital" && item.moduleKey === "invoices" && !inPlan("invoices")) continue;
       if (ownSectionsGated(typeId, allowedModules) && !allowedModules!.includes(item.moduleKey)) continue;
     } else {
       if (!moduleAllowedForType(typeId, item.moduleKey)) continue;

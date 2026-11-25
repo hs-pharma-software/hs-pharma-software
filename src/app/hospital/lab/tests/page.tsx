@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Plus, Pencil, ListPlus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
-import { listLabTests, saveLabTest, importStandardLabTests, setLabTestFee, setLabTestActive } from "@/lib/repo/hospitalOpd";
+import { listLabTests, saveLabTest, importStandardLabTests, setLabTestActive } from "@/lib/repo/hospitalOpd";
 import { SAMPLE_TYPES, LAB_SECTIONS, STANDARD_LAB_TESTS } from "@/config/labTestCatalog";
 import type { HospitalService } from "@/lib/types-hospital";
 
@@ -45,7 +46,7 @@ export default function PerformingTestsPage() {
       const r = await importStandardLabTests((done, total) => setImporting(`Adding ${done} of ${total}…`));
       await reload();
       if (r.added) setShow("no_fee");
-      if (fromButton) window.alert(r.added ? `${r.added} tests added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Enter the fee of each test you perform.` : "All standard tests are already in your list.");
+      if (fromButton) window.alert(r.added ? `${r.added} tests added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Set their rates in Service Master.` : "All standard tests are already in your list.");
     } catch (e) {
       window.alert(`Could not add the standard tests: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -56,17 +57,6 @@ export default function PerformingTestsPage() {
   async function addStandard() {
     if (!window.confirm(`Add any of the ${STANDARD_LAB_TESTS.length} standard lab tests that are missing from your list? Tests already in your list are kept as they are.`)) return;
     await loadStandard(true);
-  }
-
-  async function saveFee(t: HospitalService, value: string) {
-    const fee = Number(value);
-    if (value.trim() === "" || fee === Number(t.rate)) return;
-    try {
-      const updated = await setLabTestFee(t.id, fee);
-      setRows((rs) => rs.map((r) => (r.id === t.id ? updated : r)));
-    } catch (e) {
-      window.alert(`Could not save the fee: ${e instanceof Error ? e.message : String(e)}`);
-    }
   }
 
   async function toggle(t: HospitalService) {
@@ -126,6 +116,7 @@ export default function PerformingTestsPage() {
               <tr className="border-b border-neutral-100 bg-neutral-50/80 text-left text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
                 <th className="px-3 py-2.5">Code</th><th className="px-3 py-2.5">Test</th><th className="px-3 py-2.5">Section</th><th className="px-3 py-2.5">Sample</th>
                 <th className="px-3 py-2.5">Unit</th><th className="px-3 py-2.5">Normal range</th><th className="px-3 py-2.5">TAT</th><th className="px-3 py-2.5">Fee (Rs)</th>
+                <th className="px-3 py-2.5">Ordering doctor share (Rs)</th><th className="px-3 py-2.5">Performing doctor share (Rs)</th>
                 <th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5" />
               </tr>
             </thead>
@@ -139,16 +130,9 @@ export default function PerformingTestsPage() {
                   <td className="px-3 py-2 text-neutral-600">{r.unit ?? "—"}</td>
                   <td className="max-w-[18rem] whitespace-normal px-3 py-2 text-xs text-neutral-600">{r.ref_range ?? "—"}</td>
                   <td className="px-3 py-2 text-neutral-600">{r.turnaround_hours != null ? `${r.turnaround_hours} h` : "—"}</td>
-                  <td className="px-3 py-2">
-                    <input
-                      key={`${r.id}-${r.rate}`}
-                      type="number" min="0" step="any" defaultValue={Number(r.rate) > 0 ? String(r.rate) : ""} placeholder="Set fee"
-                      aria-label={`Fee for ${r.name}`}
-                      onBlur={(e) => void saveFee(r, e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                      className={`w-24 rounded-lg border px-2 py-1 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-black/[0.06] ${Number(r.rate) > 0 ? "border-neutral-200" : "border-amber-300 bg-amber-50"}`}
-                    />
-                  </td>
+                  <td className="px-3 py-2 tabular-nums">{Number(r.rate).toFixed(2)}</td>
+                  <td className="px-3 py-2 tabular-nums">{r.ordering_doctor_share == null ? "—" : Number(r.ordering_doctor_share).toFixed(2)}</td>
+                  <td className="px-3 py-2 tabular-nums">{r.doctor_share == null ? "—" : Number(r.doctor_share).toFixed(2)}</td>
                   <td className="px-3 py-2">
                     <button type="button" onClick={() => void toggle(r)} title={r.is_active ? "Stop performing" : "Start performing"}
                       className={`rounded-full px-2 py-0.5 text-xs font-medium ${r.is_active ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>
@@ -160,12 +144,12 @@ export default function PerformingTestsPage() {
                   </td>
                 </tr>
               ))}
-              {shown.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-neutral-400">No test matches.</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-neutral-400">No test matches.</td></tr>}
             </tbody>
           </table>
         </div>
       )}
-      <p className="mt-2 text-xs text-neutral-400">Normal ranges are typical adult values. Check them against your analyser and kit inserts and edit any test as needed. Entering a fee starts performing the test.</p>
+      <p className="mt-2 text-xs text-neutral-400">Set rates and doctor shares in <Link href="/hospital/services" className="underline">Service Master</Link>. Check normal ranges against your analyser and kit inserts.</p>
 
       {editing !== null && (
         <LabTestModal test={editing === "new" ? null : editing} sections={sections} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />
@@ -182,8 +166,7 @@ function LabTestModal({ test, sections, onClose, onSaved }: { test: HospitalServ
   const [unit, setUnit] = useState(test?.unit ?? "");
   const [range, setRange] = useState(test?.ref_range ?? "");
   const [tat, setTat] = useState(test?.turnaround_hours != null ? String(test.turnaround_hours) : "");
-  const [fee, setFee] = useState(test && Number(test.rate) > 0 ? String(test.rate) : "");
-  const [active, setActive] = useState(test ? Boolean(test.is_active) : true);
+  const [active, setActive] = useState(test ? Boolean(test.is_active) : false);
   const [saving, setSaving] = useState(false);
 
   async function save(e: React.FormEvent) {
@@ -193,7 +176,7 @@ function LabTestModal({ test, sections, onClose, onSaved }: { test: HospitalServ
     try {
       await saveLabTest(test?.id ?? null, {
         name, code, department: section || null, sample_type: sample, unit, ref_range: range,
-        turnaround_hours: tat === "" ? null : Number(tat), rate: Number(fee) || 0, is_active: active ? 1 : 0,
+        turnaround_hours: tat === "" ? null : Number(tat), is_active: active ? 1 : 0,
       });
       onSaved();
     } catch (err) {
@@ -227,7 +210,6 @@ function LabTestModal({ test, sections, onClose, onSaved }: { test: HospitalServ
           <div className="md:col-span-2">
             <Field label="Normal range"><Input value={range} onChange={(e) => setRange(e.target.value)} placeholder="e.g. M 13.0-17.0; F 12.0-15.0" /></Field>
           </div>
-          <Field label="Fee (Rs)"><Input type="number" min="0" step="any" value={fee} onChange={(e) => { setFee(e.target.value); if (Number(e.target.value) > 0) setActive(true); }} placeholder="Not set" /></Field>
           <Field label="Status">
             <Select value={active ? "1" : "0"} onChange={(e) => setActive(e.target.value === "1")}>
               <option value="1">Performing</option>
@@ -235,7 +217,7 @@ function LabTestModal({ test, sections, onClose, onSaved }: { test: HospitalServ
             </Select>
           </Field>
         </div>
-        {active && !(Number(fee) > 0) && <p className="text-xs text-amber-700">No fee: this test will be ordered free of charge.</p>}
+        {active && !(Number(test?.rate) > 0) && <p className="text-xs text-amber-700">No fee: this test will be ordered free of charge. Set its rate in Service Master.</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>

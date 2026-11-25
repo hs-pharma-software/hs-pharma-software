@@ -15,15 +15,14 @@ const find = (n: NavItem[], label: string) => n.find((i) => i.label === label);
 
 test("hospital sidebar: the tabs in the requested order (Reception and Doctor Desk after Dashboard)", () => {
   assert.deepEqual(top(nav()), [
-    "Dashboard", "Reception", "My Cash", "Doctor Desk", "Hospital", "Patient", "Episodes & Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Medicines", "Pharmacy Department", "Infection Control", "Quality & Safety", "Facility", "Service Master", "Finance", "Purchase Cell", "Store", "Indent Book", "HR Department", "User Logins",
+    "Dashboard", "Reception", "My Cash", "Doctor Desk", "Hospital", "Patient", "Episodes", "Billing", "Departments", "Labs", "Blood Bank", "Radiology", "Surgery", "Medicines", "Pharmacy Department", "Infection Control", "Quality & Safety", "Facility", "Service Master", "Finance", "Purchase Cell", "Store", "Indent Book", "HR Department", "User Logins",
   ]);
 });
 
-test("Episodes & Billing holds Episodes and Billing; Invoices is reachable through Billing, not top level", () => {
+test("Episodes and Billing are separate; Invoices is reachable through Billing", () => {
   const n = nav();
-  assert.deepEqual(kids(find(n, "Episodes & Billing")), ["Episodes", "Billing"]);
-  const billing = find(n, "Episodes & Billing")!.children!.find((c) => c.label === "Billing")!;
-  // Episode bills first; no pharmacy-style returns or memorized invoices for a hospital.
+  assert.equal(find(n, "Episodes")!.href, "/hospital/episodes");
+  const billing = find(n, "Billing")!;
   assert.equal(billing.href, "/hospital/billing");
   assert.deepEqual((billing.children ?? []).map((c) => c.href), ["/hospital/billing", "/invoices"]);
   assert.ok(!top(n).includes("Invoices"));
@@ -88,14 +87,18 @@ test("permissions: a group key grants all its sub-tabs; a child key grants just 
   assert.deepEqual(top(nav(null, [])), []);
   assert.deepEqual(top(nav(null, ["hospital_patients", "hospital_hr"])), ["Patient", "HR Department"]);
   // Billing needs the invoices key (or the Episodes & Billing group key).
-  assert.deepEqual(kids(find(nav(null, ["hospital_episodes"]), "Episodes & Billing")), ["Episodes", "Billing"]);
-  assert.deepEqual(kids(find(nav(null, ["invoices"]), "Episodes & Billing")), ["Billing"]);
+  assert.ok(find(nav(null, ["hospital_episodes"]), "Episodes"));
+  assert.equal(find(nav(null, ["hospital_episodes"]), "Billing"), undefined);
+  assert.ok(find(nav(null, ["invoices"]), "Billing"));
+  assert.equal(find(nav(null, ["invoices"]), "Episodes"), undefined);
+  assert.equal(hasPermission(["hospital_episodes"], "invoices"), false);
 });
 
 test("the subscription plan still limits the shared sub-tabs, not the hospital's own tabs", () => {
   const n = nav(["products", "banks"]);
   assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Indent Books", "Products", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
   assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records", "Duty Roster", "Trainees"], "shared Staff is not in this plan; the hospital's own HR tabs are");
+  assert.equal(find(n, "Billing"), undefined, "billing still requires Invoices in the plan");
   assert.ok(find(n, "Patient") && find(n, "Labs"), "hospital sections are not plan-limited");
 });
 
@@ -103,7 +106,7 @@ test("other business types do not get the hospital menu and keep Invoices / Staf
   for (const t of ["retail_pharmacy", "hospital_pharmacy", "general_store"]) {
     const l = visibleNavFor(t, null, null).map((i) => i.label);
     assert.ok(l.includes("Invoices") && l.includes("Staff"), t);
-    for (const h of ["Purchase Cell", "HR Department", "Episodes & Billing", "Labs"]) assert.ok(!l.includes(h), `${t} has no ${h}`);
+    for (const h of ["Purchase Cell", "HR Department", "Episodes", "Billing", "Labs"]) assert.ok(!l.includes(h), `${t} has no ${h}`);
   }
 });
 
