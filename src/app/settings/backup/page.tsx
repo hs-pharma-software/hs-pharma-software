@@ -31,7 +31,7 @@ export default function BackupPage() {
       <PageHeader
         title="Backup Details"
         actions={
-          <Button variant="primary" onClick={() => void handleBackup()} disabled={!tauriReady || busy}>
+          <Button loading={busy} variant="primary" onClick={() => void handleBackup()} disabled={!tauriReady || busy}>
             {busy ? "Backing up..." : "Create Local Backup"}
           </Button>
         }

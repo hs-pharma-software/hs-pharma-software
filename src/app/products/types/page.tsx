@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { addClothType, clothTypeCounts, deleteClothType, loadClothTypes, renameClothType } from "@/lib/cloth";
+import { FormError } from "@/components/ui/FormError";
 
 /** Cloth store: the product types (Shalwar Kameez, Kurta, ...) offered on
  * the product form. Renaming a type renames it on its products too. */
@@ -50,7 +51,7 @@ export default function ProductTypesPage() {
           <Input id="pt-add" value={adding} onChange={(e) => setAdding(e.target.value)} placeholder="New type, e.g. Waistcoat" />
           <Button type="submit" variant="primary" disabled={!adding.trim()}><Plus size={14} />Add</Button>
         </form>
-        {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+        <FormError message={error} className="mb-2" />
         <ul className="divide-y divide-neutral-100 rounded-xl border border-neutral-200">
           {types.length === 0 && <li className="px-3 py-3 text-sm text-neutral-500">No types yet. Add the first one above.</li>}
           {types.map((t) => {

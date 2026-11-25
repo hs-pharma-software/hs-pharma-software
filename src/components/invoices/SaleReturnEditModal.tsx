@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { editSaleReturn, invoicesRepo, listItemsForInvoice, type InvoiceItemWithProduct } from "@/lib/repo/invoices";
 import type { Invoice } from "@/lib/types2";
+import { FormError } from "@/components/ui/FormError";
 
 /** Changes a sale return: date, paid back, description, quantities returned. */
 export function SaleReturnEditModal({ returnId, onClose, onSaved }: { returnId: string; onClose: () => void; onSaved: () => void }) {
@@ -79,7 +80,7 @@ export function SaleReturnEditModal({ returnId, onClose, onSaved }: { returnId: 
           </div>
           <Field label="Description"><Input id="sre-desc" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
           <p className="text-xs text-neutral-500">Stock follows the change: a larger quantity goes back into stock, a smaller one comes out again. 0 removes the line.</p>
-          {error && <p className="whitespace-pre-line text-sm text-rose-600">{error}</p>}
+          <FormError message={error} />
           <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
             <Button onClick={onClose}>Cancel</Button>
             <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>

@@ -10,6 +10,7 @@ import { LabReportTemplatesCard } from "@/components/clinic/LabReportTemplatesCa
 import { isTauri } from "@/lib/platform";
 import { useAuthStore } from "@/store/authStore";
 import { EMPTY_CLINIC_PROFILE, loadClinicProfile, saveClinicProfile, type ClinicProfile } from "@/lib/clinicProfile";
+import { notify } from "@/lib/notify";
 
 /** The lab's details on its reports (name, address, contact, PHC
  * registration, NTN) and the report's paper and layout. Bills, FBR and the
@@ -36,7 +37,7 @@ export default function LabProfilePage() {
       setP(await saveClinicProfile(p));
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

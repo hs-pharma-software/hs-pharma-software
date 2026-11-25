@@ -10,6 +10,7 @@ import { localDateTime } from "@/lib/localDate";
 import { visitReceiptFor, collectVisitFees, type FeeScope, type ScopedReceipt } from "@/lib/repo/receptionFees";
 import type { PaymentMethod } from "@/lib/types-hospital";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
+import { notify } from "@/lib/notify";
 
 const METHOD: Record<string, string> = { cash: "Cash", card: "Card", online: "QR payment", bank: "Bank transfer" };
 const rs = (n: number) => n.toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -28,7 +29,7 @@ export function ReceiptModal({ episodeId, scope = "all", readOnly = false, onClo
   // At the radiology counter the receipt shows this time's studies only; the whole visit on request.
   const [current, setCurrent] = useState(scope === "imaging");
 
-  const load = () => visitReceiptFor(episodeId, scope, { current }).then(setR).catch((e) => window.alert(`Could not load the receipt: ${e instanceof Error ? e.message : String(e)}`));
+  const load = () => visitReceiptFor(episodeId, scope, { current }).then(setR).catch((e) => notify(`Could not load the receipt: ${e instanceof Error ? e.message : String(e)}`));
   useEffect(() => { void load(); }, [episodeId, scope, current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function collect() {
@@ -40,7 +41,7 @@ export function ReceiptModal({ episodeId, scope = "all", readOnly = false, onClo
       await load();
       onChanged();
     } catch (e) {
-      window.alert(`Could not take the payment: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not take the payment: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -50,7 +51,7 @@ export function ReceiptModal({ episodeId, scope = "all", readOnly = false, onClo
     try {
       await printDirect("a5", areaRef.current);
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

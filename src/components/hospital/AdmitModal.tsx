@@ -12,6 +12,7 @@ import { parseBreakdown, EMPTY_BREAKDOWN } from "@/config/surgeryCharges";
 import { SurgeryChargesFields, draftFrom, draftToBreakdown, draftTotal, type ChargeDraft } from "@/components/hospital/SurgeryChargesFields";
 import type { HospitalEpisode } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
+import { notify } from "@/lib/notify";
 
 /** Admit the patient of an OPD or emergency visit to a department, as IPD or
  * for surgery. The admission then waits for that department's Head Nurse
@@ -51,7 +52,7 @@ export function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpis
       });
       onDone();
     } catch (e) {
-      window.alert(`Could not admit: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not admit: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

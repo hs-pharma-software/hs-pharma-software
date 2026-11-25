@@ -8,6 +8,7 @@ import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { listCollections, totalsOf, METHOD_LABEL, type PaymentRow } from "@/lib/repo/cashClosing";
 import { rs } from "@/components/hospital/finance/CloseDay";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -22,7 +23,7 @@ export default function CollectionsPage() {
   const [all, setAll] = useState<PaymentRow[]>([]);
   useEffect(() => {
     if (!isTauri()) return;
-    void listCollections({ from, to }).then(setAll).catch((e) => window.alert(e instanceof Error ? e.message : String(e)));
+    void listCollections({ from, to }).then(setAll).catch((e) => notify(e instanceof Error ? e.message : String(e)));
   }, [from, to]);
   const receivers = useMemo(() => [...new Map(all.map((r) => [r.received_by ?? "__none", r.received_by_name ?? "Not recorded"])).entries()], [all]);
   const rows = all.filter((r) => (!receiver || (r.received_by ?? "__none") === receiver) && (!method || r.method === method));

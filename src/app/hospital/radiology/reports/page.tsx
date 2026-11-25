@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { searchRadiologyReports, getRadiologyReport, type RadiologyReport, type RadiologyReportRow } from "@/lib/repo/radiology";
 import { RadiologyReportModal } from "@/components/hospital/RadiologyReportModal";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 const STATUS: Record<string, { label: string; color: string }> = {
   pending: { label: "Awaiting study", color: "bg-amber-100 text-amber-800" },
@@ -39,7 +41,7 @@ export default function RadiologyReportsPage() {
     try {
       setOpen(await getRadiologyReport(id));
     } catch (e) {
-      window.alert(`Could not open the report: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not open the report: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -52,7 +54,7 @@ export default function RadiologyReportsPage() {
           placeholder="Patient name, MR no, phone, invoice / order no (RAD-…) or visit no" className="max-w-xl" />
       </div>
 
-      {error && <p className="mb-3 rounded-xl bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mb-3" />
       {rows === null ? (
         <p className="rounded-2xl bg-white p-8 text-center text-sm text-neutral-400 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">Type at least 2 characters to search.</p>
       ) : rows.length === 0 ? (

@@ -17,6 +17,7 @@ import { NarrativePreview } from "@/components/hospital/radiology/NarrativePrevi
 import { narrativeView, suggestedConclusion } from "@/config/ultrasoundNarrative";
 import { ULTRASOUND_TEMPLATES, isUltrasoundStudy, templateForStudy, ultrasoundTemplate, type UsValues } from "@/config/ultrasoundReports";
 import { localDate } from "@/lib/localDate";
+import { notify } from "@/lib/notify";
 
 type View = "to_report" | "unexamined" | "reported";
 
@@ -67,7 +68,7 @@ export default function ReportingPage() {
   useEffect(() => { if (isTauri()) void dicomIncluded().then(setDicom).catch(() => setDicom(false)); }, []);
 
   async function print(id: string) {
-    try { setPrinting(await getRadiologyReport(id)); } catch (e) { window.alert(errMsg(e)); }
+    try { setPrinting(await getRadiologyReport(id)); } catch (e) { notify(errMsg(e)); }
   }
 
   /** The list carries only what it shows; the full study loads when it is opened. */
@@ -79,7 +80,7 @@ export default function ReportingPage() {
       if (!full) throw new Error("This study is no longer available.");
       setSel(full);
     } catch (e) {
-      window.alert(errMsg(e));
+      notify(errMsg(e));
     } finally {
       setOpening(null);
     }
@@ -199,7 +200,7 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
       writeDraft(order.id, null);
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${errMsg(e)}`);
+      notify(`Could not save: ${errMsg(e)}`);
     } finally {
       setSaving(false);
     }

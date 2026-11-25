@@ -8,6 +8,7 @@ import { fitToA4Page, printDirect } from "@/lib/print";
 import { publicRadiologyReportUrl } from "@/lib/publicUrl";
 import { RadiologyReportSheet } from "@/components/hospital/RadiologyReportSheet";
 import type { RadiologyReport } from "@/lib/repo/radiology";
+import { notify } from "@/lib/notify";
 
 /** A reported radiology study on screen, ready to print. */
 export function RadiologyReportModal({ report: r, onClose }: { report: RadiologyReport; onClose: () => void }) {
@@ -26,7 +27,7 @@ export function RadiologyReportModal({ report: r, onClose }: { report: Radiology
         restore();
       }
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPrinting(false);
     }

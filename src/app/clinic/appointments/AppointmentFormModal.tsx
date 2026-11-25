@@ -10,6 +10,7 @@ import type { AppointmentWithNames } from "@/lib/repo/clinic";
 import type { ClinicPatient, ClinicDoctor } from "@/lib/types-clinic";
 import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
+import { notify } from "@/lib/notify";
 
 export default function AppointmentFormModal({
   appointment,
@@ -76,7 +77,7 @@ export default function AppointmentFormModal({
       await saveAppointment(isEdit && appointment ? appointment.id : null, payload);
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

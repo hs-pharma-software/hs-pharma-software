@@ -18,6 +18,7 @@ import type { HospitalPatient, HospitalService, OrderPriority } from "@/lib/type
 import { Tabs, Panel, StatTile, StatusPill, PriorityPill, FeePill, ageGender, errMsg } from "@/components/hospital/radiology/common";
 import { ReceiptModal } from "@/app/hospital/reception/ReceiptModal";
 import { useAuthStore } from "@/store/authStore";
+import { notify } from "@/lib/notify";
 
 /** A Radiology Centre has no separate hospital reception: this counter takes the fee itself. */
 const useIsCentre = () => useAuthStore((s) => s.currentTenant?.businessType === "radiology_center");
@@ -71,14 +72,14 @@ function Orders() {
   async function load() {
     if (!isTauri()) return;
     setLoading(true);
-    try { setData(await listPortalOrders(f)); } catch (e) { window.alert(errMsg(e)); } finally { setLoading(false); }
+    try { setData(await listPortalOrders(f)); } catch (e) { notify(errMsg(e)); } finally { setLoading(false); }
   }
   useEffect(() => { const t = setTimeout(() => void load(), 250); return () => clearTimeout(t); }, [f]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function cancel(o: PortalOrderRow) {
     const reason = window.prompt(`Cancel ${o.order_no} (${o.modality}) for ${o.patient_name}? Reason:`);
     if (!reason) return;
-    try { await cancelImagingOrder(o.id, reason); await load(); } catch (e) { window.alert(errMsg(e)); }
+    try { await cancelImagingOrder(o.id, reason); await load(); } catch (e) { notify(errMsg(e)); }
   }
 
   const pages = Math.max(1, Math.ceil(data.total / (f.perPage ?? 20)));
@@ -170,7 +171,7 @@ function Worklist() {
       const active = ms.filter((m) => m.status === "active");
       setMachines(active);
       setMachineId((id) => id || active[0]?.id || "");
-    }).catch((e) => window.alert(errMsg(e)));
+    }).catch((e) => notify(errMsg(e)));
   }, []);
   useEffect(() => {
     const m = machines.find((x) => x.id === machineId);
@@ -230,17 +231,17 @@ function CreateOrder({ onCreated }: { onCreated: () => void }) {
   const anyCriterion = Object.values(q).some((v) => v.trim());
 
   async function search() {
-    try { setResults(await searchPatients(q)); } catch (e) { window.alert(errMsg(e)); }
+    try { setResults(await searchPatients(q)); } catch (e) { notify(errMsg(e)); }
   }
   async function save() {
     if (!patient || !studyId) return;
     setSaving(true);
     try {
       const { order } = await orderImaging({ patientId: patient.id, serviceId: studyId, bodyPart, priority, orderedBy, clinicalHistory: history });
-      window.alert(`Order ${order.order_no} placed.${Number(order.fee) > 0 ? ` Fee Rs ${Number(order.fee).toFixed(0)} is on the patient's bill; ${isCentre ? "click Take fee on the order. The patient then joins the machine's queue." : "the patient joins the machine's queue once it is paid."}` : ""}`);
+      notify(`Order ${order.order_no} placed.${Number(order.fee) > 0 ? ` Fee Rs ${Number(order.fee).toFixed(0)} is on the patient's bill; ${isCentre ? "click Take fee on the order. The patient then joins the machine's queue." : "the patient joins the machine's queue once it is paid."}` : ""}`);
       onCreated();
     } catch (e) {
-      window.alert(`Could not place the order: ${errMsg(e)}`);
+      notify(`Could not place the order: ${errMsg(e)}`);
     } finally {
       setSaving(false);
     }

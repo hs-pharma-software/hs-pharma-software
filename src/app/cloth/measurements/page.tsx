@@ -11,6 +11,7 @@ import { MeasurementForm } from "@/components/cloth/MeasurementForm";
 import { isTauri } from "@/lib/platform";
 import { printDirect } from "@/lib/print";
 import { measurementCategory, measurementsRepo, measurementSummary, parseMeasurements, searchMeasurements, type ClothMeasurement } from "@/lib/cloth";
+import { FormError } from "@/components/ui/FormError";
 
 const catLabel = (m: ClothMeasurement) => ({ male: "Male", female: "Female" } as const)[measurementCategory(m) ?? "male"] ?? "";
 
@@ -64,7 +65,7 @@ export default function MeasurementsPage() {
     <div>
       <PageHeader title="Measurements" actions={<Button variant="primary" onClick={() => setEditing("new")}><Plus size={14} />New measurements</Button>} />
       <Input id="ms-search" className="mb-3 max-w-sm" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search by name or mobile…" autoFocus />
-      {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+      <FormError message={error} className="mb-2" />
       <DataTable columns={columns} rows={rows} onRowClick={(m) => setEditing(m)} emptyMessage={term ? "No saved measurements match." : "No measurements saved yet. Save a customer's custom size to use it next time."} />
       {editing && (
         <Modal title={editing === "new" ? "New measurements" : `${editing.customer_name}: ${editing.garment}`} onClose={() => setEditing(null)} width="max-w-2xl">

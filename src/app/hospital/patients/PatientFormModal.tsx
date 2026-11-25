@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/authStore";
 import { ageFromDob } from "@/lib/hospitalMr";
 import { localDate } from "@/lib/localDate";
 import { InsuranceCompanySelect } from "@/components/customers/InsuranceCompanySelect";
+import { FormError } from "@/components/ui/FormError";
 
 interface Props {
   patient: HospitalPatient | null;
@@ -49,6 +50,9 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
   const [nokRelation, setNokRelation] = useState(patient?.next_of_kin_relation ?? "");
   const [notes, setNotes] = useState(patient?.notes ?? "");
   const [saving, setSaving] = useState(false);
+  // Field messages show after the first Save press, then follow the typing.
+  const [tried, setTried] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Without internet this computer gives the MR number when the patient is saved.
   const offline = radiologyOffline();
@@ -64,9 +68,24 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
 
   const hospitalInsurance = useAuthStore((st) => st.currentTenant?.businessType) === "hospital";
 
+  const needsInsurance = hospitalInsurance && !shortForm && insured;
+  const problems = {
+    mr: !offline && !mrNo.trim() ? "Enter the MR number" : null,
+    name: !name.trim() ? "Enter the patient's name" : null,
+    company: needsInsurance && !insCompanyId ? "Choose the insurance company" : null,
+    policy: needsInsurance && !insuranceNo.trim() ? "Enter the policy number" : null,
+  };
+  const show = (k: keyof typeof problems) => (tried ? problems[k] ?? undefined : undefined);
+
   async function save() {
-    if (hospitalInsurance && insured && (!insCompanyId || !insuranceNo.trim())) { window.alert("An insured patient needs the insurance company and the policy number."); return; }
-    if (!name.trim() || (!mrNo.trim() && !offline)) return;
+    setTried(true);
+    setSaveError(null);
+    const first = (Object.keys(problems) as (keyof typeof problems)[]).find((k) => problems[k]);
+    if (first) {
+      // The cursor goes to the first field to fix.
+      document.getElementById(`pt-${first === "company" ? "ins-company" : first}`)?.focus();
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -100,7 +119,7 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         : isEdit ? await hospitalPatientsRepo.update(patient.id, payload) : await hospitalPatientsRepo.create(payload);
       onSaved(saved ?? undefined);
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      setSaveError(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -109,16 +128,16 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
   return (
     <Modal title={isEdit ? "Edit Patient" : "Register Patient"} onClose={onClose}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        <Field label="MR Number *">
-          <Input value={mrNo} onChange={(e) => setMrNo(e.target.value)} required={!offline} readOnly={offline} placeholder={offline ? "Given when saved" : undefined} />
+        <Field label="MR Number" required={!offline} error={show("mr")}>
+          <Input id="pt-mr" value={mrNo} onChange={(e) => setMrNo(e.target.value)} required={!offline} readOnly={offline} placeholder={offline ? "Given when saved" : undefined} aria-invalid={Boolean(show("mr")) || undefined} />
         </Field>
-        <Field label="Full Name *">
-          <Input value={name} onChange={(e) => setName(e.target.value)} required autoFocus={!isEdit} />
+        <Field label="Full Name" required error={show("name")}>
+          <Input id="pt-name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus={!isEdit} aria-invalid={Boolean(show("name")) || undefined} />
         </Field>
         <Field label="Father / Husband Name">
           <Input value={fatherName} onChange={(e) => setFatherName(e.target.value)} />
         </Field>
-        <Field label="Gender *">
+        <Field label="Gender" required>
           <Select value={gender} onChange={(e) => setGender(e.target.value as HospitalPatient["gender"])}>
             <option value="Male">Male</option>
             <option value="Female">Female</option>
@@ -206,8 +225,8 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
           </div>
           {insured && (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="Insurance company *"><InsuranceCompanySelect id="pt-ins-company" value={insCompanyId} onChange={(v, c) => { setInsCompanyId(v); setInsuranceCompany(c?.name ?? ""); }} /></Field>
-              <Field label="Policy number *"><Input value={insuranceNo} onChange={(e) => setInsuranceNo(e.target.value)} /></Field>
+              <Field label="Insurance company" required error={show("company")}><InsuranceCompanySelect id="pt-ins-company" value={insCompanyId} onChange={(v, c) => { setInsCompanyId(v); setInsuranceCompany(c?.name ?? ""); }} /></Field>
+              <Field label="Policy number" required error={show("policy")}><Input id="pt-policy" value={insuranceNo} onChange={(e) => setInsuranceNo(e.target.value)} aria-invalid={Boolean(show("policy")) || undefined} /></Field>
               <Field label="Valid till"><Input type="date" value={validTill} onChange={(e) => setValidTill(e.target.value)} /></Field>
               <Field label="Insured amount per year (Rs)"><Input type="number" min="0" step="any" value={insuredAmount} onChange={(e) => setInsuredAmount(e.target.value)} placeholder="Starts from 0 each policy year" /></Field>
             </div>
@@ -232,9 +251,10 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
+      <FormError message={saveError} className="mb-3" />
+      <div className="form-actions">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>
           {saving ? "Saving…" : isEdit ? "Update" : "Register"}
         </Button>
       </div>

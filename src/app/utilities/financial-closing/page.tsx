@@ -7,6 +7,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { useIsTauri } from "@/lib/platform";
 import { financialClosingsRepo } from "@/lib/repo/financialClosings";
 import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
+import { FormError } from "@/components/ui/FormError";
 
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -81,14 +82,14 @@ export default function FinancialClosingPage() {
             <Field label="Description">
               <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
-            {error && <p className="text-sm text-rose-600">{error}</p>}
+            <FormError message={error} />
             {done && (
               <p className="text-sm text-emerald-700">
                 Financial year closed at {new Date(done).toLocaleString()}. See View Financial Closing for the record.
               </p>
             )}
             <div className="flex justify-end gap-2">
-              <Button variant="danger" onClick={() => void handleClose()} disabled={busy}>
+              <Button loading={busy} variant="danger" onClick={() => void handleClose()} disabled={busy}>
                 {busy ? "Closing..." : "OK"}
               </Button>
             </div>

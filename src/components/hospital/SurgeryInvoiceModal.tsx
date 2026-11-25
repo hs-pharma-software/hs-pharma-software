@@ -8,6 +8,7 @@ import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { getSurgeryInvoice, type SurgeryInvoice } from "@/lib/repo/hospitalCare";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
+import { notify } from "@/lib/notify";
 
 const rs = (n: number) => Number(n).toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
@@ -19,7 +20,7 @@ export function SurgeryInvoiceModal({ invoiceId, onClose, autoPrint = false }: {
 
   useEffect(() => {
     getSurgeryInvoice(invoiceId).then(setInv).catch((e) => {
-      window.alert(`Could not load the invoice: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not load the invoice: ${e instanceof Error ? e.message : String(e)}`);
       onClose();
     });
   }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -28,7 +29,7 @@ export function SurgeryInvoiceModal({ invoiceId, onClose, autoPrint = false }: {
     try {
       await printDirect("a4", areaRef.current);
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

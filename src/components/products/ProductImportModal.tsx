@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { parseCsv, planImport, readImportRows, runImport, type ImportPlan } from "@/lib/productImport";
+import { FormError } from "@/components/ui/FormError";
 
 /** Products > Import CSV: read the file, show what will be added or skipped,
  * then add the products to this business. */
@@ -61,7 +62,7 @@ export function ProductImportModal({ onClose, onDone }: { onClose: () => void; o
           <span className="text-neutral-500">{fileName || "Use the Sample File columns. Name and UOM are required."}</span>
         </div>
 
-        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-rose-700 ring-1 ring-rose-200">{error}</p>}
+        <FormError message={error} />
 
         {plan && !result && (
           <>
@@ -115,7 +116,7 @@ export function ProductImportModal({ onClose, onDone }: { onClose: () => void; o
             {progress && <p className="text-xs text-neutral-500">Adding {progress.done} of {progress.total}...</p>}
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button type="button" onClick={onClose} disabled={busy}>Cancel</Button>
-              <Button type="button" variant="primary" onClick={() => void start()} disabled={busy || plan.add.length === 0}>
+              <Button loading={busy} type="button" variant="primary" onClick={() => void start()} disabled={busy || plan.add.length === 0}>
                 {busy ? "Importing..." : `Import ${plan.add.length} products`}
               </Button>
             </div>

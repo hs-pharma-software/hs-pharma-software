@@ -88,7 +88,7 @@ export function SubCategoryFormModal({
           <Button type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

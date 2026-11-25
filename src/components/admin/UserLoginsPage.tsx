@@ -420,7 +420,7 @@ export function UserLoginsPage({
                 <Button type="button" onClick={() => setEditingPerms(null)}>
                   Cancel
                 </Button>
-                <Button variant="primary" onClick={() => void savePermissions()} disabled={permsSaving}>
+                <Button loading={permsSaving} variant="primary" onClick={() => void savePermissions()} disabled={permsSaving}>
                   {permsSaving ? "Saving..." : "Save"}
                 </Button>
               </div>

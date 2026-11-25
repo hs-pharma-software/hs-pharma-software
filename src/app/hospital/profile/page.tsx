@@ -9,6 +9,7 @@ import { useAuthStore } from "@/store/authStore";
 import { getSetting, setSetting } from "@/lib/repo/settings";
 import { LinkedPharmacyCard } from "@/components/clinic/LinkedPharmacyCard";
 import { PrintTemplatesCard } from "@/components/hospital/PrintTemplatesCard";
+import { notify } from "@/lib/notify";
 
 const KEY = "hospital.profile";
 
@@ -56,7 +57,7 @@ export default function HospitalProfilePage() {
       await setSetting(KEY, JSON.stringify({ ...p, name: p.name.trim() }));
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

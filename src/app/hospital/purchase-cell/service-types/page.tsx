@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { DEFAULT_SERVICE_TYPES, addServiceType, listServiceTypes, removeServiceType, type ServiceType } from "@/lib/repo/vendors";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -44,7 +45,7 @@ export default function ServiceTypesPage() {
             {missing.map((d) => <button key={d} type="button" onClick={() => void add(d)} className="rounded-full bg-neutral-100 px-2 py-0.5 hover:bg-neutral-200">{d}</button>)}
           </div>
         )}
-        {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mt-2" />
         {rows.length === 0 ? <p className="mt-3 text-sm text-neutral-400">No service types yet.</p> : (
           <ul className="mt-3 divide-y divide-neutral-100">
             {rows.map((t) => (

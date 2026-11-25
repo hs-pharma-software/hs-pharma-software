@@ -13,6 +13,7 @@ import { suggestTriage, triageLevel, TRIAGE_LEVELS, DISPOSITIONS, MLC_NATURES, t
 import { fmtWhen } from "./FormEditor";
 import { err } from "../quality/SafetyModals";
 import type { ErTriage, HospitalEpisode, MlcCase } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 export const levelPill = (n: number | null | undefined) => {
@@ -129,7 +130,7 @@ function DispositionModal({ episode, onClose, onSaved }: { episode: HospitalEpis
   const [d, setD] = useState<Disposition | "">("");
   const [notes, setNotes] = useState("");
   const save = async () => {
-    if (!d) return window.alert("Choose the disposition.");
+    if (!d) return notify("Choose the disposition.");
     try { await recordDisposition(episode.id, d, notes); onSaved(); } catch (e) { err(e); }
   };
   return (

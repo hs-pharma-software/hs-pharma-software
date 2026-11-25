@@ -15,6 +15,7 @@ import { BranchSwitcher } from "@/components/branches/BranchSwitcher";
 import { DesktopSyncPill } from "./DesktopSyncPill";
 import { STANDALONE } from "@/lib/edition";
 import { useDesktopStatus } from "@/lib/desktopBridge";
+import { FormError } from "@/components/ui/FormError";
 
 export function Topbar() {
   const online = useAppStore((s) => s.online);
@@ -118,7 +119,7 @@ export function Topbar() {
                   {online ? "Online" : "Offline"} &middot; {pendingCount} change
                   {pendingCount === 1 ? "" : "s"} waiting to sync
                 </p>
-                {lastError && <p className="mt-1 text-rose-600">{lastError}</p>}
+                <FormError message={lastError} className="mt-1" />
                 {!online && (
                   <p className="mt-1 text-neutral-500">
                     Working offline {"\u2014"} everything you do is saved locally and will push to Turso

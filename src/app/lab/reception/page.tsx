@@ -17,6 +17,7 @@ import { listClinicServices, type ClinicService } from "@/lib/repo/clinicService
 import { createLabVisit, labBillLines, listLabVisits, type LabVisit, type LabVisitRow } from "@/lib/repo/lab";
 import type { ServiceLine } from "@/lib/serviceFbr";
 import type { ClinicPatient } from "@/lib/types-clinic";
+import { FormError } from "@/components/ui/FormError";
 
 /** Lab reception: the patient, the tests, the bill. The tests then go to
  * the technologist (Samples & Results). */
@@ -147,7 +148,7 @@ export default function LabReceptionPage() {
           <div className="w-32"><Field label="Paid"><Input id="lr-paid" type="number" min="0" step="any" value={paid} onChange={(e) => setPaid(e.target.value)} placeholder={money(payable)} /></Field></div>
           <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !patientId || !chosen.length}>{saving ? "Saving…" : "Save and print bill"}</Button>
         </div>
-        {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+        <FormError message={error} className="mt-2" />
       </section>
 
       <h2 className="mb-2 text-sm font-semibold text-neutral-700">Today&apos;s visits</h2>

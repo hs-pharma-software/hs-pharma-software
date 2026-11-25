@@ -8,6 +8,7 @@ import { PAPERS, type PaperSize } from "@/lib/printTemplates";
 import {
   CLINIC_DOCS, DEFAULT_CLINIC_TEMPLATES, loadClinicTemplate, saveClinicTemplate, type ClinicDoc, type ClinicPrintTemplate,
 } from "@/lib/clinicPrintTemplates";
+import { notify } from "@/lib/notify";
 
 /** Paper and layout of the clinic's invoice, lab report and prescription.
  * The Super Admin passes the clinic's tenantId; the clinic sees it read-only
@@ -35,7 +36,7 @@ export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false,
       for (const d of shownDocs) await saveClinicTemplate(d.id, a4Only ? { ...t[d.id], paper: "a4" } : t[d.id], tenantId);
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

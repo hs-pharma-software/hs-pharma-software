@@ -11,6 +11,7 @@ import {
   CLAIM_STATUSES, claimLabel, claimTotals, insuranceInvoices, insuredCustomers, setClaimStatus,
   type ClaimStatus, type InsuranceInvoice, type InsuredCustomer,
 } from "@/lib/repo/insurance";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => n.toLocaleString("en-PK", { maximumFractionDigits: 0 });
@@ -57,7 +58,7 @@ export default function InsuredPage() {
           <Field label="Insurance company"><InsuranceCompanySelect id="ins-company" allowAll value={companyId} onChange={(v) => { setCompanyId(v); setChosen(null); }} /></Field>
           <Field label="Find customer"><Input id="ins-q" value={search} placeholder="Name, mobile or policy no." onChange={(e) => setSearch(e.target.value)} /></Field>
         </div>
-        {error && <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mt-3" />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">

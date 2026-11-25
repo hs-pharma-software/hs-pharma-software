@@ -6,6 +6,7 @@ import { Field, Input, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { doctorsRepo } from "@/lib/repo/clinic";
 import type { ClinicDoctor } from "@/lib/types-clinic";
+import { notify } from "@/lib/notify";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -64,7 +65,7 @@ export default function DoctorFormModal({
       }
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

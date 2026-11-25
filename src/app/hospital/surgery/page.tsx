@@ -16,6 +16,7 @@ import { SurgeryInvoiceModal } from "@/components/hospital/SurgeryInvoiceModal";
 import { TheatreRecord } from "@/components/hospital/record/TheatreRecord";
 import { SurgerySharesFields } from "@/components/hospital/SurgerySharesFields";
 import { parseShares, sharesTotal, surgeryProfit } from "@/config/surgeryShares";
+import { notify } from "@/lib/notify";
 
 const STATUS_COLOR: Record<string, string> = {
   planned: "bg-amber-100 text-amber-700",
@@ -38,7 +39,7 @@ export default function SurgeryPage() {
       setTypes(await listSurgeryTypes({ includeInactive: true }));
       setBookings(await listSurgeryBookings(filter || undefined));
     } catch (e) {
-      window.alert(`Could not load surgeries: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not load surgeries: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,7 +50,7 @@ export default function SurgeryPage() {
       await fn();
       await reload();
     } catch (e) {
-      window.alert(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -171,7 +172,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
       await saveSurgeryType(surgery?.id ?? null, { name, code, department, breakdown: draftToBreakdown(charges), notes, is_active: active ? 1 : 0, ...(touched ? { shares } : {}) });
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

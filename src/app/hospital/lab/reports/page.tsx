@@ -12,6 +12,7 @@ import {
   searchLabReports, getLabReport, labCapabilities,
   type SearchMode, type ReportSearchRow, type LabReport,
 } from "@/lib/repo/labReports";
+import { notify } from "@/lib/notify";
 
 const MODES: { key: SearchMode; label: string; hint: string }[] = [
   { key: "auto", label: "Lab Invoice / Lab Number", hint: "LI26-000123-4 or LN26-000123-7" },
@@ -71,7 +72,7 @@ export default function LabReportSearchPage() {
       setReport(await getLabReport(row.request.id, { checked: true, method }));
       setConfirming(null);
     } catch (err) {
-      window.alert(`Could not open the report: ${err instanceof Error ? err.message : String(err)}`);
+      notify(`Could not open the report: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

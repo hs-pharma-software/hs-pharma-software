@@ -18,6 +18,7 @@ import { imeisOfPurchase, returnImeisToSupplier } from "@/lib/repo/imei";
 import type { Purchase } from "@/lib/types2";
 import { localDate } from "@/lib/localDate";
 import { purchaseReturnRate } from "@/lib/purchaseMath";
+import { FormError } from "@/components/ui/FormError";
 
 interface ReturnLine {
   item: PurchaseItemWithProduct;
@@ -256,13 +257,13 @@ export function PurchaseItemReturnModal({ onClose, onSaved }: { onClose: () => v
           </>
         )}
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
 
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" disabled={saving || activeLines.length === 0}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving || activeLines.length === 0}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

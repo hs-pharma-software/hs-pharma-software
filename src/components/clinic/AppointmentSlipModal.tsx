@@ -11,6 +11,7 @@ import { patientsRepo, doctorsRepo, type AppointmentWithNames } from "@/lib/repo
 import type { ClinicDoctor, ClinicPatient } from "@/lib/types-clinic";
 import type { PaperSize } from "@/lib/printTemplates";
 import { ClinicSlipHeader } from "./ClinicSlipHeader";
+import { notify } from "@/lib/notify";
 
 const TYPE_LABELS: Record<string, string> = { routine: "Routine", follow_up: "Follow-up", emergency: "Emergency" };
 
@@ -36,7 +37,7 @@ export function AppointmentSlipModal({ appointment: a, onClose }: { appointment:
     try {
       await printDirect(paper, areaRef.current);
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPrinting(false);
     }

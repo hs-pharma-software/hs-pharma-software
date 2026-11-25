@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { savePatient } from "@/lib/repo/clinic";
 import type { ClinicPatient } from "@/lib/types-clinic";
 import { useAuthStore } from "@/store/authStore";
+import { notify } from "@/lib/notify";
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
@@ -58,7 +59,7 @@ export default function PatientFormModal({
       };
       onSaved(await savePatient(isEdit && patient ? patient.id : null, payload));
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

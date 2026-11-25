@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { localBridge, unwrap } from "@/lib/edition";
 import { RecoveryKeyNotice } from "./RecoveryKeyNotice";
+import { FormError } from "@/components/ui/FormError";
 
 const input = "w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-[#1e88e5] focus:bg-white focus:ring-2 focus:ring-[#1e88e5]/20";
 
@@ -52,7 +53,7 @@ export function StandaloneSetup({ onDone }: { onDone: () => void }) {
               <input className={input} type="password" placeholder="Password (10+ characters)" value={f.password} onChange={set("password")} required minLength={10} autoComplete="new-password" />
               <input className={input} type="password" placeholder="Repeat password" value={f.confirm} onChange={set("confirm")} required autoComplete="new-password" />
             </div>
-            {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+            <FormError message={error} />
             <Button loading={busy} type="submit" variant="primary" disabled={busy} className="justify-center">{busy ? "Setting up…" : "Create pharmacy and Super Admin"}</Button>
           </form>
         )}

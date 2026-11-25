@@ -236,7 +236,7 @@ function BranchForm({ branch, users, onClose, onSaved }: { branch: Branch | null
         {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
         </div>
       </form>
     </Modal>

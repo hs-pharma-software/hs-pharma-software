@@ -6,6 +6,7 @@ import { isTauri } from "@/lib/platform";
 import { getSetting } from "@/lib/repo/settings";
 import { applyTheme, DEFAULT_THEME, type AppTheme } from "@/lib/theme";
 import { useAuthStore } from "@/store/authStore";
+import { Toaster } from "@/components/ui/Toaster";
 
 /** Loads the saved theme from settings (DB + localStorage cache) and applies
  * it to document.documentElement as CSS custom properties. Runs once on
@@ -41,5 +42,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [signedIn, tenantId]);
 
   // Every animation in the app follows the device's "reduce motion" setting.
-  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
+  // The Toaster shows notify() messages on every screen.
+  return <MotionConfig reducedMotion="user">{children}<Toaster /></MotionConfig>;
 }

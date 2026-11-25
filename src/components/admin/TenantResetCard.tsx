@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { serverJson } from "@/lib/serverMode";
+import { notify } from "@/lib/notify";
 
 /** Super Admin: empties a business after testing. Takes effect at once and cannot be undone. */
 export function TenantResetCard({ tenantId, tenantName }: { tenantId: string; tenantName: string }) {
@@ -21,7 +22,7 @@ export function TenantResetCard({ tenantId, tenantName }: { tenantId: string; te
       setOpen(false);
       setTyped("");
     } catch (e) {
-      window.alert(`Could not reset: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not reset: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }

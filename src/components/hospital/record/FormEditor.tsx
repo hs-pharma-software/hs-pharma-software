@@ -10,6 +10,7 @@ import { formDef, visible, type FormData, type FormDef } from "@/config/forms";
 import { saveForm, finalizeForm, amendForm, voidForm, listRevisions } from "@/lib/repo/medicalRecord";
 import { hospitalHeader } from "@/lib/repo/hospitalCare";
 import type { FormRecord, FormRevision, HospitalEpisode, HospitalPatient } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 /** A UTC timestamp as the local value of a date-time box, and back. */
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -95,7 +96,7 @@ export function FormEditor({ formKey, patient, episode, record, canFinalize, sub
       onSaved();
       if (close) onClose();
     } catch (e) {
-      window.alert(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -113,7 +114,7 @@ export function FormEditor({ formKey, patient, episode, record, canFinalize, sub
     try {
       await printDirect("a4", printRef.current);
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

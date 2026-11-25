@@ -7,6 +7,7 @@ import { FbrCombobox } from "@/components/ui/FbrCombobox";
 import { isTauri } from "@/lib/platform";
 import { FBR_HS_CODES, FBR_SALE_TYPES, FBR_UOM_LIST, findSaleType } from "@/lib/fbrData";
 import { loadServiceFbrDefaults, saveServiceFbrDefaults, type ServiceFbrDefaults } from "@/lib/serviceFbr";
+import { notify } from "@/lib/notify";
 
 const HS_OPTIONS = FBR_HS_CODES.map((h) => ({ value: h.code, label: h.code, sublabel: h.description }));
 
@@ -26,7 +27,7 @@ export function ServiceFbrCard({ hint }: { hint: string }) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 

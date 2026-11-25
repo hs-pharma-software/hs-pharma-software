@@ -17,6 +17,7 @@ import {
 } from "@/lib/repo/labReports";
 import { panelFor, flagFor, rangeForSex, parseComponents, summarizeComponents, type PanelParam } from "@/config/labPanels";
 import type { OrderPriority, HospitalService, HospitalEpisode, HospitalLabOrder, LabComponent, LabRequest } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const VIEWS: { key: WorklistView; label: string }[] = [
   { key: "active", label: "In progress" },
@@ -35,7 +36,7 @@ const STATUS_COLOR: Record<string, string> = {
   superseded: "bg-neutral-100 text-neutral-500",
 };
 
-const fail = (what: string, e: unknown) => window.alert(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
+const fail = (what: string, e: unknown) => notify(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
 
 /** Lab Orders: every lab order of the hospital and its collection centers, one
  * card per order (Unique Lab Number), with what this user may do on it. */

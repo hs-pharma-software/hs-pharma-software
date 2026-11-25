@@ -12,6 +12,7 @@ import { listSalesmanPerformance, saveSalesman, type SalesmanPerformance } from 
 import { listUsersForTenant } from "@/lib/repo/users";
 import { useAuthStore } from "@/store/authStore";
 import type { UserAccount } from "@/lib/types2";
+import { FormError } from "@/components/ui/FormError";
 
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -172,7 +173,7 @@ function SalesmanForm({ salesman: s, users, linkedIds, onClose, onSaved }: {
           <p className="mt-1 text-xs text-neutral-500">Invoices this login creates are put on this salesman, so his sales and progress count automatically.</p>
         </div>
       </div>
-      {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-3" />
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
         <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>

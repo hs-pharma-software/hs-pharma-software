@@ -16,6 +16,7 @@ import { DESIGNATIONS } from "@/config/hospitalStaff";
 import { err } from "@/components/hospital/quality/SafetyModals";
 import { fmtWhen } from "@/components/hospital/record/FormEditor";
 import type { ControlledDocument } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -118,7 +119,7 @@ function DocumentEditor({ doc, standardKey, onClose, onSaved }: { doc: Controlle
   });
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   const save = async () => {
-    if (!v.kind) return window.alert("Choose the type of document.");
+    if (!v.kind) return notify("Choose the type of document.");
     const input = { ...v, kind: v.kind, standardKey: v.standardKey || null, designationKey: v.designationKey || null };
     try { await (doc ? updateDraft(doc.id, input) : createDocument(input)); onSaved(); } catch (e) { err(e); }
   };

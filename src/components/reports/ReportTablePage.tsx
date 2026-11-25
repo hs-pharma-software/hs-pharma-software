@@ -67,7 +67,7 @@ export function ReportTablePage<T extends RowBase>({
             <Field label="To">
               <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </Field>
-            <Button variant="primary" onClick={() => void runReport()} disabled={loading}>
+            <Button loading={loading} variant="primary" onClick={() => void runReport()} disabled={loading}>
               {loading ? "Running..." : "Report"}
             </Button>
             <span className="text-xs text-neutral-400">Leave both blank for all-time.</span>

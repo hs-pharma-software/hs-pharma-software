@@ -9,11 +9,12 @@ import { localDate } from "@/lib/localDate";
 import { addDays } from "@/lib/repo/facility";
 import { listClosings, verifyClosing, type CashClosing } from "@/lib/repo/cashClosing";
 import { ClosingSlipModal, rs } from "@/components/hospital/finance/CloseDay";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
 const td = "py-1.5 pr-2";
-const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 
 /** Every receptionist's day closings: what they took, what they counted, and verification. */
 export default function ClosingsPage() {

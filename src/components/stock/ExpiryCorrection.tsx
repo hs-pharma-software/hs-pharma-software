@@ -8,6 +8,7 @@ import { Field, Input } from "@/components/ui/Field";
 import {
   EXPIRY_CORRECTION_LIMIT, correctBatchExpiry, expiryStatus, listExpiryChanges, type ExpiryChange,
 } from "@/lib/repo/batchExpiry";
+import { FormError } from "@/components/ui/FormError";
 
 const TONE = {
   expired: "bg-rose-100 text-rose-800 ring-rose-200",
@@ -112,7 +113,7 @@ export function ExpiryCorrectionModal({ batch, onClose, onSaved }: {
           </ul>
         </div>
       )}
-      {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-3" />
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Close</Button>
         {left > 0 && <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !date || !reason.trim()}>{saving ? "Saving…" : "Save correction"}</Button>}

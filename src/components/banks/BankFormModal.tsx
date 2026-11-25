@@ -78,7 +78,7 @@ export function BankFormModal({
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

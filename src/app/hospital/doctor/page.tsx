@@ -28,6 +28,7 @@ import { VitalsFields } from "@/components/hospital/VitalsFields";
 import { PrescriptionPrintModal } from "@/components/hospital/PrescriptionPrint";
 import { listSelectedBrands, type BrandSelection } from "@/lib/repo/brandSelections";
 import { cToF, fToC, vitalsSummary, type VitalValues } from "@/config/vitalNorms";
+import { notify } from "@/lib/notify";
 
 type Product = { id: string; name: string; barcode: string | null; company_name: string | null; description: string | null };
 type VisitOrder = Awaited<ReturnType<typeof listVisitOrders>>[number];
@@ -214,7 +215,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
       await load();
       onChanged();
     } catch (e) {
-      window.alert(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -231,7 +232,7 @@ function Visit({ episodeId, onChanged }: { episodeId: string; onChanged: () => v
         setScanReport(await getRadiologyReport(o.id));
       }
     } catch (e) {
-      window.alert(`Could not open the report: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not open the report: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

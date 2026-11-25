@@ -166,7 +166,7 @@ function NewTransfer({ branches, managed, active, onClose, onSaved }: { branches
         {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="button" variant="primary" disabled={saving || !lines.length} onClick={() => void send()}>{saving ? "Sending..." : "Send stock"}</Button>
+          <Button loading={saving} type="button" variant="primary" disabled={saving || !lines.length} onClick={() => void send()}>{saving ? "Sending..." : "Send stock"}</Button>
         </div>
       </div>
     </Modal>

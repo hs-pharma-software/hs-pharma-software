@@ -12,6 +12,7 @@ import {
   categoryLabel, SERVICE_CATEGORIES, type ClinicOrder, type ClinicService, type ClinicServiceCategory, type VisitBill,
 } from "@/lib/repo/clinicServices";
 import { ClinicReportModal, ClinicVisitInvoiceModal } from "./ClinicPrints";
+import { notify } from "@/lib/notify";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const STATUS: Record<string, string> = { ordered: "Ordered", collected: "Sample collected", performed: "Done", reported: "Reported", cancelled: "Cancelled", external: "External" };
@@ -68,7 +69,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
       setPriority("routine");
       await reload(cid);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -76,7 +77,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
 
   async function cancel(o: ClinicOrder) {
     if (!window.confirm(`Cancel ${o.name}?`)) return;
-    try { await cancelClinicOrder(o.id); await reload(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    try { await cancelClinicOrder(o.id); await reload(); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
   }
 
   async function openBill() {
@@ -84,7 +85,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
       const cid = consultationId ?? (await ensureSaved());
       setBilling(await getVisitBill(cid));
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -196,7 +197,7 @@ export function BillModal({ bill, onClose, onBilled }: { bill: VisitBill; onClos
       const inv = await createVisitInvoice(bill.consultation.id, { discount: Number(discount) || 0, paid: Number(paid) || 0 });
       onBilled(inv.id);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

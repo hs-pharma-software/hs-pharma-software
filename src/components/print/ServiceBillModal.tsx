@@ -20,6 +20,7 @@ import { LAB_VISIT_INVOICE_TYPE, ensureLabVisitToken, labVisitIdFor } from "@/li
 import { labReportUrl, publicOrigin } from "@/lib/labReportView";
 import { BranchPrintLine } from "@/components/branches/BranchSwitcher";
 import { PrintFooterFrame } from "@/components/brand/PageFooterLine";
+import { notify } from "@/lib/notify";
 
 /** A service bill (lab visit, banquet booking) printed with the business's
  * own invoice template and theme (General Settings > Print Templates), the
@@ -72,7 +73,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
     try {
       await printDirect(template.paper, areaRef.current);
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   useEffect(() => {

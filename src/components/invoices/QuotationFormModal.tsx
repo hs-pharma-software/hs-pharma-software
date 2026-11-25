@@ -21,6 +21,7 @@ import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, rou
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman } from "@/lib/types2";
 import { localDate } from "@/lib/localDate";
+import { FormError } from "@/components/ui/FormError";
 
 interface Line {
   product: Product;
@@ -446,7 +447,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
         </div>
 
         </fieldset>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
 
         <p className="text-xs text-neutral-400">
           Quotations don&apos;t affect stock or sales figures. Accept the quotation from the list to generate a real invoice.
@@ -465,7 +466,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
               <Button type="button" onClick={onClose} className="max-sm:px-3">
                 {quotationId ? "Cancel" : "Reset"}
               </Button>
-              <Button type="submit" variant="primary" disabled={saving || lines.length === 0} className="max-sm:flex-1">
+              <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0} className="max-sm:flex-1">
                 {saving ? "Saving..." : quotationId ? "Save Changes" : "Save"}
               </Button>
             </>

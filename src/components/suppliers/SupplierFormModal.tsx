@@ -8,6 +8,7 @@ import { saveVendor } from "@/lib/repo/vendors";
 import { Button } from "@/components/ui/Button";
 import { suppliersRepo } from "@/lib/repo/suppliers";
 import type { Supplier } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 export function SupplierFormModal({
   supplier,
@@ -130,12 +131,12 @@ export function SupplierFormModal({
         <Field label="Description">
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
-        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="form-actions">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

@@ -9,6 +9,7 @@ import { visibleNavFor } from "@/config/navFilter";
 import { pagesForStaff } from "@/config/hospitalStaff";
 import { useAuthStore } from "@/store/authStore";
 import type { Staff } from "@/lib/types";
+import { notify } from "@/lib/notify";
 
 /** Which hospital sections a staff member's login may open. A ticked menu
  * group opens all its sub-tabs; otherwise single sub-tabs can be ticked. Starts
@@ -44,13 +45,13 @@ export function StaffPermissionsModal({ staff, onClose, onSaved }: { staff: Staf
 
   async function save() {
     if (!staff.user_id || !perms) return;
-    if (!full && perms.size === 0) return window.alert("Tick at least one section, or give full access.");
+    if (!full && perms.size === 0) return notify("Tick at least one section, or give full access.");
     setSaving(true);
     try {
       await updateUserPermissions(staff.user_id, full ? null : [...perms]);
       onSaved();
     } catch (e) {
-      window.alert(`Could not save the permissions: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save the permissions: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

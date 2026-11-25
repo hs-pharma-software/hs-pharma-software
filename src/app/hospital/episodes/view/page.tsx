@@ -25,6 +25,7 @@ import {
 } from "@/lib/repo/hospital";
 import type { HospitalEpisode, PaymentMethod } from "@/lib/types-hospital";
 import { localDate, localDateTime } from "@/lib/localDate";
+import { notify } from "@/lib/notify";
 
 export default function EpisodeDetailPage() {
   // Static export: the id arrives as ?id=, read after mount.
@@ -126,7 +127,7 @@ export default function EpisodeDetailPage() {
       setSelectedServiceId(""); setChargeDesc(""); setChargeQty("1"); setChargeRate(""); setChargeDisc("0"); setChargeNotes("");
       await reload();
     } catch (e) {
-      window.alert(`Could not add the charge: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not add the charge: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setAddingCharge(false);
     }
@@ -149,7 +150,7 @@ export default function EpisodeDetailPage() {
       setPayAmount(""); setPayRef(""); setPayNotes("");
       await reload();
     } catch (e) {
-      window.alert(`Could not save the payment: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save the payment: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setAddingPayment(false);
     }
@@ -171,7 +172,7 @@ export default function EpisodeDetailPage() {
       });
       await reload();
     } catch (e) {
-      window.alert(`Could not discharge: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not discharge: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setDischarging(false);
     }
@@ -356,7 +357,7 @@ export default function EpisodeDetailPage() {
                     <td className="py-1.5 text-right font-medium">{c.amount.toFixed(0)}</td>
                     {episode.status === "open" && (
                       <td className="py-1.5 pl-2">
-                        <button type="button" onClick={() => deleteCharge(c.id).then(reload).catch((e) => window.alert(`Could not remove the charge: ${e instanceof Error ? e.message : String(e)}`))} className="text-neutral-300 hover:text-red-500">
+                        <button type="button" onClick={() => deleteCharge(c.id).then(reload).catch((e) => notify(`Could not remove the charge: ${e instanceof Error ? e.message : String(e)}`))} className="text-neutral-300 hover:text-red-500">
                           <Trash2 size={13} />
                         </button>
                       </td>

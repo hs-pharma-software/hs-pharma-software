@@ -9,6 +9,7 @@ import { staffRepo } from "@/lib/repo/staff";
 import { listIndentBooks, requestIndentBook, type IndentBook } from "@/lib/repo/storeIndents";
 import { designation } from "@/config/hospitalStaff";
 import type { Staff } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -48,7 +49,7 @@ export default function IndentBooksPage() {
           <Field label="Note to the store keeper"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <Button variant="primary" disabled={!holder} onClick={() => void order()}>Order book</Button>
         </div>
-        {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mt-2" />
       </div>
       <div className={`${card} mt-4`}>
         {books.length === 0 ? <p className="text-sm text-neutral-400">No indent books yet.</p> : (

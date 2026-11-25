@@ -12,6 +12,7 @@ import { VisitProgress, PRIORITY_CLS } from "@/components/lab/labUi";
 import { isTauri } from "@/lib/platform";
 import { parseComponents } from "@/config/labPanels";
 import { getLabVisit, listLabVisits, returnForRecheck, verifyLabResults, type LabVisitDetail, type LabVisitRow } from "@/lib/repo/lab";
+import { notify } from "@/lib/notify";
 
 const FLAG: Record<string, string> = { H: "High", L: "Low", N: "" };
 
@@ -77,7 +78,7 @@ function VerifyModal({ detail, onClose, onReleased }: { detail: LabVisitDetail; 
       const d = await getLabVisit(detail.visit.id);
       onReleased(d.orders.filter((o) => o.status === "reported").map((o) => o.id));
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -92,7 +93,7 @@ function VerifyModal({ detail, onClose, onReleased }: { detail: LabVisitDetail; 
       setSelected((s) => s.filter((x) => x !== recheck.id));
       setRecheck(null);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

@@ -11,6 +11,8 @@ import { VisitProgress, PRIORITY_CLS, workRows } from "@/components/lab/labUi";
 import { isTauri } from "@/lib/platform";
 import { collectSamples, getLabVisit, listLabVisits, type LabVisitRow } from "@/lib/repo/lab";
 import type { ClinicWorkRow } from "@/lib/repo/clinicServices";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 /** Technologist: samples to take and results to enter, visit by visit. A
  * result then waits for the pathologist. */
@@ -40,7 +42,7 @@ export default function LabSamplesPage() {
       await collectSamples(d.orders.filter((o) => o.status === "ordered").map((o) => o.id));
       await reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -74,7 +76,7 @@ export default function LabSamplesPage() {
     <div>
       <PageHeader title="Samples & Results" actions={<Button onClick={() => void reload()}>Refresh</Button>} />
       <Input id="ls-search" className="mb-3 max-w-sm" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search patient, MRN, mobile or visit…" />
-      {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+      <FormError message={error} className="mb-2" />
       <DataTable columns={columns} rows={rows} onRowClick={(v) => void enter(v)} emptyMessage="No samples or results waiting. Visits registered at Reception appear here." />
       {working && (
         <ResultWorkspace kind="lab" rows={working.rows} startId={working.start} awaitVerification onClose={() => { setWorking(null); void reload(); }} />

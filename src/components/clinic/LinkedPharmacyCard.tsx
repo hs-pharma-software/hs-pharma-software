@@ -5,6 +5,7 @@ import { Copy, Link2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { createLinkToken, getLinkStatus, type LinkStatus } from "@/lib/repo/pharmacyLink";
+import { notify } from "@/lib/notify";
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 
@@ -28,7 +29,7 @@ export function LinkedPharmacyCard() {
       setMade(await createLinkToken());
       await reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

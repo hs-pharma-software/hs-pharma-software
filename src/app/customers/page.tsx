@@ -10,6 +10,7 @@ import { customersRepo } from "@/lib/repo/customers";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import type { Customer } from "@/lib/types";
 import { can } from "@/lib/actionPermissions";
+import { FormError } from "@/components/ui/FormError";
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -116,7 +117,7 @@ export default function CustomersPage() {
         />
       </div>
 
-      {toggleError && <p className="mb-3 rounded-lg border border-rose-300 bg-rose-50 px-4 py-2 text-sm text-rose-700">{toggleError}</p>}
+      <FormError message={toggleError} className="mb-3" />
 
       {!tauriReady ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">

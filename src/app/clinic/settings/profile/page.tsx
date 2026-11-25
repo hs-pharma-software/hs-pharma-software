@@ -12,6 +12,7 @@ import { ClinicPrintTemplatesCard } from "@/components/clinic/ClinicPrintTemplat
 import { LinkedPharmacyCard } from "@/components/clinic/LinkedPharmacyCard";
 import { useIsTauri } from "@/lib/platform";
 import { EMPTY_CLINIC_PROFILE, loadClinicProfile, saveClinicProfile, type ClinicProfile } from "@/lib/clinicProfile";
+import { notify } from "@/lib/notify";
 
 /** Settings > Clinic Profile: the clinic details printed on its slips. */
 export default function ClinicProfilePage() {
@@ -38,7 +39,7 @@ export default function ClinicProfilePage() {
       setP(await saveClinicProfile(p));
       setSavedAt(new Date().toLocaleTimeString());
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

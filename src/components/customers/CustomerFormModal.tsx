@@ -10,6 +10,7 @@ import { can } from "@/lib/actionPermissions";
 import { useAuthStore } from "@/store/authStore";
 import { isPharmacyFamilyType } from "@/lib/catalogAccess";
 import { InsuranceCompanySelect } from "@/components/customers/InsuranceCompanySelect";
+import { FormError } from "@/components/ui/FormError";
 
 const PAKISTAN_PROVINCES = [
   "AZAD JAMMU AND KASHMIR",
@@ -299,7 +300,7 @@ export function CustomerFormModal({
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
-        {formError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p>}
+        <FormError message={formError} />
         <div className="form-actions">
           <Button type="button" onClick={onClose}>Cancel</Button>
           <Button loading={saving} type="submit" variant="primary" disabled={saving}>

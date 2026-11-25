@@ -158,7 +158,7 @@ export default function PriceListPage() {
               <Button type="button" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={saving || !product}>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving || !product}>
                 {saving ? "Saving..." : "Save"}
               </Button>
             </div>

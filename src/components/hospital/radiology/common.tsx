@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { notify } from "@/lib/notify";
 
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -136,7 +137,7 @@ export function DicomEliteNotice({ className = "" }: { className?: string }) {
 /** Opens the study in the PACS viewer, or says why it cannot. */
 export function openImages(url: string | null, reason: string) {
   if (url) window.open(url, "_blank", "noopener");
-  else window.alert(reason);
+  else notify(reason);
 }
 
 export const imagesMissingReason = (o: { images_received_at?: string | null }, pacsConfigured: boolean) =>

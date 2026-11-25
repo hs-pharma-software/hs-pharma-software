@@ -14,6 +14,7 @@ import {
 import type { EpisodeType } from "@/lib/types-hospital";
 import PatientFormModal from "../patients/PatientFormModal";
 import { localDate } from "@/lib/localDate";
+import { notify } from "@/lib/notify";
 
 interface Props {
   defaultType: EpisodeType;
@@ -87,7 +88,7 @@ export default function NewEpisodeModal({ defaultType, onClose, onSaved }: Props
       });
       onSaved(ep.id);
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

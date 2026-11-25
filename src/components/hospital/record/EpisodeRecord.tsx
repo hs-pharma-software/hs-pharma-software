@@ -11,6 +11,7 @@ import { applicableItems, checklistDef, STATUS_LABEL, type ChecklistAnswer, type
 import { FormEditor, FormStatusPill, fmtWhen } from "./FormEditor";
 import type { ChecklistEntry, FormRecord, HospitalEpisode, HospitalPatient, VitalSigns } from "@/lib/types-hospital";
 import type { FormDef } from "@/config/forms";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 
@@ -113,7 +114,7 @@ export function VitalsPanel({ episode, phase, subjectId, title }: { episode: Hos
       setV({});
       await load();
     } catch (e) {
-      window.alert(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -207,7 +208,7 @@ export function VisitChecklist({ episodeId, checklistKey = "doctor_visit", subje
       setAnswers({});
       await load();
     } catch (e) {
-      window.alert(`Could not save the checks: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save the checks: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }

@@ -12,6 +12,7 @@ import type { Tenant, UserRole } from "@/lib/types2";
 import { presetActions, presetModules, presetsFor } from "@/lib/rolePresets";
 import { businessType } from "@/config/businessTypes";
 import { usesHospitalStaff } from "@/config/hospitalStaff";
+import { FormError } from "@/components/ui/FormError";
 
 /** Creates a new login. Two modes:
  * - Super Admin (`scope: "all"`): picks any tenant and role (owner/staff).
@@ -195,12 +196,12 @@ export function UserFormModal({
           </div>
         )}
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

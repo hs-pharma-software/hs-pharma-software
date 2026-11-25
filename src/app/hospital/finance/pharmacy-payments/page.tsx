@@ -6,6 +6,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { hospitalPatientsRepo } from "@/lib/repo/hospital";
 import { pharmacyInvoicesForHospital, type PharmacyHospitalInvoice } from "@/lib/repo/brandSelections";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 0 });
@@ -40,7 +41,7 @@ export default function PharmacyPaymentsPage() {
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="">All</option><option value="unpaid">Unpaid</option><option value="paid">Paid</option></Select></Field>
           <p className="pb-2 text-sm">{rows.length} bills · unpaid <b className="text-rose-700">Rs {money(unpaid)}</b></p>
         </div>
-        {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mt-2" />
         {shown.length === 0 ? <p className="mt-3 text-sm text-neutral-400">No pharmacy bills.</p> : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">

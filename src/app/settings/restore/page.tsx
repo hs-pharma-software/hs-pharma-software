@@ -40,7 +40,7 @@ export default function RestorePage() {
       <PageHeader
         title="Restore Backup Data"
         actions={
-          <Button variant="danger" onClick={() => void handleRestore()} disabled={!tauriReady || busy}>
+          <Button loading={busy} variant="danger" onClick={() => void handleRestore()} disabled={!tauriReady || busy}>
             {busy ? "Restoring..." : "Restore From File"}
           </Button>
         }

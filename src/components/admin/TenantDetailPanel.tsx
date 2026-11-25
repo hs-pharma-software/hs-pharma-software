@@ -30,6 +30,7 @@ import {
   moduleAllowedForType,
   type CapabilityKey,
 } from "@/config/businessTypes";
+import { notify } from "@/lib/notify";
 
 
 function Section({ title, children, hint }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -104,7 +105,7 @@ export function TenantDetailPanel({
       await unlinkPharmacy(tenant.id);
       setPharmacyLink(null);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 

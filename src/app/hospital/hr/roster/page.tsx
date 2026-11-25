@@ -15,6 +15,7 @@ import { designation, ROSTER_ROLES, STAFF_GROUPS, staffGroup, type StaffGroup } 
 import { err } from "@/components/hospital/quality/SafetyModals";
 import type { Staff } from "@/lib/types";
 import type { RosterEntry } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const SHIFT_CLS: Record<RosterShift, string> = {
@@ -84,7 +85,7 @@ export default function DutyRosterPage() {
         }
       }
       setEntries(await rosterRange(days[0], days[6]));
-      window.alert(`${copied} shift${copied === 1 ? "" : "s"} copied${skipped ? `, ${skipped} left out (rest rule after a night duty)` : ""}.`);
+      notify(`${copied} shift${copied === 1 ? "" : "s"} copied${skipped ? `, ${skipped} left out (rest rule after a night duty)` : ""}.`);
     } catch (e) { err(e); } finally { setBusy(null); }
   };
 

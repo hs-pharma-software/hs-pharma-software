@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/authStore";
 import { doctorsRepo } from "@/lib/repo/clinic";
 import type { ClinicDoctor } from "@/lib/types-clinic";
 import DoctorFormModal from "./DoctorFormModal";
+import { notify } from "@/lib/notify";
 
 export default function DoctorsPage() {
   const tenantId = useAuthStore((s) => s.currentTenant?.id ?? null);
@@ -33,7 +34,7 @@ export default function DoctorsPage() {
       await doctorsRepo.remove(d.id);
       await reload();
     } catch (e) {
-      window.alert(`Could not deactivate: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not deactivate: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

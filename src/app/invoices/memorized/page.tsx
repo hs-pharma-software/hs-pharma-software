@@ -14,6 +14,7 @@ import { useFormTabs } from "@/store/formTabsStore";
 import { useCan } from "@/lib/actionPermissions";
 import { localDate } from "@/lib/localDate";
 import type { Invoice } from "@/lib/types2";
+import { notify } from "@/lib/notify";
 
 type ViewRow = { invoice: Invoice; customerName: string; salesmanName: string | null };
 
@@ -52,7 +53,7 @@ export default function MemorizedInvoicesPage() {
       await fn();
       await reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
     }

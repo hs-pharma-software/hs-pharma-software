@@ -15,6 +15,7 @@ import {
 import { hospitalDepartmentsRepo } from "@/lib/repo/hospital";
 import { fmtWhen } from "@/components/hospital/record/FormEditor";
 import type { HhObservation, HhSession } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const monthStart = () => `${localDate().slice(0, 8)}01`;
@@ -39,7 +40,7 @@ export default function HandHygienePage() {
       setSummary(c);
       setSelf(sc);
     } catch (e) {
-      window.alert(`Could not load the audits: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not load the audits: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -124,7 +125,7 @@ function NewSession({ onClose, onStarted }: { onClose: () => void; onStarted: (s
     try {
       onStarted(await startHhSession({ area, department }));
     } catch (e) {
-      window.alert(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return (
@@ -154,7 +155,7 @@ function SessionRecorder({ session, onClose }: { session: HhSession; onClose: ()
       await fn();
       await load();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   };
   const live = obs.filter((o) => !o.voided_at);

@@ -11,6 +11,7 @@ import type { Tenant, SubscriptionPlan } from "@/lib/types2";
 import { TRIAL_DAYS } from "@/lib/subscription";
 import { BUSINESS_TYPES, FAMILY_LABELS, businessType, defaultModulesFor } from "@/config/businessTypes";
 import { parseAllowedModules } from "@/lib/repo/subscriptionPlans";
+import { FormError } from "@/components/ui/FormError";
 
 function addDaysIso(days: number): string {
   const d = new Date();
@@ -177,12 +178,12 @@ export function TenantFormModal({
           </div>
         )}
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

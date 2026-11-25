@@ -12,6 +12,7 @@ import {
   CLAIM_STATUSES, claimLabel, claimTotals, groupInsurance, insuranceInvoices,
   type ClaimStatus, type InsuranceGroupRow, type InsuranceInvoice,
 } from "@/lib/repo/insurance";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-3 font-medium";
@@ -73,7 +74,7 @@ export default function InsuranceReportPage() {
       <div className={`${card} print-area mt-4`}>
         <p className="mb-1 hidden text-lg font-bold print:block">Insurance · {TABS.find((t) => t[0] === tab)?.[1]}</p>
         <p className="mb-3 text-xs text-neutral-500">{from} to {to}{status ? ` · ${claimLabel(status)}` : ""} · whole invoices of insured customers</p>
-        {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mb-2" />
         <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
           <span>Invoices: <b>{total.invoices}</b></span>
           <span>Total: <b>Rs {money(total.total)}</b></span>

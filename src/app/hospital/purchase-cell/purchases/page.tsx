@@ -16,6 +16,8 @@ import {
   type StorePurchaseRow, type StorePurchaseStatus,
 } from "@/lib/repo/hospitalStores";
 import type { Product } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 });
@@ -39,7 +41,7 @@ export default function StorePurchasesPage() {
   }
   useEffect(() => { const t = setTimeout(() => void reload(), 200); return () => clearTimeout(t); }, [status, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function act(fn: () => Promise<unknown>) { try { await fn(); await reload(); } catch (e) { window.alert(msg(e)); } }
+  async function act(fn: () => Promise<unknown>) { try { await fn(); await reload(); } catch (e) { notify(msg(e)); } }
 
   return (
     <div>
@@ -49,7 +51,7 @@ export default function StorePurchasesPage() {
           <Field label="Find"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Purchase no, invoice, vendor" /></Field>
           <Field label="Status"><Select value={status} onChange={(e) => setStatus(e.target.value as StorePurchaseStatus | "")}><option value="">All</option>{(Object.keys(STORE_PURCHASE_STATUS) as StorePurchaseStatus[]).map((s) => <option key={s} value={s}>{STORE_PURCHASE_STATUS[s]}</option>)}</Select></Field>
         </div>
-        {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mt-2" />
         {rows.length === 0 ? <p className="mt-3 text-sm text-neutral-400">No purchases.</p> : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
@@ -173,7 +175,7 @@ function PurchaseForm({ id, onClose, onSaved }: { id: string | null; onClose: ()
         </div>
       )}
       <div className="mt-3"><Field label="Note"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
-      {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Close</Button>
         <Button disabled={busy || !vendorId || !lines.length} onClick={() => void save(false)}>Save draft</Button>

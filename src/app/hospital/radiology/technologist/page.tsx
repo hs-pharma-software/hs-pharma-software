@@ -17,6 +17,7 @@ import {
   PROTOCOLS, SAFETY_CHECKS, PREP_CHECKS, PATIENT_POSITIONS, IMAGE_QUALITY, validateExam, type ExamData,
 } from "@/config/radiologyPortal";
 import { Panel, Tabs, PriorityPill, StatusPill, ageGender, errMsg, openImages, imagesMissingReason, useAutoRefresh } from "@/components/hospital/radiology/common";
+import { notify } from "@/lib/notify";
 
 type ExamTab = "clinical" | "safety" | "protocol" | "acquisition";
 
@@ -69,13 +70,13 @@ export default function TechnologistPage() {
       setExam(c.exam);
       setTab("clinical");
     } catch (e) {
-      window.alert(errMsg(e));
+      notify(errMsg(e));
     }
   }
 
   async function act(fn: () => Promise<void>) {
     setBusy(true);
-    try { await fn(); } catch (e) { window.alert(errMsg(e)); } finally { setBusy(false); }
+    try { await fn(); } catch (e) { notify(errMsg(e)); } finally { setBusy(false); }
   }
 
   const start = () => act(async () => {
@@ -89,7 +90,7 @@ export default function TechnologistPage() {
     setCtx(null); setExam(null); setOrderId("");
     await loadQueue();
   });
-  const draft = () => act(async () => { if (exam) { await saveExamDraft(orderId, exam); window.alert("Draft saved."); } });
+  const draft = () => act(async () => { if (exam) { await saveExamDraft(orderId, exam); notify("Draft saved."); } });
   const complete = (confirm: boolean) => act(async () => {
     if (!exam || !ctx) return;
     const r = await completeExam(orderId, exam, confirm);

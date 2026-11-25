@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { isTauri } from "@/lib/platform";
 import { CLAIM_STATUSES, claimLabel, listInsuranceCompanies, type ClaimStatus, type InsuranceCompany } from "@/lib/repo/insurance";
 import { companyOverview, insuredEpisodes, setHospitalClaim, type InsuredEpisode } from "@/lib/repo/hospitalInsurance";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 0 });
@@ -51,7 +52,7 @@ export default function InsurancePaymentsPage() {
   return (
     <div>
       <PageHeader title="Insurance Payments" actions={<Button onClick={() => setCompanies(true)}><Building2 size={14} className="mr-1" />Insurance Companies</Button>} />
-      {error && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mb-3" />
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {byCompany.length === 0 ? <div className={card}><p className="text-sm text-neutral-400">No insured patients yet. Mark a patient as insured on registration.</p></div> : byCompany.map((c) => (
           <div key={c.name} className={card}>

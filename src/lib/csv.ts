@@ -1,9 +1,10 @@
 import { can, NO_PERMISSION_MESSAGE } from "./actionPermissions";
+import { notify } from "@/lib/notify";
 
 /** Whether this login may export data; tells the user when not. */
 export function mayExport(): boolean {
   if (can("data.export")) return true;
-  if (typeof window !== "undefined") window.alert(NO_PERMISSION_MESSAGE);
+  if (typeof window !== "undefined") notify(NO_PERMISSION_MESSAGE);
   return false;
 }
 

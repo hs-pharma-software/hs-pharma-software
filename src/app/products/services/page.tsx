@@ -134,7 +134,7 @@ export default function PraServicesPage() {
             {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
             <div className="flex justify-end gap-2">
               <Button type="button" onClick={() => setDraft(null)}>Cancel</Button>
-              <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
             </div>
           </form>
         </Modal>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { rs, type ProductCardData } from "./Render";
+import { FormError } from "@/components/ui/FormError";
 
 /** The interactive parts of a business website: request forms, the cart and
  * checkout. Prices, stock and totals always come from the server; the cart in
@@ -96,7 +97,7 @@ export function RequestForm({ kind, preview }: { kind: "contact" | "appointment"
       <label className="block text-sm text-neutral-700">Message<textarea value={f.message} onChange={set("message")} rows={3} className={`${input} mt-1`} /></label>
       {/* Left empty by people; filled by bots. */}
       <input tabIndex={-1} autoComplete="off" aria-hidden className="hidden" value={f.website} onChange={set("website")} />
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} />
       <button type="submit" disabled={state === "sending" || preview} className={btn} style={{ background: "var(--wa)" }}>{preview ? "Preview: sending is off" : state === "sending" ? "Sending…" : "Send"}</button>
     </form>
   );

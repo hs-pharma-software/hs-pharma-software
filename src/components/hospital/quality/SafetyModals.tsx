@@ -11,8 +11,9 @@ import {
   type OutcomeClass,
 } from "@/config/quality";
 import type { CriticalAlert, HospitalEpisode } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
-export const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+export const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 const nowLocal = () => localDateTime().replace(" ", "T");
 
 function Actions({ onClose, onSave, saving, label }: { onClose: () => void; onSave: () => void; saving: boolean; label: string }) {

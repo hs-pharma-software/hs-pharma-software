@@ -34,6 +34,7 @@ import { isPraInvoice } from "@/lib/pra/services";
 import { fetchInvoicePdf, saveBlob } from "@/lib/invoiceShare";
 import { recentReceiptsFor, type RecentReceiptRow } from "@/lib/repo/receptionFees";
 import { ReceiptModal } from "@/app/hospital/reception/ReceiptModal";
+import { notify } from "@/lib/notify";
 
 const isSurgery = (r: InvoiceListRow) => r.invoice_type === "hospital_surgery";
 const isClinicVisit = (r: InvoiceListRow) => r.invoice_type === "clinic_visit";
@@ -104,7 +105,7 @@ export default function InvoicesPage() {
   const canFbr = useCan("invoice.fbr_submit");
 
   async function openEdit(row: InvoiceListRow) {
-    if (!can("invoice.edit")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("invoice.edit")) return notify(NO_PERMISSION_MESSAGE);
     const full = await invoicesRepo.get(row.id);
     if (!full) return;
     openEditTab(full);
@@ -125,7 +126,7 @@ export default function InvoicesPage() {
   }
 
   async function handleDelete(row: InvoiceListRow) {
-    if (!can("invoice.delete")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("invoice.delete")) return notify(NO_PERMISSION_MESSAGE);
     const reason = window.prompt(`Delete invoice #${row.invoice_no ?? ""}? This restores its stock. Reason:`);
     if (reason === null) return;
     setDeletingId(row.id);
@@ -149,7 +150,7 @@ export default function InvoicesPage() {
 
   async function handleFbrSubmit(row: InvoiceListRow) {
     if (!fbrSettings || submittingIds.has(row.id)) return;
-    if (!can("invoice.fbr_submit")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("invoice.fbr_submit")) return notify(NO_PERMISSION_MESSAGE);
 
     setSubmittingIds((prev) => new Set(prev).add(row.id));
     setFbrErrors((prev) => { const n = { ...prev }; delete n[row.id]; return n; });
@@ -526,13 +527,13 @@ function MarkPaidModal({ row, onClose, onPaid }: { row: InvoiceListRow; onClose:
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [busy, setBusy] = useState(false);
   async function confirm() {
-    if (!can("invoice.edit")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("invoice.edit")) return notify(NO_PERMISSION_MESSAGE);
     setBusy(true);
     try {
       await markInvoicePaid(row.id, method);
       onPaid();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

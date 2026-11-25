@@ -10,6 +10,7 @@ import { financeOverview, type FinanceOverview } from "@/lib/repo/cashClosing";
 import { rs } from "@/components/hospital/finance/CloseDay";
 import { recentVendorPayments, vendorPaymentSummary, VENDOR_PAY_METHODS, type VendorPaymentRow } from "@/lib/repo/vendorPayments";
 import { useAuthStore } from "@/store/authStore";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -23,7 +24,7 @@ export default function FinanceOverviewPage() {
   const [ov, setOv] = useState<FinanceOverview | null>(null);
   useEffect(() => {
     if (!isTauri()) return;
-    void financeOverview({ from, to }).then(setOv).catch((e) => window.alert(e instanceof Error ? e.message : String(e)));
+    void financeOverview({ from, to }).then(setOv).catch((e) => notify(e instanceof Error ? e.message : String(e)));
   }, [from, to]);
   // Hospitals: the Purchase Cell's bills waiting for Finance, and the last vendor payments.
   const hospital = useAuthStore((st) => st.currentTenant?.businessType) === "hospital";

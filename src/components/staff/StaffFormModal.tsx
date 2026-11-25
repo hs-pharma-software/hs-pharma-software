@@ -14,6 +14,7 @@ import { businessType } from "@/config/businessTypes";
 import { usesHospitalStaff } from "@/config/hospitalStaff";
 import { HospitalStaffFormModal } from "./HospitalStaffFormModal";
 import { localDate } from "@/lib/localDate";
+import { FormError } from "@/components/ui/FormError";
 
 export function StaffFormModal({
   staff,
@@ -137,12 +138,12 @@ function GeneralStaffForm({
           </Field>
           <p className="self-end pb-2 text-xs text-neutral-500">The login this person signs in with. Their name and designation then show on what they record.</p>
         </div>
-        {error && <p className="text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

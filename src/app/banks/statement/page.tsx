@@ -152,7 +152,7 @@ export default function BankStatementPage() {
               <Button type="button" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={saving}>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving}>
                 {saving ? "Saving..." : "Save"}
               </Button>
             </div>

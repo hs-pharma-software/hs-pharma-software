@@ -26,6 +26,7 @@ import { useAuthStore } from "@/store/authStore";
 import type { AuditRow } from "@/lib/types2";
 import type { Product } from "@/lib/types";
 import { localDate } from "@/lib/localDate";
+import { FormError } from "@/components/ui/FormError";
 
 interface Line {
   product: Product;
@@ -234,7 +235,7 @@ export default function AuditDetailPage() {
                 {companies.map((c) => <option key={c} value={c}>Only {c}</option>)}
               </Select>
             </Field>
-            {initError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{initError}</p>}
+            <FormError message={initError} />
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button onClick={() => setInitOpen(false)}>Cancel</Button>
               <Button loading={initBusy} variant="primary" disabled={initBusy || !initName.trim()} onClick={() => void startAudit()}>{initBusy ? "Starting…" : "Start audit"}</Button>
@@ -347,7 +348,7 @@ export default function AuditDetailPage() {
               <Button type="button" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0}>
                 {saving ? "Saving..." : "Save"}
               </Button>
             </div>

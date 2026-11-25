@@ -32,6 +32,7 @@ import { ConsultationOrders } from "@/components/clinic/ConsultationOrders";
 import { AdmissionAdvice } from "@/components/clinic/AdmissionAdvice";
 import { ConsultationPrintModal } from "@/components/clinic/ClinicPrints";
 import { useCanBill } from "@/lib/moduleAccess";
+import { notify } from "@/lib/notify";
 
 interface RxItemDraft {
   product_id: string | null;
@@ -135,7 +136,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
     try {
       await persistConsultation(true);
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -171,7 +172,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
 
   async function saveRx() {
     if (saving) return;
-    if (!rxItems.some((i) => i.product_name.trim())) { window.alert("Add at least one medicine."); return; }
+    if (!rxItems.some((i) => i.product_name.trim())) { notify("Add at least one medicine."); return; }
     setSaving(true);
     try {
       // The prescription goes with the consultation: save that first when it is new.
@@ -223,7 +224,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
       setRxNotes("");
       if (newConsultation) router.replace(`/clinic/consultations/view?id=${cid}`);
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

@@ -17,6 +17,7 @@ import {
 import { ABO, RH, COMPONENTS, TTI_TESTS, SERIOUS, DONOR_MIN_HB, DONOR_MIN_WEIGHT_KG } from "@/config/bloodBank";
 import { fmtWhen } from "@/components/hospital/record/FormEditor";
 import type { BbDonation, BbDonor, BbReaction, BbRequest, BbUnit } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -26,7 +27,7 @@ const UNIT_STATUS: Record<BbUnit["status"], [string, string]> = {
   issued: ["Issued", "bg-violet-100 text-violet-700"], transfused: ["Transfused", "bg-neutral-200 text-neutral-700"], discarded: ["Discarded", "bg-rose-100 text-rose-700"],
 };
 const URGENCY_CLS: Record<BbRequest["urgency"], string> = { Emergency: "bg-rose-100 text-rose-700", Urgent: "bg-amber-100 text-amber-800", Routine: "bg-neutral-100 text-neutral-600" };
-const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 const pill = (label: string, cls: string) => <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>{label}</span>;
 const inDays = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return localDate(x); };
 
@@ -394,7 +395,7 @@ function DonationsModal({ donor, onClose }: { donor: BbDonor; onClose: () => voi
         questionnaireOk: v.questionnaireOk === "Yes", consentSigned: v.consentSigned === "Yes", deferralReason: fit ? null : v.deferralReason,
         collect: fit && v.collect === "Yes" ? { component: v.component, volumeMl: Number(v.volumeMl), expiresOn: v.expiresOn } : null,
       });
-      if (unit) window.alert(`Unit ${unit.unit_no} created in quarantine. Record its screening on the Stock tab.`);
+      if (unit) notify(`Unit ${unit.unit_no} created in quarantine. Record its screening on the Stock tab.`);
       setV({ ...v, hb: "", weightKg: "", bp: "", pulse: "", temperatureC: "", questionnaireOk: "", consentSigned: "", deferralReason: "" });
       await load();
     } catch (e) { err(e); }

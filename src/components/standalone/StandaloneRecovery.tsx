@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { localBridge, unwrap } from "@/lib/edition";
 import { RecoveryKeyNotice } from "./RecoveryKeyNotice";
+import { FormError } from "@/components/ui/FormError";
 
 const input = "w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-[#1e88e5] focus:bg-white";
 
@@ -40,7 +41,7 @@ export function StandaloneRecovery({ onDone, onCancel }: { onDone: (username: st
       <input className={`${input} font-mono`} placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" value={key} onChange={(e) => setKey(e.target.value)} required autoFocus />
       <input className={input} type="password" placeholder="New password (10+ characters)" value={pw} onChange={(e) => setPw(e.target.value)} required minLength={10} autoComplete="new-password" />
       <input className={input} type="password" placeholder="Repeat new password" value={pw2} onChange={(e) => setPw2(e.target.value)} required autoComplete="new-password" />
-      {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} />
       <div className="flex gap-2">
         <Button type="button" onClick={onCancel}>Back</Button>
         <Button loading={busy} type="submit" variant="primary" disabled={busy} className="flex-1 justify-center">{busy ? "Checking…" : "Reset password"}</Button>

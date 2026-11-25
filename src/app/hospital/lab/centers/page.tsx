@@ -10,6 +10,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { listCollectionCenters, saveCollectionCenter } from "@/lib/repo/labReports";
 import type { CollectionCenter } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 /** The hospital's sample collection centers. Their receptionists log in as
  * hospital staff with "Works at" set to the center; orders they register are
@@ -61,7 +62,7 @@ function CenterModal({ center, onClose, onSaved }: { center: CollectionCenter | 
       await saveCollectionCenter(center?.id ?? null, { code, name, address, phone, is_active: active ? 1 : 0 });
       onSaved();
     } catch (err) {
-      window.alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+      notify(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }

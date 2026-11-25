@@ -9,6 +9,8 @@ import { Field, Input } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { hallsRepo, saveHall, type BanquetHall } from "@/lib/repo/banquet";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 /** The halls / lawns booked for events: capacity and rent. */
 export default function HallsPage() {
@@ -37,7 +39,7 @@ export default function HallsPage() {
   return (
     <div>
       <PageHeader title="Halls" actions={<Button variant="primary" onClick={() => setEditing("new")}><Plus size={14} />Add hall</Button>} />
-      {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+      <FormError message={error} className="mb-2" />
       <DataTable columns={columns} rows={rows} onRowClick={(h) => setEditing(h)} emptyMessage="No halls yet. Add each hall or lawn you book, with its capacity and rent." />
       {editing && <HallForm hall={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
     </div>
@@ -56,7 +58,7 @@ function HallForm({ hall, onClose, onSaved }: { hall: BanquetHall | null; onClos
       await saveHall(hall?.id ?? null, { name, capacity: Number(capacity) || null, rent: Number(rent) || 0, is_active: active });
       onSaved();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

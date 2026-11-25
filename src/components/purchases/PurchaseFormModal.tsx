@@ -1037,7 +1037,7 @@ export function PurchaseFormModal({
               Draft
             </Button>
           )}
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S">
+          <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>

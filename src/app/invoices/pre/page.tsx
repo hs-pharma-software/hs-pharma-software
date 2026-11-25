@@ -15,6 +15,7 @@ import {
   deletePreInvoice, listPreInvoices, preInvoiceEstimate, savePreInvoice, type PreInvoice, type PreInvoiceLine,
 } from "@/lib/repo/preInvoices";
 import type { Product } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const rs = (n: number) => `Rs ${n.toLocaleString("en-PK", { maximumFractionDigits: 0 })}`;
@@ -167,7 +168,7 @@ export default function PreInvoicesPage() {
                 </tbody>
               </table>
             )}
-            {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+            <FormError message={error} />
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button onClick={() => setEditing(null)}>Cancel</Button>
               <Button loading={busy} variant="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>

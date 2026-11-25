@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { hospitalDepartmentsRepo, hospitalServicesRepo, type HospitalService } from "@/lib/repo/hospital";
 import type { HospitalServiceCategory, HospitalServiceBillingUnit } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 interface Props {
   service: HospitalService | null;
@@ -61,7 +62,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
 
   async function save() {
     if (!code.trim() || !name.trim()) return;
-    if (hospitalShare < 0) { window.alert("The doctor's and staff's shares are more than the rate."); return; }
+    if (hospitalShare < 0) { notify("The doctor's and staff's shares are more than the rate."); return; }
     setSaving(true);
     try {
       const payload = {
@@ -88,7 +89,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
       }
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

@@ -18,6 +18,7 @@ import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import { localDate } from "@/lib/localDate";
 import type { Product } from "@/lib/types";
 import type { OrderRow } from "@/lib/types2";
+import { notify } from "@/lib/notify";
 
 /** Orders to suppliers. Opening the page raises orders for products that ran
  * out of stock (to the supplier who delivered them last); each order can be
@@ -70,7 +71,7 @@ export default function OrdersPage() {
   }, [pendingAction, setPendingAction]);
 
   async function edit(r: OrderGridRow) {
-    if (r.purchase_id) return window.alert("This order is already converted to a purchase; edit the purchase instead.");
+    if (r.purchase_id) return notify("This order is already converted to a purchase; edit the purchase instead.");
     const o = await ordersRepo.get(r.id);
     if (o) setEditing(o);
   }
@@ -79,12 +80,12 @@ export default function OrdersPage() {
     try {
       setConverting(await orderForPurchase(r.id));
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 
   async function remove(r: OrderGridRow) {
-    if (!can("purchase.delete")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("purchase.delete")) return notify(NO_PERMISSION_MESSAGE);
     const reason = window.prompt(
       `Delete order #${r.order_no ?? ""} (${r.supplier_name})?${r.purchase_id ? " The purchase made from it stays." : ""} Reason:`
     );
@@ -93,7 +94,7 @@ export default function OrdersPage() {
       await deleteOrder(r.id, reason || undefined);
       await reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 

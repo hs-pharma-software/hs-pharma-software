@@ -12,6 +12,7 @@ import { money } from "@/components/lab/labUi";
 import { isTauri } from "@/lib/platform";
 import { collectLabPayment, labBillLines, listLabBills, type LabBillRow } from "@/lib/repo/lab";
 import type { ServiceLine } from "@/lib/serviceFbr";
+import { notify } from "@/lib/notify";
 
 /** Lab bills: print (the store's invoice template), send to FBR, and take
  * the balance of a part-paid bill. */
@@ -80,7 +81,7 @@ function PaymentModal({ row, onClose, onSaved }: { row: LabBillRow; onClose: () 
       await collectLabPayment(row.id, Number(amount));
       onSaved();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

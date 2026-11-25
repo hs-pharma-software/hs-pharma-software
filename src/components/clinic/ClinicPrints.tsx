@@ -20,6 +20,7 @@ import { LabReportDocument } from "./LabReportDocument";
 import { buildLabReportView, labReportUrl, publicOrigin } from "@/lib/labReportView";
 import { ensureLabVisitToken, labVisitIdFor } from "@/lib/repo/lab";
 import { loadLogo } from "@/lib/printTemplates";
+import { notify } from "@/lib/notify";
 
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -66,7 +67,7 @@ function usePrint(autoPrint: boolean, ready: boolean, paper: ClinicPrintTemplate
     try {
       await printDirect(paper, areaRef.current);
     } catch (e) {
-      window.alert(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not print: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPrinting(false);
     }
@@ -87,7 +88,7 @@ export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { or
   const [profile, setProfile] = useState<ClinicProfile | null>(null);
   const key = orderIds.join(",");
   useEffect(() => {
-    void getClinicReports(orderIds).then(setR).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
+    void getClinicReports(orderIds).then(setR).catch((e) => { notify(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   // The business logo, and the online report's QR code when these tests came from a lab visit.
@@ -145,7 +146,7 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
         patientsRepo.get(c.patient_id), c.doctor_id ? doctorsRepo.get(c.doctor_id) : Promise.resolve(null), listOrdersForConsultation(c.id),
       ]);
       setD({ consultation: c, patient, doctor, medicines: full.rxItems.flat(), orders: orders.filter((o) => o.status !== "cancelled") });
-    })().catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
+    })().catch((e) => { notify(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [consultationId]); // eslint-disable-line react-hooks/exhaustive-deps
   const t = useTemplate("prescription");
@@ -240,7 +241,7 @@ export function ClinicVisitInvoiceModal({ invoiceId, onClose, autoPrint = false 
   const [inv, setInv] = useState<ClinicVisitInvoice | null>(null);
   const [profile, setProfile] = useState<ClinicProfile | null>(null);
   useEffect(() => {
-    void getClinicVisitInvoice(invoiceId).then(setInv).catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); });
+    void getClinicVisitInvoice(invoiceId).then(setInv).catch((e) => { notify(e instanceof Error ? e.message : String(e)); onClose(); });
     void loadClinicProfile().then(setProfile);
   }, [invoiceId]); // eslint-disable-line react-hooks/exhaustive-deps
   const t = useTemplate("invoice");

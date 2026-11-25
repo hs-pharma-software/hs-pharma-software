@@ -10,6 +10,7 @@ import { localDate } from "@/lib/localDate";
 import { billLines, listEpisodeBills, pctForAmount, setBillDiscounts, type EpisodeBill } from "@/lib/repo/episodeBills";
 import type { HospitalCharge } from "@/lib/types-hospital";
 import { ReceiptModal } from "@/app/hospital/reception/ReceiptModal";
+import { FormError } from "@/components/ui/FormError";
 
 const rs = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 0 });
 const TYPE: Record<string, string> = { opd: "OPD", ipd: "Admission", emergency: "Emergency" };
@@ -47,7 +48,7 @@ export function EpisodeBillsPanel({ defaultStatus = "all", compact = false }: { 
         </Field>
         <Field label="Find"><Input value={search} placeholder="Patient, MR, episode no" onChange={(e) => setSearch(e.target.value)} /></Field>
       </div>
-      {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-3 flex flex-wrap gap-x-6 text-sm">
         <span>Bills: <b>{rows.length}</b></span><span>Total: <b>Rs {rs(sum.total)}</b></span><span>Discount: <b>Rs {rs(sum.discount)}</b></span>
         <span className="text-emerald-700">Paid: <b>Rs {rs(sum.paid)}</b></span><span className="text-rose-700">Balance: <b>Rs {rs(sum.balance)}</b></span>
@@ -145,7 +146,7 @@ function BillEditModal({ bill, onClose, onSaved }: { bill: EpisodeBill; onClose:
         <Button onClick={applyWhole} disabled={!open.length || !(Number(whole) > 0)}>Spread over the lines</Button>
       </div>
       <Field label="Reason (required)"><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Staff family, poor patient, approved by MS" /></Field>
-      {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-3 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
         <Button loading={busy} variant="primary" disabled={busy || !reason.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>

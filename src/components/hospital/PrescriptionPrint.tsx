@@ -14,6 +14,8 @@ import { useAuthStore } from "@/store/authStore";
 import { dateWithDay, loadHospitalPrint, loadHospitalProfile, prescriptionQrText, type HospitalPrintSettings, type HospitalProfileInfo } from "@/lib/hospitalPrint";
 import type { HospitalEpisode, HospitalRxItem } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 type Order = Awaited<ReturnType<typeof listVisitOrders>>[number];
 interface Data {
@@ -52,7 +54,7 @@ export function PrescriptionPrintModal({ episodeId, onClose }: { episodeId: stri
 
   async function print() {
     const restore = fitToA4Page(ref.current);
-    try { await printDirect("a4", ref.current); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); } finally { restore(); }
+    try { await printDirect("a4", ref.current); } catch (e) { notify(e instanceof Error ? e.message : String(e)); } finally { restore(); }
   }
 
   const docTitle = (doc: Staff | null) => [d?.settings.rxShowDesignation ? doc?.designation : null, doc?.specialization].filter(Boolean).join(" · ");
@@ -63,7 +65,7 @@ export function PrescriptionPrintModal({ episodeId, onClose }: { episodeId: stri
 
   return (
     <Modal title="Prescription" onClose={onClose} width="max-w-4xl">
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      <FormError message={error} />
       {!d ? !error && <p className="text-sm text-neutral-400">Loading…</p> : (
         <div ref={ref} className="print-area mx-auto flex min-h-[270mm] w-full max-w-[190mm] flex-col bg-white text-[12px] text-neutral-900">
           {/* Header: the hospital | the doctor */}

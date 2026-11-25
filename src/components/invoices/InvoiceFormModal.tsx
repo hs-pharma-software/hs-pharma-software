@@ -58,6 +58,7 @@ import { localDate } from "@/lib/localDate";
 import { serverJson } from "@/lib/serverMode";
 import { desktopCall, useDesktopStatus, NeedsInternetError } from "@/lib/desktopBridge";
 import { enterToNextField, useFieldHotkeys } from "@/lib/formKeys";
+import { FormError } from "@/components/ui/FormError";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
 function localToday(): string {
@@ -974,12 +975,13 @@ export function InvoiceFormModal({
         )}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           {canPickDate && (
-            <Field label="Invoice Date" required>
+            <Field label="Invoice Date" required error={invoiceDate > localToday() ? "Can't be in the future" : undefined}>
               <Input
                 type="date"
                 value={invoiceDate}
                 max={localToday()}
                 onChange={(e) => setInvoiceDate(e.target.value)}
+                aria-invalid={invoiceDate > localToday() || undefined}
                 required
               />
               {invoiceDate < localToday() && (
@@ -1444,7 +1446,7 @@ export function InvoiceFormModal({
           </Field>
         </div>
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
 
         <div className="sticky -bottom-3 z-10 -mx-3 flex flex-wrap items-center justify-end gap-2 border-t border-neutral-200 bg-white px-3 py-2.5 shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.15)] sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:shadow-none">
           <span className="flex w-full items-baseline justify-between text-sm font-semibold tabular-nums text-neutral-900 sm:hidden">
@@ -1465,7 +1467,7 @@ export function InvoiceFormModal({
               Draft
             </Button>
           )}
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0} title={offline ? "Save on this computer (Ctrl+S); sent when the internet returns" : "Ctrl+S"} className="max-sm:flex-1">
+          <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0} title={offline ? "Save on this computer (Ctrl+S); sent when the internet returns" : "Ctrl+S"} className="max-sm:flex-1">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>

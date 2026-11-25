@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { ServiceBillModal } from "@/components/print/ServiceBillModal";
 import { addBookingPayment, bookingBillLines, cancelBooking, completeBooking, getBooking, slotLabel, type BookingDetail } from "@/lib/repo/banquet";
+import { notify } from "@/lib/notify";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 export const STATUS_CLS: Record<string, string> = {
@@ -28,7 +29,7 @@ export function BookingDetailModal({ bookingId, onClose, onChanged }: { bookingI
   async function reload() {
     setD(await getBooking(bookingId));
   }
-  useEffect(() => { void reload().catch((e) => { window.alert(e instanceof Error ? e.message : String(e)); onClose(); }); }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void reload().catch((e) => { notify(e instanceof Error ? e.message : String(e)); onClose(); }); }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -37,7 +38,7 @@ export function BookingDetailModal({ bookingId, onClose, onChanged }: { bookingI
       await reload();
       onChanged();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

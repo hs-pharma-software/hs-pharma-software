@@ -11,6 +11,7 @@ import { listImagingStudies } from "@/lib/repo/radiology";
 import { listTemplates, saveTemplate, deleteTemplate, listModalities, type RadiologyTemplate, type RadiologyModality, type TemplateInput } from "@/lib/repo/radiologyPortal";
 import type { HospitalService } from "@/lib/types-hospital";
 import { Panel, errMsg } from "@/components/hospital/radiology/common";
+import { notify } from "@/lib/notify";
 
 /** Report templates: the usual findings and impression for a study or modality,
  * which the radiologist fills in and edits while reporting. */
@@ -27,7 +28,7 @@ export default function TemplatesPage() {
     setModalities(await listModalities());
     setStudies(await listImagingStudies({ includeInactive: true }));
   }
-  useEffect(() => { void reload().catch((e) => window.alert(errMsg(e))); }, []);
+  useEffect(() => { void reload().catch((e) => notify(errMsg(e))); }, []);
 
   const studyName = (id: string | null) => studies.find((s) => s.id === id)?.name;
   const shown = rows.filter((t) => !filter || t.modality_code === filter);
@@ -50,7 +51,7 @@ export default function TemplatesPage() {
               </div>
               <div className="flex gap-1">
                 <Button variant="ghost" aria-label="Edit" onClick={() => setEditing(t)}><Pencil size={14} /></Button>
-                <Button variant="ghost" aria-label="Delete" onClick={() => { if (window.confirm(`Delete template ${t.name}?`)) void deleteTemplate(t.id).then(reload).catch((e) => window.alert(errMsg(e))); }}><Trash2 size={14} /></Button>
+                <Button variant="ghost" aria-label="Delete" onClick={() => { if (window.confirm(`Delete template ${t.name}?`)) void deleteTemplate(t.id).then(reload).catch((e) => notify(errMsg(e))); }}><Trash2 size={14} /></Button>
               </div>
             </div>
             {t.findings && <p className="mt-2 line-clamp-4 whitespace-pre-line text-sm text-neutral-700">{t.findings}</p>}
@@ -73,7 +74,7 @@ function TemplateForm({ template: t, modalities, studies, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   async function save() {
     setSaving(true);
-    try { await saveTemplate(t?.id ?? null, f); onSaved(); } catch (e) { window.alert(errMsg(e)); } finally { setSaving(false); }
+    try { await saveTemplate(t?.id ?? null, f); onSaved(); } catch (e) { notify(errMsg(e)); } finally { setSaving(false); }
   }
   return (
     <Modal title={t ? `Edit ${t.name}` : "Add template"} onClose={onClose}>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { customersRepo } from "@/lib/repo/customers";
 import { can } from "@/lib/actionPermissions";
 import type { Customer } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 /** The "+" next to a customer list on a bill: name, mobile and (owner, or
  * staff allowed to) whether this customer gets the extra discount. */
@@ -58,10 +59,10 @@ export function QuickCustomerDialog({ onClose, onCreated }: { onClose: () => voi
         ) : (
           <p className="text-xs text-neutral-500">Extra discount for this customer can be turned on by the owner.</p>
         )}
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
         </div>
       </form>
     </Modal>

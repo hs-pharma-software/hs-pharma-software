@@ -13,6 +13,7 @@ import {
   type PurchaseListRow,
   type PurchaseItemWithProduct,
 } from "@/lib/repo/purchases";
+import { FormError } from "@/components/ui/FormError";
 
 interface PreviewLine {
   item: PurchaseItemWithProduct;
@@ -159,13 +160,13 @@ export function PurchaseWholeReturnModal({ onClose, onSaved }: { onClose: () => 
           </>
         )}
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        <FormError message={error} />
 
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" disabled={saving || returnableLines.length === 0}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving || returnableLines.length === 0}>
             {saving ? "Returning..." : "Return Whole Invoice"}
           </Button>
         </div>

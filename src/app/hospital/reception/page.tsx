@@ -21,6 +21,7 @@ import { ReprintModal } from "./ReprintModal";
 import { CloseDayModal } from "@/components/hospital/finance/CloseDay";
 import { EpisodeBillsPanel } from "@/components/hospital/EpisodeBills";
 import { feeScopeForCurrentUser, opdQueueFor, listUnpaidOrdersFor, FEE_SCOPE_LABEL, type FeeScope, type ScopedQueueRow } from "@/lib/repo/receptionFees";
+import { notify } from "@/lib/notify";
 
 const STATUS_LABEL: Record<string, string> = { waiting: "Waiting", in_consultation: "With doctor", done: "Seen" };
 const STATUS_COLOR: Record<string, string> = {
@@ -87,7 +88,7 @@ export default function ReceptionPage() {
       setSearch("");
       await reload();
     } catch (e) {
-      window.alert(`Could not book: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not book: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBooking(false);
     }
@@ -101,7 +102,7 @@ export default function ReceptionPage() {
       await payOrderFee(o.kind, o.id, method);
       await reload();
     } catch (e) {
-      window.alert(`Could not take the fee: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not take the fee: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPayingId(null);
     }

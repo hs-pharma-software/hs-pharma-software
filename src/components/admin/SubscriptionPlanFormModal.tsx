@@ -265,7 +265,7 @@ export function SubscriptionPlanFormModal({
             confirmDelete ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-rose-600">Sure?</span>
-                <Button
+                <Button loading={deleting}
                   type="button"
                   variant="danger"
                   disabled={deleting}
@@ -294,7 +294,7 @@ export function SubscriptionPlanFormModal({
 
           <div className="flex gap-2">
             <Button type="button" onClick={close}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={saving}>
+            <Button loading={saving} type="submit" variant="primary" disabled={saving}>
               {saving ? "Saving..." : "Save"}
             </Button>
           </div>

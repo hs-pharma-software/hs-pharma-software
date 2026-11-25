@@ -5,6 +5,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { setupFirstLogins, login, AuthError } from "@/lib/auth";
 import { useAuthStore } from "@/store/authStore";
+import { FormError } from "@/components/ui/FormError";
 
 /** Shown exactly once, right after migration v9 runs on a device that
  * already has pre-multi-tenant data \u2014 that data was backfilled onto a
@@ -83,8 +84,8 @@ export function SetupSuperAdmin({ onDone }: { onDone: () => void }) {
             </div>
           </div>
 
-          {error && <p className="text-sm text-rose-600">{error}</p>}
-          <Button type="submit" variant="primary" disabled={saving} className="justify-center">
+          <FormError message={error} />
+          <Button loading={saving} type="submit" variant="primary" disabled={saving} className="justify-center">
             {saving ? "Setting up..." : "Create Accounts & Continue"}
           </Button>
         </form>

@@ -11,9 +11,10 @@ import {
 import { COMPONENTS, REACTION_TYPES, SEVERITIES } from "@/config/bloodBank";
 import { fmtWhen } from "./FormEditor";
 import type { BbReaction, BbRequest, HospitalEpisode } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
-const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 
 /** Blood requests and transfusions of one admission (MSDS COP-2 Ind. 21-25):
  * the doctor requests, the blood bank issues, and the ward records the

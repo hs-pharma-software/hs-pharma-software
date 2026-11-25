@@ -10,6 +10,7 @@ import { localDate } from "@/lib/localDate";
 import {
   VENDOR_PAY_METHODS, payVendorBill, pendingVendorBills, recentVendorPayments, type PayableDoc, type VendorPayMethod, type VendorPaymentRow,
 } from "@/lib/repo/vendorPayments";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 });
@@ -41,7 +42,7 @@ export default function VendorPaymentsPage() {
       </div>
       <div className={card}>
         <div className="mb-3 max-w-md"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find vendor, vendor no or bill" aria-label="Find bill" /></div>
-        {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mb-2" />
         {rows.length === 0 ? <p className="text-sm text-neutral-400">No bills waiting for payment.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -123,7 +124,7 @@ function PayModal({ bill, onClose, onPaid }: { bill: PayableDoc; onClose: () => 
         <Field label="Dated"><Input type="date" value={dated} onChange={(e) => setDated(e.target.value)} /></Field>
         <div className="sm:col-span-2"><Field label="Note"><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></Field></div>
       </div>
-      {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
         <Button loading={busy} variant="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Saving…" : `Pay ${full ? `Rs ${money(bill.balance)}` : ""}`}</Button>

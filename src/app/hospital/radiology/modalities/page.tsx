@@ -10,6 +10,7 @@ import { isTauri } from "@/lib/platform";
 import { listModalities, saveModality, deleteModality, loadStandardModalities, type RadiologyModality, type ModalityInput } from "@/lib/repo/radiologyPortal";
 import { DICOM_MODALITY_CODES } from "@/config/radiologyPortal";
 import { Panel, errMsg } from "@/components/hospital/radiology/common";
+import { notify } from "@/lib/notify";
 
 /** The imaging modalities this hospital offers (X-Ray, Ultrasound, CT...). */
 export default function ModalitiesPage() {
@@ -19,10 +20,10 @@ export default function ModalitiesPage() {
   async function reload() {
     if (isTauri()) setRows(await listModalities({ includeInactive: true }));
   }
-  useEffect(() => { void reload().catch((e) => window.alert(errMsg(e))); }, []);
+  useEffect(() => { void reload().catch((e) => notify(errMsg(e))); }, []);
 
   async function loadStandard() {
-    try { const n = await loadStandardModalities(); window.alert(n ? `${n} modalities added.` : "All standard modalities are already here."); await reload(); } catch (e) { window.alert(errMsg(e)); }
+    try { const n = await loadStandardModalities(); notify(n ? `${n} modalities added.` : "All standard modalities are already here."); await reload(); } catch (e) { notify(errMsg(e)); }
   }
 
   return (
@@ -46,7 +47,7 @@ export default function ModalitiesPage() {
             {m.outsourced ? <p className="text-sm text-neutral-500">Outsourced</p> : null}
             <div className="mt-3 flex gap-2">
               <Button variant="secondary" className="flex-1 justify-center" onClick={() => setEditing(m)}><Pencil size={14} />Edit</Button>
-              <Button variant="danger" onClick={() => { if (window.confirm(`Delete ${m.name}?`)) void deleteModality(m.id).then(reload).catch((e) => window.alert(errMsg(e))); }}><Trash2 size={14} />Delete</Button>
+              <Button variant="danger" onClick={() => { if (window.confirm(`Delete ${m.name}?`)) void deleteModality(m.id).then(reload).catch((e) => notify(errMsg(e))); }}><Trash2 size={14} />Delete</Button>
             </div>
           </Panel>
         ))}
@@ -64,7 +65,7 @@ function ModalityForm({ modality: m, onClose, onSaved }: { modality: RadiologyMo
   const [saving, setSaving] = useState(false);
   async function save() {
     setSaving(true);
-    try { await saveModality(m?.id ?? null, f); onSaved(); } catch (e) { window.alert(errMsg(e)); } finally { setSaving(false); }
+    try { await saveModality(m?.id ?? null, f); onSaved(); } catch (e) { notify(errMsg(e)); } finally { setSaving(false); }
   }
   return (
     <Modal title={m ? `Edit ${m.name}` : "Add modality"} onClose={onClose} width="max-w-lg">

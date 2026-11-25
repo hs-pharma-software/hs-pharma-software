@@ -12,6 +12,8 @@ import {
   bankLine, createServiceBill, deleteServiceBill, listServiceBills, listServiceTypes, listVendors,
   type ServiceBillRow, type ServiceType, type VendorRow,
 } from "@/lib/repo/vendors";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 });
@@ -36,7 +38,7 @@ export default function ServiceBillsPage() {
 
   async function remove(b: ServiceBillRow) {
     if (!window.confirm(`Delete bill ${b.bill_no} of ${b.vendor_name}?`)) return;
-    try { await deleteServiceBill(b.id); await reload(); } catch (e) { window.alert(msg(e)); }
+    try { await deleteServiceBill(b.id); await reload(); } catch (e) { notify(msg(e)); }
   }
   const sum = rows.reduce((a, r) => ({ total: a.total + Number(r.total), balance: a.balance + Number(r.balance) }), { total: 0, balance: 0 });
 
@@ -50,7 +52,7 @@ export default function ServiceBillsPage() {
           <Field label="Bills"><Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="">All</option><option value="unpaid">Unpaid</option><option value="paid">Paid</option></Select></Field>
           <p className="pb-2 text-sm">Total <b>Rs {money(sum.total)}</b> · unpaid <b className="text-rose-700">Rs {money(sum.balance)}</b></p>
         </div>
-        {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mt-2" />
         {rows.length === 0 ? <p className="mt-3 text-sm text-neutral-400">No service bills.</p> : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
@@ -134,7 +136,7 @@ function NewBillModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         <Field label="Total (Rs)"><p className="py-1.5 text-lg font-bold tabular-nums">{money(total)}</p></Field>
       </div>
       {vendor && bankLine(vendor) && <p className="mt-2 text-xs text-neutral-600"><span className="font-medium text-neutral-500">Pay to:</span> {bankLine(vendor)}</p>}
-      {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
         <Button loading={busy} variant="primary" disabled={busy || !vendorId || !(Number(amount) > 0)} onClick={() => void save()}>{busy ? "Saving…" : "Save bill"}</Button>

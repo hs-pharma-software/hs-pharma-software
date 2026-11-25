@@ -8,8 +8,9 @@ import { localDateTime } from "@/lib/localDate";
 import { reportAdr } from "@/lib/repo/medicines";
 import { ADR_SERIOUSNESS, ADR_ACTIONS, ADR_OUTCOMES, ADR_CHALLENGE } from "@/config/medicines";
 import type { HospitalEpisode } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
-const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 
 /** Report a suspected adverse drug reaction from the patient's visit (pharmacovigilance). */
 export function AdrModal({ episode, drug, onClose, onSaved }: { episode: HospitalEpisode; drug?: string; onClose: () => void; onSaved: () => void }) {

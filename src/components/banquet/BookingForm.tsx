@@ -11,6 +11,7 @@ import {
   DISH_CATEGORIES, EVENT_TYPES, EXTRA_SUGGESTIONS, SLOTS, bookingTotals, dishesRepo, getBooking, hallClash, hallsRepo, packagesRepo, parseDishIds, saveBooking,
   slotLabel, type BanquetDish, type BanquetHall, type BanquetPackage, type BookingStatus, type Slot,
 } from "@/lib/repo/banquet";
+import { FormError } from "@/components/ui/FormError";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 interface Extra { name: string; qty: string; rate: string }
@@ -239,7 +240,7 @@ export function BookingForm({ bookingId, initialDate }: { bookingId?: string; in
                 </Field>
               </div>
             )}
-            {error && <p className="whitespace-pre-line text-sm text-rose-600">{error}</p>}
+            <FormError message={error} />
             <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || Boolean(clash)}>{saving ? "Saving…" : bookingId ? "Save changes" : "Book"}</Button>
           </div>
         </aside>

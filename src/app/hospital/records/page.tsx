@@ -16,6 +16,7 @@ import { addDays } from "@/lib/repo/facility";
 import { fmtWhen } from "@/components/hospital/record/FormEditor";
 import { err } from "@/components/hospital/quality/SafetyModals";
 import type { RecordRelease } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-2 font-medium";
@@ -158,7 +159,7 @@ function RequestModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   }, [q]);
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
   const save = async () => {
-    if (!patient) return window.alert("Choose the patient.");
+    if (!patient) return notify("Choose the patient.");
     try { await requestRelease({ ...v, patientId: patient.id }); onSaved(); } catch (e) { err(e); }
   };
   return (

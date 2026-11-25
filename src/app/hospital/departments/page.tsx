@@ -9,6 +9,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { hospitalDepartmentsRepo, type HospitalDepartment } from "@/lib/repo/hospital";
+import { notify } from "@/lib/notify";
 
 export default function DepartmentsPage() {
   const [rows, setRows] = useState<HospitalDepartment[]>([]);
@@ -72,7 +73,7 @@ function DepartmentModal({ dept, onClose, onSaved }: { dept: HospitalDepartment 
       else await hospitalDepartmentsRepo.create(payload);
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

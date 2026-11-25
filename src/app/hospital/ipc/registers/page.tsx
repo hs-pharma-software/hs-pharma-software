@@ -11,6 +11,7 @@ import { listRegister, currentActor, roleAllowed } from "@/lib/repo/medicalRecor
 import { IPC_REGISTERS } from "@/config/forms/ipc";
 import { FormEditor, FormStatusPill, fmtWhen } from "@/components/hospital/record/FormEditor";
 import type { FormRecord } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 
@@ -43,7 +44,7 @@ export default function IpcRegistersPage() {
     let patient: HospitalPatient | null = null;
     if (def.key === "hai_case" && mr.trim()) {
       patient = (await hospitalPatientsRepo.list({ where: "mr_no = ?", params: [mr.trim()] }))[0] ?? null;
-      if (!patient) return window.alert(`No patient with MR number ${mr.trim()}.`);
+      if (!patient) return notify(`No patient with MR number ${mr.trim()}.`);
     }
     setOpen({ record: null, patient });
   }

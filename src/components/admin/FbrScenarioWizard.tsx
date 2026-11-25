@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { serverJson } from "@/lib/serverMode";
 import { sandboxCallFromBrowser, type FbrInvoicePayload } from "@/lib/fbr";
 import { FBR_BUSINESS_NATURES, FBR_SECTORS, isIncomplete, scenarioGroup, SCENARIO_STATUS_LABEL, type FbrScenario, type ScenarioStatus, type ScenarioTestItem } from "@/lib/fbrScenarios";
+import { FormError } from "@/components/ui/FormError";
 
 interface ProductOption { id: string; name: string; hs_code: string; fbr_uom: string; fbr_sale_rate: number | null; sro_no: string | null; sro_item_serial_no: string | null; price: number }
 interface Prep {
@@ -627,7 +628,7 @@ function ClearCard({ tenantId, hasProductionToken }: { tenantId: string; hasProd
             </div>
           )}
           {p && c && !any && <p className="text-emerald-800">No sales to clear: the business is ready for work.</p>}
-          {msg && <p className="whitespace-pre-line text-rose-700">{msg}</p>}
+          <FormError message={msg} />
           <Button onClick={() => setOpen(false)}>Close</Button>
         </div>
       )}

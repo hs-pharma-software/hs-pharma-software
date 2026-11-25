@@ -19,6 +19,7 @@ import { highRiskGroup, PATIENT_IDENTIFIERS, ROUTES } from "@/config/highRiskMed
 import { fmtWhen } from "./FormEditor";
 import type { HospitalEpisode, HospitalRxItem, MarEntry } from "@/lib/types-hospital";
 import type { Staff } from "@/lib/types";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const FREQUENCIES = ["OD (once a day)", "BD (twice a day)", "TDS (three times)", "QID (four times)", "6 hourly", "8 hourly", "12 hourly", "HS (at night)", "SOS (when needed)", "STAT (once now)"];
@@ -46,7 +47,7 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
       await fn();
       await load();
     } catch (e) {
-      window.alert(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not ${what}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const ask = (q: string) => {
@@ -66,7 +67,7 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
         <div className="flex flex-wrap gap-1">
           <Button variant="ghost" onClick={() => setAdr("")}>Report reaction</Button>
           {episode.status === "open" && unsent > 0 && (
-            <Button variant="ghost" onClick={() => void act("send the orders", async () => { const n = await sendMedicationOrdersToPharmacy(episode.id); window.alert(`${n} order${n === 1 ? "" : "s"} sent to the pharmacy.`); })}>Send to pharmacy ({unsent})</Button>
+            <Button variant="ghost" onClick={() => void act("send the orders", async () => { const n = await sendMedicationOrdersToPharmacy(episode.id); notify(`${n} order${n === 1 ? "" : "s"} sent to the pharmacy.`); })}>Send to pharmacy ({unsent})</Button>
           )}
           {episode.status === "open" && <Button onClick={() => setNewOrder(true)}>New order</Button>}
         </div>
@@ -150,7 +151,7 @@ export function MedicationPanel({ episode }: { episode: HospitalEpisode }) {
       {newOrder && <OrderModal episode={episode} onClose={() => setNewOrder(false)} onSaved={() => { setNewOrder(false); void load(); }} />}
       {giving && <GiveModal order={giving} onClose={() => setGiving(null)} onSaved={() => { setGiving(null); void load(); }} />}
       {reviewing && <ReviewModal order={reviewing} onClose={() => setReviewing(null)} onSaved={() => { setReviewing(null); void load(); }} />}
-      {adr !== null && <AdrModal episode={episode} drug={adr} onClose={() => setAdr(null)} onSaved={() => { setAdr(null); window.alert("Reaction reported to the pharmacist."); }} />}
+      {adr !== null && <AdrModal episode={episode} drug={adr} onClose={() => setAdr(null)} onSaved={() => { setAdr(null); notify("Reaction reported to the pharmacist."); }} />}
     </div>
   );
 }
@@ -184,7 +185,7 @@ function OrderModal({ episode, onClose, onSaved }: { episode: HospitalEpisode; o
       await addMedicationOrder(episode.id, o);
       onSaved();
     } catch (e) {
-      window.alert(`Could not save the order: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save the order: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -282,7 +283,7 @@ function GiveModal({ order, onClose, onSaved }: { order: HospitalRxItem; onClose
       await recordAdministration(order.id, { status, identifiers: ids, checks, secondCheckerId: secondId || null, givenAt: givenAt || null, reason: reason || null });
       onSaved();
     } catch (e) {
-      window.alert(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -338,7 +339,7 @@ function ReviewModal({ order, onClose, onSaved }: { order: HospitalRxItem; onClo
   const [outcome, setOutcome] = useState("");
   const [note, setNote] = useState("");
   const save = async () => {
-    try { await reviewAntibiotic(order.id, outcome, note); onSaved(); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    try { await reviewAntibiotic(order.id, outcome, note); onSaved(); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
   };
   return (
     <Modal title={`Antibiotic review · ${order.product_name}`} onClose={onClose} width="max-w-lg">

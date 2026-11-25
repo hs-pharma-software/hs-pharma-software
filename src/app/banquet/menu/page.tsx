@@ -9,6 +9,8 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { isTauri } from "@/lib/platform";
 import { DISH_CATEGORIES, dishesRepo, packagesRepo, parseDishIds, saveDish, savePackage, type BanquetDish, type BanquetPackage } from "@/lib/repo/banquet";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 const money = (n: number) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
@@ -57,7 +59,7 @@ export default function MenuPage() {
           <button key={v} type="button" onClick={() => setTab(v)} className={`px-3 py-1.5 ${tab === v ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}>{v === "dishes" ? `Dishes (${dishes.length})` : `Packages (${packages.length})`}</button>
         ))}
       </div>
-      {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+      <FormError message={error} className="mb-2" />
       {tab === "dishes"
         ? <DataTable columns={dishCols} rows={dishes} onRowClick={(d) => setEditDish(d)} emptyMessage="No dishes yet. Add each dish with its price per head." />
         : <DataTable columns={pkgCols} rows={packages} onRowClick={(p) => setEditPkg(p)} emptyMessage="No packages yet. A package is a set of dishes at one price per head (e.g. Silver, Gold)." />}
@@ -79,7 +81,7 @@ function DishForm({ dish, onClose, onSaved }: { dish: BanquetDish | null; onClos
       await saveDish(dish?.id ?? null, { name, category, price_per_head: Number(price) || 0, is_active: active });
       onSaved();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -115,7 +117,7 @@ function PackageForm({ pkg, dishes, onClose, onSaved }: { pkg: BanquetPackage | 
       await savePackage(pkg?.id ?? null, { name, price_per_head: Number(price) || 0, dish_ids: ids, is_active: active });
       onSaved();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

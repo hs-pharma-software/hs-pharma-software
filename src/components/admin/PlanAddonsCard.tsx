@@ -6,6 +6,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { createRepo, type BaseRow } from "@/lib/repo/base";
 import { BUSINESS_TYPES } from "@/config/businessTypes";
+import { FormError } from "@/components/ui/FormError";
 
 /** Super Admin > Subscription Plans > Add-ons: extras sold on top of a plan
  * (website, online store, own domain, extra staff logins...), listed on the
@@ -40,7 +41,7 @@ export function PlanAddonsCard() {
         </div>
         <Button variant="primary" onClick={() => setEditing("new")}>Add add-on</Button>
       </div>
-      {error && <p className="text-sm text-rose-700">{error}</p>}
+      <FormError message={error} />
       {!rows ? <p className="text-sm text-neutral-500">Loading…</p> : !rows.length ? <p className="py-4 text-center text-sm text-neutral-400">No add-ons yet. Add Website, Online store or Own domain, with their prices.</p> : (
         <ul className="divide-y divide-neutral-100 text-sm">
           {rows.map((a) => (
@@ -115,7 +116,7 @@ function AddonForm({ addon, onClose, onSaved }: { addon: PlanAddon | null; onClo
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.isPublic} onChange={(e) => setF({ ...f, isPublic: e.target.checked })} /> Show on the website&apos;s pricing page</label>
           <Field label="Order"><Input type="number" value={f.sort} onChange={(e) => setF({ ...f, sort: e.target.value })} className="w-24" /></Field>
         </div>
-        {error && <p className="text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-between border-t border-neutral-200 pt-3">
           {addon ? <Button type="button" variant="danger" onClick={async () => { if (!confirm(`Delete the add-on “${addon.name}”?`)) return; await planAddonsRepo.remove(addon.id, "Deleted by admin"); onSaved(); }}>Delete</Button> : <span />}
           <div className="flex gap-2"><Button type="button" onClick={onClose}>Cancel</Button><Button loading={busy} type="submit" variant="primary" disabled={busy}>{busy ? "Saving…" : "Save"}</Button></div>

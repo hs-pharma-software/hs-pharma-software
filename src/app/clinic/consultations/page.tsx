@@ -16,6 +16,7 @@ import {
   type ConsultationWithNames, type QueueRow,
 } from "@/lib/repo/clinic";
 import type { ClinicDoctor } from "@/lib/types-clinic";
+import { notify } from "@/lib/notify";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   scheduled: { label: "Waiting", cls: "bg-sky-100 text-sky-800" },
@@ -51,7 +52,7 @@ export default function ConsultationsPage() {
   }, [tenantId]);
 
   useEffect(() => {
-    void reload().catch((e) => window.alert(e instanceof Error ? e.message : String(e)));
+    void reload().catch((e) => notify(e instanceof Error ? e.message : String(e)));
     const t = setInterval(() => void reload().catch(() => undefined), 30_000);
     return () => clearInterval(t);
   }, [tenantId, date]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,7 +62,7 @@ export default function ConsultationsPage() {
       await appointmentsRepo.update(q.id, { status: "completed" });
       await reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   }
 

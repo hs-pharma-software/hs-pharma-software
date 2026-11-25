@@ -19,6 +19,7 @@ import { ExpiryCell, ExpiryCorrectionModal } from "@/components/stock/ExpiryCorr
 import { expiryCorrectionCounts } from "@/lib/repo/batchExpiry";
 import { useAuthStore } from "@/store/authStore";
 import type { Product } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 interface StockRow extends StockDisplayRow { isSummary?: boolean; entryCount?: number }
 
@@ -387,12 +388,12 @@ export default function StockPage() {
             <Field label="Purchase price / item (optional)">
               <Input type="number" min="0" step="any" value={topUpPrice} onChange={(e) => setTopUpPrice(e.target.value)} />
             </Field>
-            {topUpError && <p className="text-sm text-rose-600">{topUpError}</p>}
+            <FormError message={topUpError} />
             <div className="form-actions">
               <Button type="button" onClick={() => setTopUp(null)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={saving}>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving}>
                 {saving ? "Saving..." : "Add Stock"}
               </Button>
             </div>
@@ -477,7 +478,7 @@ export default function StockPage() {
               <Button type="button" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={saving || !selectedProduct}>
+              <Button loading={saving} type="submit" variant="primary" disabled={saving || !selectedProduct}>
                 {saving ? "Saving..." : "Save"}
               </Button>
             </div>

@@ -12,6 +12,7 @@ import {
   listClinicServices, saveClinicService, loadStandardClinicServices, categoryLabel, SERVICE_CATEGORIES,
   type ClinicService, type ClinicServiceCategory, type ClinicServiceInput,
 } from "@/lib/repo/clinicServices";
+import { notify } from "@/lib/notify";
 
 /** The clinic's services and their fees: doctor fees, lab tests, radiology,
  * procedures, room, nursing / staff and indoor medicine. Consultations order
@@ -27,16 +28,16 @@ export function ServicesManager({ only, title = "Services" }: { only?: ClinicSer
   async function reload() {
     if (isTauri()) setRows(await listClinicServices({ includeInactive: true, ...(only ? { category: only } : {}) }));
   }
-  useEffect(() => { void reload().catch((e) => window.alert(e instanceof Error ? e.message : String(e))); }, []);
+  useEffect(() => { void reload().catch((e) => notify(e instanceof Error ? e.message : String(e))); }, []);
 
   async function loadStandard(kind: "lab" | "radiology") {
     setLoading(kind);
     try {
       const r = await loadStandardClinicServices(kind);
-      window.alert(`${r.added} ${kind === "lab" ? "lab tests" : "radiology studies"} added${r.skipped ? `, ${r.skipped} already in the list` : ""}. Set a fee on each one you offer; it is offered once its fee is set and it is active.`);
+      notify(`${r.added} ${kind === "lab" ? "lab tests" : "radiology studies"} added${r.skipped ? `, ${r.skipped} already in the list` : ""}. Set a fee on each one you offer; it is offered once its fee is set and it is active.`);
       await reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(null);
     }
@@ -111,7 +112,7 @@ function ServiceForm({ service: s, only, defaultCategory, onClose, onSaved }: {
       await saveClinicService(s?.id ?? null, { ...f, rate: Number(f.rate) || 0 });
       onSaved();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

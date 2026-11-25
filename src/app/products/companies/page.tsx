@@ -7,9 +7,10 @@ import { Modal } from "@/components/ui/Modal";
 import { Field, Input } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { listCompanies, companyProducts, renameCompany, type CompanyRow } from "@/lib/repo/companies";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
-const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 
 /** Every company (manufacturer) on the products, with how many products each has. */
 export default function CompaniesPage() {
@@ -66,7 +67,7 @@ function CompanyModal({ company, onClose, onRenamed }: { company: CompanyRow; on
     setBusy(true);
     try {
       const r = await renameCompany(company.name, name);
-      window.alert(`Renamed on ${r.changed} product(s).${r.sharedLeft ? ` ${r.sharedLeft} shared catalog product(s) keep their name.` : ""}`);
+      notify(`Renamed on ${r.changed} product(s).${r.sharedLeft ? ` ${r.sharedLeft} shared catalog product(s) keep their name.` : ""}`);
       onRenamed();
     } catch (e) { err(e); } finally { setBusy(false); }
   };

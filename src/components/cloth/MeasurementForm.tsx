@@ -7,6 +7,7 @@ import {
   MEASUREMENT_CATEGORIES, MEASUREMENT_GARMENTS, CLOTH_TYPES, garmentChoices, loadClothTypes, measurementCategory, parseMeasurements, pointsFor,
   saveMeasurement, type ClothMeasurement, type MeasurementCategory,
 } from "@/lib/cloth";
+import { FormError } from "@/components/ui/FormError";
 
 /** A customer's custom size: name, mobile, garment and its measurement
  * points (inches), saved in the measurements book for next time. */
@@ -72,7 +73,7 @@ export function MeasurementForm({ initial, defaults, onSaved, onCancel }: {
         </div>
       </div>
       <Field label="Notes"><Textarea id="ms-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. loose fitting, two side pockets" /></Field>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      <FormError message={error} />
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>Cancel</Button>
         <Button loading={saving} type="button" variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save measurements"}</Button>

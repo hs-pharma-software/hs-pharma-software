@@ -13,6 +13,7 @@ import { visibleNavFor } from "@/config/navFilter";
 import { usesHospitalStaff } from "@/config/hospitalStaff";
 import type { Staff } from "@/lib/types";
 import type { UserAccount } from "@/lib/types2";
+import { notify } from "@/lib/notify";
 
 /** Edits a staff login: its name and its role. A new role replaces the login's
  * sections and actions with the role's; in a hospital or radiology centre the
@@ -60,7 +61,7 @@ export function UserEditModal({ user, typeId, canEditStaff, onClose, onSaved }: 
       }
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

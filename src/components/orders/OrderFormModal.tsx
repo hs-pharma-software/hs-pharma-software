@@ -15,6 +15,7 @@ import type { OrderRow } from "@/lib/types2";
 import { listUomsWithShared } from "@/lib/repo/uoms";
 import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
 import type { Supplier, Product, Uom } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 interface Line {
   product: Product;
@@ -243,12 +244,12 @@ export function OrderFormModal({ order, onClose, onSaved }: { order?: OrderRow |
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
-        {error && <p className="text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>
             {order ? "Cancel" : "Reset"}
           </Button>
-          <Button type="submit" variant="primary" disabled={saving || lines.length === 0}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

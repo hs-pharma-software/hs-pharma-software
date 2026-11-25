@@ -20,6 +20,7 @@ import { isTauri, useIsTauri } from "@/lib/platform";
 import { exportCsv, downloadCsv, buildCsv } from "@/lib/csv";
 import { useCan } from "@/lib/actionPermissions";
 import type { Product } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 export default function ProductsPage() {
   const [rows, setRows] = useState<ProductListRow[]>([]);
@@ -258,12 +259,12 @@ export default function ProductsPage() {
             <Field label="Purchase price / item (optional)">
               <Input type="number" min="0" step="any" value={topUpPrice} onChange={(e) => setTopUpPrice(e.target.value)} />
             </Field>
-            {topUpError && <p className="text-sm text-rose-600">{topUpError}</p>}
+            <FormError message={topUpError} />
             <div className="form-actions">
               <Button type="button" onClick={() => setTopUp(null)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" disabled={topUpSaving}>
+              <Button loading={topUpSaving} type="submit" variant="primary" disabled={topUpSaving}>
                 {topUpSaving ? "Saving..." : "Add Stock"}
               </Button>
             </div>

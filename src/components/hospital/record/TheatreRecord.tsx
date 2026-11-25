@@ -13,6 +13,7 @@ import { FormEditor, FormStatusPill, fmtWhen } from "./FormEditor";
 import { VisitChecklist, VitalsPanel } from "./EpisodeRecord";
 import type { FormDef } from "@/config/forms";
 import type { FormRecord, HospitalEpisode, SurgeryBooking } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 type Row = { def: FormDef; records: FormRecord[]; canCreate: boolean; canFinalize: boolean };
 
@@ -125,7 +126,7 @@ function SterileSets({ bookingId }: { bookingId: string }) {
       setItemId("");
       await load();
     } catch (e) {
-      window.alert(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not record: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return (

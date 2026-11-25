@@ -7,6 +7,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { isTauri } from "@/lib/platform";
 import { adviseAdmission, consultationsRepo } from "@/lib/repo/clinic";
 import type { ClinicConsultation } from "@/lib/types-clinic";
+import { notify } from "@/lib/notify";
 
 const URGENCY = { routine: "Routine", urgent: "Urgent", emergency: "Emergency" } as const;
 
@@ -47,7 +48,7 @@ export function AdmissionAdvice({ consultationId, ensureSaved, canAdvise }: {
       setC(await adviseAdmission(id, withdraw ? null : { reason, ward, days: days ? Number(days) : null, urgency }));
       setEditing(false);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

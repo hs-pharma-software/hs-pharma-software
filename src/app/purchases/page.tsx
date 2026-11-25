@@ -17,6 +17,7 @@ import {
 import { can, useCan, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import { isTauri, useIsTauri } from "@/lib/platform";
 import { useAppStore } from "@/store/appStore";
+import { notify } from "@/lib/notify";
 
 export default function PurchasesPage() {
   const [rows, setRows] = useState<PurchaseListRow[]>([]);
@@ -33,14 +34,14 @@ export default function PurchasesPage() {
   const canDelete = useCan("purchase.delete");
 
   async function openEdit(row: PurchaseListRow) {
-    if (!can("purchase.edit")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("purchase.edit")) return notify(NO_PERMISSION_MESSAGE);
     const full = await purchasesRepo.get(row.id);
     if (!full) return;
     openEditTab(full);
   }
 
   async function handleDelete(row: PurchaseListRow) {
-    if (!can("purchase.delete")) return window.alert(NO_PERMISSION_MESSAGE);
+    if (!can("purchase.delete")) return notify(NO_PERMISSION_MESSAGE);
     const reason = window.prompt(
       `Delete purchase #${row.purchase_no ?? ""}? Its received stock will be taken back out. Reason:`
     );
@@ -50,7 +51,7 @@ export default function PurchasesPage() {
       await deletePurchaseWithStockReversal(row.id, reason || undefined);
       void reload();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     } finally {
       setDeletingId(null);
     }

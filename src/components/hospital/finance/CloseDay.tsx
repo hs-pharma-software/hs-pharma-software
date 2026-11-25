@@ -9,10 +9,11 @@ import { printDirect } from "@/lib/print";
 import { localDateTime } from "@/lib/localDate";
 import { hospitalHeader } from "@/lib/repo/hospitalCare";
 import { myOpenCollections, closeMyDay, closingPayments, collectionsByDepartment, DEPT_LABEL, DEPT_ORDER, METHOD_LABEL, type CashClosing, type CollectionDept, type PaymentRow, type Totals } from "@/lib/repo/cashClosing";
+import { notify } from "@/lib/notify";
 
 export const rs = (n: number) => Number(n).toLocaleString("en-PK", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const when = (s: string | null) => (s ? s.replace("T", " ").slice(0, 16) : "—");
-const err = (e: unknown) => window.alert(e instanceof Error ? e.message : String(e));
+const err = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
 
 /** Totals by method, as a small table. */
 export function TotalsTable({ t, expectedCash }: { t: Totals; expectedCash: number }) {

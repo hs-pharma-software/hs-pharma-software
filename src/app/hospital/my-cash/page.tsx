@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { isTauri } from "@/lib/platform";
 import { myOpenCollections, myClosings, type CashClosing } from "@/lib/repo/cashClosing";
 import { CloseDayModal, ClosingSlipModal, DeptTable, PaymentList, TotalsTable, rs } from "@/components/hospital/finance/CloseDay";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 
@@ -17,7 +18,7 @@ export default function MyCashPage() {
   const [viewing, setViewing] = useState<CashClosing | null>(null);
   const reload = async () => {
     if (!isTauri()) return;
-    try { setOpen(await myOpenCollections()); setClosings(await myClosings()); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    try { setOpen(await myOpenCollections()); setClosings(await myClosings()); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
   };
   useEffect(() => { void reload(); }, []);
   return (

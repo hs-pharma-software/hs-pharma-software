@@ -8,6 +8,7 @@ import { isTauri } from "@/lib/platform";
 import { storeLabel, type StoreId } from "@/config/hospitalStores";
 import { myStores, returnStorePurchase, storeArrivals, storeStock, verifyStoreItems, type StoreArrival, type StoreStockRow } from "@/lib/repo/hospitalStores";
 import { DeadStockTab, StoreDashboardTab, StoreIndentsTab, StoreRegisterTab } from "./StoreTabs";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 });
@@ -47,7 +48,7 @@ export function StoreDesk({ store }: { store: StoreId }) {
           <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-full px-3.5 py-1.5 text-sm font-medium ${tab === id ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}>{label}</button>
         ))}
       </div>
-      {error && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mb-3" />
       {tab === "dashboard" ? <StoreDashboardTab store={store} onGo={setTab} />
       : tab === "indents" ? <StoreIndentsTab store={store} />
       : tab === "register" ? <StoreRegisterTab store={store} />
@@ -120,7 +121,7 @@ function ArrivalCard({ store, a, onDone }: { store: StoreId; a: StoreArrival; on
           ))}
         </tbody>
       </table>
-      {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-3 flex justify-end gap-2">
         <Button disabled={busy} onClick={() => void giveBack()}>Return to purchase officer</Button>
         <Button loading={busy} variant="primary" disabled={busy} onClick={() => void verify()}>{busy ? "Saving…" : "Verify and receive"}</Button>

@@ -165,7 +165,7 @@ export default function BranchReportsPage() {
               </label>
             ))}
           </fieldset>
-          <Button variant="primary" disabled={busy} onClick={() => void run(picked)}>{busy ? "Loading..." : "Show"}</Button>
+          <Button loading={busy} variant="primary" disabled={busy} onClick={() => void run(picked)}>{busy ? "Loading..." : "Show"}</Button>
           <Button disabled={!report} onClick={exportCsv}>Export CSV</Button>
           <Button disabled={!report} onClick={() => window.print()}>Print</Button>
         </div>

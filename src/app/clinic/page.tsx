@@ -19,6 +19,7 @@ import {
   type ClinicStats,
   type TodayAppointmentRow,
 } from "@/lib/repo/clinic";
+import { notify } from "@/lib/notify";
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-100 text-blue-700",
@@ -64,7 +65,7 @@ export default function ClinicDashboardPage() {
 
   async function collect(b: DayBillRow) {
     if (!b.consultationId) return;
-    try { setBilling(await getVisitBill(b.consultationId)); } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    try { setBilling(await getVisitBill(b.consultationId)); } catch (e) { notify(e instanceof Error ? e.message : String(e)); }
   }
 
   const money = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });

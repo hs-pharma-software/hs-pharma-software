@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { serverJson } from "@/lib/serverMode";
 import type { SubscriptionPlan } from "@/lib/types2";
+import { FormError } from "@/components/ui/FormError";
 
 interface DemoLogin { group: string; name: string; designation: string; department: string; employeeId: string | null; username: string }
 interface DemoResult { tenantId: string; hospitalName: string; password: string; logins: DemoLogin[]; departments: string[]; trainees: number; rosterDays: string[] }
@@ -64,7 +65,7 @@ export function DemoHospitalModal({ plans, onClose, onCreated }: { plans: Subscr
             </Select>
           </Field>
         </div>
-        {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button onClick={onClose}>Cancel</Button>
           <Button loading={busy} variant="primary" disabled={busy || !name.trim() || prefix.length < 2 || password.length < 6 || !planId} onClick={() => void create()}>

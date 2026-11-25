@@ -10,6 +10,7 @@ import { localDate } from "@/lib/localDate";
 import {
   PERIOD_LABEL, departmentPl, doctorShares, episodePl, insurancePl, type DoctorShareRow, type Period, type PlRow,
 } from "@/lib/repo/hospitalReports";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const th = "pb-1.5 pr-3 font-medium";
@@ -71,7 +72,7 @@ export default function HospitalReportsPage() {
       <div className={`${card} print-area mt-4`}>
         <p className="mb-1 text-lg font-bold">{label}</p>
         <p className="mb-3 text-xs text-neutral-500">{from} to {to}{periodUsed ? ` · ${PERIOD_LABEL[period]}` : ""} · revenue is what was charged; shares are paid out to doctors and staff; surgery shares and expenses on the day of the surgery</p>
-        {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mb-2" />
         {loading ? <p className="text-sm text-neutral-400">Loading…</p> : tab === "doctor" ? (
           shares.length === 0 ? <p className="text-sm text-neutral-400">No doctor shares in this period.</p> : (
             <div className="overflow-x-auto">

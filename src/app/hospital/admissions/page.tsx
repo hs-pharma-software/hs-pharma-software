@@ -12,6 +12,7 @@ import {
   admissionConfirmScope, listAdmissionRequests, confirmAdmission, declineAdmission, type AdmissionRequestRow, type ConfirmScope,
 } from "@/lib/repo/hospitalCare";
 import type { AdmissionStatus } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const TABS: { key: AdmissionStatus; label: string }[] = [
   { key: "pending", label: "Waiting" },
@@ -37,7 +38,7 @@ export default function AdmissionRequestsPage() {
       setScope(await admissionConfirmScope());
       setRows(await listAdmissionRequests(tab));
     } catch (e) {
-      window.alert(`Could not load admissions: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not load admissions: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -50,7 +51,7 @@ export default function AdmissionRequestsPage() {
       await declineAdmission(r.id, reason);
       await reload();
     } catch (e) {
-      window.alert(`Could not record it: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not record it: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -120,7 +121,7 @@ function ConfirmModal({ row, onClose, onDone }: { row: AdmissionRequestRow; onCl
       await confirmAdmission(row.id, { wardRoom, bedNo });
       onDone();
     } catch (e) {
-      window.alert(`Could not confirm: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not confirm: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }

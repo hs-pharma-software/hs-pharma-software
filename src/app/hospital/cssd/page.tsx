@@ -14,6 +14,7 @@ import {
 } from "@/lib/repo/cssd";
 import { fmtWhen } from "@/components/hospital/record/FormEditor";
 import type { SterilCycle, SterilEquipment, SterilItem } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const STATUS_CLS: Record<SterilCycle["status"], string> = {
@@ -38,7 +39,7 @@ export default function CssdPage() {
       setSterilisers(await listSterilisers());
       setCycles(await listCycles(filter ? { status: filter } : {}));
     } catch (e) {
-      window.alert(`Could not load: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not load: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,7 +115,7 @@ function NewLoad({ sterilisers, onClose, onDone }: { sterilisers: SterilEquipmen
       const c = await startCycle({ equipmentId, program, implantLoad: implant, loadDescription: desc, items });
       onDone(c.id);
     } catch (e) {
-      window.alert(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return (
@@ -163,7 +164,7 @@ function LoadModal({ cycleId, cycles, onClose, onReprocess }: { cycleId: string;
       setC(await fn());
       setImpact(await recallImpact(cycleId));
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e));
+      notify(e instanceof Error ? e.message : String(e));
     }
   };
   const editing = c.status === "awaiting_release";
@@ -233,7 +234,7 @@ function SteriliserModal({ eq, onClose, onSaved }: { eq: SterilEquipment | null;
       await saveSteriliser(eq?.id ?? null, v as Parameters<typeof saveSteriliser>[1]);
       onSaved();
     } catch (e) {
-      window.alert(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return (

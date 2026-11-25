@@ -10,6 +10,7 @@ import { isTauri } from "@/lib/platform";
 import { STORES, storeLabel, type StoreId } from "@/config/hospitalStores";
 import { createIndent, myIndentBook, myIndents, receiveIndent, returnIndentItems, type IndentBook, type IndentWithItems } from "@/lib/repo/storeIndents";
 import type { Product } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -37,7 +38,7 @@ export default function IndentBookPage() {
   return (
     <div>
       <PageHeader title={book ? `Indent Book ${book.book_no}` : "Indent Book"} />
-      {error && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      <FormError message={error} className="mb-3" />
       {!book ? <div className={card}><p className="text-sm text-neutral-500">You have no indent book yet. The purchase officer orders one for you and a store keeper issues it.</p></div> : (
         <div className={card}>
           <h2 className="mb-2 text-sm font-semibold">New indent{book.department ? ` · ${book.department}` : ""}</h2>

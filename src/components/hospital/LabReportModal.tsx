@@ -11,6 +11,7 @@ import { ReportWithFooterLine } from "@/components/brand/PageFooterLine";
 import { recordReportPrint, listReportLog, type LabReport, type ReportLogRow } from "@/lib/repo/labReports";
 import { loadHospitalPrint, type LabPaper } from "@/lib/hospitalPrint";
 import { loadLogo } from "@/lib/printTemplates";
+import { notify } from "@/lib/notify";
 
 /** A lab report on screen: print (counted and logged) and the access log. */
 export function LabReportModal({ report, onClose }: { report: LabReport; onClose: () => void }) {
@@ -38,7 +39,7 @@ export function LabReportModal({ report, onClose }: { report: LabReport; onClose
       await printDirect(paper, areaRef.current);
       loadLog();
     } catch (err) {
-      window.alert(`Could not print: ${err instanceof Error ? err.message : String(err)}`);
+      notify(`Could not print: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setPrinting(false);
     }

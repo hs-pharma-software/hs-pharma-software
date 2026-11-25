@@ -31,6 +31,7 @@ import { invoiceLabel } from "@/lib/invoiceLabel";
 import { invoicePrintItems } from "@/lib/invoicePrintItems";
 import { invoiceAuthority, praPrint, praRecord, type PraRecord } from "@/lib/praClient";
 import { isPraInvoice } from "@/lib/pra/services";
+import { notify } from "@/lib/notify";
 
 interface InvoiceViewRow {
   invoice: Invoice;
@@ -130,7 +131,7 @@ export function InvoiceViewModal({
     autoPrinted.current = true;
     requestAnimationFrame(() => {
       void printDirect(template.paper, areaRef.current)
-        .catch((e) => window.alert(e instanceof Error ? e.message : String(e)))
+        .catch((e) => notify(e instanceof Error ? e.message : String(e)))
         .finally(onClose);
     });
   }, [autoPrint, loading, template, onClose]);

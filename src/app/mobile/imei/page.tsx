@@ -11,6 +11,7 @@ import { ProductPicker } from "@/components/products/ProductPicker";
 import { isTauri } from "@/lib/platform";
 import { addImeisToStock, parseImeis, searchImeiRegister, type ImeiRegisterRow, type ImeiStatus } from "@/lib/repo/imei";
 import type { Product } from "@/lib/types";
+import { FormError } from "@/components/ui/FormError";
 
 const STATUS: Record<ImeiStatus, { label: string; cls: string }> = {
   in_stock: { label: "In stock", cls: "bg-emerald-100 text-emerald-800" },
@@ -68,7 +69,7 @@ export default function ImeiRegisterPage() {
           <option value="returned">Returned to supplier</option>
         </Select>
       </div>
-      {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+      <FormError message={error} className="mb-2" />
       <DataTable columns={columns} rows={rows} emptyMessage="No handset found. IMEIs are added on purchases of products with Track IMEI on." />
       <p className="mt-2 text-xs text-neutral-500">Handsets are bought in on Purchase, sold on New Invoice (with the buyer&apos;s CNIC and mobile) and come back with Sale Item Return.</p>
       {adding && <AddImeisModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); void reload(); }} />}
@@ -114,7 +115,7 @@ function AddImeisModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           <Textarea id="add-imeis" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder="Scan or type one IMEI per line" className="font-mono" />
         </Field>
       </div>
-      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+      <FormError message={error} className="mt-2" />
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
         <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !product || !imeis.length}>{saving ? "Saving…" : "Add to stock"}</Button>

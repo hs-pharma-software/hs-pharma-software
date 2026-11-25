@@ -25,6 +25,7 @@ import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toB
 import type { Category, SubCategory, Uom, Product } from "@/lib/types";
 import { imeiListProblem, parseImeis, receiveImeis } from "@/lib/repo/imei";
 import { CLOTH_SIZES, CLOTH_TYPES, MULTIPLE_SIZE, MULTI_SIZE_CHOICES, MULTI_SIZE_DEFAULT, loadClothTypes, sizedName } from "@/lib/cloth";
+import { notify } from "@/lib/notify";
 
 function UomCombobox({ value, onChange, uoms, required, placeholder }: {
   value: string;
@@ -325,20 +326,20 @@ export function ProductFormModal({
     e.preventDefault();
     if (!name.trim()) return;
     if (!baseUnitId) {
-      window.alert("Choose the base unit from the list (type to search, then pick it).");
+      notify("Choose the base unit from the list (type to search, then pick it).");
       return;
     }
     if (saving) return;
     if (multiple) {
-      if (!multiSizes.length) { window.alert("Tick at least one size."); return; }
-      if (barcode.trim()) { window.alert("One barcode can't be shared by several sizes. Leave Barcode empty, then add each size's barcode by editing it."); return; }
+      if (!multiSizes.length) { notify("Tick at least one size."); return; }
+      if (barcode.trim()) { notify("One barcode can't be shared by several sizes. Leave Barcode empty, then add each size's barcode by editing it."); return; }
     }
     const openingImeiList = isMobileShop && trackImei && !isEdit ? parseImeis(openingImeis) : [];
     if (isMobileShop && trackImei && !isEdit) {
       const units = toBaseUnitQty(Number(quantity) || 0, openingStockUnit === "secondary", Number(packing) || 1);
       const problem = units > 0 ? imeiListProblem(openingImeiList, units, "Opening stock") : null;
       if (problem) {
-        window.alert(problem);
+        notify(problem);
         return;
       }
     }
@@ -444,7 +445,7 @@ export function ProductFormModal({
       }
       onSaved();
     } catch (err) {
-      window.alert(`Could not save the product: ${err instanceof Error ? err.message : String(err)}`);
+      notify(`Could not save the product: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -888,7 +889,7 @@ export function ProductFormModal({
           <Button type="button" onClick={onClose}>
             Reset
           </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

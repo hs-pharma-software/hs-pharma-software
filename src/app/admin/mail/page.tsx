@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { serverJson, SERVER_DB } from "@/lib/serverMode";
+import { FormError } from "@/components/ui/FormError";
 
 /** Super Admin > Mail: the platform's mailboxes on mavin.pk (info@, security@
  * and any you add), one tab each. Mail arrives through Resend; HTML mail is
@@ -166,7 +167,7 @@ function AddMailbox({ domain, onClose, onSaved }: { domain: string; onClose: () 
         </label>
         <label className="block text-xs font-medium text-neutral-600">Name shown on sent mail<input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className={`${input} mt-1`} /></label>
         <p className="text-xs text-neutral-500">Mail sent to this address arrives here once the domain receives mail through Resend (no extra DNS per address).</p>
-        {error && <p className="text-sm text-rose-700">{error}</p>}
+        <FormError message={error} />
         <div className="flex justify-end gap-2"><Button type="button" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary">Create</Button></div>
       </form>
     </Modal>

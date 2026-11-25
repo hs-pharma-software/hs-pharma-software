@@ -11,6 +11,7 @@ import { isTauri } from "@/lib/platform";
 import { listLabTests, saveLabTest, importStandardLabTests, setLabTestActive } from "@/lib/repo/hospitalOpd";
 import { SAMPLE_TYPES, LAB_SECTIONS, STANDARD_LAB_TESTS } from "@/config/labTestCatalog";
 import type { HospitalService } from "@/lib/types-hospital";
+import { notify } from "@/lib/notify";
 
 /** Performing Tests: the tests this lab carries out, with section, sample,
  * unit, normal range, turnaround and fee. Doctors order from this list, the
@@ -46,9 +47,9 @@ export default function PerformingTestsPage() {
       const r = await importStandardLabTests((done, total) => setImporting(`Adding ${done} of ${total}…`));
       await reload();
       if (r.added) setShow("no_fee");
-      if (fromButton) window.alert(r.added ? `${r.added} tests added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Set their rates in Service Master.` : "All standard tests are already in your list.");
+      if (fromButton) notify(r.added ? `${r.added} tests added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. Set their rates in Service Master.` : "All standard tests are already in your list.");
     } catch (e) {
-      window.alert(`Could not add the standard tests: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not add the standard tests: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setImporting(null);
     }
@@ -65,7 +66,7 @@ export default function PerformingTestsPage() {
       const updated = await setLabTestActive(t.id, !t.is_active);
       setRows((rs) => rs.map((r) => (r.id === t.id ? updated : r)));
     } catch (e) {
-      window.alert(`Could not change the status: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not change the status: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -180,7 +181,7 @@ function LabTestModal({ test, sections, onClose, onSaved }: { test: HospitalServ
       });
       onSaved();
     } catch (err) {
-      window.alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+      notify(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }

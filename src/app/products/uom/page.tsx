@@ -131,7 +131,7 @@ export default function UomPage() {
             </Field>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" onClick={() => setEditing(null)}>Cancel</Button>
-              <Button type="submit" variant="primary" disabled={editSaving}>
+              <Button loading={editSaving} type="submit" variant="primary" disabled={editSaving}>
                 {editSaving ? "Saving..." : "Save"}
               </Button>
             </div>

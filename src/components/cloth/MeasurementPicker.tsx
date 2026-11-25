@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { MeasurementForm } from "./MeasurementForm";
 import { measurementSummary, searchMeasurements, type ClothMeasurement } from "@/lib/cloth";
+import { FormError } from "@/components/ui/FormError";
 
 /** Custom size on a bill: find the customer's saved measurements by name or
  * mobile, or save new ones. */
@@ -44,7 +45,7 @@ export function MeasurementPicker({ defaults, onPick, onClose }: {
               <Input id="mp-search" autoFocus value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Customer name or mobile…" />
               <Button type="button" variant="primary" onClick={() => setCreating(true)}><Plus size={14} />New</Button>
             </div>
-            {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+            <FormError message={error} className="mt-2" />
             <div className="mt-2 divide-y divide-neutral-100 rounded-lg border border-neutral-200">
               {rows === null ? <p className="p-3 text-sm text-neutral-400">Loading…</p>
                 : rows.length === 0 ? <p className="p-3 text-sm text-neutral-500">No saved measurements found. Click New to save this customer&apos;s size.</p>

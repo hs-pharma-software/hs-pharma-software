@@ -14,6 +14,7 @@ import {
   type MachineWithQueue, type RadiologyModality, type Technologist, type MachineInput, type MachineStatus, type DicomEvent,
 } from "@/lib/repo/radiologyPortal";
 import { DicomEliteNotice, Panel, errMsg } from "@/components/hospital/radiology/common";
+import { notify } from "@/lib/notify";
 
 const CONNECTION = {
   online: { label: "Online", cls: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
@@ -44,17 +45,17 @@ export default function MachinesPage() {
       setModalities(await listModalities());
       setTechs(await listTechnologists());
     } catch (e) {
-      window.alert(errMsg(e));
+      notify(errMsg(e));
     }
   }
   useEffect(() => { void reload(); }, []);
 
   async function run(fn: () => Promise<unknown>) {
-    try { await fn(); await reload(); } catch (e) { window.alert(errMsg(e)); }
+    try { await fn(); await reload(); } catch (e) { notify(errMsg(e)); }
   }
   async function issueKey(m: MachineWithQueue) {
     if (m.api_key_hint && !window.confirm(`Create a new key for ${m.name}? The current key (${m.api_key_hint}) stops working at once.`)) return;
-    try { setNewKey({ machine: m, key: await createMachineKey(m.id) }); await reload(); } catch (e) { window.alert(errMsg(e)); }
+    try { setNewKey({ machine: m, key: await createMachineKey(m.id) }); await reload(); } catch (e) { notify(errMsg(e)); }
   }
 
   return (
@@ -144,7 +145,7 @@ function MachineForm({ machine, modalities, onClose, onSaved }: { machine: Machi
   const s = (k: keyof MachineInput) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   async function save() {
     setSaving(true);
-    try { await saveMachine(machine?.id ?? null, f); onSaved(); } catch (e) { window.alert(errMsg(e)); } finally { setSaving(false); }
+    try { await saveMachine(machine?.id ?? null, f); onSaved(); } catch (e) { notify(errMsg(e)); } finally { setSaving(false); }
   }
   return (
     <Modal title={machine ? `Edit ${machine.name}` : "Add machine"} onClose={onClose}>
@@ -178,7 +179,7 @@ function MachineForm({ machine, modalities, onClose, onSaved }: { machine: Machi
 
 function KeyModal({ machine, keyValue, onClose }: { machine: MachineWithQueue; keyValue: string; onClose: () => void }) {
   const base = publicSiteUrl() ?? "https://<your-hospital-website>";
-  const copy = (t: string) => void navigator.clipboard?.writeText(t).then(() => window.alert("Copied."), () => window.alert("Copy it by hand."));
+  const copy = (t: string) => void navigator.clipboard?.writeText(t).then(() => notify("Copied."), () => notify("Copy it by hand."));
   return (
     <Modal title={`DICOM API key · ${machine.name}`} onClose={onClose}>
       <div className="flex flex-col gap-3 text-sm">

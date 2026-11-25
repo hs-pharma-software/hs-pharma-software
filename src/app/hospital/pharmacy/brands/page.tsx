@@ -11,6 +11,8 @@ import {
   genericLabelFor, listSelectedBrands, pharmacyBrands, pharmacyGenerics, removeSelectedBrand, selectBrand,
   type BrandSelection, type PharmacyBrand, type PharmacyGeneric,
 } from "@/lib/repo/brandSelections";
+import { FormError } from "@/components/ui/FormError";
+import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -33,7 +35,7 @@ export default function SelectedBrandsPage() {
 
   async function remove(r: BrandSelection) {
     if (!window.confirm(`Remove ${r.generic_label}? Doctors will no longer find it.`)) return;
-    try { await removeSelectedBrand(r.id); await reload(); } catch (e) { window.alert(msg(e)); }
+    try { await removeSelectedBrand(r.id); await reload(); } catch (e) { notify(msg(e)); }
   }
 
   return (
@@ -41,7 +43,7 @@ export default function SelectedBrandsPage() {
       <PageHeader title="Selected Brands" actions={<Button variant="primary" onClick={() => setAdding(true)}><Plus size={14} className="mr-1" />Add Products</Button>} />
       <div className={card}>
         <div className="mb-3 max-w-md"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search generic, brand or company" aria-label="Search selected brands" /></div>
-        {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <FormError message={error} className="mb-2" />
         {rows.length === 0 ? <p className="text-sm text-neutral-400">No brands chosen yet. Press Add Products, find a generic and choose its brand.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -152,7 +154,7 @@ function AddProductsModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </div>
           )}
           {saved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Saved: {saved}</p>}
-          {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+          <FormError message={error} />
         </div>
       </div>
     </Modal>

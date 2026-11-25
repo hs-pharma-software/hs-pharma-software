@@ -12,6 +12,7 @@ import { listImagingStudies, saveImagingStudy, importStandardImagingStudies, set
 import { MODALITIES, STANDARD_IMAGING_STUDIES } from "@/config/radiologyCatalog";
 import type { HospitalService } from "@/lib/types-hospital";
 import { useAuthStore } from "@/store/authStore";
+import { notify } from "@/lib/notify";
 
 /** Performing Images: the radiology studies this hospital performs, with
  * modality, reporting time and fee. Doctors and the radiology counter order
@@ -48,9 +49,9 @@ export default function PerformingImagesPage() {
       const r = await importStandardImagingStudies((done, total) => setImporting(`Adding ${done} of ${total}…`));
       await reload();
       if (r.added) setShow("no_fee");
-      if (fromButton) window.alert(r.added ? `${r.added} studies added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. ${hospital ? "Set rates in Service Master." : "Enter the fee of each study you perform."}` : "All standard studies are already in your list.");
+      if (fromButton) notify(r.added ? `${r.added} studies added${r.skipped ? ` (${r.skipped} were already in the list)` : ""}. ${hospital ? "Set rates in Service Master." : "Enter the fee of each study you perform."}` : "All standard studies are already in your list.");
     } catch (e) {
-      window.alert(`Could not add the standard studies: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not add the standard studies: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setImporting(null);
     }
@@ -68,7 +69,7 @@ export default function PerformingImagesPage() {
       const updated = await setImagingFee(s.id, fee);
       setRows((rs) => rs.map((r) => (r.id === s.id ? updated : r)));
     } catch (e) {
-      window.alert(`Could not save the fee: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not save the fee: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -78,7 +79,7 @@ export default function PerformingImagesPage() {
       const updated = await setImagingActive(s.id, !s.is_active);
       setRows((rs) => rs.map((r) => (r.id === s.id ? updated : r)));
     } catch (e) {
-      window.alert(`Could not change the status: ${e instanceof Error ? e.message : String(e)}`);
+      notify(`Could not change the status: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -199,7 +200,7 @@ function StudyModal({ study, modalities, hospital, onClose, onSaved }: { study: 
       });
       onSaved();
     } catch (err) {
-      window.alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+      notify(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
