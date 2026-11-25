@@ -310,6 +310,66 @@ export async function storeDashboard(store: StoreId): Promise<StoreDashboard> {
 
 export interface RegisterRow extends StoreMove { vendor_name: string | null; vendor_no: string | null }
 
+export interface StockHistoryRow extends RegisterRow {
+  indent_no: string | null;
+  department: string | null;
+  requested_by_name: string | null;
+  received_at: string | null;
+  received_by_name: string | null;
+}
+
+/** Recorded movements of one item, including indent and receipt details. */
+export async function storeItemHistory(
+  store: StoreId,
+  item: { productId: string | null; productName: string },
+  range: { from?: string; to?: string } = {}
+): Promise<StockHistoryRow[]> {
+  await needStore(store);
+  if (!item.productId && !item.productName.trim()) throw new Error("Choose an item.");
+  if (range.from && range.to && range.from > range.to) throw new Error("The start date must not be after the end date.");
+  const where = [
+    "m.tenant_id = ?", "m.store = ?", "m.deleted_at IS NULL",
+    item.productId ? "m.product_id = ?" : "m.product_id IS NULL AND LOWER(TRIM(m.product_name)) = LOWER(TRIM(?))",
+  ];
+  const params: unknown[] = [requireCurrentTenantId(), store, item.productId ?? item.productName];
+  if (range.from) { where.push("m.date >= ?"); params.push(range.from); }
+  if (range.to) { where.push("m.date <= ?"); params.push(range.to); }
+  return dbSelect<StockHistoryRow>(
+    `SELECT m.*, s.name AS vendor_name, s.vendor_no, i.indent_no, i.department, i.requested_by_name, i.received_at, i.received_by_name
+     FROM hospital_store_stock m
+     LEFT JOIN suppliers s ON s.id = m.vendor_id AND s.tenant_id = m.tenant_id
+     LEFT JOIN hospital_indents i ON m.ref_type = 'indent' AND i.id = m.ref_id AND i.tenant_id = m.tenant_id AND i.deleted_at IS NULL
+     WHERE ${where.join(" AND ")}
+     ORDER BY m.date DESC, m.created_at DESC, m.id DESC`,
+    params
+  );
+}
+
+export interface RegisterSuggestions {
+  vendors: string[];
+  products: string[];
+  companies: string[];
+}
+
+/** Search suggestions from this store's movements, independent of the current date and filters. */
+export async function storeRegisterSuggestions(store: StoreId): Promise<RegisterSuggestions> {
+  await needStore(store);
+  const rows = await dbSelect<{ product_name: string; company_name: string | null; vendor_name: string | null; vendor_no: string | null }>(
+    `SELECT DISTINCT m.product_name, m.company_name, s.name AS vendor_name, s.vendor_no
+     FROM hospital_store_stock m
+     LEFT JOIN suppliers s ON s.id = m.vendor_id AND s.tenant_id = m.tenant_id AND s.deleted_at IS NULL
+     WHERE m.tenant_id = ? AND m.store = ? AND m.deleted_at IS NULL`,
+    [requireCurrentTenantId(), store]
+  );
+  const sorted = (values: (string | null)[]) =>
+    [...new Set(values.filter((value): value is string => Boolean(value?.trim())))].sort((a, b) => a.localeCompare(b));
+  return {
+    vendors: sorted(rows.flatMap((row) => [row.vendor_name, row.vendor_no])),
+    products: sorted(rows.map((row) => row.product_name)),
+    companies: sorted(rows.map((row) => row.company_name)),
+  };
+}
+
 /** A store's stock register: every movement, by vendor (name or number), item, company and dates. */
 export async function storeRegister(store: StoreId, f: { from?: string; to?: string; vendor?: string; product?: string; company?: string } = {}): Promise<RegisterRow[]> {
   await needStore(store);

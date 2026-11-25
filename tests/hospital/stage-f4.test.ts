@@ -10,7 +10,7 @@ import { staffRepo } from "@/lib/repo/staff";
 import { usersRepo } from "@/lib/repo/users";
 import { saveHospitalStaff } from "@/lib/repo/hospitalOpd";
 import { saveVendor } from "@/lib/repo/vendors";
-import { deadStockRegister, postStorePurchase, recordDeadStock, saveStorePurchase, storeArrivals, storeDashboard, storeRegister, storeStock, verifyStoreItems } from "@/lib/repo/hospitalStores";
+import { deadStockRegister, postStorePurchase, recordDeadStock, saveStorePurchase, storeArrivals, storeDashboard, storeItemHistory, storeRegister, storeRegisterSuggestions, storeStock, verifyStoreItems } from "@/lib/repo/hospitalStores";
 import { createIndent, decideIndentReturn, issueIndent, issueIndentBook, myIndents, receiveIndent, requestIndentBook, returnIndentItems, storeIndents } from "@/lib/repo/storeIndents";
 import { pagesForStaff } from "@/config/hospitalStaff";
 import type { Staff } from "@/lib/types";
@@ -47,7 +47,7 @@ async function stocked() {
   const nurse = await saveHospitalStaff(null, { name: "Sister Rabia", staff_category: "head_nurse", license_no: "PNC-1", department: "Surgical Ward", basic_pay: 0 });
   const vendor = await saveVendor(null, { name: "City Traders" });
   await as(officer);
-  const p = await saveStorePurchase({ vendorId: vendor.id, items: [{ productName: "Hand-wash soap", qty: 20, rate: 150, store: "general" }, { productName: "Floor cleaner", qty: 10, rate: 400, store: "general" }] });
+  const p = await saveStorePurchase({ vendorId: vendor.id, items: [{ productName: "Hand-wash soap", companyName: "Soap Company", qty: 20, rate: 150, store: "general" }, { productName: "Floor cleaner", qty: 10, rate: 400, store: "general" }] });
   await postStorePurchase(p.id);
   await as(keeper);
   const [arr] = await storeArrivals("general");
@@ -68,6 +68,36 @@ test("indent book: ordered by the purchase officer, issued by a store keeper; th
   await issueIndentBook(book.id);
   const perms = JSON.parse(String((await usersRepo.get(`user-${nurse.id}`))!.permissions)) as string[];
   assert.ok(perms.includes("hospital_indent"));
+});
+
+test("register suggestions include products, companies and vendor names and numbers only for an accessible store", async () => {
+  const { vendor } = await stocked();
+  const suggestions = await storeRegisterSuggestions("general");
+  assert.deepEqual(suggestions.products, ["Floor cleaner", "Hand-wash soap"]);
+  assert.deepEqual(suggestions.companies, ["Soap Company"]);
+  assert.ok(suggestions.vendors.includes(vendor.name));
+  assert.ok(suggestions.vendors.includes(vendor.vendor_no!));
+  await assert.rejects(storeRegisterSuggestions("lab"), /do not work/);
+});
+
+test("duplicate indent lines cannot together issue more than the available stock", async () => {
+  const { officer, keeper, nurse } = await stocked();
+  await as(officer);
+  const book = await requestIndentBook(nurse.id);
+  await as(keeper);
+  await issueIndentBook(book.id);
+  await as(nurse);
+  const indent = await createIndent({ store: "general", items: [
+    { productName: "Hand-wash soap", qty: 12 },
+    { productName: "hand-wash soap", qty: 12 },
+  ] });
+  await as(keeper);
+  await assert.rejects(issueIndent(indent.id), /Only 20/);
+  assert.equal((await storeStock("general")).find((r) => r.product_name === "Hand-wash soap")?.qty, 20);
+  const pending = (await storeIndents("general")).find((row) => row.id === indent.id)!;
+  assert.equal(pending.status, "pending");
+  assert.ok(pending.items.every((item) => item.qty_issued == null));
+  assert.equal((await storeRegister("general", { product: "soap" })).filter((row) => row.kind === "issue").length, 0);
 });
 
 test("an indent: issued in part, a shortfall explained, a return accepted back into stock; the register and dashboards follow", async () => {
@@ -117,6 +147,19 @@ test("an indent: issued in part, a shortfall explained, a return accepted back i
   assert.deepEqual(reg.map((r) => r.kind).sort(), ["receipt", "receipt"]);
   const soapMoves = await storeRegister("general", { product: "soap" });
   assert.deepEqual(soapMoves.map((r) => r.kind).sort(), ["dead", "issue", "receipt", "return_in"]);
+  const history = await storeItemHistory("general", { productId: null, productName: "hand-wash soap" });
+  assert.deepEqual(history.map((r) => r.kind).sort(), ["dead", "issue", "receipt", "return_in"]);
+  const receipt = history.find((r) => r.kind === "receipt")!;
+  const issue = history.find((r) => r.kind === "issue")!;
+  assert.equal(receipt.vendor_name, vendor.name);
+  assert.match(receipt.by_name!, /Rashid/);
+  assert.deepEqual([issue.indent_no, issue.department], [ind.indent_no, "Surgical Ward"]);
+  assert.match(issue.requested_by_name!, /Sister Rabia/);
+  assert.match(issue.received_by_name!, /Sister Rabia/);
+  assert.ok(issue.received_at);
+  assert.deepEqual(await storeItemHistory("general", { productId: null, productName: "Hand-wash soap" }, { to: "1900-01-01" }), []);
+  await assert.rejects(storeItemHistory("lab", { productId: null, productName: "Hand-wash soap" }), /do not work/);
+  await assert.rejects(storeItemHistory("general", { productId: null, productName: "Hand-wash soap" }, { from: "2026-02-01", to: "2026-01-01" }), /start date/);
   d = await storeDashboard("general");
   assert.deepEqual([d.pendingIndents, d.pendingReturns, d.lowStock.length], [0, 0, 0]);
 });

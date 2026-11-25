@@ -1877,6 +1877,20 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v106() -> &'static str {
+    r#"
+    ALTER TABLE hospital_indents ADD COLUMN received_by_name TEXT;
+    "#
+}
+
+fn schema_sql_v105() -> &'static str {
+    r#"
+    ALTER TABLE staff ADD COLUMN working_hours_per_day REAL;
+    ALTER TABLE staff ADD COLUMN sunday_off INTEGER;
+    ALTER TABLE staff ADD COLUMN overtime_multiplier REAL;
+    "#
+}
+
 fn schema_sql_v104() -> &'static str {
     r#"
     -- Store indents. The purchase officer orders an indent book for a head
@@ -6975,6 +6989,18 @@ fn all_migrations() -> Vec<Migration> {
             version: 104,
             description: "hospital_store_indents",
             sql: schema_sql_v104(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 105,
+            description: "hospital_staff_work_schedule",
+            sql: schema_sql_v105(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 106,
+            description: "hospital_indent_receiver",
+            sql: schema_sql_v106(),
             kind: MigrationKind::Up,
         },
     ]

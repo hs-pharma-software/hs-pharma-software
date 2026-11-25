@@ -14,6 +14,7 @@ import { LICENSE_LABEL, designation as findDesignation, designationsFor, extraRo
 import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
+import { monthlyWorkRates } from "@/lib/hospitalPayroll";
 import type { Staff } from "@/lib/types";
 
 /** Hospital HR staff form: designation drives the licence field (PMDC / PNC /
@@ -21,7 +22,9 @@ import type { Staff } from "@/lib/types";
  * pages of that role. */
 export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Staff | null; onClose: () => void; onSaved: () => void }) {
   const isEdit = Boolean(staff);
-  const designations = designationsFor(businessType(useAuthStore((s) => s.currentTenant?.businessType)).id);
+  const typeId = businessType(useAuthStore((s) => s.currentTenant?.businessType)).id;
+  const isHospital = typeId === "hospital";
+  const designations = designationsFor(typeId);
   const [category, setCategory] = useState(staff?.staff_category ?? "");
   const [otherTitle, setOtherTitle] = useState(staff?.staff_category === "other" ? staff?.designation ?? "" : "");
   // Other roles of the same person (a ward nurse who is also the infection control nurse).
@@ -42,6 +45,9 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
   const [cnic, setCnic] = useState(staff?.cnic ?? "");
   const [openingBalance, setOpeningBalance] = useState(String(staff?.opening_balance ?? 0));
   const [basicPay, setBasicPay] = useState(String(staff?.basic_pay ?? 0));
+  const [hoursPerDay, setHoursPerDay] = useState(staff?.working_hours_per_day == null ? "" : String(staff.working_hours_per_day));
+  const [sundayOff, setSundayOff] = useState(staff?.sunday_off == null ? "" : String(staff.sunday_off));
+  const [overtimeMultiplier, setOvertimeMultiplier] = useState(staff?.overtime_multiplier == null ? "" : String(staff.overtime_multiplier));
   const [dateOfJoining, setDateOfJoining] = useState(staff?.date_of_joining ?? localDate());
   const [makeLogin, setMakeLogin] = useState(false);
   /** A new login, or one that already exists (made under Settings > User Logins). */
@@ -58,6 +64,18 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
 
   const d = findDesignation(category);
   const hasLogin = Boolean(staff?.user_id);
+  const hasSchedule = Boolean(hoursPerDay || sundayOff || overtimeMultiplier);
+  const requireSchedule = isHospital && (!isEdit || hasSchedule);
+  const payNumber = Number(basicPay);
+  const hoursNumber = Number(hoursPerDay);
+  const multiplierNumber = Number(overtimeMultiplier);
+  const previewMonth = localDate().slice(0, 7);
+  const [previewYear, previewMonthNumber] = previewMonth.split("-").map(Number);
+  const rates = basicPay.trim() && Number.isFinite(payNumber) && payNumber >= 0
+    && hoursPerDay.trim() && Number.isFinite(hoursNumber) && hoursNumber > 0 && hoursNumber <= 24
+    && (sundayOff === "0" || sundayOff === "1") && overtimeMultiplier.trim() && Number.isFinite(multiplierNumber) && multiplierNumber > 0
+    ? monthlyWorkRates({ year: previewYear, month: previewMonthNumber, basicPay: payNumber, hoursPerDay: hoursNumber, sundayOff: sundayOff === "1", overtimeMultiplier: multiplierNumber })
+    : null;
 
   useEffect(() => {
     void hospitalDepartmentsRepo.list({ orderBy: "name ASC" }).then((all) => setDepartments(all.filter((x) => x.is_active)));
@@ -98,6 +116,13 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
         balance_type: "payable",
         basic_pay: Number(basicPay) || 0,
         date_of_joining: dateOfJoining || null,
+        ...(isHospital && (hasSchedule || staff?.working_hours_per_day != null || staff?.sunday_off != null || staff?.overtime_multiplier != null)
+          ? {
+              working_hours_per_day: hoursPerDay.trim() ? hoursNumber : null,
+              sunday_off: sundayOff ? Number(sundayOff) : null,
+              overtime_multiplier: overtimeMultiplier.trim() ? multiplierNumber : null,
+            }
+          : {}),
       });
       if (makeLogin && !hasLogin) {
         if (loginMode === "link") {
@@ -212,6 +237,26 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
           <Field label="Date Of Joining"><Input type="date" value={dateOfJoining} onChange={(e) => setDateOfJoining(e.target.value)} /></Field>
           <Field label="Opening Balance"><Input type="number" step="any" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} /></Field>
           <Field label="Basic Pay" required><Input type="number" min="0" step="any" value={basicPay} onChange={(e) => setBasicPay(e.target.value)} required /></Field>
+          {isHospital && <>
+            <Field label="Working hours per day" required={requireSchedule}>
+              <Input type="number" min="0.01" max="24" step="any" value={hoursPerDay} onChange={(e) => setHoursPerDay(e.target.value)} required={requireSchedule} />
+            </Field>
+            <Field label="Sunday off" required={requireSchedule}>
+              <Select value={sundayOff} onChange={(e) => setSundayOff(e.target.value)} required={requireSchedule}>
+                <option value="">— Choose —</option><option value="1">Yes</option><option value="0">No</option>
+              </Select>
+            </Field>
+            <Field label="Overtime multiplier" required={requireSchedule}>
+              <Input type="number" min="0.01" step="any" value={overtimeMultiplier} onChange={(e) => setOvertimeMultiplier(e.target.value)} required={requireSchedule} placeholder="e.g. 1.5" />
+            </Field>
+            <div className="self-end rounded-lg bg-neutral-50 p-2 text-sm sm:col-span-2">
+              {rates ? <>
+                <p>Full-month preview for {previewMonth}: {rates.workingDays} working days · {rates.monthlyHours} hours</p>
+                <p>Hourly rate: Rs {rates.hourlyRate.toFixed(2)} · Overtime rate: Rs {rates.overtimeRate.toFixed(2)} per hour</p>
+              </> : <p className="text-neutral-500">Enter basic pay and the working schedule to preview the hourly rate.</p>}
+              <p className="text-xs text-neutral-500">Calculated for the full calendar month; salary proration is separate.</p>
+            </div>
+          </>}
         </div>
 
         <div className="rounded-xl border border-neutral-200 p-3">

@@ -25,7 +25,7 @@ export interface IndentBook extends TenantRow {
 export type IndentStatus = "pending" | "issued" | "received" | "cancelled";
 export interface Indent extends TenantRow {
   indent_no: string; book_id: string; store: StoreId; department: string | null; requested_by_staff_id: string | null; requested_by_name: string | null;
-  status: IndentStatus; note: string | null; issued_by_name: string | null; issued_at: string | null; received_at: string | null;
+  status: IndentStatus; note: string | null; issued_by_name: string | null; issued_at: string | null; received_at: string | null; received_by_name?: string | null;
 }
 export interface IndentItem extends TenantRow {
   indent_id: string; product_id: string | null; product_name: string; company_name: string | null; qty_requested: number; qty_issued: number | null;
@@ -163,11 +163,16 @@ export async function issueIndent(indentId: string, issued: Record<string, numbe
   const today = localDate();
   // Every item is checked before anything is issued: a refused line leaves the indent untouched.
   const plan: { it: IndentItem; qty: number; have: { qty: number; cost: number } }[] = [];
+  const planned = new Map<string, { qty: number; have: { qty: number; cost: number } }>();
   for (const it of items) {
     const qty = round3(issued[it.id] ?? Number(it.qty_requested));
     if (!(qty >= 0) || qty > Number(it.qty_requested) + 1e-9) throw new Error(`Issue between 0 and ${it.qty_requested} of ${it.product_name}.`);
-    const have = await onHand(ind.store, it.product_id, it.product_name);
-    if (qty > have.qty + 1e-9) throw new Error(`Only ${have.qty} of ${it.product_name} in the ${storeLabel(ind.store)}.`);
+    const key = it.product_id ? `id:${it.product_id}` : `name:${it.product_name.replace(/[A-Z]/g, (c) => c.toLowerCase())}`;
+    const previous = planned.get(key);
+    const have = previous?.have ?? await onHand(ind.store, it.product_id, it.product_name);
+    const total = round3((previous?.qty ?? 0) + qty);
+    if (total > have.qty + 1e-9) throw new Error(`Only ${have.qty} of ${it.product_name} in the ${storeLabel(ind.store)}.`);
+    planned.set(key, { qty: total, have });
     plan.push({ it, qty, have });
   }
   for (const { it, qty, have } of plan) {
@@ -198,7 +203,7 @@ export async function receiveIndent(indentId: string, received: Record<string, {
     checked.push({ id: it.id, qty, note: r?.note?.trim() || null });
   }
   for (const c of checked) await indentItemsRepo.update(c.id, { qty_received: c.qty, received_note: c.note });
-  return (await indentsRepo.update(indentId, { status: "received", received_at: new Date().toISOString() }))!;
+  return (await indentsRepo.update(indentId, { status: "received", received_at: new Date().toISOString(), received_by_name: who(a) }))!;
 }
 
 /** The holder returns received items to the store, with the reason; the store keeper decides. */

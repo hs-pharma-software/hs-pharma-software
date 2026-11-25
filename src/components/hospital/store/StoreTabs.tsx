@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { AlertTriangle, Bell } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { localDate } from "@/lib/localDate";
 import type { StoreId } from "@/config/hospitalStores";
 import {
-  DEAD_REASONS, deadStockRegister, recordDeadStock, storeDashboard, storeRegister, storeStock,
-  type RegisterRow, type StoreDashboard, type StoreMove, type StoreStockRow,
+  DEAD_REASONS, deadStockRegister, recordDeadStock, storeDashboard, storeRegister, storeRegisterSuggestions, storeStock,
+  type RegisterRow, type RegisterSuggestions, type StoreDashboard, type StoreMove, type StoreStockRow,
 } from "@/lib/repo/hospitalStores";
 import { decideIndentReturn, issueIndent, issueIndentBook, listIndentBooks, storeIndents, type IndentBook, type IndentWithItems } from "@/lib/repo/storeIndents";
+import { StockHistoryModal } from "./StockHistoryModal";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 });
@@ -136,17 +137,33 @@ export function StoreRegisterTab({ store }: { store: StoreId }) {
   const [f, setF] = useState({ from: `${localDate().slice(0, 7)}-01`, to: localDate(), vendor: "", product: "", company: "" });
   const [rows, setRows] = useState<RegisterRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<RegisterSuggestions>({ vendors: [], products: [], companies: [] });
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ productId: string | null; productName: string } | null>(null);
+  const id = useId();
+  useEffect(() => {
+    let active = true;
+    setSuggestions({ vendors: [], products: [], companies: [] });
+    void storeRegisterSuggestions(store).then((result) => {
+      if (active) { setSuggestions(result); setSuggestionError(null); }
+    }).catch((e: unknown) => { if (active) setSuggestionError(msg(e)); });
+    return () => { active = false; };
+  }, [store]);
   useEffect(() => { const t = setTimeout(() => void storeRegister(store, f).then((r) => { setRows(r); setError(null); }).catch((e) => setError(msg(e))), 250); return () => clearTimeout(t); }, [store, f]);
   return (
     <div className={card}>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="From"><Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></Field>
         <Field label="To"><Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></Field>
-        <Field label="Vendor (name or no.)"><Input value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} placeholder="e.g. V-0003" /></Field>
-        <Field label="Item"><Input value={f.product} onChange={(e) => setF({ ...f, product: e.target.value })} /></Field>
-        <Field label="Company"><Input value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })} /></Field>
+        <Field label="Vendor (name or no.)"><Input list={`${id}-vendors`} value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} placeholder="e.g. V-0003" /></Field>
+        <Field label="Item"><Input list={`${id}-products`} value={f.product} onChange={(e) => setF({ ...f, product: e.target.value })} /></Field>
+        <Field label="Company"><Input list={`${id}-companies`} value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })} /></Field>
+        <datalist id={`${id}-vendors`}>{suggestions.vendors.map((value) => <option key={value} value={value} />)}</datalist>
+        <datalist id={`${id}-products`}>{suggestions.products.map((value) => <option key={value} value={value} />)}</datalist>
+        <datalist id={`${id}-companies`}>{suggestions.companies.map((value) => <option key={value} value={value} />)}</datalist>
       </div>
       {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+      {suggestionError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Could not load suggestions: {suggestionError}</p>}
       {rows.length === 0 ? <p className="mt-3 text-sm text-neutral-400">No entries.</p> : (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
@@ -155,7 +172,7 @@ export function StoreRegisterTab({ store }: { store: StoreId }) {
               {rows.map((r) => (
                 <tr key={r.id} className="border-t border-neutral-100">
                   <td className="py-1.5 pr-3 whitespace-nowrap">{r.date}</td><td className="py-1.5 pr-3 font-mono text-xs">{r.entry_no ?? "—"}</td>
-                  <td className="py-1.5 pr-3">{r.product_name}{r.company_name && <span className="block text-[11px] text-neutral-500">{r.company_name}</span>}</td>
+                  <td className="py-1.5 pr-3"><button type="button" className="text-left text-sky-700 hover:underline" onClick={() => setHistory({ productId: r.product_id, productName: r.product_name })}>{r.product_name}</button>{r.company_name && <span className="block text-[11px] text-neutral-500">{r.company_name}</span>}</td>
                   <td className="py-1.5 pr-3">{r.vendor_name ?? "—"}{r.vendor_no && <span className="block font-mono text-[11px] text-neutral-500">{r.vendor_no}</span>}</td>
                   <td className="py-1.5 pr-3 text-xs">{KIND[r.kind]}{r.notes && <span className="block text-neutral-500">{r.notes}</span>}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums text-emerald-700">{r.qty > 0 ? r.qty : ""}</td>
@@ -167,6 +184,7 @@ export function StoreRegisterTab({ store }: { store: StoreId }) {
           </table>
         </div>
       )}
+      {history && <StockHistoryModal store={store} item={history} onClose={() => setHistory(null)} />}
     </div>
   );
 }

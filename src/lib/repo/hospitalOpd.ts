@@ -64,6 +64,16 @@ export async function saveHospitalStaff(id: string | null, data: Partial<Staff>)
   if (d.key === "head_nurse" && !data.department?.trim()) throw new Error("Choose the Head Nurse's department: admissions to it are confirmed by this Head Nurse.");
   const existing = id ? await staffRepo.get(id) : null;
   if (id && !existing) throw new Error("Staff member not found.");
+  if (data.working_hours_per_day !== undefined || data.sunday_off !== undefined || data.overtime_multiplier !== undefined) {
+    const hours = data.working_hours_per_day === undefined ? existing?.working_hours_per_day : data.working_hours_per_day;
+    const sundayOff = data.sunday_off === undefined ? existing?.sunday_off : data.sunday_off;
+    const multiplier = data.overtime_multiplier === undefined ? existing?.overtime_multiplier : data.overtime_multiplier;
+    if (hours != null || sundayOff != null || multiplier != null) {
+      if (hours == null || !Number.isFinite(hours) || hours <= 0 || hours > 24) throw new Error("Working hours per day must be more than zero and at most 24.");
+      if (sundayOff !== 0 && sundayOff !== 1) throw new Error("Choose whether Sunday is a day off.");
+      if (multiplier == null || !Number.isFinite(multiplier) || multiplier <= 0) throw new Error("The overtime multiplier must be more than zero.");
+    }
+  }
   if (data.collection_center_id && !(await labRequestsRepoCenters(data.collection_center_id))) throw new Error("That collection center was not found.");
   const employeeId = existing && existing.staff_category === d.key && existing.employee_id ? existing.employee_id : await nextEmployeeId(d.key);
   const payload: Partial<Staff> = {

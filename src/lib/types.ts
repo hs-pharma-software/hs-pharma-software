@@ -156,6 +156,10 @@ export interface Staff extends TenantRow {
   qualification?: string | null;
   /** Store keepers / purchase officers (v103): the stores they work in, as JSON (["all"] or store ids). */
   stores?: string | null;
+  /** Hospital payroll schedule; null until configured for this employee. */
+  working_hours_per_day?: number | null;
+  sunday_off?: number | null;
+  overtime_multiplier?: number | null;
   name: string;
   designation: string | null;
   phone: string | null;

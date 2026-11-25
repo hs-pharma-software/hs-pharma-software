@@ -3,7 +3,7 @@
  * with discount edits, and doctor / staff shares on services and fees. */
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { fullSchemaDb } from "../catalog/fullDb.ts";
+import { applySchema, fullSchemaDb } from "../catalog/fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { staffRepo } from "@/lib/repo/staff";
@@ -15,6 +15,7 @@ import { fToC, cToF, vitalFlag, vitalsSummary } from "@/config/vitalNorms";
 import { designation } from "@/config/hospitalStaff";
 import { localDate, localDateTime } from "@/lib/localDate";
 import type { Staff } from "@/lib/types";
+import { monthlyWorkRates } from "@/lib/hospitalPayroll";
 
 const H = "hosp-a";
 const tenant: SessionTenant = {
@@ -32,6 +33,32 @@ const today = localDate();
 beforeEach(() => {
   setTestDb(fullSchemaDb());
   asOwner();
+});
+
+test("staff schedules calculate full-month hours and overtime using each month's Sundays", () => {
+  const input = { year: 2024, month: 2, basicPay: 45000, hoursPerDay: 8, sundayOff: true, overtimeMultiplier: 1.5 };
+  assert.deepEqual(monthlyWorkRates(input), { workingDays: 25, monthlyHours: 200, hourlyRate: 225, overtimeRate: 337.5 });
+  assert.deepEqual(monthlyWorkRates({ ...input, sundayOff: false }), { workingDays: 29, monthlyHours: 232, hourlyRate: 193.97, overtimeRate: 290.95 });
+  assert.equal(monthlyWorkRates({ ...input, year: 2026, month: 7 }).workingDays, 27);
+  assert.throws(() => monthlyWorkRates({ ...input, hoursPerDay: 0 }), /Working hours/);
+  assert.throws(() => monthlyWorkRates({ ...input, overtimeMultiplier: -1 }), /multiplier/);
+});
+
+test("existing staff can be upgraded without a schedule; configured schedules persist and reject invalid changes", async () => {
+  const old = fullSchemaDb(104);
+  setTestDb(old);
+  const member = await saveHospitalStaff(null, { name: "Schedule Test", staff_category: "receptionist", basic_pay: 45000 });
+  applySchema(old, 105);
+  assert.equal((await staffRepo.get(member.id))?.working_hours_per_day, null);
+  const saved = await saveHospitalStaff(member.id, {
+    name: member.name, staff_category: "receptionist", basic_pay: 45000,
+    working_hours_per_day: 8, sunday_off: 1, overtime_multiplier: 1.5,
+  });
+  assert.deepEqual([saved.working_hours_per_day, saved.sunday_off, saved.overtime_multiplier], [8, 1, 1.5]);
+  await assert.rejects(saveHospitalStaff(member.id, { name: member.name, staff_category: "receptionist", working_hours_per_day: 25 }), /Working hours/);
+  await assert.rejects(saveHospitalStaff(member.id, { name: member.name, staff_category: "receptionist", sunday_off: 2 }), /Sunday/);
+  await assert.rejects(saveHospitalStaff(member.id, { name: member.name, staff_category: "receptionist", overtime_multiplier: 0 }), /multiplier/);
+  assert.equal((await staffRepo.get(member.id))?.working_hours_per_day, 8);
 });
 
 async function setup() {
