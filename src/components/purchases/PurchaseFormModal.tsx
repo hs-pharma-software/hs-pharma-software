@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker, type ProductPickerHandle } from "@/components/products/ProductPicker";
+import { FormError } from "@/components/ui/FormError";
 import { suppliersRepo } from "@/lib/repo/suppliers";
 import {
   purchasesRepo,
@@ -499,7 +500,8 @@ export function PurchaseFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!supplierId || lines.length === 0) return;
+    if (!supplierId) { setError("Choose the supplier."); return; }
+    if (lines.length === 0) { setError("Add at least one product line."); pickerRef.current?.focus(); return; }
     // Negative numbers; mobile shop: one IMEI per handset received, none repeated.
     setSubmitAttempted(true);
     const problems = linesProblems(lines);
@@ -1016,9 +1018,7 @@ export function PurchaseFormModal({
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
-        {error && (
-          <p className="whitespace-pre-line rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>
-        )}
+        <FormError message={error} />
 
         {!isEdit && draftStatus && <p className="text-[11px] text-neutral-400 sm:hidden">{draftStatus}</p>}
 
@@ -1037,7 +1037,7 @@ export function PurchaseFormModal({
               Draft
             </Button>
           )}
-          <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0} title="Ctrl+S">
+          <Button loading={saving} type="submit" variant="primary" disabled={saving} title="Ctrl+S">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>

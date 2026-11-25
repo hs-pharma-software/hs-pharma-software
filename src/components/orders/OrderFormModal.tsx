@@ -93,7 +93,8 @@ export function OrderFormModal({ order, onClose, onSaved }: { order?: OrderRow |
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!supplierId || lines.length === 0) return;
+    if (!supplierId) { setError("Choose the supplier."); return; }
+    if (lines.length === 0) { setError("Add at least one product to order."); return; }
     setSaving(true);
     setError(null);
     try {
@@ -249,7 +250,7 @@ export function OrderFormModal({ order, onClose, onSaved }: { order?: OrderRow |
           <Button type="button" onClick={onClose}>
             {order ? "Cancel" : "Reset"}
           </Button>
-          <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

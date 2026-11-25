@@ -303,7 +303,7 @@ export function SaleItemReturnModal({ onClose, onSaved }: { onClose: () => void;
           <Button type="button" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} type="submit" variant="primary" disabled={saving || activeLines.length === 0}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
         </div>

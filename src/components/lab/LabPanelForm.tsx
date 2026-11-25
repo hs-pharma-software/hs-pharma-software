@@ -20,6 +20,7 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
   onSave: (components: LabComponent[]) => void;
   onCancel: () => void;
 }) {
+  const [emptyTried, setEmptyTried] = useState(false);
   const [rows, setRows] = useState<Row[]>(() => {
     const before = new Map(saved.map((c) => [c.key, c]));
     return panel.map((p) => {
@@ -47,6 +48,11 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
   }
 
   function save() {
+    if (!filled.length) {
+      setEmptyTried(true);
+      document.getElementById(`panel-${rows[0]?.key}`)?.focus();
+      return;
+    }
     onSave(filled.map((r) => {
       const flag = flagOf(r);
       return { key: r.key, name: r.name, group: r.group, value: r.value.trim(), unit: r.unit.trim() || null, ref_range: r.range.trim() || null, flag: flag || null };
@@ -102,10 +108,12 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
         </table>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-neutral-500">{filled.length} of {rows.length} entered</span>
+        {emptyTried && !filled.length
+          ? <span role="alert" className="field-msg text-xs text-rose-600">Enter at least one result.</span>
+          : <span className="text-xs text-neutral-500">{filled.length} of {rows.length} entered</span>}
         <div className="flex gap-2">
           <Button onClick={onCancel}>Cancel</Button>
-          <Button loading={saving} variant="primary" onClick={save} disabled={saving || !filled.length}>{saving ? "Saving…" : "Save result"}</Button>
+          <Button loading={saving} variant="primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save result"}</Button>
         </div>
       </div>
     </div>

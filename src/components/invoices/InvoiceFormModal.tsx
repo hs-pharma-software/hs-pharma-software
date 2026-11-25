@@ -771,6 +771,7 @@ export function InvoiceFormModal({
     e.preventDefault();
     if (lines.length === 0) {
       setError("Add at least one product line.");
+      pickerRef.current?.focus();
       return;
     }
     if (canPickDate && (!invoiceDate || invoiceDate > localToday())) {
@@ -1467,7 +1468,7 @@ export function InvoiceFormModal({
               Draft
             </Button>
           )}
-          <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0} title={offline ? "Save on this computer (Ctrl+S); sent when the internet returns" : "Ctrl+S"} className="max-sm:flex-1">
+          <Button loading={saving} type="submit" variant="primary" disabled={saving} title={offline ? "Save on this computer (Ctrl+S); sent when the internet returns" : "Ctrl+S"} className="max-sm:flex-1">
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Save"}
           </Button>
         </div>

@@ -97,6 +97,7 @@ function BillEditModal({ bill, onClose, onSaved }: { bill: EpisodeBill; onClose:
   const [pcts, setPcts] = useState<Record<string, string>>({});
   const [whole, setWhole] = useState("");
   const [reason, setReason] = useState("");
+  const [reasonTried, setReasonTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -113,6 +114,7 @@ function BillEditModal({ bill, onClose, onSaved }: { bill: EpisodeBill; onClose:
   }
 
   async function save() {
+    if (!reason.trim()) { setReasonTried(true); document.getElementById("bill-reason")?.focus(); return; }
     setBusy(true);
     setError(null);
     try {
@@ -145,11 +147,11 @@ function BillEditModal({ bill, onClose, onSaved }: { bill: EpisodeBill; onClose:
         <Field label="Discount on the whole bill (Rs)"><Input inputMode="decimal" value={whole} onChange={(e) => setWhole(e.target.value)} /></Field>
         <Button onClick={applyWhole} disabled={!open.length || !(Number(whole) > 0)}>Spread over the lines</Button>
       </div>
-      <Field label="Reason (required)"><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Staff family, poor patient, approved by MS" /></Field>
+      <Field label="Reason" required error={reasonTried && !reason.trim() ? "Write why the bill is changed: it is kept with the bill" : undefined}><Textarea id="bill-reason" aria-invalid={(reasonTried && !reason.trim()) || undefined} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Staff family, poor patient, approved by MS" /></Field>
       <FormError message={error} className="mt-2" />
       <div className="mt-3 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
-        <Button loading={busy} variant="primary" disabled={busy || !reason.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
+        <Button loading={busy} variant="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

@@ -180,6 +180,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
     if (viewOnly) return;
     if (lines.length === 0) {
       setError("Add at least one product line.");
+      pickerRef.current?.focus();
       return;
     }
     setSaving(true);
@@ -466,7 +467,7 @@ export function QuotationFormModal({ onClose, onSaved, quotationId, viewOnly = f
               <Button type="button" onClick={onClose} className="max-sm:px-3">
                 {quotationId ? "Cancel" : "Reset"}
               </Button>
-              <Button loading={saving} type="submit" variant="primary" disabled={saving || lines.length === 0} className="max-sm:flex-1">
+              <Button loading={saving} type="submit" variant="primary" disabled={saving} className="max-sm:flex-1">
                 {saving ? "Saving..." : quotationId ? "Save Changes" : "Save"}
               </Button>
             </>

@@ -51,6 +51,7 @@ export function PurchaseForm() {
   };
 
   const submit = async () => {
+    if (!lines.length) { setError("Add at least one item: search above by name or barcode."); return; }
     setBusy(true);
     setError(null);
     try {
@@ -192,7 +193,7 @@ export function PurchaseForm() {
           {Number(paid) < total && <div className="flex justify-between text-rose-600"><span>{t("pay.balance")}</span><span dir="ltr">{money(total - (Number(paid) || 0))}</span></div>}
           <Err error={error} />
           <div className="flex justify-end pt-2">
-            <Button variant="primary" disabled={busy || !lines.length} onClick={() => void submit()}>
+            <Button variant="primary" loading={busy} disabled={busy} onClick={() => void submit()}>
               <Save size={14} /> {t("pu.save")}
             </Button>
           </div>

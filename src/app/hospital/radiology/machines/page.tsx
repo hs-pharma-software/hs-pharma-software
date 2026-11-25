@@ -142,17 +142,19 @@ function MachineForm({ machine, modalities, onClose, onSaved }: { machine: Machi
     status: machine?.status ?? "active", ae_title: machine?.ae_title ?? "", notes: machine?.notes ?? "",
   });
   const [saving, setSaving] = useState(false);
+  const [tried, setTried] = useState(false);
   const s = (k: keyof MachineInput) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   async function save() {
+    if (!f.name.trim() || !f.modality_code) { setTried(true); document.getElementById(!f.name.trim() ? "mf-name" : "mf-modality")?.focus(); return; }
     setSaving(true);
     try { await saveMachine(machine?.id ?? null, f); onSaved(); } catch (e) { notify(errMsg(e)); } finally { setSaving(false); }
   }
   return (
     <Modal title={machine ? `Edit ${machine.name}` : "Add machine"} onClose={onClose}>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="Machine name" required><Input id="mf-name" value={f.name} onChange={s("name")} placeholder="e.g. X-Ray Room 1" /></Field>
-        <Field label="Modality" required>
-          <Select id="mf-modality" value={f.modality_code} onChange={s("modality_code")}>
+        <Field label="Machine name" required error={tried && !f.name.trim() ? "Enter the machine's name" : undefined}><Input id="mf-name" aria-invalid={(tried && !f.name.trim()) || undefined} value={f.name} onChange={s("name")} placeholder="e.g. X-Ray Room 1" /></Field>
+        <Field label="Modality" required error={tried && !f.modality_code ? "Add a modality first (Radiology > Modalities)" : undefined}>
+          <Select id="mf-modality" aria-invalid={(tried && !f.modality_code) || undefined} value={f.modality_code} onChange={s("modality_code")}>
             {modalities.map((m) => <option key={m.id} value={m.code}>{m.code} · {m.name}</option>)}
           </Select>
         </Field>
@@ -171,7 +173,7 @@ function MachineForm({ machine, modalities, onClose, onSaved }: { machine: Machi
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button loading={saving} variant="primary" disabled={saving || !f.name.trim() || !f.modality_code} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

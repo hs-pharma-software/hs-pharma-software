@@ -78,6 +78,7 @@ export function SaleForm({ mode }: { mode: "sale" | "quotation" }) {
   };
 
   const submit = async () => {
+    if (!lines.length) { setError("Add at least one item: search above by name or barcode."); return; }
     setBusy(true);
     setError(null);
     try {
@@ -301,7 +302,7 @@ export function SaleForm({ mode }: { mode: "sale" | "quotation" }) {
           <Err error={error} />
           <div className="flex justify-end gap-2 pt-2">
             <Button onClick={reset}>{t("c.cancel")}</Button>
-            <Button variant="primary" disabled={busy || !lines.length} onClick={() => void submit()}>
+            <Button variant="primary" loading={busy} disabled={busy} onClick={() => void submit()}>
               <Save size={14} /> {sale ? t("s.saveInvoice") : t("s.saveQuotation")}
             </Button>
           </div>
