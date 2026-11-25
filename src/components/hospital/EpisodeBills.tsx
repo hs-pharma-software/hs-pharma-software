@@ -148,7 +148,7 @@ function BillEditModal({ bill, onClose, onSaved }: { bill: EpisodeBill; onClose:
       {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       <div className="mt-3 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy || !reason.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
+        <Button loading={busy} variant="primary" disabled={busy || !reason.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

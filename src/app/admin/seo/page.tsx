@@ -274,7 +274,7 @@ function ActivityTab() {
             ))}
           </ul>
         )}
-        {more && <div className="mt-2 text-center"><Button disabled={loading} onClick={() => void load(String(rows.at(-1)?.created_at ?? ""))}>{loading ? "Loading…" : "Older entries"}</Button></div>}
+        {more && <div className="mt-2 text-center"><Button loading={loading} disabled={loading} onClick={() => void load(String(rows.at(-1)?.created_at ?? ""))}>{loading ? "Loading…" : "Older entries"}</Button></div>}
       </div>
     </div>
   );

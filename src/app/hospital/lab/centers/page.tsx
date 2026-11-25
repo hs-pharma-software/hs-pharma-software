@@ -84,7 +84,7 @@ function CenterModal({ center, onClose, onSaved }: { center: CollectionCenter | 
         </div>
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </form>
     </Modal>

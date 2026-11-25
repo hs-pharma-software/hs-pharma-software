@@ -217,7 +217,7 @@ function BrandingTab({ settings, tenantId, onSaved }: { settings: SiteSettings |
         </div>
       </div>
       {msg && <Note kind={msg.ok ? "ok" : "error"}>{msg.text}</Note>}
-      <Button type="submit" variant="primary" disabled={busy || !dirty}>{busy ? "Saving…" : "Save draft"}</Button>
+      <Button loading={busy} type="submit" variant="primary" disabled={busy || !dirty}>{busy ? "Saving…" : "Save draft"}</Button>
     </form>
   );
 }

@@ -209,7 +209,7 @@ function TraineeForm({ staff, trainee, onClose, onSaved }: { staff: Staff[]; tra
         {trainee && <p className="text-xs text-neutral-500">To place the trainee in a different section from a date, use Move: it keeps the earlier rotation on record.</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </div>
     </Modal>
@@ -238,7 +238,7 @@ function MoveForm({ staff, trainee, onClose, onSaved }: { staff: Staff[]; traine
         </div>
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Move"}</Button>
+          <Button loading={saving} variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Move"}</Button>
         </div>
       </div>
     </Modal>
@@ -262,7 +262,7 @@ function EndForm({ trainee, onClose, onSaved }: { trainee: Trainee; onClose: () 
         </div>
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </div>
     </Modal>

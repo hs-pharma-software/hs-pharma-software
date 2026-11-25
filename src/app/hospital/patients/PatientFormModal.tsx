@@ -234,7 +234,7 @@ export default function PatientFormModal({ patient, onClose, onSaved, initialNam
 
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>
           {saving ? "Saving…" : isEdit ? "Update" : "Register"}
         </Button>
       </div>

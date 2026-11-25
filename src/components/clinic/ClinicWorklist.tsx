@@ -244,7 +244,7 @@ function SingleResultForm({ row, onSaved, onCancel, awaitVerification }: FormPro
       <p className="mt-2 text-xs text-neutral-500">High / low is marked from the normal range and the patient&apos;s sex.</p>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onCancel}>Close</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !value.trim()}>{saving ? "Saving…" : "Save result"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !value.trim()}>{saving ? "Saving…" : "Save result"}</Button>
       </div>
     </div>
   );
@@ -266,7 +266,7 @@ function RadiologyReportForm({ row, onSaved, onCancel }: FormProps) {
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onCancel}>Close</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !impression.trim()}>{saving ? "Saving…" : "Save report"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !impression.trim()}>{saving ? "Saving…" : "Save report"}</Button>
       </div>
     </div>
   );

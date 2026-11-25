@@ -105,7 +105,7 @@ export function LabPanelForm({ panel, gender, saved, saving, onSave, onCancel }:
         <span className="text-xs text-neutral-500">{filled.length} of {rows.length} entered</span>
         <div className="flex gap-2">
           <Button onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" onClick={save} disabled={saving || !filled.length}>{saving ? "Saving…" : "Save result"}</Button>
+          <Button loading={saving} variant="primary" onClick={save} disabled={saving || !filled.length}>{saving ? "Saving…" : "Save result"}</Button>
         </div>
       </div>
     </div>

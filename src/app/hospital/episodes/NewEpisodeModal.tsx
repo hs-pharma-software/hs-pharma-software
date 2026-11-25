@@ -192,7 +192,7 @@ export default function NewEpisodeModal({ defaultType, onClose, onSaved }: Props
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId}>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !patientId}>
             {saving ? "Opening…" : "Open Episode"}
           </Button>
         </div>

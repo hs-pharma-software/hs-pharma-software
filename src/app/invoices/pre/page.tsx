@@ -170,7 +170,7 @@ export default function PreInvoicesPage() {
             {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button onClick={() => setEditing(null)}>Cancel</Button>
-              <Button variant="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
+              <Button loading={busy} variant="primary" disabled={busy} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button>
             </div>
           </div>
         </Modal>

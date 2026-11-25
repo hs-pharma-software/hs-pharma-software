@@ -87,7 +87,7 @@ export function ContentStudio() {
             {list.targets.map((t) => <option key={t.path} value={t.path}>{t.label}</option>)}
           </Select>
         </label>
-        <Button variant="primary" disabled={busy || kw.trim().length < 3}
+        <Button loading={busy} variant="primary" disabled={busy || kw.trim().length < 3}
           onClick={() => void act(async () => { const r = await seoCall<{ id: string }>("createDraft", { keyword: kw, path: kwPath }); setKw(""); setOpenId(r.id); }, list.aiReady ? "Draft written. Review it below." : "Outline created. Write the article in it before approving.")}>
           {busy ? "Writing…" : list.aiReady ? "Write draft" : "Create outline"}
         </Button>

@@ -67,7 +67,7 @@ export default function FlatDiscountsPage() {
 
   return (
     <div>
-      <PageHeader title="Flat Discounts" actions={<Button variant="primary" disabled={busy || changed.length === 0} onClick={() => void saveChanged()}>{busy ? "Saving…" : `Save${changed.length ? ` (${changed.length})` : ""}`}</Button>} />
+      <PageHeader title="Flat Discounts" actions={<Button loading={busy} variant="primary" disabled={busy || changed.length === 0} onClick={() => void saveChanged()}>{busy ? "Saving…" : `Save${changed.length ? ` (${changed.length})` : ""}`}</Button>} />
       <div className={card}>
         <p className="mb-3 text-sm text-neutral-600">A product&apos;s flat discount is filled in automatically on every invoice line of that product. It comes before the category&apos;s flat discount; the cashier can still change it on an invoice.</p>
         <div className="flex flex-wrap items-end gap-2">

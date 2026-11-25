@@ -76,7 +76,7 @@ export function LinkedPharmacyCard() {
             <p className="text-xs text-neutral-500">A token made {when(status.pending.created_at)} is waiting for the pharmacy (valid until {when(status.pending.expires_at)}).</p>
           ) : null}
           <div className="flex gap-2">
-            <Button variant="primary" onClick={() => void generate()} disabled={busy}>{busy ? "Making…" : made || status.pending ? "Make a new token" : "Link pharmacy"}</Button>
+            <Button loading={busy} variant="primary" onClick={() => void generate()} disabled={busy}>{busy ? "Making…" : made || status.pending ? "Make a new token" : "Link pharmacy"}</Button>
             <Button onClick={() => void reload()}>Check status</Button>
           </div>
         </div>

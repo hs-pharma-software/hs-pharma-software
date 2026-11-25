@@ -48,7 +48,7 @@ export default function LabProfilePage() {
         title="Lab Profile"
         actions={<>
           {savedAt && <span className="text-sm text-emerald-700">Saved {savedAt}</span>}
-          <Button variant="primary" onClick={() => void save()} disabled={saving || !p.name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !p.name.trim()}>{saving ? "Saving…" : "Save"}</Button>
         </>}
       />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">

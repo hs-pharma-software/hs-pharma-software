@@ -126,7 +126,7 @@ function PayModal({ bill, onClose, onPaid }: { bill: PayableDoc; onClose: () => 
       {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Saving…" : `Pay ${full ? `Rs ${money(bill.balance)}` : ""}`}</Button>
+        <Button loading={busy} variant="primary" disabled={busy} onClick={() => void pay()}>{busy ? "Saving…" : `Pay ${full ? `Rs ${money(bill.balance)}` : ""}`}</Button>
       </div>
     </Modal>
   );

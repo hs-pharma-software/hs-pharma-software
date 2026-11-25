@@ -88,7 +88,7 @@ export function UserEditModal({ user, typeId, canEditStaff, onClose, onSaved }: 
         {roleChanged && <p className="text-xs text-amber-700">Saving replaces this login&apos;s sections and actions with those of {preset!.label}.</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </div>
     </Modal>

@@ -240,7 +240,7 @@ export function BookingForm({ bookingId, initialDate }: { bookingId?: string; in
               </div>
             )}
             {error && <p className="whitespace-pre-line text-sm text-rose-600">{error}</p>}
-            <Button variant="primary" onClick={() => void save()} disabled={saving || Boolean(clash)}>{saving ? "Saving…" : bookingId ? "Save changes" : "Book"}</Button>
+            <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || Boolean(clash)}>{saving ? "Saving…" : bookingId ? "Save changes" : "Book"}</Button>
           </div>
         </aside>
       </div>

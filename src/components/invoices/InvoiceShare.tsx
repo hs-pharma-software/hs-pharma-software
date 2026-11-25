@@ -41,7 +41,7 @@ export function InvoiceShareButtons({ invoiceId, size = "md" }: { invoiceId: str
   return (
     <>
       {pdf && (
-        <Button type="button" className={cls} disabled={busy} onClick={() => void download()} title="Download PDF">
+        <Button loading={busy} type="button" className={cls} disabled={busy} onClick={() => void download()} title="Download PDF">
           <Download size={15} /> {busy ? "Preparing…" : "PDF"}
         </Button>
       )}

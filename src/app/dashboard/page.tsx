@@ -129,8 +129,9 @@ function KpiCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2 }}
       transition={{ delay, type: "spring", stiffness: 260, damping: 28 }}
-      className="flex flex-col gap-1 rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]"
+      className="flex flex-col gap-1 rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] transition-shadow duration-200 hover:shadow-[0_6px_18px_rgba(0,0,0,0.08)]"
     >
       <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">{label}</p>
       <p className="text-2xl font-bold tracking-tight text-neutral-900" style={accent ? { color: accent } : {}}>
@@ -144,7 +145,7 @@ function KpiCard({
 /* ── Section card ── */
 function Card({ title, badge, href, children }: { title: string; badge?: string | number; href?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
+    <div className="rise-in flex flex-col rounded-2xl bg-white shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-neutral-800">{title}</h3>
@@ -153,7 +154,7 @@ function Card({ title, badge, href, children }: { title: string; badge?: string 
           )}
         </div>
         {href && (
-          <Link href={href} className="text-[11px] font-medium hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href={href} className="-my-2 -mr-2 rounded-lg px-2 py-2 text-xs font-medium transition-colors hover:bg-neutral-50 hover:underline" style={{ color: "var(--accent)" }}>
             View all →
           </Link>
         )}
@@ -226,11 +227,11 @@ function CategoryChart({ data }: { data: InventoryCategoryRow[] }) {
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100">
             <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${(row.product_count / max) * 100}%` }}
-              transition={{ delay: i * 0.05, duration: 0.45 }}
-              className="h-full rounded-full"
-              style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ delay: i * 0.04, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              className="h-full origin-left rounded-full"
+              style={{ width: `${(row.product_count / max) * 100}%`, background: DONUT_COLORS[i % DONUT_COLORS.length] }}
             />
           </div>
         </div>
@@ -423,11 +424,11 @@ function GeneralStoreDashboard() {
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
                       <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ delay: 0.3 + i * 0.07, duration: 0.5 }}
-                        className="h-full rounded-full"
-                        style={{ background: "var(--accent)" }}
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ delay: 0.3 + i * 0.05, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="h-full origin-left rounded-full"
+                        style={{ width: `${pct}%`, background: "var(--accent)" }}
                       />
                     </div>
                   </div>
@@ -705,11 +706,11 @@ function GeneralDashboard() {
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
                       <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ delay: 0.3 + i * 0.07, duration: 0.5 }}
-                        className="h-full rounded-full"
-                        style={{ background: "var(--accent)" }}
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ delay: 0.3 + i * 0.05, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="h-full origin-left rounded-full"
+                        style={{ width: `${pct}%`, background: "var(--accent)" }}
                       />
                     </div>
                   </div>

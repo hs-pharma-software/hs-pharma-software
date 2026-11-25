@@ -184,7 +184,7 @@ export default function ReceptionPage() {
             </Field>
           </div>
           <div className="mt-4 flex justify-end">
-            <Button variant="primary" onClick={() => void book()} disabled={!selected || !doctor || booking}>
+            <Button loading={booking} variant="primary" onClick={() => void book()} disabled={!selected || !doctor || booking}>
               {booking ? "Booking…" : fee > 0 ? `Book & collect Rs ${fee.toFixed(0)}` : "Book visit"}
             </Button>
           </div>

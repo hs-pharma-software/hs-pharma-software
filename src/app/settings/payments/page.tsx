@@ -112,7 +112,7 @@ function SubscriptionPay() {
       {opts.map((o, i) => <label key={`${o.provider}-${o.method}`} className="flex items-center gap-2 text-sm"><input type="radio" name="subpay" checked={choice === i} onChange={() => setChoice(i)} /> {o.label}</label>)}
       {err && <p role="alert" className="text-sm text-rose-700">{err}</p>}
       {opts.length > 0 && (
-        <Button variant="primary" disabled={busy} onClick={async () => {
+        <Button loading={busy} variant="primary" disabled={busy} onClick={async () => {
           setBusy(true);
           setErr(null);
           try {

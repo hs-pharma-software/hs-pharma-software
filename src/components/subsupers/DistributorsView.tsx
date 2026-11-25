@@ -137,7 +137,7 @@ function AddDistributorModal({ onClose, onSaved }: { onClose: () => void; onSave
           {error && <Notice kind="error">{error}</Notice>}
           <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
             <Button type="button" onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" disabled={busy}>{busy ? "Saving…" : "Add and create link"}</Button>
+            <Button loading={busy} type="submit" variant="primary" disabled={busy}>{busy ? "Saving…" : "Add and create link"}</Button>
           </div>
         </form>
       )}

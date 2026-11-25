@@ -302,7 +302,7 @@ function CreateOrder({ onCreated }: { onCreated: () => void }) {
         <div className="md:col-span-2"><Field label="Clinical history"><Textarea id="co-history" rows={2} value={history} onChange={(e) => setHistory(e.target.value)} placeholder="Reason for the study, e.g. fall on outstretched hand, pain right wrist" /></Field></div>
       </div>
       <div className="mt-4 flex justify-end">
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !studyId}><ClipboardList size={14} />{saving ? "Placing…" : "Place order"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !studyId}><ClipboardList size={14} />{saving ? "Placing…" : "Place order"}</Button>
       </div>
     </Panel>
   );

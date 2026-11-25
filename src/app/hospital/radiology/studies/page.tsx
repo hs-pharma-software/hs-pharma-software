@@ -232,7 +232,7 @@ function StudyModal({ study, modalities, hospital, onClose, onSaved }: { study: 
         {active && !(Number(hospital ? study?.rate : fee) > 0) && <p className="text-xs text-amber-700">No fee: this study will be ordered free of charge.{hospital ? " Set its rate in Service Master." : ""}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </form>
     </Modal>

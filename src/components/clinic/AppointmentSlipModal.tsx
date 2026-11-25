@@ -88,7 +88,7 @@ export function AppointmentSlipModal({ appointment: a, onClose }: { appointment:
                 <option value="a4">A4</option>
               </Select>
             </div>
-            <Button variant="primary" onClick={() => void print()} disabled={printing}>
+            <Button loading={printing} variant="primary" onClick={() => void print()} disabled={printing}>
               <Printer size={14} className="mr-1" /> {printing ? "Printing…" : "Print slip"}
             </Button>
           </div>

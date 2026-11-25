@@ -147,7 +147,7 @@ function ServiceForm({ service: s, only, defaultCategory, onClose, onSaved }: {
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !f.name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !f.name.trim()}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

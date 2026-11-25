@@ -93,7 +93,7 @@ function AuditCount() {
       <PageHeader title={`Audit: ${audit.audit_name ?? ""}`} actions={
         <div className="flex gap-2">
           <Button onClick={() => router.push("/utilities/audit")}>Back</Button>
-          <Button disabled={busy || !pending} onClick={() => void save()}>{busy ? "Saving…" : `Save${pending ? ` (${pending})` : ""}`}</Button>
+          <Button loading={busy} disabled={busy || !pending} onClick={() => void save()}>{busy ? "Saving…" : `Save${pending ? ` (${pending})` : ""}`}</Button>
           <Button variant="primary" disabled={busy} onClick={() => void close()}>Close audit</Button>
         </div>
       } />

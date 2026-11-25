@@ -155,7 +155,7 @@ export default function OfflineTenantsPage() {
           </div>
         </div>
         <div className="mt-4 flex justify-end">
-          <Button variant="primary" disabled={busy || !canGenerate} onClick={() => void generate()}>{busy ? "Generating…" : "Generate license key"}</Button>
+          <Button loading={busy} variant="primary" disabled={busy || !canGenerate} onClick={() => void generate()}>{busy ? "Generating…" : "Generate license key"}</Button>
         </div>
 
         {issued && (

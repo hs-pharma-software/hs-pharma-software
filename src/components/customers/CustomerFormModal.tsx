@@ -302,7 +302,7 @@ export function CustomerFormModal({
         {formError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p>}
         <div className="form-actions">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>
             {saving ? "Saving…" : isEdit ? "Save" : "Create"}
           </Button>
         </div>

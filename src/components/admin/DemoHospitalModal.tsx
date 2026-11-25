@@ -67,7 +67,7 @@ export function DemoHospitalModal({ plans, onClose, onCreated }: { plans: Subscr
         {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy || !name.trim() || prefix.length < 2 || password.length < 6 || !planId} onClick={() => void create()}>
+          <Button loading={busy} variant="primary" disabled={busy || !name.trim() || prefix.length < 2 || password.length < 6 || !planId} onClick={() => void create()}>
             {busy ? "Creating…" : "Create demo hospital"}
           </Button>
         </div>

@@ -121,7 +121,7 @@ export function PrescriptionViewModal({
                 <option value="thermal">Thermal roll</option>
               </Select>
             </div>
-            <Button onClick={() => void print()} disabled={printing}>
+            <Button loading={printing} onClick={() => void print()} disabled={printing}>
               <Printer size={14} className="mr-1" /> {printing ? "Printing…" : "Print"}
             </Button>
             {!billed && (

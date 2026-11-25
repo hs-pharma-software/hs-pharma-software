@@ -145,7 +145,7 @@ export default function ServiceFormModal({ service, onClose, onSaved }: Props) {
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !code.trim() || !name.trim()}>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !code.trim() || !name.trim()}>
           {saving ? "Saving…" : isEdit ? "Update" : "Add Service"}
         </Button>
       </div>

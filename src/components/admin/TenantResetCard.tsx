@@ -51,7 +51,7 @@ export function TenantResetCard({ tenantId, tenantName }: { tenantId: string; te
           </Field>
           <div className="flex justify-end gap-2">
             <Button onClick={() => { setOpen(false); setTyped(""); }} disabled={busy}>Cancel</Button>
-            <Button variant="danger" disabled={busy || typed.trim() !== tenantName.trim()} onClick={() => void reset()}>
+            <Button loading={busy} variant="danger" disabled={busy || typed.trim() !== tenantName.trim()} onClick={() => void reset()}>
               {busy ? "Resetting…" : "Reset now"}
             </Button>
           </div>

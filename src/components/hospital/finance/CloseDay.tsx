@@ -92,7 +92,7 @@ export function CloseDayModal({ onClose, onClosed }: { onClose: () => void; onCl
           <Field label="Note"><Textarea id="cd-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" disabled={busy || counted.trim() === ""} onClick={() => void close()}>{busy ? "Closing…" : "Close my day"}</Button>
+            <Button loading={busy} variant="primary" disabled={busy || counted.trim() === ""} onClick={() => void close()}>{busy ? "Closing…" : "Close my day"}</Button>
           </div>
         </div>
       )}

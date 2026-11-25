@@ -135,7 +135,7 @@ export default function AdminCatalogReviewPage() {
             <>
               <Button disabled={!picked.size} onClick={() => setGiving("move")}>Move to tenant</Button>
               <Button disabled={!picked.size} onClick={() => setGiving("copy")}>Copy to tenant</Button>
-              <Button
+              <Button loading={assigning}
                 variant="primary"
                 disabled={assigning}
                 onClick={async () => {

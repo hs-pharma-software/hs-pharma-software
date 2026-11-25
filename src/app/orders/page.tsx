@@ -145,7 +145,7 @@ export default function OrdersPage() {
         actions={
           <>
             <Button variant="primary" onClick={() => setEditing("new")}>Add</Button>
-            <Button onClick={() => void checkStockOuts(false)} disabled={checking}><RefreshCw size={14} />{checking ? "Checking…" : "Check stock-outs"}</Button>
+            <Button loading={checking} onClick={() => void checkStockOuts(false)} disabled={checking}><RefreshCw size={14} />{checking ? "Checking…" : "Check stock-outs"}</Button>
             <Button onClick={() => void reload()}>Refresh</Button>
           </>
         }

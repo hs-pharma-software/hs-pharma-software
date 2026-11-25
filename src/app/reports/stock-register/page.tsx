@@ -38,7 +38,7 @@ export default function StockRegisterPage() {
         <Field label="From"><Input id="sr-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
         <Field label="To"><Input id="sr-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
         <Field label="Search"><Input id="sr-q" value={search} placeholder="Product, generic, company" onChange={(e) => setSearch(e.target.value)} /></Field>
-        <Button variant="primary" onClick={() => void run()} disabled={loading}>{loading ? "Running…" : "Report"}</Button>
+        <Button loading={loading} variant="primary" onClick={() => void run()} disabled={loading}>{loading ? "Running…" : "Report"}</Button>
       </>}>
       <p className="mb-2 hidden text-xs print:block">{from} to {to}</p>
       {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Could not run the report: {error}</p>}

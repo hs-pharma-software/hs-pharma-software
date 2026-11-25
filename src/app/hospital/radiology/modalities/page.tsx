@@ -84,7 +84,7 @@ function ModalityForm({ modality: m, onClose, onSaved }: { modality: RadiologyMo
       <p className="mt-2 text-xs text-neutral-500">Tests in Performing Images join this modality&apos;s machine queues when their modality matches the code, name or universal name.</p>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={saving || !f.code.trim() || !f.name.trim()} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" disabled={saving || !f.code.trim() || !f.name.trim()} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

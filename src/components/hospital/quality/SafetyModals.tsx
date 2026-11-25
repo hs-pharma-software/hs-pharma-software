@@ -19,7 +19,7 @@ function Actions({ onClose, onSave, saving, label }: { onClose: () => void; onSa
   return (
     <div className="mt-4 flex justify-end gap-2">
       <Button onClick={onClose}>Cancel</Button>
-      <Button variant="primary" disabled={saving} onClick={onSave}>{saving ? "Saving…" : label}</Button>
+      <Button loading={saving} variant="primary" disabled={saving} onClick={onSave}>{saving ? "Saving…" : label}</Button>
     </div>
   );
 }

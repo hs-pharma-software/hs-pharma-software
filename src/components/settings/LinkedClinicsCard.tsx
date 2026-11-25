@@ -63,7 +63,7 @@ export function LinkedClinicsCard() {
               <Input id="link-token" value={token} onChange={(e) => setToken(e.target.value)} placeholder="HSL-XXXX-XXXX-XXXX-XXXX" className="font-mono uppercase" />
             </Field>
           </div>
-          <Button variant="primary" onClick={() => void verify()} disabled={busy || !token.trim()}>{busy ? "Verifying…" : "Verify and link"}</Button>
+          <Button loading={busy} variant="primary" onClick={() => void verify()} disabled={busy || !token.trim()}>{busy ? "Verifying…" : "Verify and link"}</Button>
         </div>
       ) : (
         <p className="text-xs text-neutral-500">Only the owner login can link a clinic or hospital.</p>

@@ -74,7 +74,7 @@ export function PraQuickSetup({ s, onDone }: { s: QuickSetupState; onDone: () =>
           {t.needsScope && <label className="text-xs md:col-span-3">Contract work covered (required for this rate)<input className={input} value={f.scopeNote} onChange={set("scopeNote")} /></label>}
         </div>
         <p className="text-xs text-neutral-500">Use PRA&apos;s API token here. The POS access code is not the token.</p>
-        <Button variant="primary" disabled={busy || live || s.businessType !== "contractor"} onClick={() => void run(async () => {
+        <Button loading={busy} variant="primary" disabled={busy || live || s.businessType !== "contractor"} onClick={() => void run(async () => {
           const r = await call<{ services: number }>("quick_setup", { tenantId: s.tenantId, ...f });
           setF((x) => ({ ...x, sandboxToken: "", productionToken: "" }));
           return `Set up on the Sandbox. ${r.services} service${r.services === 1 ? "" : "s"} added. Next: run the Sandbox test.`;

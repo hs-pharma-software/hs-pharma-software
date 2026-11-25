@@ -66,7 +66,7 @@ export function WindowsDemoLoginsCard() {
             </button>
             <div className="flex items-center gap-2">
               {msg && <span className="text-xs text-neutral-600">{msg}</span>}
-              <Button variant="primary" onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+              <Button loading={busy} variant="primary" onClick={() => void save()} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
             </div>
           </div>
           <p className="text-[11px] text-neutral-500">Use demo accounts only: the password is sent by email to whoever asks. Without a login for their type (and no &quot;Any&quot;), the email says one will follow.</p>

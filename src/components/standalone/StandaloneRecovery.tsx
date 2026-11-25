@@ -43,7 +43,7 @@ export function StandaloneRecovery({ onDone, onCancel }: { onDone: (username: st
       {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       <div className="flex gap-2">
         <Button type="button" onClick={onCancel}>Back</Button>
-        <Button type="submit" variant="primary" disabled={busy} className="flex-1 justify-center">{busy ? "Checking…" : "Reset password"}</Button>
+        <Button loading={busy} type="submit" variant="primary" disabled={busy} className="flex-1 justify-center">{busy ? "Checking…" : "Reset password"}</Button>
       </div>
     </form>
   );

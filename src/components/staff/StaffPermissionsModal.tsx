@@ -95,7 +95,7 @@ export function StaffPermissionsModal({ staff, onClose, onSaved }: { staff: Staf
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             {defaults && <Button className="mr-auto" onClick={() => { setFull(false); setPerms(new Set(defaults)); }}>Use designation defaults</Button>}
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save permissions"}</Button>
+            <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save permissions"}</Button>
           </div>
         </>
       )}

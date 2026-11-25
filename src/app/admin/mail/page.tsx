@@ -55,7 +55,7 @@ export default function MailPage() {
   return (
     <div className="space-y-4">
       <PageHeader title="Mail" actions={<>
-        <Button onClick={() => void sync()} disabled={busy}><RefreshCw size={14} /> {busy ? "Checking…" : "Check for new mail"}</Button>
+        <Button loading={busy} onClick={() => void sync()} disabled={busy}><RefreshCw size={14} /> {busy ? "Checking…" : "Check for new mail"}</Button>
         <Button variant="primary" disabled={!box} onClick={() => setCompose({ to: "", cc: "", subject: "", body: "" })}><PenSquare size={14} /> New message</Button>
       </>} />
       {boxes && (!boxes.sending || !boxes.webhook) && (
@@ -145,7 +145,7 @@ export default function MailPage() {
             <label className="block text-xs font-medium text-neutral-600">Subject<input value={compose.subject} onChange={(e) => setCompose({ ...compose, subject: e.target.value })} required maxLength={300} className={`${input} mt-1`} /></label>
             <label className="block text-xs font-medium text-neutral-600">Message<textarea value={compose.body} onChange={(e) => setCompose({ ...compose, body: e.target.value })} required rows={12} className={`${input} mt-1 font-sans`} /></label>
             {msg && !msg.ok && <p className="text-sm text-rose-700">{msg.text}</p>}
-            <div className="flex justify-end gap-2"><Button type="button" onClick={() => setCompose(null)}>Cancel</Button><Button type="submit" variant="primary" disabled={busy}><Send size={14} /> {busy ? "Sending…" : "Send"}</Button></div>
+            <div className="flex justify-end gap-2"><Button type="button" onClick={() => setCompose(null)}>Cancel</Button><Button loading={busy} type="submit" variant="primary" disabled={busy}><Send size={14} /> {busy ? "Sending…" : "Send"}</Button></div>
           </form>
         </Modal>
       )}

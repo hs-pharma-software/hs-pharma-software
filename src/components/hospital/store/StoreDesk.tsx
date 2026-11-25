@@ -123,7 +123,7 @@ function ArrivalCard({ store, a, onDone }: { store: StoreId; a: StoreArrival; on
       {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       <div className="mt-3 flex justify-end gap-2">
         <Button disabled={busy} onClick={() => void giveBack()}>Return to purchase officer</Button>
-        <Button variant="primary" disabled={busy} onClick={() => void verify()}>{busy ? "Saving…" : "Verify and receive"}</Button>
+        <Button loading={busy} variant="primary" disabled={busy} onClick={() => void verify()}>{busy ? "Saving…" : "Verify and receive"}</Button>
       </div>
     </div>
   );

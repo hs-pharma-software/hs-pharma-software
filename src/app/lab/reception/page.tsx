@@ -145,7 +145,7 @@ export default function LabReceptionPage() {
           <p className="mr-auto text-sm text-neutral-600">{chosen.length} test{chosen.length === 1 ? "" : "s"} · Total <b className="tabular-nums">{money(total)}</b> · Payable <b className="tabular-nums">{money(payable)}</b></p>
           <div className="w-32"><Field label="Discount"><Input id="lr-disc" type="number" min="0" step="any" value={discount} onChange={(e) => setDiscount(e.target.value)} /></Field></div>
           <div className="w-32"><Field label="Paid"><Input id="lr-paid" type="number" min="0" step="any" value={paid} onChange={(e) => setPaid(e.target.value)} placeholder={money(payable)} /></Field></div>
-          <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId || !chosen.length}>{saving ? "Saving…" : "Save and print bill"}</Button>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !patientId || !chosen.length}>{saving ? "Saving…" : "Save and print bill"}</Button>
         </div>
         {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
       </section>

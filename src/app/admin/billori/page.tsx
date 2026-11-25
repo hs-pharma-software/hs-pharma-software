@@ -171,7 +171,7 @@ export default function BilloriAdminPage() {
             <span className={`text-xs ${status.ok ? "text-emerald-600" : "text-rose-600"}`}>{status.text}</span>
           )}
           {saved && !status && <span className="text-xs text-emerald-600">Saved ✓</span>}
-          <Button disabled={!tauriReady || testing || !(provider === "openai" ? openaiKey : apiKey).trim()} onClick={() => void test()}>
+          <Button loading={testing} disabled={!tauriReady || testing || !(provider === "openai" ? openaiKey : apiKey).trim()} onClick={() => void test()}>
             {testing ? "Testing…" : "Test Connection"}
           </Button>
           <Button variant="primary" disabled={!tauriReady} onClick={() => void save()}>

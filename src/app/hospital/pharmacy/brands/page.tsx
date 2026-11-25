@@ -148,7 +148,7 @@ function AddProductsModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             <div className="flex flex-wrap items-end gap-2 rounded-xl bg-neutral-50 p-3">
               <div className="min-w-64 flex-1"><Field label="Doctors will see"><Input value={label} onChange={(e) => setLabel(e.target.value)} /></Field></div>
               <p className="pb-2 text-sm">prints as <b>{picked.name}</b></p>
-              <Button variant="primary" disabled={busy || !label.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Select brand"}</Button>
+              <Button loading={busy} variant="primary" disabled={busy || !label.trim()} onClick={() => void save()}>{busy ? "Saving…" : "Select brand"}</Button>
             </div>
           )}
           {saved && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Saved: {saved}</p>}

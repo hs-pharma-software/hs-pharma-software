@@ -214,7 +214,7 @@ export default function EpisodeDetailPage() {
               <span className="self-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">Awaiting Head Nurse of {episode.department}</span>
             )}
             {episode.status === "open" && (
-              <Button variant="danger" onClick={() => void handleDischarge()} disabled={discharging}>
+              <Button loading={discharging} variant="danger" onClick={() => void handleDischarge()} disabled={discharging}>
                 <CheckCircle2 size={14} className="mr-1" />
                 {discharging ? "…" : "Discharge"}
               </Button>
@@ -321,7 +321,7 @@ export default function EpisodeDetailPage() {
                 <Input value={chargeNotes} onChange={(e) => setChargeNotes(e.target.value)} />
               </Field>
               <div className="md:col-span-4 flex justify-end">
-                <Button variant="primary" onClick={() => void submitCharge()} disabled={addingCharge || !chargeDesc.trim()}>
+                <Button loading={addingCharge} variant="primary" onClick={() => void submitCharge()} disabled={addingCharge || !chargeDesc.trim()}>
                   <Plus size={13} className="mr-1" />
                   {addingCharge ? "Adding…" : "Add Charge"}
                 </Button>
@@ -430,7 +430,7 @@ export default function EpisodeDetailPage() {
                 <Field label="Reference">
                   <Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="Receipt / transaction no" />
                 </Field>
-                <Button variant="primary" onClick={() => void submitPayment()} disabled={addingPayment || !payAmount} className="w-full">
+                <Button loading={addingPayment} variant="primary" onClick={() => void submitPayment()} disabled={addingPayment || !payAmount} className="w-full">
                   {addingPayment ? "Saving…" : "Receive"}
                 </Button>
               </div>

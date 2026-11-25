@@ -554,7 +554,7 @@ function MarkPaidModal({ row, onClose, onPaid }: { row: InvoiceListRow; onClose:
         )}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy} onClick={() => void confirm()}>{busy ? "Saving…" : "Mark paid"}</Button>
+          <Button loading={busy} variant="primary" disabled={busy} onClick={() => void confirm()}>{busy ? "Saving…" : "Mark paid"}</Button>
         </div>
       </div>
     </Modal>

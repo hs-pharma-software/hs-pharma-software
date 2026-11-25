@@ -57,7 +57,7 @@ export function LabReportModal({ report, onClose }: { report: LabReport; onClose
           {r.publicToken && !publicReportUrl(r.publicToken) && <span className="block text-amber-700">No QR code: the website address (NEXT_PUBLIC_PUBLIC_SITE_URL) is not set in this app.</span>}
         </span>
         <Button onClick={onClose}><ArrowLeft size={14} className="mr-1" />Back to results</Button>
-        <Button variant="primary" onClick={() => void print()} disabled={printing}>
+        <Button loading={printing} variant="primary" onClick={() => void print()} disabled={printing}>
           <Printer size={14} className="mr-1" />{printing ? "Printing…" : copies > 0 ? "Print again" : "Print report"}
         </Button>
       </div>

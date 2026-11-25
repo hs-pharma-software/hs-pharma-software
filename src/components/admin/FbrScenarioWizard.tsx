@@ -623,7 +623,7 @@ function ClearCard({ tenantId, hasProductionToken }: { tenantId: string; hasProd
           {p && !p.blockers.length && any && (
             <div className="flex flex-wrap items-center gap-2">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Type "${p.tenant.name}" to confirm`} className="min-w-60 flex-1 rounded-lg px-2 py-1.5 ring-1 ring-rose-200" />
-              <Button variant="danger" disabled={busy || name.trim().toLowerCase() !== p.tenant.name.trim().toLowerCase()} onClick={() => void clear()}>{busy ? "Clearing…" : "Clear sales now"}</Button>
+              <Button loading={busy} variant="danger" disabled={busy || name.trim().toLowerCase() !== p.tenant.name.trim().toLowerCase()} onClick={() => void clear()}>{busy ? "Clearing…" : "Clear sales now"}</Button>
             </div>
           )}
           {p && c && !any && <p className="text-emerald-800">No sales to clear: the business is ready for work.</p>}

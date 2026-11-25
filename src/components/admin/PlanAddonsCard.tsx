@@ -118,7 +118,7 @@ function AddonForm({ addon, onClose, onSaved }: { addon: PlanAddon | null; onClo
         {error && <p className="text-sm text-rose-700">{error}</p>}
         <div className="flex justify-between border-t border-neutral-200 pt-3">
           {addon ? <Button type="button" variant="danger" onClick={async () => { if (!confirm(`Delete the add-on “${addon.name}”?`)) return; await planAddonsRepo.remove(addon.id, "Deleted by admin"); onSaved(); }}>Delete</Button> : <span />}
-          <div className="flex gap-2"><Button type="button" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" disabled={busy}>{busy ? "Saving…" : "Save"}</Button></div>
+          <div className="flex gap-2"><Button type="button" onClick={onClose}>Cancel</Button><Button loading={busy} type="submit" variant="primary" disabled={busy}>{busy ? "Saving…" : "Save"}</Button></div>
         </div>
       </form>
     </Modal>

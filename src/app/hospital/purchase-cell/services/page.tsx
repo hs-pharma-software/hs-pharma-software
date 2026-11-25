@@ -137,7 +137,7 @@ function NewBillModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy || !vendorId || !(Number(amount) > 0)} onClick={() => void save()}>{busy ? "Saving…" : "Save bill"}</Button>
+        <Button loading={busy} variant="primary" disabled={busy || !vendorId || !(Number(amount) > 0)} onClick={() => void save()}>{busy ? "Saving…" : "Save bill"}</Button>
       </div>
     </Modal>
   );

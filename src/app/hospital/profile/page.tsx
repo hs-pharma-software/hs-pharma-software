@@ -66,7 +66,7 @@ export default function HospitalProfilePage() {
     <div>
       <PageHeader
         title={isCentre ? "Centre Profile" : "Hospital"}
-        actions={<Button variant="primary" onClick={() => void save()} disabled={saving || !p.name.trim()}>{saving ? "Saving…" : "Save"}</Button>}
+        actions={<Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !p.name.trim()}>{saving ? "Saving…" : "Save"}</Button>}
       />
       <div className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

@@ -82,7 +82,7 @@ export function SaleReturnEditModal({ returnId, onClose, onSaved }: { returnId: 
           {error && <p className="whitespace-pre-line text-sm text-rose-600">{error}</p>}
           <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
             <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
+            <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
           </div>
         </div>
       )}

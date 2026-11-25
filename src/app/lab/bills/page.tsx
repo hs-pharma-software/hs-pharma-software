@@ -91,7 +91,7 @@ function PaymentModal({ row, onClose, onSaved }: { row: LabBillRow; onClose: () 
       <Field label="Amount received" required><Input id="lb-amount" type="number" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus /></Field>
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !(Number(amount) > 0)}>{saving ? "Saving…" : "Receive"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !(Number(amount) > 0)}>{saving ? "Saving…" : "Receive"}</Button>
       </div>
     </Modal>
   );

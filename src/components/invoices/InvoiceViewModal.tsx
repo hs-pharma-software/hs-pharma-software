@@ -257,7 +257,7 @@ export function InvoiceViewModal({
         <div className="flex flex-wrap items-center gap-2">
           <InvoiceShareButtons invoiceId={inv.id} size="sm" />
           {fbrSettings && !fbrInvoiceNo && !inv.is_return && !isPra && canFbr && (
-            <Button
+            <Button loading={fbrSubmitting}
               variant="secondary"
               disabled={fbrSubmitting}
               onClick={() => void handleFbrSubmit()}
@@ -266,7 +266,7 @@ export function InvoiceViewModal({
               {fbrSubmitting ? "Submitting…" : "Submit to FBR"}
             </Button>
           )}
-          <Button disabled={!template || printing} onClick={() => void handlePrint()}>
+          <Button loading={printing} disabled={!template || printing} onClick={() => void handlePrint()}>
             {printing ? "Printing…" : "Print"}
           </Button>
           <Button variant="primary" onClick={onClose}>Close</Button>

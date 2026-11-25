@@ -86,7 +86,7 @@ export default function PacsPage() {
           </div>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="secondary" onClick={() => { setEditing(false); void reload(); }}>Cancel</Button>
-            <Button variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+            <Button loading={saving} variant="primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
           </div>
         </Panel>
       )}

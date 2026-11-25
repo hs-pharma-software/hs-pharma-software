@@ -116,7 +116,7 @@ export function AdmitModal({ episode, onClose, onDone }: { episode: HospitalEpis
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={saving || !reason.trim() || (plan === "surgery" && (!surgeryId || !(draftTotal(charges) > 0)))}>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !reason.trim() || (plan === "surgery" && (!surgeryId || !(draftTotal(charges) > 0)))}>
             {saving ? "Admitting…" : "Admit"}
           </Button>
         </div>

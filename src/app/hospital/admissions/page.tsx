@@ -139,7 +139,7 @@ function ConfirmModal({ row, onClose, onDone }: { row: AdmissionRequestRow; onCl
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={saving || !wardRoom.trim() || !bedNo.trim()}>{saving ? "Confirming…" : "Confirm admission"}</Button>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !wardRoom.trim() || !bedNo.trim()}>{saving ? "Confirming…" : "Confirm admission"}</Button>
         </div>
       </div>
     </Modal>

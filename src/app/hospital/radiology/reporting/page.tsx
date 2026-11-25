@@ -286,7 +286,7 @@ function ReportPanel({ order, pacs, showImages, onSaved, onPrint }: { order: Por
           {!reported && (
             <div className="flex flex-wrap justify-end">
               {narrativeErrors > 0 && <p className="mr-3 self-center text-xs text-rose-700">Correct the report preview first.</p>}
-              <Button variant="primary" disabled={saving || !impression.trim() || narrativeErrors > 0} onClick={() => void save()}>{saving ? "Saving…" : "Sign and release report"}</Button>
+              <Button loading={saving} variant="primary" disabled={saving || !impression.trim() || narrativeErrors > 0} onClick={() => void save()}>{saving ? "Saving…" : "Sign and release report"}</Button>
             </div>
           )}
         </div>

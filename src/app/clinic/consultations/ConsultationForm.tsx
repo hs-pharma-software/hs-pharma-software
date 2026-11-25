@@ -299,7 +299,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
             {(savedConsultationId || consultationId) && (
               <Button onClick={() => setPrinting(true)}><FileText size={14} className="mr-1" />Print</Button>
             )}
-            <Button variant="primary" onClick={() => void saveConsultationClicked()} disabled={saving || !patientId}>
+            <Button loading={saving} variant="primary" onClick={() => void saveConsultationClicked()} disabled={saving || !patientId}>
               {saving ? "Saving…" : "Save Consultation"}
             </Button>
           </>
@@ -532,7 +532,7 @@ export default function ConsultationForm({ consultationId, appointmentId }: { co
                   <Input value={rxNotes} onChange={(e) => setRxNotes(e.target.value)} placeholder="Optional notes" />
                 </Field>
               </div>
-              <Button variant="primary" onClick={() => void saveRx()} disabled={saving}>
+              <Button loading={saving} variant="primary" onClick={() => void saveRx()} disabled={saving}>
                 {saving ? "Saving…" : "Save Prescription"}
               </Button>
             </div>

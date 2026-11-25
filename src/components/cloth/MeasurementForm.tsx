@@ -75,7 +75,7 @@ export function MeasurementForm({ initial, defaults, onSaved, onCancel }: {
       {error && <p className="text-sm text-rose-600">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onCancel}>Cancel</Button>
-        <Button type="button" variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save measurements"}</Button>
+        <Button loading={saving} type="button" variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save measurements"}</Button>
       </div>
     </div>
   );

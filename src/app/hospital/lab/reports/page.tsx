@@ -99,7 +99,7 @@ export default function LabReportSearchPage() {
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={modeInfo.hint} autoFocus className="font-mono" />
         </Field>
         <div className="flex items-end">
-          <Button type="submit" variant="primary" disabled={searching || !query.trim()}><Search size={14} className="mr-1" />{searching ? "Searching…" : "Search"}</Button>
+          <Button loading={searching} type="submit" variant="primary" disabled={searching || !query.trim()}><Search size={14} className="mr-1" />{searching ? "Searching…" : "Search"}</Button>
         </div>
       </form>
 

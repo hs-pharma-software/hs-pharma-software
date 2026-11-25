@@ -148,7 +148,7 @@ export function ServiceBillModal({ invoiceId, lines, title = "Bill", note = null
           {message && <p className={`mt-2 whitespace-pre-line text-sm ${message.ok ? "text-emerald-700" : "text-rose-600"}`}>{message.text}</p>}
           <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
             {fbrOn && canFbr && !inv?.fbr_invoice_no && (
-              <Button onClick={() => void sendToFbr()} disabled={sending}><Send size={14} />{sending ? "Sending…" : "Send to FBR"}</Button>
+              <Button loading={sending} onClick={() => void sendToFbr()} disabled={sending}><Send size={14} />{sending ? "Sending…" : "Send to FBR"}</Button>
             )}
             <Button variant="primary" onClick={() => void print()}><Printer size={14} />Print</Button>
           </div>

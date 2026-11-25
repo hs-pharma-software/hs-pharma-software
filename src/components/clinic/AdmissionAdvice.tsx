@@ -80,7 +80,7 @@ export function AdmissionAdvice({ consultationId, ensureSaved, canAdvise }: {
           </Field>
           <div className="flex items-end justify-end gap-2">
             <Button onClick={() => setEditing(false)}>Cancel</Button>
-            <Button variant="primary" onClick={() => void save()} disabled={saving || !reason.trim()}>{saving ? "Saving…" : "Save advice"}</Button>
+            <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !reason.trim()}>{saving ? "Saving…" : "Save advice"}</Button>
           </div>
         </div>
       )}

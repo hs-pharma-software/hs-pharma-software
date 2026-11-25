@@ -175,7 +175,7 @@ function SalesmanForm({ salesman: s, users, linkedIds, onClose, onSaved }: {
       {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim()}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

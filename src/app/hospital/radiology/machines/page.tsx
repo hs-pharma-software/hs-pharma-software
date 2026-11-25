@@ -170,7 +170,7 @@ function MachineForm({ machine, modalities, onClose, onSaved }: { machine: Machi
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={saving || !f.name.trim() || !f.modality_code} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
+        <Button loading={saving} variant="primary" disabled={saving || !f.name.trim() || !f.modality_code} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</Button>
       </div>
     </Modal>
   );

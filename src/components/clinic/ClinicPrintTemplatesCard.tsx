@@ -88,7 +88,7 @@ export function ClinicPrintTemplatesCard({ tenantId, editable, embedded = false,
       {editable && (
         <div className="mt-3 flex items-center justify-end gap-3">
           {savedAt && <span className="text-sm text-emerald-700">Saved {savedAt}</span>}
-          <Button variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save templates"}</Button>
+          <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save templates"}</Button>
         </div>
       )}
     </section>

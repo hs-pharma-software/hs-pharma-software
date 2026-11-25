@@ -132,7 +132,7 @@ export function ConsultationOrders({ consultationId, ensureSaved, canOrder, show
             <option value="routine">Routine</option><option value="urgent">Urgent</option><option value="stat">STAT</option>
           </Select>
         </Field>
-        <Button variant="secondary" onClick={() => void add()} disabled={busy || !serviceId || !canOrder}><Plus size={14} />{busy ? "Adding…" : "Add"}</Button>
+        <Button loading={busy} variant="secondary" onClick={() => void add()} disabled={busy || !serviceId || !canOrder}><Plus size={14} />{busy ? "Adding…" : "Add"}</Button>
       </div>
       {!canOrder && <p className="mb-3 text-xs text-neutral-500">Choose the patient first.</p>}
       {service && !service.is_active && <p className="mb-3 text-xs text-amber-700">Not done at this clinic: it is advised as an external test and printed under External on the consultation.</p>}
@@ -228,7 +228,7 @@ export function BillModal({ bill, onClose, onBilled }: { bill: VisitBill; onClos
       )}
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Close</Button>
-        {bill.lines.length > 0 && <Button variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Billing…" : "Create invoice"}</Button>}
+        {bill.lines.length > 0 && <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving}>{saving ? "Billing…" : "Create invoice"}</Button>}
       </div>
     </Modal>
   );

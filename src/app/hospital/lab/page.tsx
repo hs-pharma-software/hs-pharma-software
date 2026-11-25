@@ -278,7 +278,7 @@ function NewLabOrder({ patients, onClose, onSaved }: { patients: HospitalPatient
           {total > 0 && <span className="block text-xs text-neutral-400">Added to the patient&apos;s bill; Reception takes the fee before the lab starts.</span>}
         </span>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !patientId || chosen.length === 0}>{saving ? "Saving…" : "Register order"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !patientId || chosen.length === 0}>{saving ? "Saving…" : "Register order"}</Button>
       </div>
     </Modal>
   );
@@ -402,7 +402,7 @@ function PanelResultModal({ order, panel, onClose, onSaved }: { order: HospitalL
       <p className="mb-3 text-xs text-neutral-500">The result is saved as &ldquo;Awaiting Verification&rdquo;. It is released to the patient only after a pathologist verifies it.</p>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !filled.length}>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !filled.length}>
           {saving ? "Saving…" : `Save ${filled.length} parameter${filled.length === 1 ? "" : "s"}`}
         </Button>
       </div>
@@ -447,7 +447,7 @@ function SingleResultModal({ order, onClose, onSaved }: { order: HospitalLabOrde
       <p className="mb-3 text-xs text-neutral-500">The result is saved as &ldquo;Awaiting Verification&rdquo;. It is released to the patient only after a pathologist verifies it.</p>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !value.trim()}>{saving ? "Saving…" : "Save result"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !value.trim()}>{saving ? "Saving…" : "Save result"}</Button>
       </div>
     </Modal>
   );

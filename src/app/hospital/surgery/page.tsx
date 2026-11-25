@@ -212,7 +212,7 @@ function SurgeryTypeModal({ surgery, onClose, onSaved }: { surgery: HospitalServ
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !name.trim() || !(draftTotal(charges) > 0)}>{saving ? "Saving…" : surgery ? "Update" : "Add Surgery"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !name.trim() || !(draftTotal(charges) > 0)}>{saving ? "Saving…" : surgery ? "Update" : "Add Surgery"}</Button>
       </div>
     </Modal>
   );

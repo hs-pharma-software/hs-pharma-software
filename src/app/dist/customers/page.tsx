@@ -97,7 +97,7 @@ function LocationPicker({ value, onChange, allowPin }: { value: { lat: number; l
     <div className="space-y-2">
       <p className="text-xs text-neutral-500">Capture while standing at the customer&apos;s business. This is the customer&apos;s location, saved only when you press the button — not your tracking location.</p>
       <div className="flex flex-wrap items-center gap-2">
-        <Button
+        <Button loading={busy}
           disabled={busy}
           onClick={async () => {
             setBusy(true);
@@ -198,7 +198,7 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
           {t("cnic", "CNIC", { placeholder: "35202-1234567-1" })}
           {c.can("customers.verify") && (
             <div className="flex flex-col justify-end gap-1">
-              <Button disabled={!idNow || verifying} onClick={() => void verifyNow()}><ShieldCheck size={14} /> {verifying ? "Asking FBR…" : "Verify ATL"}</Button>
+              <Button loading={verifying} disabled={!idNow || verifying} onClick={() => void verifyNow()}><ShieldCheck size={14} /> {verifying ? "Asking FBR…" : "Verify ATL"}</Button>
               {atl && atl.identifier === idNow && ("status" in atl
                 ? <span className={`text-xs font-medium ${atl.status === "active" ? "text-emerald-700" : "text-rose-700"}`}>{atl.status === "active" ? "✓ Active (on FBR's ATL)" : "✗ In-Active (not on the ATL)"} · saved with the customer</span>
                 : <span className="text-xs text-rose-700">{atl.error}</span>)}
@@ -240,7 +240,7 @@ function CustomerForm({ c, value, onClose, onSaved }: { c: DistCtx; value: Parti
       </div>
       <div className="mt-3 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={checking} onClick={() => void save()}>{checking ? "Checking ATL with FBR…" : "Save"}</Button>
+        <Button loading={checking} variant="primary" disabled={checking} onClick={() => void save()}>{checking ? "Checking ATL with FBR…" : "Save"}</Button>
       </div>
     </Modal>
   );

@@ -53,7 +53,7 @@ export function StandaloneSetup({ onDone }: { onDone: () => void }) {
               <input className={input} type="password" placeholder="Repeat password" value={f.confirm} onChange={set("confirm")} required autoComplete="new-password" />
             </div>
             {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-            <Button type="submit" variant="primary" disabled={busy} className="justify-center">{busy ? "Setting up…" : "Create pharmacy and Super Admin"}</Button>
+            <Button loading={busy} type="submit" variant="primary" disabled={busy} className="justify-center">{busy ? "Setting up…" : "Create pharmacy and Super Admin"}</Button>
           </form>
         )}
       </div>

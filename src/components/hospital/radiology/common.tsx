@@ -66,9 +66,10 @@ export function Panel({ title, icon, actions, children, className = "" }: { titl
 export function StatTile({ label, value, icon, tone = "neutral" }: { label: string; value: number | string; icon?: React.ReactNode; tone?: "neutral" | "warn" | "good" | "info" }) {
   const toneCls = { neutral: "text-neutral-900", warn: "text-amber-700", good: "text-emerald-700", info: "text-sky-700" }[tone];
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]">
-      <div className="flex items-center justify-between text-sm font-medium text-neutral-600">{label}<span className="text-neutral-400">{icon}</span></div>
-      <div className={`mt-2 text-3xl font-bold tabular-nums ${toneCls}`}>{value}</div>
+    <div className="rise-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(0,0,0,0.08)]">
+      <div className="flex items-center justify-between text-sm font-medium text-neutral-600">{label}<span className="text-neutral-400" aria-hidden="true">{icon}</span></div>
+      {/* The number fades in again whenever it changes. */}
+      <div key={String(value)} className={`fade-in mt-2 text-3xl font-bold tabular-nums ${toneCls}`}>{value}</div>
     </div>
   );
 }

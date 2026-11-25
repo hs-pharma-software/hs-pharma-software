@@ -132,7 +132,7 @@ export function ReceiptModal({ episodeId, scope = "all", readOnly = false, onClo
                 <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className="!w-40" aria-label="Payment method">
                   {Object.entries(METHOD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </Select>
-                <Button onClick={() => void collect()} disabled={busy}>{busy ? "…" : `Collect Rs ${rs(r.due)}`}</Button>
+                <Button loading={busy} onClick={() => void collect()} disabled={busy}>{busy ? "…" : `Collect Rs ${rs(r.due)}`}</Button>
               </>
             )}
             <Button variant="primary" onClick={() => void print()}><Printer size={14} className="mr-1" />Print receipt</Button>

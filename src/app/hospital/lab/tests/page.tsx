@@ -220,7 +220,7 @@ function LabTestModal({ test, sections, onClose, onSaved }: { test: HospitalServ
         {active && !(Number(test?.rate) > 0) && <p className="text-xs text-amber-700">No fee: this test will be ordered free of charge. Set its rate in Service Master.</p>}
         <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
         </div>
       </form>
     </Modal>

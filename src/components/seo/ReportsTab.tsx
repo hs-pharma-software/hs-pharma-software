@@ -97,7 +97,7 @@ export function ReportsTab() {
             {recentMonths().map((p) => <option key={p} value={p}>{monthName(p)}</option>)}
           </Select>
         </label>
-        <Button disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : periods.includes(pick) ? "Rebuild report" : "Build report"}</Button>
+        <Button loading={busy} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : periods.includes(pick) ? "Rebuild report" : "Build report"}</Button>
         {report && <Button className="ml-auto" onClick={() => window.print()}>Print or save as PDF</Button>}
       </div>
       {!report ? (

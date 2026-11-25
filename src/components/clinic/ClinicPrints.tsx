@@ -115,7 +115,7 @@ export function ClinicReportModal({ orderIds, onClose, autoPrint = false }: { or
         <>
           <LabReportDocument view={view} design={labDesign(t.design)} t={t} profile={profile} areaRef={areaRef} logo={logo} qrUrl={qrUrl ?? null} />
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
-            <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
+            <Button loading={printing} variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>
         </>
       )}
@@ -227,7 +227,7 @@ export function ConsultationPrintModal({ consultationId, onClose }: { consultati
             {!t.signature && <p className="mt-10 text-right text-xs text-neutral-600">{d.doctor ? `Dr. ${d.doctor.name}` : ""}</p>}
           </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
-            <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
+            <Button loading={printing} variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>
         </>
       )}
@@ -294,7 +294,7 @@ export function ClinicVisitInvoiceModal({ invoiceId, onClose, autoPrint = false 
             </div>
           </PrintArea>
           <div className="mt-4 flex justify-end border-t border-neutral-200 pt-3 print:hidden">
-            <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
+            <Button loading={printing} variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} />{printing ? "Printing…" : "Print"}</Button>
           </div>
         </>
       )}

@@ -154,7 +154,7 @@ function VerifyModal({ detail, onClose, onReleased }: { detail: LabVisitDetail; 
       )}
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Close</Button>
-        {left.length > 0 && <Button variant="primary" onClick={() => void verify()} disabled={busy || !selected.length}>{busy ? "Saving…" : `Verify and release ${selected.length}`}</Button>}
+        {left.length > 0 && <Button loading={busy} variant="primary" onClick={() => void verify()} disabled={busy || !selected.length}>{busy ? "Saving…" : `Verify and release ${selected.length}`}</Button>}
       </div>
     </Modal>
   );

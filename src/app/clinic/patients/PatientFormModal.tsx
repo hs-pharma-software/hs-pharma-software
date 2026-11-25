@@ -121,7 +121,7 @@ export default function PatientFormModal({
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : isEdit ? "Update" : "Add Patient"}</Button>
+          <Button loading={saving} type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : isEdit ? "Update" : "Add Patient"}</Button>
         </div>
       </form>
     </Modal>

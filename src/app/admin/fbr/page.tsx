@@ -63,7 +63,7 @@ export default function AdminFbrPage() {
               </p>
               {o.gateway.configured && (
                 <div className="mt-2 flex items-center gap-2">
-                  <Button onClick={() => void checkIp()} disabled={checkingIp}>{checkingIp ? "Checking…" : "Check outbound IP"}</Button>
+                  <Button loading={checkingIp} onClick={() => void checkIp()} disabled={checkingIp}>{checkingIp ? "Checking…" : "Check outbound IP"}</Button>
                   {ip && <span className="font-mono text-sm text-neutral-900">{ip}</span>}
                 </div>
               )}

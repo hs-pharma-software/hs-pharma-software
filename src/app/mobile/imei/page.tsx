@@ -117,7 +117,7 @@ function AddImeisModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
       {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={() => void save()} disabled={saving || !product || !imeis.length}>{saving ? "Saving…" : "Add to stock"}</Button>
+        <Button loading={saving} variant="primary" onClick={() => void save()} disabled={saving || !product || !imeis.length}>{saving ? "Saving…" : "Add to stock"}</Button>
       </div>
     </Modal>
   );

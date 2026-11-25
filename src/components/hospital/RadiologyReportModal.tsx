@@ -41,7 +41,7 @@ export function RadiologyReportModal({ report: r, onClose }: { report: Radiology
       {r.publicToken && !qrUrl && <p className="mt-2 text-xs text-amber-700 print:hidden">No QR code: the website address for online reports is not set on this computer.</p>}
       <div className="mt-4 flex justify-end gap-2 border-t border-neutral-200 pt-3 print:hidden">
         <Button onClick={onClose}>Close</Button>
-        <Button variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} className="mr-1" />{printing ? "Printing…" : "Print report"}</Button>
+        <Button loading={printing} variant="primary" onClick={() => void print()} disabled={printing}><Printer size={14} className="mr-1" />{printing ? "Printing…" : "Print report"}</Button>
       </div>
     </Modal>
   );

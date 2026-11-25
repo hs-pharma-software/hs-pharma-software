@@ -237,7 +237,7 @@ export default function AuditDetailPage() {
             {initError && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{initError}</p>}
             <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
               <Button onClick={() => setInitOpen(false)}>Cancel</Button>
-              <Button variant="primary" disabled={initBusy || !initName.trim()} onClick={() => void startAudit()}>{initBusy ? "Starting…" : "Start audit"}</Button>
+              <Button loading={initBusy} variant="primary" disabled={initBusy || !initName.trim()} onClick={() => void startAudit()}>{initBusy ? "Starting…" : "Start audit"}</Button>
             </div>
           </div>
         </Modal>

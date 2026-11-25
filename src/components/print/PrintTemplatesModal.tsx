@@ -220,7 +220,7 @@ export function PrintTemplatesModal({ onClose, tenantId }: { onClose: () => void
           >
             Reset to Default
           </Button>
-          <Button variant="primary" disabled={saving || dirty.size === 0} onClick={() => void handleSave()}>
+          <Button loading={saving} variant="primary" disabled={saving || dirty.size === 0} onClick={() => void handleSave()}>
             {saving ? "Saving…" : "Save Changes"}
           </Button>
         </div>

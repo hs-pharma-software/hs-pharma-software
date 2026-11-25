@@ -435,7 +435,7 @@ export function TenantDetailPanel({
 
       <div className="flex items-center justify-end gap-3">
         {message && <span className={`text-xs ${message.ok ? "text-emerald-600" : "text-rose-600"}`}>{message.text}</span>}
-        <Button variant="primary" disabled={saving} onClick={() => void save()}>
+        <Button loading={saving} variant="primary" disabled={saving} onClick={() => void save()}>
           {saving ? "Saving…" : "Save Changes"}
         </Button>
       </div>
