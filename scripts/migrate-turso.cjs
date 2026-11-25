@@ -400,6 +400,7 @@ const MIGRATIONS = [
   { version: 104, label: 'Hospital: indent books, indents, issuing, receipts and returns', statements: rustSchemaStatementsWithTriggers(104) },
   { version: 105, label: 'Hospital: staff working hours, Sunday schedule and overtime multiplier', statements: rustSchemaStatementsWithTriggers(105) },
   { version: 106, label: 'Hospital: record who confirmed an indent receipt', statements: rustSchemaStatementsWithTriggers(106) },
+  { version: 107, label: 'Hospital: payroll records, overtime, shares, payment status and salary slips', statements: rustSchemaStatementsWithTriggers(107) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

@@ -699,6 +699,8 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Reports", href: "/hospital/finance/reports", moduleKey: "hospital_finance_reports" },
       { label: "Collections", href: "/hospital/finance/collections" },
       { label: "Day Closings", href: "/hospital/finance/closings" },
+      { label: "Salaries (Estimate)", href: "/hospital/finance/salaries", onlyFor: ["hospital"] },
+      { label: "Doctors Payments (Estimate)", href: "/hospital/finance/doctors-payments", onlyFor: ["hospital"] },
       { label: "Vendor Payments", href: "/hospital/finance/vendor-payments", onlyFor: ["hospital"] },
       { label: "Pharmacy Payments", href: "/hospital/finance/pharmacy-payments", onlyFor: ["hospital"] },
       { label: "Insurance Payments", href: "/hospital/finance/insurance", onlyFor: ["hospital"] },
@@ -759,6 +761,8 @@ const HOSPITAL_NAV: NavItem[] = [
     children: [
       shared("Staff", "staff"),
       { label: "Staff Records", href: "/hospital/hr" },
+      { label: "Salaries (Estimate)", href: "/hospital/hr/salaries" },
+      { label: "Doctors Payments (Estimate)", href: "/hospital/hr/doctors-payments" },
       { label: "Duty Roster", href: "/hospital/hr/roster", moduleKey: "hospital_hr_roster" },
       { label: "Trainees", href: "/hospital/hr/trainees", moduleKey: "hospital_hr_trainees" },
     ],

@@ -157,6 +157,18 @@ test("sale: the cashier's Sale Price (per loose unit converts to per pack), Whol
   await assert.rejects(createSale(run, "t1", { ...base, lines: [{ productId: "p-pan", qty: 1, salePrice: -1 }] }, TODAY), /can't be negative/);
 });
 
+test("extra discount: only for a customer with Extra Discount on, after the line discount, saved on the line", async () => {
+  const run = await runner(owner);
+  const line = { productId: "p-pan", unit: "pack" as const, qty: 1, extraPct: 10 };
+  await assert.rejects(createSale(run, "t1", { id: SALE_ID, customerId: "c1", lines: [line] }, TODAY), /Extra discount is only for customers/);
+  await assert.rejects(createSale(run, "t1", { id: SALE_ID, lines: [line] }, TODAY), /Extra discount is only for customers/);
+  r(`UPDATE customers SET extra_discount = 1 WHERE id = 'c1'`);
+  const res = await createSale(run, "t1", { id: SALE_ID, customerId: "c1", lines: [line] }, TODAY);
+  assert.equal(res.payable, Math.round(saleLineMath(100, 1, 10, 10, 17).total * 100) / 100);
+  const item = one(`SELECT extra_disc_pct FROM invoice_items WHERE invoice_id = ?`, SALE_ID);
+  assert.equal(Number(item.extra_disc_pct), 10);
+});
+
 test("draft: numbered like an invoice, takes no stock, may hold more than the stock", async () => {
   const run = await runner(owner);
   const res = await createSale(run, "t1", { id: SALE_ID, draft: true, lines: [{ productId: "p-pan", qty: 9 }] }, TODAY);
@@ -262,8 +274,8 @@ test("preview: the totals the save will come to, line by line, with nothing writ
   const pan = saleLineMath(100, 3, 10, 0, 17);
   assert.equal(p.lines[0].total, Math.round(pan.total * 100) / 100);
   // Each line as the web form shows it: price, Tax %, Disc %, the batches taken (earliest expiry first) and Avail, in the line's unit.
-  assert.deepEqual({ ...p.lines[0], total: 0 }, { total: 0, price: 100, taxPct: 17, discountPct: 10, batch: "A1, A2", avail: 7 });
-  assert.deepEqual({ ...p.lines[1], total: 0 }, { total: 0, price: Math.round((600 / 21) * 100) / 100, taxPct: 0, discountPct: 0, batch: "R1", avail: 21 });
+  assert.deepEqual({ ...p.lines[0], total: 0 }, { total: 0, price: 100, taxPct: 17, discountPct: 10, extraPct: 0, batch: "A1, A2", avail: 7 });
+  assert.deepEqual({ ...p.lines[1], total: 0 }, { total: 0, price: Math.round((600 / 21) * 100) / 100, taxPct: 0, discountPct: 0, extraPct: 0, batch: "R1", avail: 21 });
   const saved = await createSale(run, "t1", body, TODAY);
   assert.equal(p.payable, saved.payable);
   assert.equal(p.balance, saved.balance);

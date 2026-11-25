@@ -14,7 +14,7 @@ import { LICENSE_LABEL, designation as findDesignation, designationsFor, extraRo
 import { businessType } from "@/config/businessTypes";
 import { useAuthStore } from "@/store/authStore";
 import { localDate } from "@/lib/localDate";
-import { monthlyWorkRates } from "@/lib/hospitalPayroll";
+import { calculateMonthlySalary, isPayrollDate, monthlyWorkRates } from "@/lib/hospitalPayroll";
 import type { Staff } from "@/lib/types";
 
 /** Hospital HR staff form: designation drives the licence field (PMDC / PNC /
@@ -75,6 +75,10 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
     && hoursPerDay.trim() && Number.isFinite(hoursNumber) && hoursNumber > 0 && hoursNumber <= 24
     && (sundayOff === "0" || sundayOff === "1") && overtimeMultiplier.trim() && Number.isFinite(multiplierNumber) && multiplierNumber > 0
     ? monthlyWorkRates({ year: previewYear, month: previewMonthNumber, basicPay: payNumber, hoursPerDay: hoursNumber, sundayOff: sundayOff === "1", overtimeMultiplier: multiplierNumber })
+    : null;
+  const joiningPreview = rates && Number.isFinite(rates.hourlyRate) && Number.isFinite(rates.overtimeRate)
+    && payNumber <= Number.MAX_SAFE_INTEGER / 100 && isPayrollDate(dateOfJoining)
+    ? calculateMonthlySalary({ year: previewYear, month: previewMonthNumber, basicPay: payNumber, hoursPerDay: hoursNumber, sundayOff: sundayOff === "1", overtimeMultiplier: multiplierNumber, joinedOn: dateOfJoining, overtimeHours: 0, deductions: 0, shares: 0 })
     : null;
 
   useEffect(() => {
@@ -253,8 +257,9 @@ export function HospitalStaffFormModal({ staff, onClose, onSaved }: { staff: Sta
               {rates ? <>
                 <p>Full-month preview for {previewMonth}: {rates.workingDays} working days · {rates.monthlyHours} hours</p>
                 <p>Hourly rate: Rs {rates.hourlyRate.toFixed(2)} · Overtime rate: Rs {rates.overtimeRate.toFixed(2)} per hour</p>
+                {joiningPreview && <p>Basic for {joiningPreview.employedDays} of {joiningPreview.calendarDays} calendar days: Rs {joiningPreview.basic.toFixed(2)} (before overtime, deductions or shares)</p>}
               </> : <p className="text-neutral-500">Enter basic pay and the working schedule to preview the hourly rate.</p>}
-              <p className="text-xs text-neutral-500">Calculated for the full calendar month; salary proration is separate.</p>
+              <p className="text-xs text-neutral-500">Rates use the full calendar month; basic pay is prorated by calendar days from joining.</p>
             </div>
           </>}
         </div>

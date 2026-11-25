@@ -4,7 +4,8 @@ import { callerOf, clientIp, HttpError, jsonError, runForCaller } from "@/server
 import { branchScopeFor } from "@/server/branches";
 import { sqlForServer } from "@/server/subSupersApi";
 import { createParty, searchParties } from "@/server/appReads";
-import { requireModule, type Runner } from "@/server/appDocs";
+import type { Runner } from "@/server/appDocs";
+import { callerCan } from "@/server/sqlPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,10 +35,13 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const { caller, tenantId, run } = await runnerFor(req);
     const body = (await req.json().catch(() => ({}))) as { kind?: unknown };
-    if (body.kind !== "customer" && body.kind !== "salesman") throw new HttpError(400, "Add a customer or a salesman.");
-    // Added from the invoice form, as on the web.
-    requireModule(caller, "invoices");
-    return Response.json({ row: await createParty(run, tenantId, body.kind, body) });
+    if (body.kind !== "customer" && body.kind !== "supplier" && body.kind !== "salesman") throw new HttpError(400, "Add a customer, supplier or salesman.");
+    // As on the web: from the section itself, or from the invoice / purchase form's "+".
+    const from = { customer: ["customers", "invoices"], supplier: ["suppliers", "purchase"], salesman: ["salesman", "invoices"] }[body.kind];
+    if (caller.role === "staff" && Array.isArray(caller.permissions) && !from.some((k) => caller.permissions!.includes(k))) {
+      throw new HttpError(403, `Your login cannot add a ${body.kind}. Ask the owner to allow it.`);
+    }
+    return Response.json({ row: await createParty(run, tenantId, body.kind, body, callerCan(caller, "customer.extra_discount")) });
   } catch (e) {
     return jsonError(e);
   }

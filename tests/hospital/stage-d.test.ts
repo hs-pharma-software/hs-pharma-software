@@ -99,6 +99,6 @@ test("reports: OPD, lab, radiology, insurance, episode and doctor share, by peri
 
 test("Finance > Reports is in the hospital menu, and Overview / Reports can be given on their own", () => {
   const fin = (perms: string[] | null) => visibleNavFor("hospital", null, perms).find((i) => i.label === "Finance");
-  assert.deepEqual(fin(null)?.children?.map((c) => c.href), ["/hospital/finance", "/hospital/finance/reports", "/hospital/finance/collections", "/hospital/finance/closings", "/hospital/finance/vendor-payments", "/hospital/finance/pharmacy-payments", "/hospital/finance/insurance"]);
+  assert.deepEqual(fin(null)?.children?.map((c) => c.href), ["/hospital/finance", "/hospital/finance/reports", "/hospital/finance/collections", "/hospital/finance/closings", "/hospital/finance/salaries", "/hospital/finance/doctors-payments", "/hospital/finance/vendor-payments", "/hospital/finance/pharmacy-payments", "/hospital/finance/insurance"]);
   assert.deepEqual(fin(["hospital_finance_reports"])?.children?.map((c) => c.href), ["/hospital/finance/reports"]);
 });

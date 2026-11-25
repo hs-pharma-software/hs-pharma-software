@@ -169,6 +169,17 @@ test("customers and suppliers: by name or phone, this business only", async () =
   assert.equal((db.prepare(`SELECT tenant_id FROM customers WHERE id = ?`).get(c.id) as { tenant_id?: string } | undefined)?.tenant_id, "t1");
   await createParty(run, "t1", "salesman", { name: "Zain" });
   assert.deepEqual((await searchParties(run, "t1", "salesman", null)).map((x) => x.name), ["Imran", "Zain"]);
+  // The web forms: a customer with balance details and Extra Discount (only when allowed); a supplier with its company.
+  const full = await createParty(run, "t1", "customer", { name: "Ahmed Store", province: "Sindh", openingBalance: 500, discountPct: 5, extraDiscount: true }, true);
+  assert.equal(full.extraDiscount, true);
+  const row = db.prepare(`SELECT province, opening_balance, discount_pct, extra_discount FROM customers WHERE id = ?`).get(full.id) as Record<string, unknown>;
+  assert.deepEqual([row.province, Number(row.opening_balance), Number(row.discount_pct), Number(row.extra_discount)], ["Sindh", 500, 5, 1]);
+  const notAllowed = await createParty(run, "t1", "customer", { name: "No Extra", extraDiscount: true }, false);
+  assert.equal(notAllowed.extraDiscount, false);
+  const sup = await createParty(run, "t1", "supplier", { name: "New Distributor", companyName: "ND Pharma", openingBalance: 1000 });
+  assert.deepEqual((await searchParties(run, "t1", "supplier", "New")).map((x) => [x.id, x.detail]), [[sup.id, "ND Pharma"]]);
+  assert.equal((await searchParties(run, "t1", "customer", "Ahmed"))[0].extraDiscount, true);
+  await assert.rejects(createParty(run, "t1", "customer", { name: "X", province: "Mars" }), /province/);
   await assert.rejects(createParty(run, "t1", "customer", { name: "" }), /Enter the name/);
   await assert.rejects(createParty(run, "t1", "customer", { name: "X", phone: "12" }), /03XXXXXXXXX/);
 });

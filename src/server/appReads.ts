@@ -16,7 +16,7 @@ import { sharedCatalogGroupsFor, sharedCatalogWhereClause } from "../lib/catalog
 import { businessType } from "../config/businessTypes";
 import { HttpError } from "./db";
 import { branchContext } from "./branches";
-import { costHidden, type Caller } from "./sqlPolicy";
+import { callerCan, costHidden, type Caller } from "./sqlPolicy";
 import type { Sql } from "./subSupers";
 import type { Res, Runner } from "./appDocs";
 
@@ -52,6 +52,8 @@ export interface AppBootstrap {
   costHidden: boolean;
   branches: { list: { id: string; name: string; isMain: boolean; status: string }[]; active: string | null; canSwitch: boolean };
   settings: { billoriEnabled: boolean; currency: "PKR" };
+  /** Opt-in actions the app offers only when allowed (the server checks again). */
+  can: { extraDiscount: boolean };
 }
 
 function allowedModules(tenant: Row, plan: Row | undefined): string[] {
@@ -110,6 +112,7 @@ export async function appBootstrap(sql: Sql, caller: Caller, requestedBranch: st
       : { list: [], active: null, canSwitch: false },
     // Anything but "false" is on (the same rule as the server's assistant route).
     settings: { billoriEnabled: settings.get("billori_enabled") !== "false", currency: "PKR" },
+    can: { extraDiscount: callerCan(caller, "customer.extra_discount") },
   };
 }
 
@@ -369,25 +372,52 @@ export async function invoiceDetail(run: Runner, tenantId: string, id: string): 
 
 // ── Customers and suppliers (pickers on the invoice and purchase forms) ──
 
-export interface AppParty { id: string; name: string; phone: string | null; detail: string | null }
+export interface AppParty { id: string; name: string; phone: string | null; detail: string | null; /** Customers: Extra Discount on (the invoice form shows Extra Disc %). */ extraDiscount?: boolean }
 
 export type PartyKind = "customer" | "supplier" | "salesman";
 
-/** The invoice form's "+" (QuickCustomerDialog / Add Salesman): a new customer or salesman with a name and an optional mobile. */
-export async function createParty(run: Runner, tenantId: string, kind: "customer" | "salesman", raw: unknown): Promise<AppParty> {
-  const b = (raw ?? {}) as { name?: unknown; phone?: unknown };
-  const name = typeof b.name === "string" ? b.name.trim().slice(0, 120) : "";
-  const phone = typeof b.phone === "string" && b.phone.trim() ? b.phone.trim().slice(0, 40) : null;
+const PROVINCES = ["Punjab", "Sindh", "KPK", "Balochistan", "Federal", "AJK", "Gilgit Baltistan"];
+
+/** A new customer (the web's CustomerFormModal: Client Name, Phone, CNIC/NTN, Address, Province, Area,
+ * Opening Balance and type, Credit Limit, Discount %, Extra Discount), supplier (SupplierFormModal: Name,
+ * Company Name, CNIC, Phone No, Address, Discount %, Opening Balance, Description) or salesman (Name, Phone).
+ * Extra Discount is set only for logins allowed to (`mayExtra`), as the web form. */
+export async function createParty(run: Runner, tenantId: string, kind: PartyKind, raw: unknown, mayExtra = false): Promise<AppParty> {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const s = (k: string, max = 200) => (typeof b[k] === "string" && (b[k] as string).trim() ? (b[k] as string).trim().slice(0, max) : null);
+  const n = (k: string) => {
+    const v = Number(b[k] ?? 0);
+    if (!Number.isFinite(v)) throw new HttpError(400, `${k} must be a number.`);
+    return Math.round(v * 100) / 100;
+  };
+  const name = s("name", 120);
+  const phone = s("phone", 40);
   if (!name) throw new HttpError(400, "Enter the name.");
   if (phone && !/^(\+92|0092|0)3\d{9}$/.test(phone.replace(/[\s-]/g, ""))) throw new HttpError(400, "Mobile number must be like 03XXXXXXXXX or +923XXXXXXXXX.");
+  const discount = n("discountPct");
+  if (discount < 0 || discount > 100) throw new HttpError(400, "Discount % must be between 0 and 100.");
+  const province = s("province", 40);
+  if (province && !PROVINCES.includes(province)) throw new HttpError(400, "Choose the province from the list.");
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await run([
+  const extra = kind === "customer" && mayExtra && b.extraDiscount === true;
+  const stmt =
     kind === "customer"
-      ? { sql: `INSERT INTO customers (id, tenant_id, name, phone, opening_balance, balance_type, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 'receivable', ?, ?)`, args: [id, tenantId, name, phone, now, now] }
-      : { sql: `INSERT INTO salesmen (id, tenant_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, args: [id, tenantId, name, phone, now, now] },
-  ], true);
-  return { id, name, phone, detail: null };
+      ? {
+          sql: `INSERT INTO customers (id, tenant_id, name, phone, cnic_ntn, address, province, area, opening_balance, balance_type, credit_limit, discount_pct${extra ? ", extra_discount" : ""}, description, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${extra ? ", 1" : ""}, ?, ?, ?)`,
+          args: [id, tenantId, name, phone, s("cnic", 20), s("address", 300), province, s("area", 80), n("openingBalance"), b.balanceType === "payable" ? "payable" : "receivable",
+            b.creditLimit == null || b.creditLimit === "" ? null : n("creditLimit"), discount, s("description", 500), now, now],
+        }
+      : kind === "supplier"
+        ? {
+            sql: `INSERT INTO suppliers (id, tenant_id, name, company_name, cnic, phone, address, discount_pct, opening_balance, balance_type, description, created_at, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'payable', ?, ?, ?)`,
+            args: [id, tenantId, name, s("companyName", 120), s("cnic", 20), phone, s("address", 300), discount, n("openingBalance"), s("description", 500), now, now],
+          }
+        : { sql: `INSERT INTO salesmen (id, tenant_id, name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, args: [id, tenantId, name, phone, now, now] };
+  await run([stmt], true);
+  return { id, name, phone, detail: kind === "supplier" ? s("companyName", 120) : null, ...(kind === "customer" ? { extraDiscount: extra } : {}) };
 }
 
 /** Customers, suppliers or salesmen of the business by name or phone, at most 30. */
@@ -397,10 +427,13 @@ export async function searchParties(run: Runner, tenantId: string, kind: PartyKi
   const table = kind === "customer" ? "customers" : kind === "supplier" ? "suppliers" : "salesmen";
   const detail = kind === "customer" ? "area" : kind === "supplier" ? "company_name" : "NULL";
   const [r] = await run([{
-    sql: `SELECT id, name, phone, ${detail} AS detail FROM ${table}
+    sql: `SELECT id, name, phone, ${detail} AS detail${kind === "customer" ? ", extra_discount" : ""} FROM ${table}
           WHERE tenant_id = ? AND deleted_at IS NULL ${term ? "AND (name LIKE ? OR phone LIKE ?)" : ""}
           ORDER BY name COLLATE NOCASE ASC LIMIT 30`,
     args: [tenantId, ...(term ? [like, like] : [])],
   }], false);
-  return rowsOf(r).map((x) => ({ id: String(x.id), name: String(x.name ?? ""), phone: strOrNull(x.phone), detail: strOrNull(x.detail) }));
+  return rowsOf(r).map((x) => ({
+    id: String(x.id), name: String(x.name ?? ""), phone: strOrNull(x.phone), detail: strOrNull(x.detail),
+    ...(kind === "customer" ? { extraDiscount: num(x.extra_discount) === 1 } : {}),
+  }));
 }

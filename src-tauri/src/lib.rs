@@ -1877,6 +1877,19 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v107() -> &'static str {
+    r#"
+    ALTER TABLE salaries ADD COLUMN overtime_hours REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN overtime_pay REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN shares REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN pay_status TEXT DEFAULT 'unpaid';
+    ALTER TABLE salaries ADD COLUMN paid_at TEXT;
+    ALTER TABLE salaries ADD COLUMN slip_no TEXT;
+    ALTER TABLE salaries ADD COLUMN created_by_name TEXT;
+    CREATE INDEX IF NOT EXISTS idx_salary_staff_month ON salaries (tenant_id, staff_id, salary_month, salary_year) WHERE deleted_at IS NULL;
+    "#
+}
+
 fn schema_sql_v106() -> &'static str {
     r#"
     ALTER TABLE hospital_indents ADD COLUMN received_by_name TEXT;
@@ -7001,6 +7014,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 106,
             description: "hospital_indent_receiver",
             sql: schema_sql_v106(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 107,
+            description: "hospital_payroll_records",
+            sql: schema_sql_v107(),
             kind: MigrationKind::Up,
         },
     ]

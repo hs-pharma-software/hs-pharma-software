@@ -103,7 +103,8 @@ async function settleNo(run: Runner, table: "invoices" | "purchases", tenantId: 
 // ── Sales ──────────────────────────────────────────────────────────────────
 
 /** salePrice: the cashier's price in the line's unit (per pack, or per loose unit), as the web form's Sale Price; else the price list. */
-export interface SaleLineInput { productId: string; unit?: "pack" | "loose"; qty: number; bonus?: number; discountPct?: number | null; salePrice?: number | null }
+/** extraPct: the web form's Extra Disc %, only for a customer whose Extra Discount is on. */
+export interface SaleLineInput { productId: string; unit?: "pack" | "loose"; qty: number; bonus?: number; discountPct?: number | null; salePrice?: number | null; extraPct?: number | null }
 export interface SaleInput {
   id: string;
   lines: SaleLineInput[];
@@ -136,7 +137,7 @@ const validPkMobile = (v: string) => /^(\+92|0092|0)3\d{9}$/.test(v.replace(/[\s
 /** What a sale would come to, worked out exactly as saving it would (nothing is written). */
 export interface DocPreview { subtotal: number; discount: number; tax: number; payable: number; balance: number; lines: PreviewLine[] }
 /** A line as the web form shows it: price, Tax %, Disc % and Avail in the line's unit (pack or loose), and the batches it takes. */
-export interface PreviewLine { total: number; price?: number; taxPct?: number; discountPct?: number; batch?: string | null; avail?: number }
+export interface PreviewLine { total: number; price?: number; taxPct?: number; discountPct?: number; extraPct?: number; batch?: string | null; avail?: number }
 /** preview: work out the totals and check stock, without numbering or saving anything. */
 export interface DocOptions { preview?: boolean }
 
@@ -156,6 +157,7 @@ export function checkSaleInput(raw: unknown): SaleInput {
     if (!(Number(l.qty) > 0)) throw new HttpError(400, "Every line needs a quantity greater than 0.");
     if (Number(l.bonus ?? 0) < 0) throw new HttpError(400, "Bonus can't be negative.");
     if (l.discountPct != null && (Number(l.discountPct) < 0 || Number(l.discountPct) > 100)) throw new HttpError(400, "Discount must be between 0 and 100%.");
+    if (l.extraPct != null && (Number(l.extraPct) < 0 || Number(l.extraPct) > 100)) throw new HttpError(400, "Extra discount must be between 0 and 100%.");
     if (l.salePrice != null && !(Number(l.salePrice) >= 0 && Number.isFinite(Number(l.salePrice)))) throw new HttpError(400, "Sale price can't be negative.");
   }
   for (const k of ["discountRs", "charges", "paid"] as const) if (Number(s[k] ?? 0) < 0) throw new HttpError(400, `${k} can't be negative.`);
@@ -217,10 +219,15 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
 
   const customerName = str(s.customerName);
   const customerPhone = str(s.customerPhone, 40);
+  let extraOn = false;
   if (s.customerId) {
-    const [c] = await run([{ sql: `SELECT id FROM customers WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`, args: [s.customerId, tenantId] }], false);
-    if (!rowsOf(c)[0]) throw new HttpError(400, "That customer was not found.");
+    const [c] = await run([{ sql: `SELECT id, extra_discount FROM customers WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`, args: [s.customerId, tenantId] }], false);
+    const cust = rowsOf(c)[0];
+    if (!cust) throw new HttpError(400, "That customer was not found.");
+    extraOn = num(cust.extra_discount) === 1;
   }
+  // The web form shows Extra Disc % only for a customer with Extra Discount on.
+  if (!extraOn && s.lines.some((l) => num(l.extraPct) > 0)) throw new HttpError(400, "Extra discount is only for customers with Extra Discount turned on.");
   if (s.salesmanId) {
     const [m] = await run([{ sql: `SELECT id FROM salesmen WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`, args: [s.salesmanId, tenantId] }], false);
     if (!rowsOf(m)[0]) throw new HttpError(400, "That salesman was not found.");
@@ -248,6 +255,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
     // Price: the cashier's Sale Price (in the line's unit), else the latest price list entry, else the batch's purchase price (as the web form).
     const price = l.salePrice != null ? round2(loose ? Number(l.salePrice) * packing : Number(l.salePrice)) : prices.get(l.productId) ?? batches[0]?.purchase_price ?? 0;
     const discountPct = l.discountPct != null ? pct(l.discountPct) : pct(num(p.sub_disc) > 0 ? p.sub_disc : p.cat_disc);
+    const extraPct = extraOn ? pct(l.extraPct) : 0;
     const taxPct = num(p.gst_rate_pct);
     const { parts, short } = allocateBatches(batches, qty, bonus, used);
     if (short > STOCK_EPS) {
@@ -259,16 +267,16 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
       last.bonus += Math.max(0, bonus - parts.reduce((t, x) => t + x.bonus, 0));
     }
     for (const part of parts) {
-      const m = saleLineMath(price, part.qty, discountPct, 0, taxPct);
+      const m = saleLineMath(price, part.qty, discountPct, extraPct, taxPct);
       total += price * part.qty;
       lineDiscount += m.discountRs;
       tax += m.tax;
       lineTotal += m.total;
       if (!draft && part.batch.id) takes.set(part.batch.id, (takes.get(part.batch.id) ?? 0) + part.qty + part.bonus);
       itemStmts.push({
-        sql: `INSERT INTO invoice_items (id, invoice_id, product_id, batch_no, packing, uom_id, avail_qty, qty, bonus_qty, purchase_price, sale_price, tax_pct, further_tax_pct, tax_rs, discount_pct, discount_rs, total, tenant_id, created_at, updated_at, deleted_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-        args: [newId(), s.id, l.productId, part.batch.batch_no, num(p.packing) || 1, (p.base_unit_id as string | null) ?? null, part.batch.qty, part.qty, part.bonus, part.batch.purchase_price, price, taxPct, m.tax, discountPct, m.discountRs, m.total, tenantId, now, now],
+        sql: `INSERT INTO invoice_items (id, invoice_id, product_id, batch_no, packing, uom_id, avail_qty, qty, bonus_qty, purchase_price, sale_price, tax_pct, further_tax_pct, tax_rs, discount_pct, discount_rs, extra_disc_pct, total, tenant_id, created_at, updated_at, deleted_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        args: [newId(), s.id, l.productId, part.batch.batch_no, num(p.packing) || 1, (p.base_unit_id as string | null) ?? null, part.batch.qty, part.qty, part.bonus, part.batch.purchase_price, price, taxPct, m.tax, discountPct, m.discountRs, extraPct, m.total, tenantId, now, now],
       });
     }
     const per = loose ? packing : 1;
@@ -277,6 +285,7 @@ export async function createSale(run: Runner, tenantId: string, raw: unknown, to
       price: round2(price / per),
       taxPct,
       discountPct,
+      extraPct,
       batch: [...new Set(parts.map((x) => x.batch.batch_no).filter(Boolean))].join(", ") || null,
       avail: Math.round(batches.reduce((t, b) => t + b.qty, 0) * per * 1000) / 1000,
     });

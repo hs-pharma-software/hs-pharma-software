@@ -75,6 +75,13 @@ export interface Salary extends TenantRow {
   payable_salary: number;
   paid_salary: number;
   balance_salary: number;
+  overtime_hours?: number | null;
+  overtime_pay?: number | null;
+  shares?: number | null;
+  pay_status?: "unpaid" | "partial" | "paid" | null;
+  paid_at?: string | null;
+  slip_no?: string | null;
+  created_by_name?: string | null;
 }
 
 export type PartyType = "customer" | "supplier" | "staff";
