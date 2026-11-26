@@ -3795,3 +3795,2378 @@
     CREATE INDEX IF NOT EXISTS idx_offline_licenses_tenant ON offline_licenses (offline_tenant_id, issued_at);
     
 ;
+-- schema_sql_v88
+
+    -- The change log the desktop app's local copy follows (Phase 1): which row
+    -- of which table changed, for which business (and branch). Filled by the
+    -- triggers below; rows themselves are read through the same rules as /api/db.
+    CREATE TABLE IF NOT EXISTS data_changes (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        tbl TEXT NOT NULL,
+        row_id TEXT NOT NULL,
+        tenant_id TEXT,
+        branch_id TEXT,
+        op TEXT NOT NULL,
+        changed_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_data_changes_tenant ON data_changes (tenant_id, seq);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_attendance_ins AFTER INSERT ON attendance BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('attendance', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_attendance_upd AFTER UPDATE ON attendance BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('attendance', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_attendance_del AFTER DELETE ON attendance BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('attendance', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_audit_items_ins AFTER INSERT ON audit_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('audit_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_audit_items_upd AFTER UPDATE ON audit_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('audit_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_audit_items_del AFTER DELETE ON audit_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('audit_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_audits_ins AFTER INSERT ON audits BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('audits', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_audits_upd AFTER UPDATE ON audits BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('audits', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_audits_del AFTER DELETE ON audits BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('audits', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_bank_ledger_entries_ins AFTER INSERT ON bank_ledger_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('bank_ledger_entries', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_bank_ledger_entries_upd AFTER UPDATE ON bank_ledger_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('bank_ledger_entries', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_bank_ledger_entries_del AFTER DELETE ON bank_ledger_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('bank_ledger_entries', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banks_ins AFTER INSERT ON banks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banks', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banks_upd AFTER UPDATE ON banks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banks', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banks_del AFTER DELETE ON banks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banks', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_booking_items_ins AFTER INSERT ON banquet_booking_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_booking_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_booking_items_upd AFTER UPDATE ON banquet_booking_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_booking_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_booking_items_del AFTER DELETE ON banquet_booking_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_booking_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_bookings_ins AFTER INSERT ON banquet_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_bookings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_bookings_upd AFTER UPDATE ON banquet_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_bookings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_bookings_del AFTER DELETE ON banquet_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_bookings', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_dishes_ins AFTER INSERT ON banquet_dishes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_dishes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_dishes_upd AFTER UPDATE ON banquet_dishes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_dishes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_dishes_del AFTER DELETE ON banquet_dishes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_dishes', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_halls_ins AFTER INSERT ON banquet_halls BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_halls', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_halls_upd AFTER UPDATE ON banquet_halls BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_halls', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_halls_del AFTER DELETE ON banquet_halls BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_halls', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_packages_ins AFTER INSERT ON banquet_packages BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_packages', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_packages_upd AFTER UPDATE ON banquet_packages BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_packages', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_packages_del AFTER DELETE ON banquet_packages BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_packages', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_payments_ins AFTER INSERT ON banquet_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_payments_upd AFTER UPDATE ON banquet_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_banquet_payments_del AFTER DELETE ON banquet_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('banquet_payments', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_audit_ins AFTER INSERT ON branch_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_audit', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_audit_upd AFTER UPDATE ON branch_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_audit', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_audit_del AFTER DELETE ON branch_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_audit', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_capacity_requests_ins AFTER INSERT ON branch_capacity_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_capacity_requests', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_capacity_requests_upd AFTER UPDATE ON branch_capacity_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_capacity_requests', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_capacity_requests_del AFTER DELETE ON branch_capacity_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_capacity_requests', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_transfer_items_ins AFTER INSERT ON branch_transfer_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_transfer_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_transfer_items_upd AFTER UPDATE ON branch_transfer_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_transfer_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_transfer_items_del AFTER DELETE ON branch_transfer_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_transfer_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_transfers_ins AFTER INSERT ON branch_transfers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_transfers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_transfers_upd AFTER UPDATE ON branch_transfers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_transfers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_transfers_del AFTER DELETE ON branch_transfers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_transfers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_users_ins AFTER INSERT ON branch_users BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_users', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_users_upd AFTER UPDATE ON branch_users BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_users', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branch_users_del AFTER DELETE ON branch_users BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branch_users', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branches_ins AFTER INSERT ON branches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branches', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branches_upd AFTER UPDATE ON branches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branches', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_branches_del AFTER DELETE ON branches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('branches', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_cash_register_entries_ins AFTER INSERT ON cash_register_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('cash_register_entries', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_cash_register_entries_upd AFTER UPDATE ON cash_register_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('cash_register_entries', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_cash_register_entries_del AFTER DELETE ON cash_register_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('cash_register_entries', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_categories_ins AFTER INSERT ON categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_categories_upd AFTER UPDATE ON categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_categories_del AFTER DELETE ON categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_appointments_ins AFTER INSERT ON clinic_appointments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_appointments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_appointments_upd AFTER UPDATE ON clinic_appointments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_appointments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_appointments_del AFTER DELETE ON clinic_appointments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_appointments', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_consultations_ins AFTER INSERT ON clinic_consultations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_consultations', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_consultations_upd AFTER UPDATE ON clinic_consultations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_consultations', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_consultations_del AFTER DELETE ON clinic_consultations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_consultations', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_doctors_ins AFTER INSERT ON clinic_doctors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_doctors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_doctors_upd AFTER UPDATE ON clinic_doctors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_doctors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_doctors_del AFTER DELETE ON clinic_doctors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_doctors', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_orders_ins AFTER INSERT ON clinic_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_orders_upd AFTER UPDATE ON clinic_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_orders_del AFTER DELETE ON clinic_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_orders', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_patients_ins AFTER INSERT ON clinic_patients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_patients', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_patients_upd AFTER UPDATE ON clinic_patients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_patients', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_patients_del AFTER DELETE ON clinic_patients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_patients', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_prescriptions_ins AFTER INSERT ON clinic_prescriptions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_prescriptions', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_prescriptions_upd AFTER UPDATE ON clinic_prescriptions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_prescriptions', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_prescriptions_del AFTER DELETE ON clinic_prescriptions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_prescriptions', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_rx_items_ins AFTER INSERT ON clinic_rx_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_rx_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_rx_items_upd AFTER UPDATE ON clinic_rx_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_rx_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_rx_items_del AFTER DELETE ON clinic_rx_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_rx_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_services_ins AFTER INSERT ON clinic_services BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_services', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_services_upd AFTER UPDATE ON clinic_services BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_services', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_clinic_services_del AFTER DELETE ON clinic_services BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('clinic_services', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_cloth_measurements_ins AFTER INSERT ON cloth_measurements BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('cloth_measurements', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_cloth_measurements_upd AFTER UPDATE ON cloth_measurements BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('cloth_measurements', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_cloth_measurements_del AFTER DELETE ON cloth_measurements BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('cloth_measurements', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_customers_ins AFTER INSERT ON customers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('customers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_customers_upd AFTER UPDATE ON customers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('customers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_customers_del AFTER DELETE ON customers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('customers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_delete_history_ins AFTER INSERT ON delete_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('delete_history', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_delete_history_upd AFTER UPDATE ON delete_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('delete_history', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_delete_history_del AFTER DELETE ON delete_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('delete_history', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_audit_ins AFTER INSERT ON dist_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_audit', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_audit_upd AFTER UPDATE ON dist_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_audit', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_audit_del AFTER DELETE ON dist_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_audit', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_booking_events_ins AFTER INSERT ON dist_booking_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_booking_events', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_booking_events_upd AFTER UPDATE ON dist_booking_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_booking_events', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_booking_events_del AFTER DELETE ON dist_booking_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_booking_events', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_booking_items_ins AFTER INSERT ON dist_booking_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_booking_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_booking_items_upd AFTER UPDATE ON dist_booking_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_booking_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_booking_items_del AFTER DELETE ON dist_booking_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_booking_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_bookings_ins AFTER INSERT ON dist_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_bookings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_bookings_upd AFTER UPDATE ON dist_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_bookings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_bookings_del AFTER DELETE ON dist_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_bookings', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_categories_ins AFTER INSERT ON dist_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_categories_upd AFTER UPDATE ON dist_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_categories_del AFTER DELETE ON dist_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_companies_ins AFTER INSERT ON dist_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_companies', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_companies_upd AFTER UPDATE ON dist_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_companies', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_companies_del AFTER DELETE ON dist_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_companies', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_config_ins AFTER INSERT ON dist_config BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_config', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_config_upd AFTER UPDATE ON dist_config BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_config', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_config_del AFTER DELETE ON dist_config BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_config', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_customers_ins AFTER INSERT ON dist_customers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_customers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_customers_upd AFTER UPDATE ON dist_customers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_customers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_customers_del AFTER DELETE ON dist_customers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_customers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_doc_items_ins AFTER INSERT ON dist_doc_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_doc_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_doc_items_upd AFTER UPDATE ON dist_doc_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_doc_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_doc_items_del AFTER DELETE ON dist_doc_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_doc_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_docs_ins AFTER INSERT ON dist_docs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_docs', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_docs_upd AFTER UPDATE ON dist_docs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_docs', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_docs_del AFTER DELETE ON dist_docs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_docs', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_payments_ins AFTER INSERT ON dist_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_payments_upd AFTER UPDATE ON dist_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_payments_del AFTER DELETE ON dist_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_payments', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_products_ins AFTER INSERT ON dist_products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_products', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_products_upd AFTER UPDATE ON dist_products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_products', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_products_del AFTER DELETE ON dist_products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_products', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salesmen_ins AFTER INSERT ON dist_salesmen BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salesmen', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salesmen_upd AFTER UPDATE ON dist_salesmen BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salesmen', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salesmen_del AFTER DELETE ON dist_salesmen BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salesmen', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_stock_moves_ins AFTER INSERT ON dist_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_stock_moves', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_stock_moves_upd AFTER UPDATE ON dist_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_stock_moves', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_stock_moves_del AFTER DELETE ON dist_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_stock_moves', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_targets_ins AFTER INSERT ON dist_targets BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_targets', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_targets_upd AFTER UPDATE ON dist_targets BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_targets', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_targets_del AFTER DELETE ON dist_targets BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_targets', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_tax_checks_ins AFTER INSERT ON dist_tax_checks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_tax_checks', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_tax_checks_upd AFTER UPDATE ON dist_tax_checks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_tax_checks', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_tax_checks_del AFTER DELETE ON dist_tax_checks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_tax_checks', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_user_perms_ins AFTER INSERT ON dist_user_perms BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_user_perms', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_user_perms_upd AFTER UPDATE ON dist_user_perms BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_user_perms', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_user_perms_del AFTER DELETE ON dist_user_perms BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_user_perms', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_audit_ins AFTER INSERT ON es_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_audit', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_audit_upd AFTER UPDATE ON es_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_audit', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_audit_del AFTER DELETE ON es_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_audit', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_categories_ins AFTER INSERT ON es_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_categories_upd AFTER UPDATE ON es_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_categories_del AFTER DELETE ON es_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_doc_items_ins AFTER INSERT ON es_doc_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_doc_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_doc_items_upd AFTER UPDATE ON es_doc_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_doc_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_doc_items_del AFTER DELETE ON es_doc_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_doc_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_docs_ins AFTER INSERT ON es_docs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_docs', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_docs_upd AFTER UPDATE ON es_docs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_docs', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_docs_del AFTER DELETE ON es_docs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_docs', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_payments_ins AFTER INSERT ON es_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_payments_upd AFTER UPDATE ON es_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_payments_del AFTER DELETE ON es_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_payments', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_products_ins AFTER INSERT ON es_products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_products', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_products_upd AFTER UPDATE ON es_products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_products', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_products_del AFTER DELETE ON es_products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_products', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_serials_ins AFTER INSERT ON es_serials BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_serials', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_serials_upd AFTER UPDATE ON es_serials BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_serials', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_serials_del AFTER DELETE ON es_serials BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_serials', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_stock_moves_ins AFTER INSERT ON es_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_stock_moves', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_stock_moves_upd AFTER UPDATE ON es_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_stock_moves', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_stock_moves_del AFTER DELETE ON es_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_stock_moves', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_warranty_claims_ins AFTER INSERT ON es_warranty_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_warranty_claims', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_warranty_claims_upd AFTER UPDATE ON es_warranty_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_warranty_claims', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_es_warranty_claims_del AFTER DELETE ON es_warranty_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('es_warranty_claims', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_expense_categories_ins AFTER INSERT ON expense_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('expense_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_expense_categories_upd AFTER UPDATE ON expense_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('expense_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_expense_categories_del AFTER DELETE ON expense_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('expense_categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_expenses_ins AFTER INSERT ON expenses BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('expenses', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_expenses_upd AFTER UPDATE ON expenses BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('expenses', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_expenses_del AFTER DELETE ON expenses BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('expenses', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_financial_closings_ins AFTER INSERT ON financial_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('financial_closings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_financial_closings_upd AFTER UPDATE ON financial_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('financial_closings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_financial_closings_del AFTER DELETE ON financial_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('financial_closings', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_generic_names_ins AFTER INSERT ON generic_names BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('generic_names', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_generic_names_upd AFTER UPDATE ON generic_names BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('generic_names', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_generic_names_del AFTER DELETE ON generic_names BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('generic_names', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_adr_reports_ins AFTER INSERT ON hospital_adr_reports BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_adr_reports', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_adr_reports_upd AFTER UPDATE ON hospital_adr_reports BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_adr_reports', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_adr_reports_del AFTER DELETE ON hospital_adr_reports BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_adr_reports', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_appraisals_ins AFTER INSERT ON hospital_appraisals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_appraisals', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_appraisals_upd AFTER UPDATE ON hospital_appraisals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_appraisals', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_appraisals_del AFTER DELETE ON hospital_appraisals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_appraisals', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_crossmatches_ins AFTER INSERT ON hospital_bb_crossmatches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_crossmatches', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_crossmatches_upd AFTER UPDATE ON hospital_bb_crossmatches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_crossmatches', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_crossmatches_del AFTER DELETE ON hospital_bb_crossmatches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_crossmatches', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_donations_ins AFTER INSERT ON hospital_bb_donations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_donations', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_donations_upd AFTER UPDATE ON hospital_bb_donations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_donations', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_donations_del AFTER DELETE ON hospital_bb_donations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_donations', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_donors_ins AFTER INSERT ON hospital_bb_donors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_donors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_donors_upd AFTER UPDATE ON hospital_bb_donors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_donors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_donors_del AFTER DELETE ON hospital_bb_donors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_donors', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_issues_ins AFTER INSERT ON hospital_bb_issues BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_issues', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_issues_upd AFTER UPDATE ON hospital_bb_issues BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_issues', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_issues_del AFTER DELETE ON hospital_bb_issues BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_issues', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_reactions_ins AFTER INSERT ON hospital_bb_reactions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_reactions', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_reactions_upd AFTER UPDATE ON hospital_bb_reactions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_reactions', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_reactions_del AFTER DELETE ON hospital_bb_reactions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_reactions', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_requests_ins AFTER INSERT ON hospital_bb_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_requests', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_requests_upd AFTER UPDATE ON hospital_bb_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_requests', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_requests_del AFTER DELETE ON hospital_bb_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_requests', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_units_ins AFTER INSERT ON hospital_bb_units BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_units', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_units_upd AFTER UPDATE ON hospital_bb_units BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_units', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_bb_units_del AFTER DELETE ON hospital_bb_units BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_bb_units', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_capa_ins AFTER INSERT ON hospital_capa BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_capa', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_capa_upd AFTER UPDATE ON hospital_capa BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_capa', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_capa_del AFTER DELETE ON hospital_capa BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_capa', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_cash_closings_ins AFTER INSERT ON hospital_cash_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_cash_closings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_cash_closings_upd AFTER UPDATE ON hospital_cash_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_cash_closings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_cash_closings_del AFTER DELETE ON hospital_cash_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_cash_closings', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_cd_register_ins AFTER INSERT ON hospital_cd_register BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_cd_register', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_cd_register_upd AFTER UPDATE ON hospital_cd_register BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_cd_register', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_cd_register_del AFTER DELETE ON hospital_cd_register BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_cd_register', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_charges_ins AFTER INSERT ON hospital_charges BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_charges', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_charges_upd AFTER UPDATE ON hospital_charges BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_charges', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_charges_del AFTER DELETE ON hospital_charges BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_charges', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_checklist_entries_ins AFTER INSERT ON hospital_checklist_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_checklist_entries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_checklist_entries_upd AFTER UPDATE ON hospital_checklist_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_checklist_entries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_checklist_entries_del AFTER DELETE ON hospital_checklist_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_checklist_entries', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_collection_centers_ins AFTER INSERT ON hospital_collection_centers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_collection_centers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_collection_centers_upd AFTER UPDATE ON hospital_collection_centers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_collection_centers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_collection_centers_del AFTER DELETE ON hospital_collection_centers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_collection_centers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_complaints_ins AFTER INSERT ON hospital_complaints BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_complaints', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_complaints_upd AFTER UPDATE ON hospital_complaints BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_complaints', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_complaints_del AFTER DELETE ON hospital_complaints BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_complaints', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_critical_alerts_ins AFTER INSERT ON hospital_critical_alerts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_critical_alerts', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_critical_alerts_upd AFTER UPDATE ON hospital_critical_alerts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_critical_alerts', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_critical_alerts_del AFTER DELETE ON hospital_critical_alerts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_critical_alerts', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_departments_ins AFTER INSERT ON hospital_departments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_departments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_departments_upd AFTER UPDATE ON hospital_departments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_departments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_departments_del AFTER DELETE ON hospital_departments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_departments', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_documents_ins AFTER INSERT ON hospital_documents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_documents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_documents_upd AFTER UPDATE ON hospital_documents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_documents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_documents_del AFTER DELETE ON hospital_documents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_documents', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_drills_ins AFTER INSERT ON hospital_drills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_drills', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_drills_upd AFTER UPDATE ON hospital_drills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_drills', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_drills_del AFTER DELETE ON hospital_drills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_drills', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_duty_roster_ins AFTER INSERT ON hospital_duty_roster BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_duty_roster', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_duty_roster_upd AFTER UPDATE ON hospital_duty_roster BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_duty_roster', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_duty_roster_del AFTER DELETE ON hospital_duty_roster BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_duty_roster', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_episodes_ins AFTER INSERT ON hospital_episodes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_episodes', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_episodes_upd AFTER UPDATE ON hospital_episodes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_episodes', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_episodes_del AFTER DELETE ON hospital_episodes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_episodes', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_equipment_ins AFTER INSERT ON hospital_equipment BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_equipment', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_equipment_upd AFTER UPDATE ON hospital_equipment BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_equipment', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_equipment_del AFTER DELETE ON hospital_equipment BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_equipment', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_equipment_logs_ins AFTER INSERT ON hospital_equipment_logs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_equipment_logs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_equipment_logs_upd AFTER UPDATE ON hospital_equipment_logs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_equipment_logs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_equipment_logs_del AFTER DELETE ON hospital_equipment_logs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_equipment_logs', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_er_triage_ins AFTER INSERT ON hospital_er_triage BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_er_triage', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_er_triage_upd AFTER UPDATE ON hospital_er_triage BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_er_triage', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_er_triage_del AFTER DELETE ON hospital_er_triage BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_er_triage', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_form_records_ins AFTER INSERT ON hospital_form_records BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_form_records', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_form_records_upd AFTER UPDATE ON hospital_form_records BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_form_records', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_form_records_del AFTER DELETE ON hospital_form_records BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_form_records', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_form_revisions_ins AFTER INSERT ON hospital_form_revisions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_form_revisions', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_form_revisions_upd AFTER UPDATE ON hospital_form_revisions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_form_revisions', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_form_revisions_del AFTER DELETE ON hospital_form_revisions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_form_revisions', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_formulary_ins AFTER INSERT ON hospital_formulary BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_formulary', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_formulary_upd AFTER UPDATE ON hospital_formulary BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_formulary', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_formulary_del AFTER DELETE ON hospital_formulary BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_formulary', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_fridge_logs_ins AFTER INSERT ON hospital_fridge_logs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_fridge_logs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_fridge_logs_upd AFTER UPDATE ON hospital_fridge_logs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_fridge_logs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_fridge_logs_del AFTER DELETE ON hospital_fridge_logs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_fridge_logs', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_hh_observations_ins AFTER INSERT ON hospital_hh_observations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_hh_observations', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_hh_observations_upd AFTER UPDATE ON hospital_hh_observations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_hh_observations', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_hh_observations_del AFTER DELETE ON hospital_hh_observations BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_hh_observations', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_hh_sessions_ins AFTER INSERT ON hospital_hh_sessions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_hh_sessions', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_hh_sessions_upd AFTER UPDATE ON hospital_hh_sessions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_hh_sessions', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_hh_sessions_del AFTER DELETE ON hospital_hh_sessions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_hh_sessions', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_imaging_orders_ins AFTER INSERT ON hospital_imaging_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_imaging_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_imaging_orders_upd AFTER UPDATE ON hospital_imaging_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_imaging_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_imaging_orders_del AFTER DELETE ON hospital_imaging_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_imaging_orders', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_incidents_ins AFTER INSERT ON hospital_incidents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_incidents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_incidents_upd AFTER UPDATE ON hospital_incidents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_incidents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_incidents_del AFTER DELETE ON hospital_incidents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_incidents', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_orders_ins AFTER INSERT ON hospital_lab_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_orders_upd AFTER UPDATE ON hospital_lab_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_orders_del AFTER DELETE ON hospital_lab_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_orders', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_report_log_ins AFTER INSERT ON hospital_lab_report_log BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_report_log', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_report_log_upd AFTER UPDATE ON hospital_lab_report_log BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_report_log', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_report_log_del AFTER DELETE ON hospital_lab_report_log BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_report_log', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_requests_ins AFTER INSERT ON hospital_lab_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_requests', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_requests_upd AFTER UPDATE ON hospital_lab_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_requests', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_lab_requests_del AFTER DELETE ON hospital_lab_requests BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_lab_requests', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_licences_ins AFTER INSERT ON hospital_licences BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_licences', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_licences_upd AFTER UPDATE ON hospital_licences BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_licences', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_licences_del AFTER DELETE ON hospital_licences BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_licences', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_mar_entries_ins AFTER INSERT ON hospital_mar_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_mar_entries', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_mar_entries_upd AFTER UPDATE ON hospital_mar_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_mar_entries', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_mar_entries_del AFTER DELETE ON hospital_mar_entries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_mar_entries', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_mlc_cases_ins AFTER INSERT ON hospital_mlc_cases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_mlc_cases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_mlc_cases_upd AFTER UPDATE ON hospital_mlc_cases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_mlc_cases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_mlc_cases_del AFTER DELETE ON hospital_mlc_cases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_mlc_cases', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patients_ins AFTER INSERT ON hospital_patients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patients', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patients_upd AFTER UPDATE ON hospital_patients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patients', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patients_del AFTER DELETE ON hospital_patients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patients', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_payments_ins AFTER INSERT ON hospital_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_payments_upd AFTER UPDATE ON hospital_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_payments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_payments_del AFTER DELETE ON hospital_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_payments', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_record_releases_ins AFTER INSERT ON hospital_record_releases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_record_releases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_record_releases_upd AFTER UPDATE ON hospital_record_releases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_record_releases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_record_releases_del AFTER DELETE ON hospital_record_releases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_record_releases', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rx_items_ins AFTER INSERT ON hospital_rx_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rx_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rx_items_upd AFTER UPDATE ON hospital_rx_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rx_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rx_items_del AFTER DELETE ON hospital_rx_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rx_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_services_ins AFTER INSERT ON hospital_services BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_services', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_services_upd AFTER UPDATE ON hospital_services BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_services', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_services_del AFTER DELETE ON hospital_services BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_services', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_staff_credentials_ins AFTER INSERT ON hospital_staff_credentials BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_staff_credentials', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_staff_credentials_upd AFTER UPDATE ON hospital_staff_credentials BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_staff_credentials', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_staff_credentials_del AFTER DELETE ON hospital_staff_credentials BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_staff_credentials', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_staff_training_ins AFTER INSERT ON hospital_staff_training BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_staff_training', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_staff_training_upd AFTER UPDATE ON hospital_staff_training BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_staff_training', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_staff_training_del AFTER DELETE ON hospital_staff_training BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_staff_training', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_cycles_ins AFTER INSERT ON hospital_steril_cycles BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_cycles', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_cycles_upd AFTER UPDATE ON hospital_steril_cycles BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_cycles', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_cycles_del AFTER DELETE ON hospital_steril_cycles BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_cycles', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_equipment_ins AFTER INSERT ON hospital_steril_equipment BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_equipment', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_equipment_upd AFTER UPDATE ON hospital_steril_equipment BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_equipment', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_equipment_del AFTER DELETE ON hospital_steril_equipment BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_equipment', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_items_ins AFTER INSERT ON hospital_steril_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_items_upd AFTER UPDATE ON hospital_steril_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_items_del AFTER DELETE ON hospital_steril_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_usage_ins AFTER INSERT ON hospital_steril_usage BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_usage', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_usage_upd AFTER UPDATE ON hospital_steril_usage BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_usage', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_steril_usage_del AFTER DELETE ON hospital_steril_usage BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_steril_usage', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_surgery_bookings_ins AFTER INSERT ON hospital_surgery_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_surgery_bookings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_surgery_bookings_upd AFTER UPDATE ON hospital_surgery_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_surgery_bookings', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_surgery_bookings_del AFTER DELETE ON hospital_surgery_bookings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_surgery_bookings', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vitals_ins AFTER INSERT ON hospital_vitals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vitals', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vitals_upd AFTER UPDATE ON hospital_vitals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vitals', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vitals_del AFTER DELETE ON hospital_vitals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vitals', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_items_ins AFTER INSERT ON invoice_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_items_upd AFTER UPDATE ON invoice_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_items_del AFTER DELETE ON invoice_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoices_ins AFTER INSERT ON invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoices', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoices_upd AFTER UPDATE ON invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoices', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoices_del AFTER DELETE ON invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoices', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_lab_visits_ins AFTER INSERT ON lab_visits BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('lab_visits', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_lab_visits_upd AFTER UPDATE ON lab_visits BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('lab_visits', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_lab_visits_del AFTER DELETE ON lab_visits BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('lab_visits', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_ledger_adjustments_ins AFTER INSERT ON ledger_adjustments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('ledger_adjustments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_ledger_adjustments_upd AFTER UPDATE ON ledger_adjustments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('ledger_adjustments', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_ledger_adjustments_del AFTER DELETE ON ledger_adjustments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('ledger_adjustments', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_mobile_imei_units_ins AFTER INSERT ON mobile_imei_units BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('mobile_imei_units', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_mobile_imei_units_upd AFTER UPDATE ON mobile_imei_units BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('mobile_imei_units', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_mobile_imei_units_del AFTER DELETE ON mobile_imei_units BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('mobile_imei_units', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_order_items_ins AFTER INSERT ON order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('order_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_order_items_upd AFTER UPDATE ON order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('order_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_order_items_del AFTER DELETE ON order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('order_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_orders_ins AFTER INSERT ON orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_orders_upd AFTER UPDATE ON orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_orders_del AFTER DELETE ON orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('orders', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_price_list_ins AFTER INSERT ON price_list BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('price_list', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_price_list_upd AFTER UPDATE ON price_list BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('price_list', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_price_list_del AFTER DELETE ON price_list BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('price_list', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_batch_expiry_changes_ins AFTER INSERT ON product_batch_expiry_changes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_batch_expiry_changes', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_batch_expiry_changes_upd AFTER UPDATE ON product_batch_expiry_changes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_batch_expiry_changes', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_batch_expiry_changes_del AFTER DELETE ON product_batch_expiry_changes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_batch_expiry_changes', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_batches_ins AFTER INSERT ON product_batches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_batches', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_batches_upd AFTER UPDATE ON product_batches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_batches', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_batches_del AFTER DELETE ON product_batches BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_batches', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_suppliers_ins AFTER INSERT ON product_suppliers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_suppliers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_suppliers_upd AFTER UPDATE ON product_suppliers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_suppliers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_suppliers_del AFTER DELETE ON product_suppliers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_suppliers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_products_ins AFTER INSERT ON products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('products', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_products_upd AFTER UPDATE ON products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('products', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_products_del AFTER DELETE ON products BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('products', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchase_drafts_ins AFTER INSERT ON purchase_drafts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchase_drafts', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchase_drafts_upd AFTER UPDATE ON purchase_drafts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchase_drafts', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchase_drafts_del AFTER DELETE ON purchase_drafts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchase_drafts', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchase_items_ins AFTER INSERT ON purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchase_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchase_items_upd AFTER UPDATE ON purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchase_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchase_items_del AFTER DELETE ON purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchase_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchases_ins AFTER INSERT ON purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchases', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchases_upd AFTER UPDATE ON purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchases', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_purchases_del AFTER DELETE ON purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('purchases', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_dicom_events_ins AFTER INSERT ON radiology_dicom_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_dicom_events', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_dicom_events_upd AFTER UPDATE ON radiology_dicom_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_dicom_events', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_dicom_events_del AFTER DELETE ON radiology_dicom_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_dicom_events', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_machines_ins AFTER INSERT ON radiology_machines BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_machines', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_machines_upd AFTER UPDATE ON radiology_machines BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_machines', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_machines_del AFTER DELETE ON radiology_machines BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_machines', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_modalities_ins AFTER INSERT ON radiology_modalities BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_modalities', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_modalities_upd AFTER UPDATE ON radiology_modalities BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_modalities', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_modalities_del AFTER DELETE ON radiology_modalities BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_modalities', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_pacs_ins AFTER INSERT ON radiology_pacs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_pacs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_pacs_upd AFTER UPDATE ON radiology_pacs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_pacs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_pacs_del AFTER DELETE ON radiology_pacs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_pacs', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_templates_ins AFTER INSERT ON radiology_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_templates', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_templates_upd AFTER UPDATE ON radiology_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_templates', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_radiology_templates_del AFTER DELETE ON radiology_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('radiology_templates', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_audit_ins AFTER INSERT ON rest_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_audit', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_audit_upd AFTER UPDATE ON rest_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_audit', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_audit_del AFTER DELETE ON rest_audit BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_audit', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_categories_ins AFTER INSERT ON rest_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_categories_upd AFTER UPDATE ON rest_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_categories_del AFTER DELETE ON rest_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_deals_ins AFTER INSERT ON rest_deals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_deals', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_deals_upd AFTER UPDATE ON rest_deals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_deals', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_deals_del AFTER DELETE ON rest_deals BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_deals', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_ingredients_ins AFTER INSERT ON rest_ingredients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_ingredients', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_ingredients_upd AFTER UPDATE ON rest_ingredients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_ingredients', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_ingredients_del AFTER DELETE ON rest_ingredients BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_ingredients', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_kots_ins AFTER INSERT ON rest_kots BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_kots', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_kots_upd AFTER UPDATE ON rest_kots BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_kots', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_kots_del AFTER DELETE ON rest_kots BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_kots', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_menu_items_ins AFTER INSERT ON rest_menu_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_menu_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_menu_items_upd AFTER UPDATE ON rest_menu_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_menu_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_menu_items_del AFTER DELETE ON rest_menu_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_menu_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_offers_ins AFTER INSERT ON rest_offers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_offers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_offers_upd AFTER UPDATE ON rest_offers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_offers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_offers_del AFTER DELETE ON rest_offers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_offers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_order_items_ins AFTER INSERT ON rest_order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_order_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_order_items_upd AFTER UPDATE ON rest_order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_order_items', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_order_items_del AFTER DELETE ON rest_order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_order_items', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_orders_ins AFTER INSERT ON rest_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_orders_upd AFTER UPDATE ON rest_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_orders_del AFTER DELETE ON rest_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_orders', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_pra_submissions_ins AFTER INSERT ON rest_pra_submissions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_pra_submissions', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_pra_submissions_upd AFTER UPDATE ON rest_pra_submissions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_pra_submissions', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_pra_submissions_del AFTER DELETE ON rest_pra_submissions BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_pra_submissions', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_recipe_lines_ins AFTER INSERT ON rest_recipe_lines BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_recipe_lines', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_recipe_lines_upd AFTER UPDATE ON rest_recipe_lines BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_recipe_lines', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_recipe_lines_del AFTER DELETE ON rest_recipe_lines BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_recipe_lines', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_stock_moves_ins AFTER INSERT ON rest_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_stock_moves', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_stock_moves_upd AFTER UPDATE ON rest_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_stock_moves', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_stock_moves_del AFTER DELETE ON rest_stock_moves BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_stock_moves', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_tables_ins AFTER INSERT ON rest_tables BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_tables', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_tables_upd AFTER UPDATE ON rest_tables BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_tables', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_rest_tables_del AFTER DELETE ON rest_tables BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('rest_tables', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_revenue_categories_ins AFTER INSERT ON revenue_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('revenue_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_revenue_categories_upd AFTER UPDATE ON revenue_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('revenue_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_revenue_categories_del AFTER DELETE ON revenue_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('revenue_categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_revenues_ins AFTER INSERT ON revenues BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('revenues', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_revenues_upd AFTER UPDATE ON revenues BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('revenues', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_revenues_del AFTER DELETE ON revenues BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('revenues', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_salaries_ins AFTER INSERT ON salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('salaries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_salaries_upd AFTER UPDATE ON salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('salaries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_salaries_del AFTER DELETE ON salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('salaries', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_salesmen_ins AFTER INSERT ON salesmen BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('salesmen', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_salesmen_upd AFTER UPDATE ON salesmen BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('salesmen', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_salesmen_del AFTER DELETE ON salesmen BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('salesmen', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_settings_ins AFTER INSERT ON settings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('settings', NEW.key, substr(NEW.key, 1, instr(NEW.key, '::') - 1), NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_settings_upd AFTER UPDATE ON settings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('settings', NEW.key, substr(NEW.key, 1, instr(NEW.key, '::') - 1), NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_settings_del AFTER DELETE ON settings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('settings', OLD.key, substr(OLD.key, 1, instr(OLD.key, '::') - 1), NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_staff_ins AFTER INSERT ON staff BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('staff', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_staff_upd AFTER UPDATE ON staff BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('staff', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_staff_del AFTER DELETE ON staff BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('staff', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_sub_categories_ins AFTER INSERT ON sub_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('sub_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_sub_categories_upd AFTER UPDATE ON sub_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('sub_categories', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_sub_categories_del AFTER DELETE ON sub_categories BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('sub_categories', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_suppliers_ins AFTER INSERT ON suppliers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('suppliers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_suppliers_upd AFTER UPDATE ON suppliers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('suppliers', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_suppliers_del AFTER DELETE ON suppliers BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('suppliers', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_tasks_ins AFTER INSERT ON tasks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('tasks', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_tasks_upd AFTER UPDATE ON tasks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('tasks', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_tasks_del AFTER DELETE ON tasks BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('tasks', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_tenants_ins AFTER INSERT ON tenants BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('tenants', NEW.id, NEW.id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_tenants_upd AFTER UPDATE ON tenants BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('tenants', NEW.id, NEW.id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_tenants_del AFTER DELETE ON tenants BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('tenants', OLD.id, OLD.id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_uoms_ins AFTER INSERT ON uoms BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('uoms', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_uoms_upd AFTER UPDATE ON uoms BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('uoms', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_uoms_del AFTER DELETE ON uoms BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('uoms', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_users_ins AFTER INSERT ON users BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('users', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_users_upd AFTER UPDATE ON users BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('users', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_users_del AFTER DELETE ON users BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('users', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_order_events_ins AFTER INSERT ON web_order_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_order_events', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_order_events_upd AFTER UPDATE ON web_order_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_order_events', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_order_events_del AFTER DELETE ON web_order_events BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_order_events', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_order_items_ins AFTER INSERT ON web_order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_order_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_order_items_upd AFTER UPDATE ON web_order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_order_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_order_items_del AFTER DELETE ON web_order_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_order_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_orders_ins AFTER INSERT ON web_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_orders_upd AFTER UPDATE ON web_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_orders', NEW.id, NEW.tenant_id, NEW.branch_id, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_web_orders_del AFTER DELETE ON web_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('web_orders', OLD.id, OLD.tenant_id, OLD.branch_id, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v89
+
+    -- Distribution upgrade: invoice and purchase line fields (bonus, discount %,
+    -- extra discount %, withholding tax per line), narcotic products, salesman
+    -- wages and career, salaries and month closing; offline desktops per branch.
+    ALTER TABLE dist_doc_items ADD COLUMN bonus_qty REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN extra_disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN wht_rate REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_doc_items ADD COLUMN wht_amount REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_products ADD COLUMN is_narcotic INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE dist_salesmen ADD COLUMN wage_type TEXT NOT NULL DEFAULT 'monthly';
+    ALTER TABLE dist_salesmen ADD COLUMN wage_amount REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_salesmen ADD COLUMN joined_on TEXT;
+    ALTER TABLE dist_salesmen ADD COLUMN closed_on TEXT;
+    ALTER TABLE dist_salesmen ADD COLUMN close_reason TEXT;
+    CREATE TABLE IF NOT EXISTS dist_salaries (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        salesman_id TEXT NOT NULL,
+        month TEXT NOT NULL,
+        wage_type TEXT NOT NULL,
+        rate REAL NOT NULL DEFAULT 0,
+        days_worked REAL,
+        amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'unpaid',
+        paid_on TEXT,
+        paid_method TEXT,
+        expense_id TEXT,
+        closing_id TEXT,
+        note TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_salaries_month ON dist_salaries (tenant_id, salesman_id, month) WHERE deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS dist_month_closings (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        month TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'final',
+        salaries_total REAL NOT NULL DEFAULT 0,
+        salaries_count INTEGER NOT NULL DEFAULT 0,
+        report TEXT,
+        closed_by TEXT,
+        closed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_dist_month_closings ON dist_month_closings (tenant_id, month) WHERE deleted_at IS NULL;
+    ALTER TABLE tenants ADD COLUMN offline_devices_per_branch INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE offline_devices ADD COLUMN deleted_at TEXT;
+    -- More than one device per branch when MAVIN.pk allows it (checked in code, tenants.offline_devices_per_branch).
+    DROP INDEX IF EXISTS ux_offline_devices_branch_active;
+    CREATE INDEX IF NOT EXISTS idx_offline_devices_branch ON offline_devices (tenant_id, branch_id, status);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salaries_ins AFTER INSERT ON dist_salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salaries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salaries_upd AFTER UPDATE ON dist_salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salaries', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_salaries_del AFTER DELETE ON dist_salaries BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_salaries', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_month_closings_ins AFTER INSERT ON dist_month_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_month_closings', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_month_closings_upd AFTER UPDATE ON dist_month_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_month_closings', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_month_closings_del AFTER DELETE ON dist_month_closings BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_month_closings', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v90
+
+    -- Distribution: company schemes on products (buy N get M free / extra %),
+    -- bonus and discounts on booking lines, and delivery of invoices
+    -- (collected by the supply man, delivered or returned).
+    CREATE TABLE IF NOT EXISTS dist_product_schemes (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        min_qty REAL NOT NULL,
+        bonus_qty REAL NOT NULL DEFAULT 0,
+        extra_disc_pct REAL NOT NULL DEFAULT 0,
+        valid_from TEXT,
+        valid_to TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        note TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_dist_product_schemes ON dist_product_schemes (tenant_id, product_id);
+    ALTER TABLE dist_booking_items ADD COLUMN bonus_qty REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_booking_items ADD COLUMN disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_booking_items ADD COLUMN extra_disc_pct REAL NOT NULL DEFAULT 0;
+    ALTER TABLE dist_bookings ADD COLUMN loc_distance_m REAL;
+    ALTER TABLE dist_docs ADD COLUMN delivery_status TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivery_by TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivery_by_name TEXT;
+    ALTER TABLE dist_docs ADD COLUMN collected_at TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivered_at TEXT;
+    ALTER TABLE dist_docs ADD COLUMN delivery_note TEXT;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_product_schemes_ins AFTER INSERT ON dist_product_schemes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_product_schemes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_product_schemes_upd AFTER UPDATE ON dist_product_schemes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_product_schemes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_dist_product_schemes_del AFTER DELETE ON dist_product_schemes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('dist_product_schemes', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v91
+
+    -- PRA (Punjab Revenue Authority) eIMS, server side: a business's access
+    -- (granted by the platform Super Admin), its POS counters mapped to the
+    -- POS IDs PRA issued, every submission (one live per invoice), an audit
+    -- trail, and the tax-rule catalogue with rules assigned to a business.
+    -- Server-only tables (prefix pra_): never readable through /api/db or the
+    -- desktop copy. Separate from FBR DI.
+    CREATE TABLE IF NOT EXISTS pra_accounts (
+        tenant_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'disabled',
+        pntn TEXT,
+        registered_name TEXT,
+        registration_status TEXT NOT NULL DEFAULT 'not_started',
+        sandbox_status TEXT NOT NULL DEFAULT 'not_started',
+        whitelist_status TEXT NOT NULL DEFAULT 'not_requested',
+        whitelist_ip TEXT,
+        live_approved_by TEXT,
+        live_approved_at TEXT,
+        suspended_reason TEXT,
+        notes TEXT,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS pra_pos (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
+        counter TEXT NOT NULL,
+        sector TEXT NOT NULL,
+        environment TEXT NOT NULL DEFAULT 'sandbox',
+        sandbox_pos_id TEXT,
+        production_pos_id TEXT,
+        sandbox_token_enc TEXT,
+        production_token_enc TEXT,
+        sandbox_token_hint TEXT,
+        production_token_hint TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        approved_by TEXT,
+        approved_at TEXT,
+        active_from TEXT,
+        updated_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_pos_counter ON pra_pos (tenant_id, branch_id, counter) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_pra_pos_tenant ON pra_pos (tenant_id, branch_id);
+    CREATE TABLE IF NOT EXISTS pra_submissions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT,
+        pos_row_id TEXT NOT NULL,
+        pos_id TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        usin TEXT NOT NULL,
+        ref_usin TEXT,
+        invoice_type INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        fiscal_invoice_no TEXT,
+        response_code TEXT,
+        response_text TEXT,
+        payload TEXT,
+        payload_hash TEXT,
+        payment_methods TEXT,
+        pra_payment_mode INTEGER,
+        rule_snapshot TEXT,
+        sale_value REAL NOT NULL DEFAULT 0,
+        sales_tax REAL NOT NULL DEFAULT 0,
+        pra_withholding REAL NOT NULL DEFAULT 0,
+        income_tax_withholding REAL NOT NULL DEFAULT 0,
+        total REAL NOT NULL DEFAULT 0,
+        blocked_reason TEXT,
+        lock_until TEXT,
+        sent_at TEXT,
+        accepted_at TEXT,
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_submissions_source ON pra_submissions (tenant_id, source_type, source_id, invoice_type, environment);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_submissions_usin ON pra_submissions (pos_id, environment, usin, invoice_type);
+    CREATE INDEX IF NOT EXISTS idx_pra_submissions_status ON pra_submissions (tenant_id, status, created_at);
+    CREATE TABLE IF NOT EXISTS pra_audit (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT,
+        actor_id TEXT,
+        actor_role TEXT,
+        action TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pra_audit_tenant ON pra_audit (tenant_id, created_at);
+    CREATE TABLE IF NOT EXISTS pra_tax_rules (
+        id TEXT PRIMARY KEY,
+        rule_key TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        sector TEXT NOT NULL,
+        service TEXT NOT NULL,
+        classification_code TEXT,
+        rate_type TEXT NOT NULL DEFAULT 'percent',
+        rate REAL,
+        fixed_amount REAL,
+        fixed_unit TEXT,
+        payment_condition TEXT NOT NULL DEFAULT 'any',
+        alt_rate REAL,
+        input_adjustment TEXT NOT NULL DEFAULT 'unknown',
+        exemptions TEXT,
+        effective_from TEXT NOT NULL,
+        effective_to TEXT,
+        source TEXT NOT NULL,
+        clause TEXT,
+        source_url TEXT,
+        last_verified_at TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        review_notes TEXT,
+        needs_scope_review INTEGER NOT NULL DEFAULT 0,
+        eims_applicable TEXT NOT NULL DEFAULT 'unconfirmed',
+        created_by TEXT,
+        approved_by TEXT,
+        approved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pra_tax_rules_version ON pra_tax_rules (rule_key, version);
+    CREATE TABLE IF NOT EXISTS pra_rule_assignments (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        branch_id TEXT,
+        rule_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        contract_note TEXT,
+        assigned_by TEXT,
+        assigned_at TEXT NOT NULL,
+        revoked_by TEXT,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pra_rule_assignments ON pra_rule_assignments (tenant_id, status);
+    CREATE TABLE IF NOT EXISTS pra_platform (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL
+    );
+    
+;
+-- schema_sql_v92
+
+    -- PRA findings: production whitelisting tracked per PNTN + POS ID (per
+    -- counter); each payment component kept with its reference; a credit
+    -- note keeps the original invoice's PRA fiscal number; the PRA cases a
+    -- submission depends on (each gated until PRA confirms it).
+    ALTER TABLE pra_pos ADD COLUMN whitelist_status TEXT NOT NULL DEFAULT 'not_requested';
+    ALTER TABLE pra_pos ADD COLUMN whitelist_ip TEXT;
+    ALTER TABLE pra_pos ADD COLUMN whitelist_reference TEXT;
+    ALTER TABLE pra_pos ADD COLUMN whitelist_updated_at TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN payment_components TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN ref_fiscal_invoice_no TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN case_keys TEXT;
+    ALTER TABLE pra_submissions ADD COLUMN total_quantity REAL NOT NULL DEFAULT 0;
+    
+;
+-- schema_sql_v93
+
+    -- Structured ultrasound reports (the values the doctor fills in, JSON) and
+    -- the random key of a radiology report's online copy (its QR code).
+    ALTER TABLE hospital_imaging_orders ADD COLUMN structured_report TEXT;
+    ALTER TABLE hospital_imaging_orders ADD COLUMN public_token TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_hospital_imaging_public_token ON hospital_imaging_orders (public_token) WHERE public_token IS NOT NULL;
+    
+;
+-- schema_sql_v94
+
+    -- Pharmacies: the prescribing doctor on a narcotics sale (required for
+    -- narcotics, PMDC number optional), a business's own flat discount per
+    -- product (used on every invoice before the category's; a table, not a
+    -- products column, because pharmacies share catalogue products), and
+    -- audits that are started, counted and closed, keeping each line's system
+    -- stock and unit cost as they were (for the audit report's shortage amount).
+    ALTER TABLE invoices ADD COLUMN doctor_name TEXT;
+    ALTER TABLE invoices ADD COLUMN doctor_reg_no TEXT;
+    CREATE TABLE IF NOT EXISTS product_flat_discounts (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, product_id TEXT NOT NULL, discount_pct REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_product_flat_discounts ON product_flat_discounts (tenant_id, product_id) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_flat_discounts_ins AFTER INSERT ON product_flat_discounts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_flat_discounts', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_flat_discounts_upd AFTER UPDATE ON product_flat_discounts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_flat_discounts', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_product_flat_discounts_del AFTER DELETE ON product_flat_discounts BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('product_flat_discounts', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    ALTER TABLE audits ADD COLUMN status TEXT;
+    ALTER TABLE audits ADD COLUMN closed_at TEXT;
+    ALTER TABLE audits ADD COLUMN closed_by_name TEXT;
+    ALTER TABLE audit_items ADD COLUMN system_qty REAL;
+    ALTER TABLE audit_items ADD COLUMN unit_cost REAL;
+    
+;
+-- schema_sql_v95
+
+    -- Pharmacies: Pre Invoices, saved invoice patterns (e.g. a Gynae operation's
+    -- medicines) used again and again: lines kept as JSON [{productId, name,
+    -- qty, unit}], billed at the day's prices and batches when used.
+    CREATE TABLE IF NOT EXISTS invoice_templates (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, description TEXT,
+        lines TEXT NOT NULL DEFAULT '[]', created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_invoice_templates_tenant ON invoice_templates (tenant_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_templates_ins AFTER INSERT ON invoice_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_templates', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_templates_upd AFTER UPDATE ON invoice_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_templates', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_invoice_templates_del AFTER DELETE ON invoice_templates BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('invoice_templates', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v96
+
+    -- Pharmacies: insurance. A business's insurance companies; a customer's
+    -- company, policy number and expiry; and a claim per invoice (the whole
+    -- invoice) with its status: sent, in_process, paid or unpaid. An insured
+    -- customer's invoice with no claim row is "not claimed".
+    CREATE TABLE IF NOT EXISTS insurance_companies (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, phone TEXT, notes TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_insurance_companies_name ON insurance_companies (tenant_id, name) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_companies_ins AFTER INSERT ON insurance_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_companies', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_companies_upd AFTER UPDATE ON insurance_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_companies', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_companies_del AFTER DELETE ON insurance_companies BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_companies', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    ALTER TABLE customers ADD COLUMN insurance_company_id TEXT;
+    ALTER TABLE customers ADD COLUMN insurance_policy_no TEXT;
+    ALTER TABLE customers ADD COLUMN insurance_expiry TEXT;
+    CREATE INDEX IF NOT EXISTS idx_customers_insurance ON customers (tenant_id, insurance_company_id);
+    CREATE TABLE IF NOT EXISTS insurance_claims (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, invoice_id TEXT NOT NULL, customer_id TEXT, company_id TEXT,
+        amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'sent', claim_ref TEXT, notes TEXT,
+        sent_on TEXT, settled_on TEXT, updated_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_insurance_claims_invoice ON insurance_claims (tenant_id, invoice_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_insurance_claims_company ON insurance_claims (tenant_id, company_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_claims_ins AFTER INSERT ON insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_claims_upd AFTER UPDATE ON insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_insurance_claims_del AFTER DELETE ON insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('insurance_claims', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v97
+
+    -- Hospital MR numbers: MR-<number>-<registration date DDMMYYYY>-<year>.
+    -- The number counts on for ever; the year part is renewed at the
+    -- patient's first visit of a new year, each earlier MR kept in the history.
+    -- Existing patients are converted: MR-000123 keeps its number 123, the
+    -- registration date is when the patient was added, the year that of the
+    -- latest visit (else the registration).
+    -- Shares (Service Master and consultation fees): the doctor's and staff's
+    -- share per unit, the rest the hospital's; each charge keeps its shares.
+    ALTER TABLE hospital_services ADD COLUMN doctor_share REAL;
+    ALTER TABLE hospital_services ADD COLUMN staff_share REAL;
+    ALTER TABLE staff ADD COLUMN consultation_doctor_share REAL;
+    ALTER TABLE hospital_charges ADD COLUMN doctor_share REAL;
+    ALTER TABLE hospital_charges ADD COLUMN staff_share REAL;
+    ALTER TABLE hospital_patients ADD COLUMN mr_seq INTEGER;
+    ALTER TABLE hospital_patients ADD COLUMN mr_reg_date TEXT;
+    ALTER TABLE hospital_patients ADD COLUMN mr_year INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_hosp_patient_mr_seq ON hospital_patients (tenant_id, mr_seq);
+    CREATE TABLE IF NOT EXISTS hospital_patient_mr_history (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, patient_id TEXT NOT NULL, mr_no TEXT NOT NULL,
+        replaced_on TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hosp_mr_history_patient ON hospital_patient_mr_history (tenant_id, patient_id);
+    CREATE INDEX IF NOT EXISTS idx_hosp_mr_history_mr ON hospital_patient_mr_history (tenant_id, mr_no);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patient_mr_history_ins AFTER INSERT ON hospital_patient_mr_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patient_mr_history', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patient_mr_history_upd AFTER UPDATE ON hospital_patient_mr_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patient_mr_history', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_patient_mr_history_del AFTER DELETE ON hospital_patient_mr_history BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_patient_mr_history', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    UPDATE hospital_patients SET mr_seq = CAST(substr(mr_no, 4) AS INTEGER) WHERE mr_seq IS NULL AND (mr_no GLOB 'MR-[0-9]*' AND substr(mr_no, 4) NOT GLOB '*[^0-9]*');
+    UPDATE hospital_patients SET mr_seq = CAST(substr(mr_no, 4, instr(substr(mr_no, 4), '-') - 1) AS INTEGER) WHERE mr_seq IS NULL AND (mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]');
+    UPDATE hospital_patients SET mr_seq =
+        COALESCE((SELECT MAX(CASE WHEN (h2.mr_no GLOB 'MR-[0-9]*' AND substr(h2.mr_no, 4) NOT GLOB '*[^0-9]*') THEN CAST(substr(h2.mr_no, 4) AS INTEGER) WHEN (h2.mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]') THEN CAST(substr(h2.mr_no, 4, instr(substr(h2.mr_no, 4), '-') - 1) AS INTEGER) END) FROM hospital_patients h2 WHERE h2.tenant_id = hospital_patients.tenant_id), 0)
+        + (SELECT COUNT(*) FROM hospital_patients h3 WHERE h3.tenant_id = hospital_patients.tenant_id
+             AND NOT (h3.mr_no GLOB 'MR-[0-9]*' AND substr(h3.mr_no, 4) NOT GLOB '*[^0-9]*') AND NOT (h3.mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]')
+             AND (h3.created_at < hospital_patients.created_at OR (h3.created_at = hospital_patients.created_at AND h3.id <= hospital_patients.id)))
+      WHERE mr_seq IS NULL AND NOT (mr_no GLOB 'MR-[0-9]*' AND substr(mr_no, 4) NOT GLOB '*[^0-9]*') AND NOT (mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]');
+    UPDATE hospital_patients SET mr_reg_date = substr(created_at, 1, 10) WHERE mr_reg_date IS NULL;
+    UPDATE hospital_patients SET mr_year = COALESCE(
+        (SELECT CAST(substr(MAX(e.date), 1, 4) AS INTEGER) FROM hospital_episodes e WHERE e.patient_id = hospital_patients.id AND e.tenant_id = hospital_patients.tenant_id AND e.deleted_at IS NULL),
+        CAST(substr(mr_reg_date, 1, 4) AS INTEGER)) WHERE mr_year IS NULL;
+    INSERT INTO hospital_patient_mr_history (id, tenant_id, patient_id, mr_no, replaced_on, created_at, updated_at)
+        SELECT lower(hex(randomblob(16))), p.tenant_id, p.id, p.mr_no, strftime('%Y-%m-%d', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        FROM hospital_patients p
+        WHERE NOT (p.mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]') AND p.mr_seq IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM hospital_patient_mr_history h WHERE h.tenant_id = p.tenant_id AND h.patient_id = p.id AND h.mr_no = p.mr_no);
+    UPDATE hospital_patients SET mr_no = 'MR-' || printf('%04d', mr_seq) || '-' || substr(mr_reg_date, 9, 2) || substr(mr_reg_date, 6, 2) || substr(mr_reg_date, 1, 4) || '-' || mr_year
+      WHERE NOT (mr_no GLOB 'MR-[0-9]*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]') AND mr_seq IS NOT NULL AND mr_reg_date IS NOT NULL AND mr_year IS NOT NULL
+    
+;
+-- schema_sql_v98
+
+    -- Hospital Pharmacy Department > Selected Brands: for each generic the
+    -- doctors prescribe (e.g. "Omeprazole 20mg Cap"), the brand of the linked
+    -- hospital pharmacy the administrator chose (e.g. Omesec 20mg Cap). Doctors
+    -- see the generic; the print and the pharmacy order carry the brand.
+    CREATE TABLE IF NOT EXISTS hospital_brand_selections (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, generic_label TEXT NOT NULL, generic_name TEXT,
+        product_id TEXT NOT NULL, product_name TEXT NOT NULL, company_name TEXT, pharmacy_tenant_id TEXT,
+        selected_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_brand_generic ON hospital_brand_selections (tenant_id, generic_label) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_brand_selections_ins AFTER INSERT ON hospital_brand_selections BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_brand_selections', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_brand_selections_upd AFTER UPDATE ON hospital_brand_selections BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_brand_selections', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_brand_selections_del AFTER DELETE ON hospital_brand_selections BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_brand_selections', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v99
+
+    -- Surgery shares and expenses (consultant, MO, nurses, anaesthesia, other,
+    -- and the OT / IPD medicine of the linked pharmacy's Pre Invoice), as JSON
+    -- on the surgery type and kept on each booking as it was then.
+    ALTER TABLE hospital_services ADD COLUMN surgery_shares TEXT;
+    ALTER TABLE hospital_surgery_bookings ADD COLUMN surgery_shares TEXT
+    
+;
+-- schema_sql_v100
+
+    -- Hospital Purchase Cell: Supplier & Vendors (a vendor number of its own,
+    -- bank details for payment), bills for services bought from vendors
+    -- (tenting, catering, welding, repairs, buildings...) with their types,
+    -- and payments made by Finance against purchases and service bills.
+    ALTER TABLE suppliers ADD COLUMN vendor_no TEXT;
+    ALTER TABLE suppliers ADD COLUMN party_kind TEXT;
+    ALTER TABLE suppliers ADD COLUMN proprietor TEXT;
+    ALTER TABLE suppliers ADD COLUMN bank_name TEXT;
+    ALTER TABLE suppliers ADD COLUMN bank_title TEXT;
+    ALTER TABLE suppliers ADD COLUMN iban TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_suppliers_vendor_no ON suppliers (tenant_id, vendor_no) WHERE vendor_no IS NOT NULL AND deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS hospital_service_types (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_service_types ON hospital_service_types (tenant_id, name) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_types_ins AFTER INSERT ON hospital_service_types BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_types', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_types_upd AFTER UPDATE ON hospital_service_types BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_types', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_types_del AFTER DELETE ON hospital_service_types BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_types', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_service_bills (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, bill_no TEXT NOT NULL, vendor_id TEXT NOT NULL, vendor_invoice_no TEXT,
+        service_type TEXT, description TEXT, date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0, tax REAL NOT NULL DEFAULT 0, discount REAL NOT NULL DEFAULT 0, total REAL NOT NULL DEFAULT 0,
+        paid REAL NOT NULL DEFAULT 0, balance REAL NOT NULL DEFAULT 0, created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_service_bills_vendor ON hospital_service_bills (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_bills_ins AFTER INSERT ON hospital_service_bills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_bills', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_bills_upd AFTER UPDATE ON hospital_service_bills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_bills', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_service_bills_del AFTER DELETE ON hospital_service_bills BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_service_bills', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_vendor_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, doc_type TEXT NOT NULL, doc_id TEXT NOT NULL, vendor_id TEXT,
+        amount REAL NOT NULL DEFAULT 0, method TEXT NOT NULL, reference TEXT, dated TEXT NOT NULL, notes TEXT, paid_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_vendor_payments_doc ON hospital_vendor_payments (tenant_id, doc_type, doc_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_payments_ins AFTER INSERT ON hospital_vendor_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_payments_upd AFTER UPDATE ON hospital_vendor_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_payments_del AFTER DELETE ON hospital_vendor_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_payments', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    -- Insured patients: the company (Insurance Companies), policy (insurance_no),
+    -- valid till and the insured amount; the bill above it is the patient's.
+    -- A claim per episode for what the insurance covers, with its status.
+    ALTER TABLE hospital_patients ADD COLUMN insured INTEGER;
+    ALTER TABLE hospital_patients ADD COLUMN insurance_company_id TEXT;
+    ALTER TABLE hospital_patients ADD COLUMN insurance_valid_till TEXT;
+    ALTER TABLE hospital_patients ADD COLUMN insured_amount REAL;
+    CREATE TABLE IF NOT EXISTS hospital_insurance_claims (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, episode_id TEXT NOT NULL, patient_id TEXT NOT NULL, company_id TEXT,
+        claim_amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'sent', paid_amount REAL NOT NULL DEFAULT 0,
+        claim_ref TEXT, sent_on TEXT, settled_on TEXT, updated_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_claims_episode ON hospital_insurance_claims (tenant_id, episode_id) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_insurance_claims_ins AFTER INSERT ON hospital_insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_insurance_claims_upd AFTER UPDATE ON hospital_insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_insurance_claims', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_insurance_claims_del AFTER DELETE ON hospital_insurance_claims BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_insurance_claims', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v101
+
+    -- Hospital staff with more than one role (a ward nurse who is also the
+    -- infection control nurse; an MO who is also on infection control): the
+    -- other roles as a JSON list; the login opens the pages of every role.
+    -- Lab and radiology services: the ordering doctor's share besides the
+    -- performing doctor's, kept on each charge.
+    ALTER TABLE staff ADD COLUMN extra_roles TEXT;
+    ALTER TABLE hospital_services ADD COLUMN ordering_doctor_share REAL;
+    ALTER TABLE hospital_charges ADD COLUMN ordering_doctor_share REAL
+    
+;
+-- schema_sql_v102
+
+    -- A doctor's qualification (MBBS, FCPS ...), printed on the prescription under the name.
+    ALTER TABLE staff ADD COLUMN qualification TEXT
+    
+;
+-- schema_sql_v103
+
+    -- Hospital stores (Stationery & Printing, General, Lab, Radiology,
+    -- Medicine). The purchase officer's purchase names each item's store; once
+    -- posted it is locked. The store keeper verifies (received quantities, a
+    -- stock entry number per item) or returns it with a reason; verified, the
+    -- stock enters the store and the bill goes to Finance. The stock ledger
+    -- holds every movement of every store (+ in, - out). A store keeper /
+    -- purchase officer works in all stores or chosen ones (staff.stores).
+    ALTER TABLE staff ADD COLUMN stores TEXT;
+    CREATE TABLE IF NOT EXISTS hospital_store_purchases (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, purchase_no TEXT NOT NULL, vendor_id TEXT, vendor_invoice_no TEXT, date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'draft', total REAL NOT NULL DEFAULT 0, paid REAL NOT NULL DEFAULT 0, balance REAL NOT NULL DEFAULT 0,
+        note TEXT, return_reason TEXT, created_by_name TEXT, posted_at TEXT, posted_by_name TEXT, returned_at TEXT, returned_by_name TEXT,
+        verified_at TEXT, cancelled_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_store_purchases_no ON hospital_store_purchases (tenant_id, purchase_no) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchases_ins AFTER INSERT ON hospital_store_purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchases_upd AFTER UPDATE ON hospital_store_purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchases', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchases_del AFTER DELETE ON hospital_store_purchases BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchases', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_store_purchase_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, purchase_id TEXT NOT NULL, store TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL,
+        company_name TEXT, qty REAL NOT NULL DEFAULT 0, received_qty REAL, rate REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending',
+        entry_no TEXT, entered_on TEXT, verified_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_store_purchase_items ON hospital_store_purchase_items (tenant_id, purchase_id);
+    CREATE INDEX IF NOT EXISTS idx_hospital_store_purchase_items_store ON hospital_store_purchase_items (tenant_id, store, status);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchase_items_ins AFTER INSERT ON hospital_store_purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchase_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchase_items_upd AFTER UPDATE ON hospital_store_purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchase_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_purchase_items_del AFTER DELETE ON hospital_store_purchase_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_purchase_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_store_stock (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, store TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL, company_name TEXT, vendor_id TEXT,
+        qty REAL NOT NULL, unit_cost REAL NOT NULL DEFAULT 0, kind TEXT NOT NULL, ref_type TEXT, ref_id TEXT, entry_no TEXT, date TEXT NOT NULL,
+        notes TEXT, by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_store_stock ON hospital_store_stock (tenant_id, store, product_name);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_ins AFTER INSERT ON hospital_store_stock BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_upd AFTER UPDATE ON hospital_store_stock BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_del AFTER DELETE ON hospital_store_stock BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v104
+
+    -- Store indents. The purchase officer orders an indent book for a head
+    -- nurse / department in-charge; a store keeper issues it, and the holder
+    -- then demands items from a store. The store keeper issues them (stock
+    -- out); the holder confirms what was received (with a comment) or returns
+    -- items, which the store keeper accepts back into stock or refuses.
+    CREATE TABLE IF NOT EXISTS hospital_indent_books (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, book_no TEXT NOT NULL, holder_staff_id TEXT NOT NULL, holder_name TEXT, department TEXT,
+        status TEXT NOT NULL DEFAULT 'requested', requested_by_name TEXT, requested_at TEXT, issued_by_name TEXT, issued_at TEXT, note TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_books_ins AFTER INSERT ON hospital_indent_books BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_books', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_books_upd AFTER UPDATE ON hospital_indent_books BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_books', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_books_del AFTER DELETE ON hospital_indent_books BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_books', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_indents (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, indent_no TEXT NOT NULL, book_id TEXT NOT NULL, store TEXT NOT NULL, department TEXT,
+        requested_by_staff_id TEXT, requested_by_name TEXT, status TEXT NOT NULL DEFAULT 'pending', note TEXT,
+        issued_by_name TEXT, issued_at TEXT, received_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_indents_store ON hospital_indents (tenant_id, store, status);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indents_ins AFTER INSERT ON hospital_indents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indents_upd AFTER UPDATE ON hospital_indents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indents', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indents_del AFTER DELETE ON hospital_indents BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indents', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_indent_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, indent_id TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL, company_name TEXT,
+        qty_requested REAL NOT NULL DEFAULT 0, qty_issued REAL, qty_received REAL, received_note TEXT,
+        return_qty REAL, return_status TEXT, return_note TEXT, return_decided_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_indent_items ON hospital_indent_items (tenant_id, indent_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_ins AFTER INSERT ON hospital_indent_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_upd AFTER UPDATE ON hospital_indent_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_del AFTER DELETE ON hospital_indent_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v105
+
+    ALTER TABLE staff ADD COLUMN working_hours_per_day REAL;
+    ALTER TABLE staff ADD COLUMN sunday_off INTEGER;
+    ALTER TABLE staff ADD COLUMN overtime_multiplier REAL;
+    
+;
+-- schema_sql_v106
+
+    ALTER TABLE hospital_indents ADD COLUMN received_by_name TEXT;
+    
+;
+-- schema_sql_v107
+
+    ALTER TABLE salaries ADD COLUMN overtime_hours REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN overtime_pay REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN shares REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN pay_status TEXT DEFAULT 'unpaid';
+    ALTER TABLE salaries ADD COLUMN paid_at TEXT;
+    ALTER TABLE salaries ADD COLUMN slip_no TEXT;
+    ALTER TABLE salaries ADD COLUMN created_by_name TEXT;
+    CREATE INDEX IF NOT EXISTS idx_salary_staff_month ON salaries (tenant_id, staff_id, salary_month, salary_year) WHERE deleted_at IS NULL;
+    
+;
+-- schema_sql_v108
+
+    CREATE TABLE IF NOT EXISTS hospital_salary_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, salary_id TEXT NOT NULL REFERENCES salaries(id),
+        amount REAL NOT NULL CHECK (amount > 0), method TEXT NOT NULL, paid_at TEXT NOT NULL,
+        reference TEXT, notes TEXT, paid_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_salary_payments_salary ON hospital_salary_payments (tenant_id, salary_id, paid_at);
+    CREATE TRIGGER IF NOT EXISTS trg_hospital_salary_payment_apply AFTER INSERT ON hospital_salary_payments BEGIN
+        SELECT RAISE(ABORT, 'Payment exceeds the remaining salary balance or salary record is missing.')
+         WHERE NOT EXISTS (
+            SELECT 1 FROM salaries WHERE id = NEW.salary_id AND tenant_id = NEW.tenant_id AND deleted_at IS NULL
+              AND balance_salary >= NEW.amount
+        );
+        UPDATE salaries
+           SET paid_salary = COALESCE(paid_salary, 0) + NEW.amount,
+               balance_salary = MAX(0, COALESCE(balance_salary, 0) - NEW.amount),
+               pay_status = CASE WHEN COALESCE(balance_salary, 0) - NEW.amount <= 0.004 THEN 'paid' ELSE 'partial' END,
+               paid_at = NEW.paid_at, payment_method = NEW.method, updated_at = NEW.updated_at
+         WHERE id = NEW.salary_id AND tenant_id = NEW.tenant_id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_ins AFTER INSERT ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_upd AFTER UPDATE ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_del AFTER DELETE ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v109
+
+    -- Hospital Purchase Cell: purchase orders and the vendor portal.
+    -- The purchase officer sends a request for rates (RFQ: items with
+    -- specification, quantity and unit) to one vendor (a petty purchase) or
+    -- several (a quotation). Each vendor signs in to the vendor portal and sees
+    -- only the requests sent to them, quotes a rate per item (never seeing
+    -- another vendor's rate), receives the purchase orders issued to them and
+    -- submits an invoice against one. The purchase officer forwards the invoice
+    -- to the stores as a store purchase (v103): store keepers verify it and
+    -- Finance pays it. A vendor login is a users row with platform_role
+    -- 'vendor' linked here to its supplier (vendor_portal_logins: server only).
+    -- eProcurement is a special service: the Super Admin switches it on per
+    -- hospital (tenants.eprocurement_allowed); off, the tabs are hidden and
+    -- the vendor portal and vendor logins are refused.
+    ALTER TABLE tenants ADD COLUMN eprocurement_allowed INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS hospital_rfqs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_no TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'quotation', title TEXT, status TEXT NOT NULL DEFAULT 'open',
+        due_date TEXT, note TEXT, created_by_name TEXT, awarded_at TEXT, awarded_by_name TEXT, cancelled_at TEXT, cancel_reason TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_rfqs_no ON hospital_rfqs (tenant_id, rfq_no) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfqs_ins AFTER INSERT ON hospital_rfqs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfqs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfqs_upd AFTER UPDATE ON hospital_rfqs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfqs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfqs_del AFTER DELETE ON hospital_rfqs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfqs', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_rfq_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_id TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL, specification TEXT,
+        qty REAL NOT NULL DEFAULT 0, uom TEXT, store TEXT, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_rfq_items ON hospital_rfq_items (tenant_id, rfq_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_items_ins AFTER INSERT ON hospital_rfq_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_items_upd AFTER UPDATE ON hospital_rfq_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_items_del AFTER DELETE ON hospital_rfq_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_rfq_vendors (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_id TEXT NOT NULL, vendor_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'requested',
+        quoted_at TEXT, delivery_days INTEGER, valid_till TEXT, remarks TEXT, decline_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_rfq_vendors ON hospital_rfq_vendors (tenant_id, rfq_id, vendor_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_hospital_rfq_vendors_vendor ON hospital_rfq_vendors (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_vendors_ins AFTER INSERT ON hospital_rfq_vendors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_vendors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_vendors_upd AFTER UPDATE ON hospital_rfq_vendors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_vendors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_vendors_del AFTER DELETE ON hospital_rfq_vendors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_vendors', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_rfq_quotes (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_id TEXT NOT NULL, rfq_item_id TEXT NOT NULL, vendor_id TEXT NOT NULL, rate REAL,
+        offered_spec TEXT, available INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_rfq_quotes ON hospital_rfq_quotes (tenant_id, rfq_item_id, vendor_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_hospital_rfq_quotes ON hospital_rfq_quotes (tenant_id, rfq_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_quotes_ins AFTER INSERT ON hospital_rfq_quotes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_quotes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_quotes_upd AFTER UPDATE ON hospital_rfq_quotes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_quotes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_quotes_del AFTER DELETE ON hospital_rfq_quotes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_quotes', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_purchase_orders (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_no TEXT NOT NULL, rfq_id TEXT, vendor_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'quotation',
+        status TEXT NOT NULL DEFAULT 'issued', total REAL NOT NULL DEFAULT 0, delivery_days INTEGER, note TEXT, issued_by_name TEXT, issued_at TEXT,
+        cancelled_at TEXT, cancel_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_purchase_orders_no ON hospital_purchase_orders (tenant_id, po_no) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_hospital_purchase_orders_vendor ON hospital_purchase_orders (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_purchase_orders_ins AFTER INSERT ON hospital_purchase_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_purchase_orders', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_purchase_orders_upd AFTER UPDATE ON hospital_purchase_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_purchase_orders', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_purchase_orders_del AFTER DELETE ON hospital_purchase_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_purchase_orders', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_po_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_id TEXT NOT NULL, rfq_item_id TEXT, product_id TEXT, product_name TEXT NOT NULL, specification TEXT,
+        qty REAL NOT NULL DEFAULT 0, uom TEXT, rate REAL NOT NULL DEFAULT 0, store TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_po_items ON hospital_po_items (tenant_id, po_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_po_items_ins AFTER INSERT ON hospital_po_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_po_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_po_items_upd AFTER UPDATE ON hospital_po_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_po_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_po_items_del AFTER DELETE ON hospital_po_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_po_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_vendor_invoices (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_id TEXT NOT NULL, vendor_id TEXT NOT NULL, invoice_no TEXT NOT NULL, invoice_date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0, note TEXT, status TEXT NOT NULL DEFAULT 'submitted', store_purchase_id TEXT, return_reason TEXT, submitted_at TEXT,
+        forwarded_at TEXT, forwarded_by_name TEXT, returned_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_vendor_invoices ON hospital_vendor_invoices (tenant_id, status);
+    CREATE INDEX IF NOT EXISTS idx_hospital_vendor_invoices_po ON hospital_vendor_invoices (tenant_id, po_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_invoices_ins AFTER INSERT ON hospital_vendor_invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_invoices', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_invoices_upd AFTER UPDATE ON hospital_vendor_invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_invoices', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_invoices_del AFTER DELETE ON hospital_vendor_invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_invoices', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS vendor_portal_logins (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, vendor_id TEXT NOT NULL, created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_vendor_portal_logins_user ON vendor_portal_logins (user_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_vendor_portal_logins_vendor ON vendor_portal_logins (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_vendor_portal_logins_ins AFTER INSERT ON vendor_portal_logins BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('vendor_portal_logins', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_vendor_portal_logins_upd AFTER UPDATE ON vendor_portal_logins BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('vendor_portal_logins', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_vendor_portal_logins_del AFTER DELETE ON vendor_portal_logins BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('vendor_portal_logins', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v110
+
+    -- eProcurement across hospitals. A vendor has ONE account (ep_vendors,
+    -- signed in at ep.mavin.pk) linked to every hospital that uses them: a
+    -- vendor_portal_logins row per hospital (its own supplier row there), so
+    -- the portal shows requests and orders from all of them while each hospital
+    -- sees only its own. Portal vendors form a shared directory the purchase
+    -- officers search; picking one adds them to the hospital's suppliers.
+    -- ep_items: the shared list of items every hospital has asked rates for.
+    -- Both are global and server-only (never through /api/db).
+    CREATE TABLE IF NOT EXISTS ep_vendors (
+        id TEXT PRIMARY KEY, vendor_code TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, phone TEXT, address TEXT,
+        created_by_tenant TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_vendors_code ON ep_vendors (vendor_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_vendors_user ON ep_vendors (user_id) WHERE deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS ep_items (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL, uom TEXT, specification TEXT, uses INTEGER NOT NULL DEFAULT 0,
+        created_by_tenant TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_items_name ON ep_items (name_key) WHERE deleted_at IS NULL;
+    -- One login, several hospitals: unique per (login, hospital) instead of per login.
+    DROP INDEX IF EXISTS ux_vendor_portal_logins_user;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_vendor_portal_logins_user_tenant ON vendor_portal_logins (user_id, tenant_id) WHERE deleted_at IS NULL;
+    ALTER TABLE vendor_portal_logins ADD COLUMN ep_vendor_id TEXT;
+    ALTER TABLE vendor_portal_logins ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+    
+;

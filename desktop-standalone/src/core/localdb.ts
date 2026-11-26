@@ -27,6 +27,20 @@ CREATE TABLE IF NOT EXISTS standalone_catalogue_rows (
 CREATE TABLE IF NOT EXISTS standalone_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
 `;
 
+/** The server schema version Mavin Pharmacy Offline 1.0.0 shipped with. */
+export const FIRST_RELEASE_SCHEMA = 87;
+
+/** resources/schema.sql as [version, SQL] in order (each version starts with
+ * its "-- schema_sql" / "-- schema_sql_vN" line, written by scripts/schema.cjs). */
+export function splitServerSchema(schema: string): [number, string][] {
+  const out: [number, string][] = [];
+  const re = /^-- schema_sql(?:_v(\d+))?[ \t]*$/gm;
+  const marks: { v: number; at: number }[] = [];
+  for (let m = re.exec(schema); m; m = re.exec(schema)) marks.push({ v: m[1] ? Number(m[1]) : 1, at: m.index });
+  marks.forEach((mk, i) => out.push([mk.v, schema.slice(mk.at, i + 1 < marks.length ? marks[i + 1].at : schema.length)]));
+  return out;
+}
+
 /** Local schema changes after the first release (version, SQL). Append only. */
 export const STANDALONE_MIGRATIONS: [number, string][] = [
   [1, "SELECT 1"],
@@ -104,16 +118,31 @@ export class LocalDb {
     this.db = new DatabaseSync(file);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF; PRAGMA busy_timeout = 5000;");
     this.db.exec(STANDALONE_SCHEMA);
+    const versions = splitServerSchema(serverSchema);
+    const latest = versions.length ? versions[versions.length - 1][0] : 0;
     if (!this.meta("schema_applied_at")) {
       // A new installation: MAVIN's full schema (every server migration, in order).
       this.db.exec("BEGIN");
       try {
         this.db.exec(serverSchema);
         this.setMeta("schema_applied_at", new Date().toISOString());
+        this.setMeta("server_schema_version", String(latest));
         this.db.exec("COMMIT");
       } catch (e) {
         this.db.exec("ROLLBACK");
         throw e;
+      }
+    } else {
+      // An update: the server migrations this installation does not have yet,
+      // each one whole or not at all. Installations from 1.0.0 recorded no
+      // version: it shipped with v87.
+      const have = Number(this.meta("server_schema_version") ?? FIRST_RELEASE_SCHEMA) || FIRST_RELEASE_SCHEMA;
+      for (const [v, sql] of versions) {
+        if (v <= have) continue;
+        this.tx(() => {
+          this.db.exec(sql);
+          this.setMeta("server_schema_version", String(v));
+        });
       }
     }
     for (const [v, sql] of STANDALONE_MIGRATIONS) {

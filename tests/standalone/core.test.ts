@@ -286,3 +286,35 @@ test("backup and restore: checked file, safety copy, this installation keeps its
   assert.deepEqual(ids, ["before"], "the backup's data");
   assert.equal(db.meta("installation_id"), "keep-this-installation", "identity stays this installation's");
 });
+
+test("an update brings a 1.0.0 database (v87, no version recorded) up to the latest schema, keeping its records", async () => {
+  const { splitServerSchema, FIRST_RELEASE_SCHEMA } = await import("../../desktop-standalone/src/core/localdb.ts");
+  const full = readFileSync(new URL("../../desktop-standalone/resources/schema.sql", import.meta.url), "utf8");
+  const versions = splitServerSchema(full);
+  assert.equal(versions[0][0], 1);
+  const latest = versions[versions.length - 1][0];
+  assert.ok(latest > FIRST_RELEASE_SCHEMA);
+  const v87 = versions.filter(([v]) => v <= FIRST_RELEASE_SCHEMA).map(([, sql]) => sql).join("");
+
+  const file = join(dir, "old.db");
+  const old = new LocalDb(file, v87);
+  old.setMeta("server_schema_version", null); // 1.0.0 recorded no version
+  old.close();
+  const { DatabaseSync } = await import("node:sqlite");
+  const raw = new DatabaseSync(file);
+  raw.prepare(`INSERT INTO customers (id, tenant_id, name, created_at, updated_at) VALUES ('c1', 't', 'Kept Customer', 'x', 'x')`).run();
+  assert.throws(() => raw.prepare(`SELECT 1 FROM ep_vendors`).all());
+  raw.close();
+
+  const upgraded = new LocalDb(file, full);
+  assert.equal(upgraded.meta("server_schema_version"), String(latest));
+  upgraded.close();
+  const check = new DatabaseSync(file);
+  assert.equal((check.prepare(`SELECT COUNT(*) AS n FROM ep_vendors`).get() as { n: number }).n, 0);
+  assert.equal((check.prepare(`SELECT name FROM customers WHERE id = 'c1'`).get() as { name: string }).name, "Kept Customer");
+  check.close();
+  // Opening again applies nothing twice.
+  const again = new LocalDb(file, full);
+  assert.equal(again.meta("server_schema_version"), String(latest));
+  again.close();
+});

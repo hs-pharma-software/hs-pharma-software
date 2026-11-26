@@ -1,7 +1,7 @@
 {
   "name": "mavin-pharmacy-offline",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Mavin Pharmacy Offline: standalone Windows edition of MAVIN Pharmacy with its own local database",
   "main": "dist/main.js",
   "scripts": {
