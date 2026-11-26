@@ -41,7 +41,6 @@ export function NarrativePreview({ template, gender, paragraphs, edits, onEdits 
     delete next[id];
     onEdits(next);
   };
-  let group = "";
   return (
     <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-3">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -49,8 +48,9 @@ export function NarrativePreview({ template, gender, paragraphs, edits, onEdits 
         <p className="text-xs text-neutral-500">Change the wording if needed. <b>Bold</b> numbers are the entered values: change them in the form above.</p>
       </div>
       <div className="flex flex-col gap-2">
-        {paragraphs.map((p) => {
-          const heading = p.item.group !== group ? (group = p.item.group) : null;
+        {paragraphs.map((p, i) => {
+          // A group heading over the first paragraph of each group.
+          const heading = p.item.group && p.item.group !== paragraphs[i - 1]?.item.group ? p.item.group : null;
           const errId = `narr-err-${p.item.id}`;
           return (
             <div key={p.item.id}>

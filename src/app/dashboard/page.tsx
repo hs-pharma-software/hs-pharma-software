@@ -39,6 +39,8 @@ import { usePraContractor } from "@/lib/praClient";
 import { FileText, ShoppingCart } from "lucide-react";
 import { PharmacyDayPopup } from "@/components/dashboard/PharmacyDayPopup";
 import { isPharmacyFamilyType } from "@/lib/catalogAccess";
+import { BreakdownWheel, TrendBars } from "@/components/ui/charts";
+import { getSalesTrend, getTodaySalesSplit, type DayValue } from "@/lib/repo/dashboardCharts";
 
 interface DashboardStats {
   customers: number;
@@ -62,59 +64,34 @@ async function count(table: string, tenantScoped = false): Promise<number> {
 
 /* ── Donut chart ── */
 const DONUT_COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f97316", "#f43f5e", "#0ea5e9", "#f59e0b", "#14b8a6"];
-const R = 46;
-const CX = 60;
-const CY = 60;
-const CIRCUMFERENCE = 2 * Math.PI * R;
-
-function DonutChart({ data }: { data: InventoryUnitRow[] }) {
-  const total = data.reduce((s, r) => s + r.product_count, 0);
-  if (total === 0) {
-    return (
-      <div className="flex h-36 items-center justify-center text-xs text-neutral-400">No inventory data</div>
-    );
-  }
-
-  // Each segment starts where the ones before it end.
-  const segments = data.map((row, i) => {
-    const frac = row.product_count / total;
-    const offset = data.slice(0, i).reduce((s, r) => s + r.product_count / total, 0);
-    return { ...row, frac, dashLen: frac * CIRCUMFERENCE, offset, color: DONUT_COLORS[i % DONUT_COLORS.length] };
-  });
-
+/* ── Sales charts: the last 7 days and how today's sales were paid ── */
+const rs = (n: number) => `Rs ${Math.round(n).toLocaleString()}`;
+function SalesCharts({ tenantId }: { tenantId: string | null }) {
+  const [trend, setTrend] = useState<DayValue[]>([]);
+  const [split, setSplit] = useState({ collected: 0, credit: 0 });
+  useEffect(() => {
+    if (!isTauri() || !tenantId) return;
+    void getSalesTrend(7).then(setTrend).catch((e) => console.error("Dashboard: sales trend failed", e));
+    void getTodaySalesSplit().then(setSplit).catch((e) => console.error("Dashboard: sales split failed", e));
+  }, [tenantId]);
   return (
-    <div className="flex items-center gap-6">
-      <div className="shrink-0">
-        <svg width="120" height="120" viewBox="0 0 120 120">
-          {/* Track */}
-          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f3f4f6" strokeWidth="14" />
-          {segments.map((seg, i) => (
-            <circle
-              key={i}
-              cx={CX} cy={CY} r={R}
-              fill="none"
-              stroke={seg.color}
-              strokeWidth="14"
-              strokeDasharray={`${seg.dashLen} ${CIRCUMFERENCE}`}
-              strokeDashoffset={-seg.offset * CIRCUMFERENCE}
-              strokeLinecap="butt"
-              transform={`rotate(-90 ${CX} ${CY})`}
-            />
-          ))}
-          <text x={CX} y={CY - 5} textAnchor="middle" fontSize="16" fontWeight="700" fill="#111827">{total}</text>
-          <text x={CX} y={CY + 10} textAnchor="middle" fontSize="8" fill="#9ca3af" letterSpacing="0.5">PRODUCTS</text>
-        </svg>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="lg:col-span-2">
+        <Card title="Sales, last 7 days" href="/invoices">
+          <TrendBars
+            format={rs}
+            points={trend.map((d) => ({ label: new Date(`${d.date}T00:00:00`).toLocaleDateString("en-PK", { weekday: "short", day: "numeric" }), value: d.value }))}
+          />
+        </Card>
       </div>
-      <div className="flex flex-col gap-1.5 min-w-0">
-        {segments.map((seg) => (
-          <div key={seg.unit_type} className="flex items-center gap-2 text-xs">
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: seg.color }} />
-            <span className="truncate text-neutral-600">{seg.unit_type}</span>
-            <span className="ml-auto shrink-0 font-semibold text-neutral-800">{seg.product_count}</span>
-            <span className="shrink-0 text-neutral-400">{(seg.frac * 100).toFixed(0)}%</span>
-          </div>
-        ))}
-      </div>
+      <Card title="Today's sales: paid or credit">
+        <BreakdownWheel
+          centerLabel="Sales"
+          format={rs}
+          empty="No sales today"
+          data={[{ label: "Collected", value: split.collected }, { label: "On credit", value: split.credit }]}
+        />
+      </Card>
     </div>
   );
 }
@@ -374,6 +351,8 @@ function GeneralStoreDashboard() {
         <KpiCard label="Expenses"   value={today.expenses}          money delay={0.28} accent="#f43f5e" />
       </div>
 
+      <SalesCharts tenantId={tenantIdGS} />
+
       {/* ── Main 3-col ── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
 
@@ -558,7 +537,7 @@ function GeneralDashboard() {
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isPharmacyFamilyType(sessionTenant?.businessType) && <PharmacyDayPopup />}
           {!tauriReady && (
             <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
@@ -602,6 +581,8 @@ function GeneralDashboard() {
         <KpiCard label="Expenses"    value={today.expenses}          money delay={0.28} accent="#f43f5e" />
       </div>
 
+      <SalesCharts tenantId={tenantId} />
+
       {/* ── Contractors with PRA: the year's sales tax by authority ── */}
       {praIntegrated && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -615,7 +596,7 @@ function GeneralDashboard() {
 
         {/* Inventory breakdown donut */}
         <Card title="Inventory Breakdown" badge={unitBreakdown.reduce((s, r) => s + r.product_count, 0)} href="/products">
-          <DonutChart data={unitBreakdown} />
+          <BreakdownWheel centerLabel="Products" empty="No inventory data" data={unitBreakdown.map((r) => ({ label: r.unit_type, value: r.product_count }))} />
         </Card>
 
         {/* Expiring in 6 months */}

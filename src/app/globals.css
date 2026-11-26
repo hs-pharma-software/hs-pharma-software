@@ -357,6 +357,47 @@ summary {
   }
 }
 
+/* ── Tabs ───────────────────────────────────────────────────────────────
+   Every tab bar: the selected tab settles in with a small pop, and an accent
+   bar (placed by TabGlider) glides under it from the previous tab. */
+[role="tab"] {
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+[role="tab"]:active { transform: scale(0.97); }
+[role="tab"][aria-selected="true"] { animation: tab-pop var(--dur-slow) var(--ease-out); }
+@keyframes tab-pop {
+  from { transform: scale(0.94); }
+  to { transform: none; }
+}
+.tab-glider {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 1;
+}
+.tab-glider[data-ready] {
+  transition: transform 320ms var(--ease-out), width 320ms var(--ease-out), opacity var(--dur-base) var(--ease-out);
+}
+@media print { .tab-glider { display: none; } }
+/* Phones: a tab bar that does not fit scrolls sideways instead of squeezing or
+   pushing the page wider (the selected tab is scrolled into view). */
+@media screen and (max-width: 767.98px) {
+  [role="tablist"]:not([class*="grid"]):not([class*="flex-wrap"]) {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  [role="tablist"]::-webkit-scrollbar { display: none; }
+  [role="tablist"]:not([class*="grid"]):not([class*="flex-wrap"]) > [role="tab"] { flex-shrink: 0; white-space: nowrap; }
+}
+
 /* People who ask for less motion get (almost) none. */
 @media (prefers-reduced-motion: reduce) {
   *,

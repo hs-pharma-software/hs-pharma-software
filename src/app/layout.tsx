@@ -4,6 +4,7 @@ import "@fontsource/noto-nastaliq-urdu/400.css";
 import "@fontsource/noto-nastaliq-urdu/700.css";
 import "./globals.css";
 import { RoleShell } from "@/components/layout/RoleShell";
+import { TabGlider } from "@/components/layout/TabGlider";
 import { SyncProvider } from "@/components/sync/SyncProvider";
 import { AuthGate } from "@/components/auth/AuthGate";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <AuthGate>
             <SyncProvider>
               <RoleShell>{children}</RoleShell>
+              <TabGlider />
             </SyncProvider>
           </AuthGate>
         </ThemeProvider>
