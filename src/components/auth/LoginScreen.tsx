@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
+import { isEprocurementHost } from "@/lib/webRoute";
 import { Eye, EyeOff } from "lucide-react";
 import { login, AuthError } from "@/lib/auth";
 import { ForgotPassword } from "./ForgotPassword";
@@ -21,6 +22,9 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
   const [loading, setLoading] = useState(false);
   const [forgot, setForgot] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  // At ep.mavin.pk the same sign-in is the eProcurement vendor portal's (read after mount: the server render does not know the address).
+  const [vendorPortal, setVendorPortal] = useState(false);
+  useEffect(() => { setVendorPortal(isEprocurementHost(window.location.host)); }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,6 +74,9 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
         <div className="mb-8 flex flex-col items-center gap-3">
           <h1 className="sr-only">MAVIN.pk</h1>
           <Image src="/mavin-logo-tagline.png" alt="MAVIN.pk - Aap Key Business Ka معاون" width={487} height={132} priority className="h-auto w-full max-w-[320px] object-contain" />
+          {vendorPortal && (
+            <p className="text-center text-sm font-semibold text-neutral-700">eProcurement · Vendor portal<span className="block text-xs font-normal text-neutral-500">Sign in with the login your hospital gave you</span></p>
+          )}
         </div>
 
         {forgot && STANDALONE ? (

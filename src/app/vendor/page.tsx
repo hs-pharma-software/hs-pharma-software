@@ -60,7 +60,7 @@ export default function VendorRequestsPage() {
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${MY_STATUS[r.myStatus].cls}`}>{r.status === "cancelled" ? "Cancelled by the hospital" : MY_STATUS[r.myStatus].label}</span>
                   <span className="ml-auto text-xs text-neutral-500">{r.date}{r.dueDate ? ` · rates by ${r.dueDate}` : ""}</span>
                 </div>
-                {r.title && <p className="mt-1.5 text-sm font-medium text-neutral-800">{r.title}</p>}
+                <p className="mt-1.5 text-sm font-semibold text-neutral-900">{r.hospitalName}{r.title ? <span className="font-medium text-neutral-700"> · {r.title}</span> : null}</p>
                 <p className="mt-1 text-sm text-neutral-600">{r.items.slice(0, 4).map((it) => `${it.productName} × ${it.qty}${it.uom ? ` ${it.uom}` : ""}`).join(" · ")}{r.items.length > 4 ? ` · +${r.items.length - 4} more` : ""}</p>
               </button>
             </li>
@@ -114,6 +114,7 @@ function QuoteModal({ request: r, onClose, onDone }: { request: PortalRequest; o
   return (
     <Modal title={`${r.rfqNo} · ${r.kindLabel}`} onClose={onClose} width="max-w-4xl">
       <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-neutral-600">
+        <span className="font-semibold text-neutral-900">{r.hospitalName}</span>
         <span>Sent {r.date}</span>
         {r.dueDate && <span className="font-medium text-amber-800">Last date for rates: {r.dueDate}</span>}
         {r.kind === "petty" ? <span>Only you were asked (petty purchase).</span> : <span>Several vendors were asked (quotation).</span>}

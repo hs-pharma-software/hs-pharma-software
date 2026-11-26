@@ -215,6 +215,8 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
     if (t.startsWith("payment_")) return { ok: false, reason: "Online payments are managed from Settings > Online payments." };
     if (t.startsWith("fbr_")) return { ok: false, reason: "FBR records are managed through MAVIN's FBR service." };
     if (t.startsWith("pra_")) return { ok: false, reason: "PRA records are managed through MAVIN's PRA service." };
+    // eProcurement's shared vendor directory and item list (all hospitals): through its own API only.
+    if (t.startsWith("ep_")) return { ok: false, reason: "The eProcurement directory is reached through eProcurement only." };
     if (!knownTables.has(t)) return { ok: false, reason: `Unknown table ${t}.` };
   }
   // Hospital records are for logins with a hospital section (a pharmacy cashier's login has none).

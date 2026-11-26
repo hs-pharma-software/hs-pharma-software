@@ -25,10 +25,24 @@ export type WebRoute =
 
 const bare = (host: string | null) => (host ?? "").trim().toLowerCase().replace(/:\d+$/, "");
 
+/** The eProcurement vendor portal's own address (ep.mavin.pk, or NEXT_PUBLIC_EP_HOST). */
+export const EP_HOST = (process.env.NEXT_PUBLIC_EP_HOST || `ep.${PLATFORM_DOMAIN}`).toLowerCase();
+export function isEprocurementHost(host: string | null): boolean {
+  return bare(host) === EP_HOST;
+}
+
+/** On the vendor portal's address: the portal (/vendor) with its sign-in, the API and files;
+ * any other app page belongs to the app's own address. */
+export function eprocurementRoute(pathname: string): { kind: "app" } | { kind: "redirect"; url: string } {
+  if (pathname === "/" || pathname === "") return { kind: "redirect", url: "/vendor/" };
+  if (pathname === "/vendor" || pathname.startsWith("/vendor/") || pathname.startsWith("/api/") || /\.[a-z0-9]{2,5}$/i.test(pathname)) return { kind: "app" };
+  return { kind: "redirect", url: `${APP_URL}${pathname}` };
+}
+
 /** Hosts that are never a business website. */
 export function isAppHost(host: string | null): boolean {
   const h = bare(host);
-  return !h || h === APP_HOST || h === "localhost" || /^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.endsWith(".vercel.app") || h.endsWith(".localhost")
+  return !h || h === APP_HOST || h === EP_HOST || h === "localhost" || /^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.endsWith(".vercel.app") || h.endsWith(".localhost")
     || h === PLATFORM_DOMAIN || h === `www.${PLATFORM_DOMAIN}` || isSiteHost(h);
 }
 

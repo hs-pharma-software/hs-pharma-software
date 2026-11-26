@@ -1,25 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, Printer, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { FormError } from "@/components/ui/FormError";
-import { ProductPicker } from "@/components/products/ProductPicker";
+import { ItemSearch, VendorSearch, type PickedItem } from "@/components/hospital/purchase/EpPickers";
 import { EprocurementInactive, KIND_CLS, printPurchaseOrder } from "@/components/vendor/portal";
 import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { notify } from "@/lib/notify";
 import { useAuthStore } from "@/store/authStore";
 import { STORES, type StoreId } from "@/config/hospitalStores";
-import { listVendors, type VendorRow } from "@/lib/repo/vendors";
 import {
   PO_STATUS_LABEL, RFQ_KIND_LABEL, RFQ_STATUS_LABEL, cancelPurchaseOrder, cancelRfq, createRfq, getPurchaseOrder, getRfq, issuePurchaseOrders,
-  listPurchaseOrders, listRfqs, lowestBids, quoteFor, type PoRow, type PoStatus, type RfqDetail, type RfqRow, type RfqStatus,
+  listPurchaseOrders, listRfqs, lowestBids, quoteFor, type PoRow, type PoStatus, type RfqDetail, type RfqRow, type RfqStatus, type VendorOption,
 } from "@/lib/repo/purchaseOrders";
-import type { Product } from "@/lib/types";
 
 const card = "rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] sm:p-5";
 const rs = (n: number) => `Rs ${Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 })}`;
@@ -150,26 +148,19 @@ function OrdersList({ stamp, onOpen }: { stamp: number; onOpen: (id: string) => 
 interface Line { productId: string | null; productName: string; specification: string; qty: string; uom: string; store: StoreId | "" }
 
 function NewOrderModal({ onClose, onSent }: { onClose: () => void; onSent: (no: string) => void }) {
-  const [vendors, setVendors] = useState<VendorRow[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [vendorFind, setVendorFind] = useState("");
+  const [vendors, setVendors] = useState<VendorOption[]>([]);
+  const picked = vendors.map((v) => v.supplierId!);
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
-  const [freeName, setFreeName] = useState("");
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { void listVendors().then(setVendors).catch(() => setVendors([])); }, []);
 
-  const shown = useMemo(() => {
-    const q = vendorFind.trim().toLowerCase();
-    return vendors.filter((v) => !q || `${v.name} ${v.vendor_no ?? ""} ${v.company_name ?? ""}`.toLowerCase().includes(q));
-  }, [vendors, vendorFind]);
   const set = (i: number, p: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
-  const add = (p: Product) => setLines((ls) => [...ls, { productId: p.id, productName: p.name, specification: "", qty: "1", uom: "Nos", store: "" }]);
-  const toggle = (id: string) => setPicked((ps) => (ps.includes(id) ? ps.filter((x) => x !== id) : [...ps, id]));
+  const add = (p: PickedItem) => setLines((ls) => (ls.some((l) => l.productId === p.productId) ? ls
+    : [...ls, { productId: p.productId, productName: p.name, specification: p.specification ?? "", qty: "1", uom: p.uom || "Nos", store: "" }]));
   const badQty = (l: Line) => !(Number(l.qty) > 0);
   const pastDue = Boolean(due) && due < localDate();
 
@@ -196,18 +187,9 @@ function NewOrderModal({ onClose, onSent }: { onClose: () => void; onSent: (no: 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr]">
         <div>
           <p className="mb-1 text-xs font-medium text-neutral-600"><span className="text-rose-600" aria-hidden="true">*</span> Vendors to ask</p>
-          <Input id="po-vendor-find" value={vendorFind} onChange={(e) => setVendorFind(e.target.value)} placeholder="Find vendor" aria-label="Find vendor" />
-          <ul className={`mt-2 max-h-72 overflow-y-auto rounded-xl ring-1 ${tried && !picked.length ? "ring-rose-300" : "ring-black/[0.06]"}`}>
-            {shown.map((v) => (
-              <li key={v.id}>
-                <label className="flex min-h-10 cursor-pointer items-center gap-2 border-b border-neutral-100 px-3 py-1.5 text-sm last:border-0 hover:bg-neutral-50">
-                  <input type="checkbox" className="h-4 w-4" checked={picked.includes(v.id)} onChange={() => toggle(v.id)} />
-                  <span className="min-w-0 flex-1 truncate">{v.name}{v.vendor_no ? <span className="ml-1 font-mono text-[11px] text-neutral-400">{v.vendor_no}</span> : null}</span>
-                </label>
-              </li>
-            ))}
-            {!shown.length && <li className="px-3 py-3 text-sm text-neutral-400">No vendor found. Add vendors in Supplier &amp; Vendors.</li>}
-          </ul>
+          <VendorSearch picked={vendors} invalid={tried && !picked.length}
+            onPick={(v) => setVendors((vs) => (vs.some((x) => x.supplierId === v.supplierId) ? vs : [...vs, v]))}
+            onRemove={(id) => setVendors((vs) => vs.filter((x) => x.supplierId !== id))} />
           <p role="status" className={`mt-2 rounded-lg px-3 py-2 text-xs font-medium ${picked.length === 1 ? "bg-violet-50 text-violet-800" : picked.length > 1 ? "bg-indigo-50 text-indigo-800" : "bg-neutral-50 text-neutral-500"}`}>
             {picked.length === 0 ? "One vendor = petty purchase; more than one = quotation." : picked.length === 1 ? "1 vendor: petty purchase" : `${picked.length} vendors: quotation`}
           </p>
@@ -219,14 +201,9 @@ function NewOrderModal({ onClose, onSent }: { onClose: () => void; onSent: (no: 
               <Input id="po-due" type="date" min={localDate()} value={due} onChange={(e) => setDue(e.target.value)} aria-invalid={(tried && pastDue) || undefined} />
             </Field>
           </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Field label="Add a product from Products"><ProductPicker onSelect={add} placeholder="Search product" /></Field>
-            <Field label="Or a product not in Products">
-              <div className="flex gap-2">
-                <Input value={freeName} onChange={(e) => setFreeName(e.target.value)} placeholder="e.g. A4 paper 80 gsm"
-                  onKeyDown={(e) => { if (e.key === "Enter" && freeName.trim()) { e.preventDefault(); setLines((ls) => [...ls, { productId: null, productName: freeName.trim(), specification: "", qty: "1", uom: "Nos", store: "" }]); setFreeName(""); } }} />
-                <Button onClick={() => { if (!freeName.trim()) return; setLines((ls) => [...ls, { productId: null, productName: freeName.trim(), specification: "", qty: "1", uom: "Nos", store: "" }]); setFreeName(""); }}>Add</Button>
-              </div>
+          <div className="mt-3">
+            <Field label="Add a product" hint="Your Products and the items other hospitals have ordered. Not found? Add it as a new product.">
+              <ItemSearch onPick={add} />
             </Field>
           </div>
           {lines.length === 0 ? (

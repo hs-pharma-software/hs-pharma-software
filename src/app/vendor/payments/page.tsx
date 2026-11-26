@@ -57,6 +57,7 @@ export default function VendorPaymentsPage() {
             <li key={r.poId} className="row-in rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-sm font-semibold">{r.poNo}</span>
+                <span className="text-sm font-semibold text-neutral-900">{r.hospitalName}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TONE[r.stage]}`}>{r.stageLabel}</span>
                 <span className="ml-auto text-sm tabular-nums">Order {pkr(r.poTotal)}</span>
               </div>
@@ -102,7 +103,7 @@ function InvoiceModal({ row, onClose, onDone }: { row: PortalPayment; onClose: (
   }
   return (
     <Modal title={`Invoice for ${row.poNo}`} onClose={onClose} width="max-w-md">
-      <p className="mb-3 text-sm text-neutral-600">Amount of the order: <b className="tabular-nums">{pkr(row.poTotal)}</b></p>
+      <p className="mb-3 text-sm text-neutral-600">To <b>{row.hospitalName}</b> · amount of the order: <b className="tabular-nums">{pkr(row.poTotal)}</b></p>
       <div className="flex flex-col gap-3">
         <Field label="Your invoice number" required error={tried && !no.trim() ? "Enter the invoice number" : undefined}>
           <Input id="inv-no" value={no} onChange={(e) => setNo(e.target.value)} aria-invalid={(tried && !no.trim()) || undefined} autoFocus maxLength={60} />

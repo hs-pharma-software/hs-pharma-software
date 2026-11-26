@@ -28,7 +28,7 @@ export default function VendorOrdersPage() {
   useEffect(() => { void load(); }, [load]);
 
   const print = (o: PortalOrder) => printPurchaseOrder({
-    ...o, hospitalName: me?.hospitalName ?? "Hospital", vendorName: me?.vendorName ?? "", vendorNo: me?.vendorNo ?? null,
+    ...o, hospitalName: o.hospitalName, vendorName: me?.vendorName ?? "", vendorNo: me?.vendorNo ?? null,
   });
 
   return (
@@ -52,7 +52,7 @@ export default function VendorOrdersPage() {
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS[o.status].cls}`}>{STATUS[o.status].label}</span>
                   <span className="ml-auto text-sm font-semibold tabular-nums">{pkr(o.total)}</span>
                 </div>
-                <p className="mt-1 text-sm text-neutral-600">{o.issuedAt}{o.rfqNo ? ` · against ${o.rfqNo}` : ""} · {o.items.length} item{o.items.length === 1 ? "" : "s"}</p>
+                <p className="mt-1 text-sm text-neutral-600"><b className="text-neutral-900">{o.hospitalName}</b> · {o.issuedAt}{o.rfqNo ? ` · against ${o.rfqNo}` : ""} · {o.items.length} item{o.items.length === 1 ? "" : "s"}</p>
               </button>
             </li>
           ))}
@@ -60,7 +60,7 @@ export default function VendorOrdersPage() {
       )}
       {opened && (
         <Modal title={`Purchase order ${opened.poNo}`} onClose={() => setOpened(null)} width="max-w-3xl">
-          <p className="mb-2 text-sm text-neutral-600">{opened.kindLabel} · issued {opened.issuedAt}{opened.issuedBy ? ` by ${opened.issuedBy}` : ""}{opened.deliveryDays != null ? ` · deliver within ${opened.deliveryDays} day(s)` : ""}</p>
+          <p className="mb-2 text-sm text-neutral-600"><b className="text-neutral-900">{opened.hospitalName}</b> · {opened.kindLabel} · issued {opened.issuedAt}{opened.issuedBy ? ` by ${opened.issuedBy}` : ""}{opened.deliveryDays != null ? ` · deliver within ${opened.deliveryDays} day(s)` : ""}</p>
           {opened.status === "cancelled" && <p role="status" className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800 ring-1 ring-rose-200">Cancelled by the hospital{opened.cancelReason ? `: ${opened.cancelReason}` : ""}.</p>}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

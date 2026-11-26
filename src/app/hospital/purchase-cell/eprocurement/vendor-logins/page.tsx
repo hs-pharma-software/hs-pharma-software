@@ -41,7 +41,7 @@ export default function VendorLoginsPage() {
 
   async function setActive(r: VendorLoginRow, active: boolean) {
     setBusy(r.vendorId);
-    try { await call({ action: "active", vendorId: r.vendorId, active }); notify(`${r.vendorName}: login ${active ? "turned on" : "turned off"}.`, "success"); await load(); }
+    try { await call({ action: "active", vendorId: r.vendorId, active }); notify(`${r.vendorName}: ${active ? "turned on" : "turned off"} for your hospital.`, "success"); await load(); }
     catch (e) { notify(msg(e)); } finally { setBusy(null); }
   }
 
@@ -59,8 +59,8 @@ export default function VendorLoginsPage() {
     <div>
       <PageHeader title="Vendor Logins" />
       <p className="mb-3 text-sm text-neutral-600">
-        Give a supplier or vendor a login to the <b>vendor portal</b>. There they see only the quote requests and purchase orders sent to them, quote their rates and submit invoices.
-        They sign in at the same MAVIN.pk address as your staff.
+        Give a supplier or vendor a login to the <b>vendor portal</b> at <b>ep.mavin.pk</b>. There they see only the quote requests and purchase orders sent to them, quote their rates and submit invoices.
+        A vendor has one login for every hospital they supply; vendors other hospitals already use can be added from the vendor search in New Order.
       </p>
       <div className={card}>
         <div className="max-w-sm"><Field label="Find"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Vendor, vendor no or username" /></Field></div>
@@ -73,13 +73,15 @@ export default function VendorLoginsPage() {
                 <div className="min-w-0 flex-1 basis-56">
                   <p className="truncate text-sm font-medium">{r.vendorName}{r.vendorNo ? <span className="ml-1.5 font-mono text-[11px] text-neutral-400">{r.vendorNo}</span> : null}</p>
                   <p className="text-xs text-neutral-500">
-                    {r.username ? <>Username <b className="font-mono">{r.username}</b> · <span className={r.active ? "text-emerald-700" : "text-rose-700"}>{r.active ? "active" : "turned off"}</span></> : "No login yet"}
+                    {r.username ? <>Username <b className="font-mono">{r.username}</b> · <span className={r.active ? "text-emerald-700" : "text-rose-700"}>{r.active ? "active here" : "turned off here"}</span>
+                      {r.sharedWith > 0 && <> · also supplies {r.sharedWith} other hospital{r.sharedWith === 1 ? "" : "s"}</>}</> : "No login yet"}
                   </p>
+                  {r.username && !r.canResetPassword && <p className="text-[11px] text-neutral-400">Account made by another hospital: the vendor changes its password in the portal.</p>}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {r.username ? <>
-                    <Button variant="ghost" onClick={() => setEditing({ row: r, mode: "password" })}><KeyRound size={13} className="mr-1" />New password</Button>
-                    <Button variant="ghost" loading={busy === r.vendorId} disabled={busy !== null} onClick={() => void setActive(r, !r.active)}>{r.active ? "Turn off" : "Turn on"}</Button>
+                    {r.canResetPassword && <Button variant="ghost" onClick={() => setEditing({ row: r, mode: "password" })}><KeyRound size={13} className="mr-1" />New password</Button>}
+                    <Button variant="ghost" loading={busy === r.vendorId} disabled={busy !== null} onClick={() => void setActive(r, !r.active)}>{r.active ? "Turn off here" : "Turn on here"}</Button>
                   </> : <Button onClick={() => setEditing({ row: r, mode: "create" })}><UserPlus size={13} className="mr-1" />Create login</Button>}
                 </div>
               </li>

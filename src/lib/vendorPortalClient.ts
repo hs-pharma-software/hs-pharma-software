@@ -4,7 +4,11 @@ import type { PortalOrder, PortalPayment, PortalRequest } from "../server/vendor
 
 export type { PortalOrder, PortalPayment, PortalRequest, PortalRequestItem, PaymentStage } from "../server/vendorPortal";
 
-export interface PortalMe { vendorName: string; vendorNo: string | null; hospitalName: string; username: string }
+/** `hospitals`: every hospital this vendor supplies through the portal; `hospitalName`: one name, or "N hospitals". */
+export interface PortalMe { vendorName: string; vendorNo: string | null; hospitalName: string; hospitals: string[]; username: string }
+
+/** The vendor's own new password (the server ends their other sessions). */
+export const changeOwnPassword = (newPassword: string) => serverJson<{ ok: true }>("/api/auth/password/", { newPassword });
 
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
   const r = await serverJson<{ result: T }>("/api/vendor-portal/", { ...body, action });

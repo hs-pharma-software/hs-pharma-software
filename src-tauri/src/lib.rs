@@ -1877,6 +1877,35 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v110() -> &'static str {
+    r#"
+    -- eProcurement across hospitals. A vendor has ONE account (ep_vendors,
+    -- signed in at ep.mavin.pk) linked to every hospital that uses them: a
+    -- vendor_portal_logins row per hospital (its own supplier row there), so
+    -- the portal shows requests and orders from all of them while each hospital
+    -- sees only its own. Portal vendors form a shared directory the purchase
+    -- officers search; picking one adds them to the hospital's suppliers.
+    -- ep_items: the shared list of items every hospital has asked rates for.
+    -- Both are global and server-only (never through /api/db).
+    CREATE TABLE IF NOT EXISTS ep_vendors (
+        id TEXT PRIMARY KEY, vendor_code TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, phone TEXT, address TEXT,
+        created_by_tenant TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_vendors_code ON ep_vendors (vendor_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_vendors_user ON ep_vendors (user_id) WHERE deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS ep_items (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL, uom TEXT, specification TEXT, uses INTEGER NOT NULL DEFAULT 0,
+        created_by_tenant TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_items_name ON ep_items (name_key) WHERE deleted_at IS NULL;
+    -- One login, several hospitals: unique per (login, hospital) instead of per login.
+    DROP INDEX IF EXISTS ux_vendor_portal_logins_user;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_vendor_portal_logins_user_tenant ON vendor_portal_logins (user_id, tenant_id) WHERE deleted_at IS NULL;
+    ALTER TABLE vendor_portal_logins ADD COLUMN ep_vendor_id TEXT;
+    ALTER TABLE vendor_portal_logins ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+    "#
+}
+
 fn schema_sql_v109() -> &'static str {
     r#"
     -- Hospital Purchase Cell: purchase orders and the vendor portal.
@@ -7204,6 +7233,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 109,
             description: "hospital_purchase_orders_vendor_portal",
             sql: schema_sql_v109(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 110,
+            description: "eprocurement_shared_vendors_items",
+            sql: schema_sql_v110(),
             kind: MigrationKind::Up,
         },
     ]

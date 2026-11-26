@@ -31,6 +31,8 @@ export const RESERVED_SUBDOMAINS = new Set([
   "dev", "test", "staging", "stage", "beta", "demo", "preview", "sandbox", "localhost", "portal", "dashboard", "login", "signin", "signup", "auth",
   "account", "accounts", "billing", "pay", "payment", "payments", "shop", "store", "checkout", "secure", "security", "root", "system", "web", "site",
   "mavin", "mavinpk", "billora", "official", "fbr", "pral", "drap", "gov", "government", "superadmin", "sub-super", "partner", "partners",
+  // ep.mavin.pk is the eProcurement vendor portal.
+  "ep", "eprocurement", "procurement", "vendor", "vendors",
 ]);
 
 export function normalizeSubdomain(raw: unknown): string {

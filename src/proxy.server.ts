@@ -8,7 +8,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SITE_BASE_HEADER } from "@/config/site";
 import { siteRoute } from "@/lib/siteRoute";
-import { WEB_HOST_HEADER, isAppHost, webRoute } from "@/lib/webRoute";
+import { WEB_HOST_HEADER, eprocurementRoute, isAppHost, isEprocurementHost, webRoute } from "@/lib/webRoute";
 
 /** Portal domains, looked up once a minute per host (custom domains only).
  * The proxy cannot reach the database, so it asks /api/web/host. */
@@ -50,6 +50,13 @@ export default async function proxy(req: NextRequest) {
     if (site.kind === "redirect") return NextResponse.redirect(url, 308);
     headers.set(SITE_BASE_HEADER, "");
     return NextResponse.rewrite(url, { request: { headers } });
+  }
+
+  // ep.mavin.pk: the eProcurement vendor portal (src/lib/webRoute.ts).
+  if (isEprocurementHost(host)) {
+    const ep = eprocurementRoute(req.nextUrl.pathname);
+    if (ep.kind === "redirect") return NextResponse.redirect(new URL(ep.url, req.url), 307);
+    return NextResponse.next({ request: { headers } });
   }
 
   // The lookup route itself is never looked up (no loop).

@@ -17,6 +17,40 @@ import { suppliersRepo } from "./suppliers";
 import { postStorePurchase, saveStorePurchase } from "./hospitalStores";
 import { isStoreId, type StoreId } from "../../config/hospitalStores";
 import { useAuthStore } from "../../store/authStore";
+import { productsRepo } from "./products";
+import { uomsRepo } from "./uoms";
+import { SERVER_DB, desktopViaServer, serverJson } from "../serverMode";
+import type { ItemOption, VendorOption } from "../../server/vendorPortal";
+
+export type { ItemOption, VendorOption } from "../../server/vendorPortal";
+
+// ── The shared eProcurement directory and item list (all hospitals; server only) ──
+
+const ep = async <T,>(body: Record<string, unknown>) => (await serverJson<{ result: T }>("/api/hospital/eprocurement/", body)).result;
+/** The shared directory is on MAVIN.pk's server (web, or the desktop app online). */
+export const eprocurementOnline = () => SERVER_DB || desktopViaServer();
+/** Vendors by name, number, email, phone or address: this hospital's own, then portal vendors of other hospitals. */
+export const searchEpVendors = (q: string) => ep<VendorOption[]>({ action: "searchVendors", q });
+/** Adds a directory vendor to this hospital's Supplier & Vendors (linked to their one portal account). */
+export const addDirectoryVendor = (epVendorId: string) => ep<{ supplierId: string }>({ action: "addDirectoryVendor", epVendorId });
+/** This hospital's products and the shared item list. */
+export const searchEpItems = (q: string) => ep<ItemOption[]>({ action: "searchItems", q });
+
+/** The hospital's own product of this name, added to Products when it is not there yet
+ * (for this order now, and for the store purchase from the vendor's invoice later). */
+export async function ensureProduct(name: string, uom?: string | null): Promise<string> {
+  const wanted = name.trim();
+  if (!wanted) throw new Error("Enter the product's name.");
+  const found = await dbSelect<{ id: string }>(
+    `SELECT id FROM products WHERE tenant_id = ? AND deleted_at IS NULL AND LOWER(TRIM(name)) = ? LIMIT 1`, [requireCurrentTenantId(), wanted.toLowerCase()]);
+  if (found[0]) return found[0].id;
+  let unit: string | null = null;
+  if (uom?.trim()) {
+    const u = (await uomsRepo.list()).find((x) => x.name.trim().toLowerCase() === uom.trim().toLowerCase());
+    unit = u ? u.id : (await uomsRepo.create({ name: uom.trim(), description: null })).id;
+  }
+  return (await productsRepo.create({ name: wanted, base_unit_id: unit, packing: 1, catalog_group: null })).id;
+}
 
 export type RfqKind = "petty" | "quotation";
 export type RfqStatus = "open" | "awarded" | "cancelled";
@@ -110,6 +144,10 @@ export async function createRfq(x: RfqInput): Promise<Rfq> {
     });
   }
   for (const v of vendorIds) await rfqVendorsRepo.create({ rfq_id: rfq.id, vendor_id: v, status: "requested" });
+  // The items join the shared list every hospital searches (a failure here never stops the request).
+  if (eprocurementOnline()) {
+    await ep({ action: "recordItems", items: items.map((i) => ({ name: i.productName, uom: i.uom, specification: i.specification })) }).catch(() => undefined);
+  }
   return rfq;
 }
 

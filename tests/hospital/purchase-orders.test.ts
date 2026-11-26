@@ -16,10 +16,11 @@ import { saveVendor } from "@/lib/repo/vendors";
 import { storeArrivals, verifyStoreItems } from "@/lib/repo/hospitalStores";
 import { payVendorBill } from "@/lib/repo/vendorPayments";
 import {
-  cancelPurchaseOrder, createRfq, forwardVendorInvoice, getRfq, issuePurchaseOrders, listPurchaseOrders, listRfqs, listVendorInvoices, lowestBids, returnVendorInvoice,
+  cancelPurchaseOrder, createRfq, ensureProduct, forwardVendorInvoice, getRfq, issuePurchaseOrders, listPurchaseOrders, listRfqs, listVendorInvoices, lowestBids, returnVendorInvoice,
 } from "@/lib/repo/purchaseOrders";
-import { vendorAction, vendorActorFor, vendorLoginAction, type VendorActor } from "@/server/vendorPortal";
+import { eprocurementAction, vendorAction, vendorActorFor, vendorLoginAction, type ItemOption, type VendorActor, type VendorOption } from "@/server/vendorPortal";
 import { refuseVendor, HttpError } from "@/server/db";
+import { eprocurementRoute, isAppHost, isEprocurementHost } from "@/lib/webRoute";
 import { analyzeSql, authorize, type Caller } from "@/server/sqlPolicy";
 import { pagesForStaff } from "@/config/hospitalStaff";
 import type { Staff } from "@/lib/types";
@@ -105,12 +106,15 @@ test("vendor logins: made by the owner or the Purchase Cell, once per vendor, on
   assert.deepEqual(list.map((r) => [r.vendorName, r.username]), [["Bilal Surgical", "bilal"], ["Other", null]]);
   // Not a hospital: no vendor portal.
   await assert.rejects(vendorLoginAction(sql, { ...owner, tenantId: "shop" }, { action: "list" }), /for hospitals/);
-  // The login is a vendor row: no sections; turned off, it can no longer sign in to the portal.
-  const u = db.prepare(`SELECT role, platform_role, permissions FROM users WHERE username = 'bilal'`).get() as Record<string, unknown>;
-  assert.deepEqual([u.role, u.platform_role, u.permissions], ["staff", "vendor", "[]"]);
+  // The login is the vendor's own account (no business, no sections) in the eProcurement directory.
+  const u = db.prepare(`SELECT tenant_id, role, platform_role, permissions FROM users WHERE username = 'bilal'`).get() as Record<string, unknown>;
+  assert.deepEqual([u.tenant_id, u.role, u.platform_role, u.permissions], [null, "staff", "vendor", "[]"]);
+  const e = db.prepare(`SELECT vendor_code, name, created_by_tenant FROM ep_vendors`).get() as Record<string, unknown>;
+  assert.deepEqual([e.vendor_code, e.name, e.created_by_tenant], ["EP-0001", "Bilal Surgical", H]);
+  // Turned off by its only hospital, it can no longer use the portal.
   await vendorLoginAction(sql, owner, { action: "active", vendorId: v.id, active: false });
   const uid = String((db.prepare(`SELECT id FROM users WHERE username = 'bilal'`).get() as { id: string }).id);
-  await assert.rejects(vendorActorFor(sql, { userId: uid, platformRole: "vendor" }), /not linked/);
+  await assert.rejects(vendorActorFor(sql, { userId: uid, platformRole: "vendor" }), /not active/);
   await assert.rejects(vendorActorFor(sql, { userId: uid }), /for vendor logins/);
 });
 
@@ -255,4 +259,100 @@ test("eProcurement switched off by the Super Admin: no requests, no vendor login
   // A new business starts without it.
   db.prepare(`INSERT INTO tenants (id, name, business_type, created_at, updated_at) VALUES ('hosp-b', 'B', 'hospital', 'x', 'x')`).run();
   assert.equal((db.prepare(`SELECT eprocurement_allowed AS e FROM tenants WHERE id = 'hosp-b'`).get() as { e: number }).e, 0);
+});
+
+// ── One vendor account for many hospitals; the shared directory and item list (v110) ──
+
+const B = "hosp-b";
+const ownerB: Caller = { userId: "owner-b", role: "owner", tenantId: B, permissions: null };
+const tenantB: SessionTenant = { ...tenant, id: B, name: "Mercy Hospital" };
+const asOwnerB = () => useAuthStore.setState({ currentUser: { id: "owner-b", username: "ob", displayName: "Admin B", role: "owner", tenantId: B, permissions: null }, currentTenant: tenantB });
+const ep = (c: Caller, body: Record<string, unknown>) => eprocurementAction(sqliteSql(db), c, body);
+const hospitalB = () => db.prepare(`INSERT INTO tenants (id, name, business_type, eprocurement_allowed, created_at, updated_at) VALUES (?, 'Mercy Hospital', 'hospital', 1, 'x', 'x')`).run(B);
+
+test("directory: another hospital finds a portal vendor by name, number, email or address and adds them; one login then serves both", async () => {
+  const s = await setup();
+  db.prepare(`UPDATE suppliers SET email = 'sales@ali.pk', phone = '0300-1234567', address = 'Hall Road, Lahore' WHERE id = ?`).run(s.ali.id);
+  db.prepare(`UPDATE ep_vendors SET email = 'sales@ali.pk', address = 'Hall Road, Lahore' WHERE name = 'Ali Traders'`).run();
+  hospitalB();
+  // Hospital A sees Ali as its own vendor (with the details), not twice.
+  const mine = (await ep(owner, { action: "searchVendors", q: "ali" })) as VendorOption[];
+  assert.deepEqual(mine.map((v) => [v.source, v.name, v.email, v.address, v.onPortal]), [["own", "Ali Traders", "sales@ali.pk", "Hall Road, Lahore", true]]);
+  // Hospital B finds him in the directory by email, address or EP number.
+  for (const q of ["sales@ali", "hall road", "EP-0001"]) {
+    const found = (await ep(ownerB, { action: "searchVendors", q })) as VendorOption[];
+    assert.deepEqual(found.map((v) => [v.source, v.name, v.number]), [["directory", "Ali Traders", "EP-0001"]], q);
+  }
+  const ali = ((await ep(ownerB, { action: "searchVendors", q: "Ali" })) as VendorOption[])[0];
+  const { supplierId } = (await ep(ownerB, { action: "addDirectoryVendor", epVendorId: ali.epVendorId })) as { supplierId: string };
+  assert.deepEqual(await ep(ownerB, { action: "addDirectoryVendor", epVendorId: ali.epVendorId }), { supplierId }, "added once");
+  const bSupplier = db.prepare(`SELECT tenant_id, name, email, vendor_no FROM suppliers WHERE id = ?`).get(supplierId) as Record<string, unknown>;
+  assert.deepEqual([bSupplier.tenant_id, bSupplier.name, bSupplier.email, bSupplier.vendor_no], [B, "Ali Traders", "sales@ali.pk", "V-0001"]);
+  // Now B's own vendor: no longer offered from the directory.
+  assert.deepEqual(((await ep(ownerB, { action: "searchVendors", q: "Ali" })) as VendorOption[]).map((v) => v.source), ["own"]);
+
+  // Both hospitals ask Ali for rates: his one login sees both, each with its hospital.
+  await as(s.officer);
+  await createRfq({ vendorIds: [s.ali.id], items, title: "From A" });
+  asOwnerB();
+  await createRfq({ vendorIds: [supplierId], items, title: "From B" });
+  const aliP = await vendorActorFor(sqliteSql(db), { userId: s.aliP.userId, platformRole: "vendor" });
+  assert.deepEqual(aliP.links.map((l) => l.hospitalName).sort(), ["City Hospital", "Mercy Hospital"]);
+  const seen = (await portal(aliP, { action: "requests" })) as { hospitalName: string; title: string; rfqNo: string }[];
+  assert.deepEqual(seen.map((r) => [r.hospitalName, r.title, r.rfqNo]).sort(), [["City Hospital", "From A", "RFQ-0001"], ["Mercy Hospital", "From B", "RFQ-0001"]]);
+  // Asim (only at A, not asked) sees nothing.
+  assert.equal(((await portal(s.asimP, { action: "requests" })) as unknown[]).length, 0);
+
+  // B may not reset the password of the account A made; it turns Ali off for itself only.
+  const bList = (await vendorLoginAction(sqliteSql(db), ownerB, { action: "list" })) as { vendorName: string; canResetPassword: boolean; sharedWith: number }[];
+  assert.deepEqual(bList.map((r) => [r.vendorName, r.canResetPassword, r.sharedWith]), [["Ali Traders", false, 1]]);
+  await assert.rejects(vendorLoginAction(sqliteSql(db), ownerB, { action: "password", vendorId: supplierId, password: "hacked1" }), /another hospital/);
+  await vendorLoginAction(sqliteSql(db), owner, { action: "password", vendorId: s.ali.id, password: "newpass1" });
+  await vendorLoginAction(sqliteSql(db), ownerB, { action: "active", vendorId: supplierId, active: false });
+  const after = await vendorActorFor(sqliteSql(db), { userId: s.aliP.userId, platformRole: "vendor" });
+  assert.deepEqual(after.links.map((l) => l.hospitalName), ["City Hospital"]);
+  // A request of a hospital that turned him off is not found for him.
+  const bRfq = (db.prepare(`SELECT id FROM hospital_rfqs WHERE tenant_id = ?`).get(B) as { id: string }).id;
+  await assert.rejects(portal(after, { action: "decline", rfqId: bRfq }), /not found/);
+});
+
+test("items: a hospital's products and the items any hospital asked rates for; a new one is added to Products once", async () => {
+  await setup();
+  hospitalB();
+  await ep(owner, { action: "recordItems", items: [{ name: "Surgical gloves (latex)", uom: "Box", specification: "Size 7, powder free" }, { name: "A4 paper 80 gsm", uom: "Ream" }] });
+  await ep(owner, { action: "recordItems", items: [{ name: "surgical  GLOVES (latex)" }] });
+  assert.equal((db.prepare(`SELECT uses FROM ep_items WHERE name = 'Surgical gloves (latex)'`).get() as { uses: number }).uses, 2, "the same item, counted again");
+  // Another hospital finds it in the shared list.
+  const found = (await ep(ownerB, { action: "searchItems", q: "gloves" })) as ItemOption[];
+  assert.deepEqual(found.map((i) => [i.source, i.name, i.uom, i.specification]), [["shared", "Surgical gloves (latex)", "Box", "Size 7, powder free"]]);
+  // Picked (or typed new), it becomes that hospital's own product, once.
+  asOwnerB();
+  const id1 = await ensureProduct("Surgical gloves (latex)", "Box");
+  const id2 = await ensureProduct("surgical gloves (latex)");
+  assert.equal(id1, id2);
+  const own = (await ep(ownerB, { action: "searchItems", q: "gloves" })) as ItemOption[];
+  assert.deepEqual(own.map((i) => [i.source, i.productId]), [["own", id1]], "now B's product; the shared copy is not listed twice");
+  // Hospital A's own products are not shown to B.
+  asOwner();
+  await ensureProduct("City Hospital special form");
+  assert.deepEqual(await ep(ownerB, { action: "searchItems", q: "special form" }), []);
+});
+
+test("ep.mavin.pk is the vendor portal: its sign-in and /vendor, never a business website; other app pages go to the app", () => {
+  assert.equal(isEprocurementHost("ep.mavin.pk"), true);
+  assert.equal(isEprocurementHost("EP.MAVIN.PK:443"), true);
+  assert.equal(isEprocurementHost("shop.mavin.pk"), false);
+  assert.equal(isAppHost("ep.mavin.pk"), true, "not a business website");
+  assert.deepEqual(eprocurementRoute("/"), { kind: "redirect", url: "/vendor/" });
+  for (const p of ["/vendor", "/vendor/", "/vendor/payments/", "/api/vendor-portal/", "/mavin-mark.png"]) assert.deepEqual(eprocurementRoute(p), { kind: "app" }, p);
+  const r = eprocurementRoute("/dashboard/");
+  assert.equal(r.kind, "redirect");
+  assert.ok(r.kind === "redirect" && r.url.endsWith("/dashboard/") && !r.url.startsWith("/"), "the app's own address");
+});
+
+test("the shared directory and item list are server-only", () => {
+  const known = new Set(["ep_vendors", "ep_items"]);
+  for (const sql of [`SELECT * FROM ep_vendors`, `SELECT * FROM ep_items`, `INSERT INTO ep_items (id) VALUES (?)`]) {
+    assert.equal(authorize(analyzeSql(sql), owner, known).ok, false, sql);
+  }
 });
