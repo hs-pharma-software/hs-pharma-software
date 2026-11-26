@@ -30,7 +30,7 @@ test("Episodes and Billing are separate; Invoices is reachable through Billing",
 
 test("Purchase Cell sub-tabs, exact order, each keeping its existing pages", () => {
   const pc = find(nav(), "Purchase Cell")!;
-  assert.deepEqual(kids(pc), ["Dashboard", "Purchase", "Indent Books", "Products", "Supplier & Vendors", "Vendor Services", "Cash Register", "Banks", "Expenses", "Other Revenue", "Tasks", "Utilities"]);
+  assert.deepEqual(kids(pc), ["Dashboard", "Purchase", "Purchase Orders", "Indent Books", "Products", "Supplier & Vendors", "Vendor Logins", "Vendor Services", "Cash Register", "Banks", "Expenses", "Other Revenue", "Tasks", "Utilities"]);
   const byLabel = (l: string) => pc.children!.find((c) => c.label === l)!;
   assert.equal(byLabel("Products").href, "/products");
   assert.ok(byLabel("Products").children!.some((c) => c.href === "/products/uom"));
@@ -80,7 +80,7 @@ test("no duplicate entries: labels unique per level, no link repeated across the
 
 test("permissions: a group key grants all its sub-tabs; a child key grants just that one; none hides the group", () => {
   const pc = (perms: string[]) => find(nav(null, perms), "Purchase Cell");
-  assert.equal(kids(pc(["hospital_purchase_cell"])).length, 12);
+  assert.equal(kids(pc(["hospital_purchase_cell"])).length, 14);
   assert.deepEqual(kids(pc(["banks"])), ["Banks"]);
   assert.deepEqual(kids(pc(["products", "tasks"])), ["Products", "Tasks"]);
   assert.equal(pc(["hospital_patients"]), undefined, "no key for any Purchase Cell child: group hidden");
@@ -96,7 +96,7 @@ test("permissions: a group key grants all its sub-tabs; a child key grants just 
 
 test("the subscription plan still limits the shared sub-tabs, not the hospital's own tabs", () => {
   const n = nav(["products", "banks"]);
-  assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Indent Books", "Products", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
+  assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Purchase Orders", "Indent Books", "Products", "Vendor Logins", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
   assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records", "Duty Roster", "Trainees"], "shared Staff is not in this plan; the hospital's own HR tabs are");
   assert.equal(find(n, "Billing"), undefined, "billing still requires Invoices in the plan");
   assert.ok(find(n, "Patient") && find(n, "Labs"), "hospital sections are not plan-limited");

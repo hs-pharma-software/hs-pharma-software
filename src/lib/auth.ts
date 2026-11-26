@@ -134,6 +134,8 @@ export async function resumeServerSession(): Promise<{ user: SessionUser; tenant
   } catch {
     return null;
   }
+  // A vendor never reaches the business tables: the portal session comes from the server.
+  if (me.platformRole === "vendor") return vendorSession(me.userId, "");
   const record = await usersRepo.get(me.userId).catch(() => null);
   if (!record || !record.is_active) return null;
   if (me.platformRole === "distributor") return distributorSession(me.userId, record.username);
@@ -161,6 +163,10 @@ export async function login(username: string, password: string): Promise<{ user:
     // A Sub Super has no business: their session comes from the server, not from business tables.
     const me = await serverJson<{ userId: string; platformRole: string | null }>("/api/auth/me/");
     if (me.platformRole === "distributor") return distributorSession(me.userId, username.trim());
+    if (me.platformRole === "vendor") {
+      if (desktop) throw new AuthError(VENDOR_WEB_ONLY);
+      return vendorSession(me.userId, username.trim());
+    }
     const record = await findUserByUsername(username.trim());
     if (!record) throw new AuthError("Incorrect username or password.");
     const session = await buildSession(record);
@@ -182,6 +188,7 @@ export async function login(username: string, password: string): Promise<{ user:
   }
   if (!record) throw new AuthError("Incorrect username or password.");
   if (record.platform_role === "distributor") throw new AuthError(DISTRIBUTOR_WEB_ONLY);
+  if (record.platform_role === "vendor") throw new AuthError(VENDOR_WEB_ONLY);
   if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
   return buildSession(record);
 }
@@ -190,7 +197,13 @@ function distributorSession(id: string, username: string): { user: SessionUser; 
   return { user: { id, username, displayName: username, role: "staff", tenantId: null, permissions: [], deniedActions: [], platformRole: "distributor" }, tenant: null };
 }
 
+/** A hospital vendor: no business session (no sections), only the vendor portal. */
+function vendorSession(id: string, username: string): { user: SessionUser; tenant: null } {
+  return { user: { id, username, displayName: username || "Vendor", role: "staff", tenantId: null, permissions: [], deniedActions: [], platformRole: "vendor" }, tenant: null };
+}
+
 const DISTRIBUTOR_WEB_ONLY = "Sub Super accounts sign in on the web version of MAVIN.pk.";
+const VENDOR_WEB_ONLY = "Vendor logins sign in on the web version of MAVIN.pk (the vendor portal).";
 
 /** Desktop through the server. Online, the server checks the password and
  * returns a session; the app then downloads this business's accounts and
@@ -202,9 +215,9 @@ async function desktopLogin(username: string, password: string): Promise<{ user:
     const r = await serverJson<{ token: string; expiresInHours?: number }>("/api/auth/login/", { username, password, client: "desktop" });
     setDesktopSession(r.token, r.expiresInHours);
     const me = await serverJson<{ platformRole: string | null }>("/api/auth/me/");
-    if (me.platformRole === "distributor") {
+    if (me.platformRole === "distributor" || me.platformRole === "vendor") {
       setDesktopSession(null);
-      throw new AuthError(DISTRIBUTOR_WEB_ONLY);
+      throw new AuthError(me.platformRole === "vendor" ? VENDOR_WEB_ONLY : DISTRIBUTOR_WEB_ONLY);
     }
   } catch (e) {
     if (e instanceof AuthError) throw e;
@@ -222,6 +235,7 @@ async function desktopLogin(username: string, password: string): Promise<{ user:
   const record = await checkCredentials(username, password);
   if (!record) throw new AuthError("Could not reach the server. Sign in once while online on this computer, then you can sign in offline.");
   if (record.platform_role === "distributor") throw new AuthError(DISTRIBUTOR_WEB_ONLY);
+  if (record.platform_role === "vendor") throw new AuthError(VENDOR_WEB_ONLY);
   if (!record.is_active) throw new AuthError("This account has been deactivated. Contact the administrator.");
   return buildSession(record);
 }

@@ -17,6 +17,7 @@ import {
 } from "@/lib/repo/hospitalStores";
 import type { Product } from "@/lib/types";
 import { FormError } from "@/components/ui/FormError";
+import { VendorInvoicesPanel } from "@/components/hospital/purchase/VendorInvoicesPanel";
 import { notify } from "@/lib/notify";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
@@ -46,6 +47,7 @@ export default function StorePurchasesPage() {
   return (
     <div>
       <PageHeader title="Purchase" actions={<Button variant="primary" onClick={() => setEditing("new")}><Plus size={14} className="mr-1" />New Purchase</Button>} />
+      <VendorInvoicesPanel onForwarded={() => void reload()} />
       <div className={card}>
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Find"><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Purchase no, invoice, vendor" /></Field>

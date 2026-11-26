@@ -59,10 +59,15 @@ export function refuseDistributor(platformRole: unknown, allow = false): void {
   if (String(platformRole ?? "") === "distributor" && !allow) throw new HttpError(403, "Sub Super accounts can use only the Sub Super workspace.");
 }
 
+/** Default deny: a hospital vendor's login (vendor portal) may call only routes that allow it. */
+export function refuseVendor(platformRole: unknown, allow = false): void {
+  if (String(platformRole ?? "") === "vendor" && !allow) throw new HttpError(403, "Vendor logins can use only the vendor portal.");
+}
+
 /** The logged-in, active user behind a request. A Sub Super (distributor)
  * login is refused unless the route explicitly allows it: distributors reach
  * only their own workspace (src/server/subSupers.ts), never business data. */
-export async function callerOf(req: Request, opts: { allowDistributor?: boolean } = {}): Promise<Caller> {
+export async function callerOf(req: Request, opts: { allowDistributor?: boolean; allowVendor?: boolean } = {}): Promise<Caller> {
   const claims = verifySession(requestToken(req), serverConfig().sessionSecret);
   if (!claims) throw new HttpError(401, "Your session has ended. Log in again.");
   const rs = await serverDb().execute({
@@ -78,7 +83,9 @@ export async function callerOf(req: Request, opts: { allowDistributor?: boolean 
   const changed = u.password_changed_at ? Date.parse(String(u.password_changed_at)) : NaN;
   if (Number.isFinite(changed) && sessionIssuedAt(claims) < changed) throw new HttpError(401, "Your password was reset. Log in again.");
   refuseDistributor(u.platform_role, opts.allowDistributor);
+  refuseVendor(u.platform_role, opts.allowVendor);
   const distributor = String(u.platform_role ?? "") === "distributor";
+  const vendor = String(u.platform_role ?? "") === "vendor";
   let permissions: string[] | null = null;
   if (u.permissions != null && String(u.role) === "staff") {
     try {
@@ -96,6 +103,8 @@ export async function callerOf(req: Request, opts: { allowDistributor?: boolean 
     tenantDeniedActions: jsonList(u.tenant_denied),
     // A distributor has no business: no sections, no actions.
     ...(distributor ? { platformRole: "distributor" as const, permissions: [], actions: [] } : {}),
+    // A vendor belongs to the hospital but has no sections or actions: only the vendor portal.
+    ...(vendor ? { platformRole: "vendor" as const, permissions: [], actions: [] } : {}),
   };
 }
 

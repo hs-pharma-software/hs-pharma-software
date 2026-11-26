@@ -20,8 +20,9 @@ export interface SessionUser {
   /** Action keys this staff login may not perform (see lib/actionPermissions).
    * Optional so sessions saved before this field existed still load. */
   deniedActions?: string[];
-  /** A Sub Super (software distributor): no business, only the Sub Super workspace. */
-  platformRole?: "distributor" | null;
+  /** A Sub Super (software distributor): no business, only the Sub Super workspace.
+   * A hospital's vendor: only the vendor portal (/vendor). */
+  platformRole?: "distributor" | "vendor" | null;
 }
 
 export interface SessionTenant {

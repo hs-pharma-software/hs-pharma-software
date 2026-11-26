@@ -84,7 +84,7 @@ export interface Caller {
   /** Actions the Super Admin turned off for the whole business. */
   tenantDeniedActions?: string[];
   /** A Sub Super (software distributor): no business, only the Sub Super workspace. */
-  platformRole?: "distributor";
+  platformRole?: "distributor" | "vendor";
 }
 
 /** Writes to these tables are an action that needs its permission. */
@@ -108,8 +108,13 @@ const SUPER_ADMIN_WRITES = new Set(["tenants", "subscription_plans"]);
 const LINK_ONLY_WRITES = new Set(["clinic_pharmacy_link"]);
 /** Logins are created and passwords changed through /api/auth only. */
 const AUTH_ONLY_WRITES = new Set(["users"]);
-/** Device-only tables and internal tables are never reached from the browser. */
-const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log", "password_resets"]);
+/** Device-only tables and internal tables are never reached from the browser.
+ * vendor_portal_logins (which supplier a vendor login is) is kept by the
+ * server's Vendor Logins route only (src/server/vendorPortal.ts). */
+const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log", "password_resets", "vendor_portal_logins"]);
+/** A vendor's quoted rates are written by the vendor, through the vendor portal only:
+ * the hospital reads them but cannot change what a vendor quoted. */
+const VENDOR_ONLY_WRITES = new Set(["hospital_rfq_quotes"]);
 
 /** Staff HR records (MSDS HRM): HR has them in full, the quality team reads
  * them for the self-assessment, and everyone else sees only their own. */
@@ -234,6 +239,7 @@ export function authorize(a: Analysis, caller: Caller, knownTables: Set<string>)
       if (TABLE_ACTIONS[t] && !callerCan(caller, TABLE_ACTIONS[t])) return { ok: false, reason: "You don't have permission for this action. Ask the owner (or the administrator) to allow it." };
       if (SUPER_ADMIN_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "Only the Super Admin changes tenants and plans." };
       if (LINK_ONLY_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "A pharmacy is linked by token: the pharmacy enters the clinic's token in its settings." };
+      if (VENDOR_ONLY_WRITES.has(t) && caller.role !== "super_admin") return { ok: false, reason: "Rates are quoted by the vendors themselves, in the vendor portal." };
       // Profile fields (name, permissions, active) are edited by owners / Super Admin; passwords are blocked above.
       if (AUTH_ONLY_WRITES.has(t) && caller.role === "staff") return { ok: false, reason: "Only the owner manages logins." };
     }

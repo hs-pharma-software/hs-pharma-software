@@ -64,7 +64,8 @@ export async function createLogin(caller: Caller | null, l: NewLogin): Promise<{
   if (l.role === "staff" && l.tenantId) {
     const cap = await db.execute({
       sql: `SELECT COALESCE(p.max_staff_logins, 0) AS cap,
-                   (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role = 'staff' AND u.is_active = 1 AND u.deleted_at IS NULL) AS used
+                   (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.role = 'staff' AND u.is_active = 1 AND u.deleted_at IS NULL
+                      AND COALESCE(u.platform_role, '') != 'vendor') AS used
             FROM tenants t LEFT JOIN subscription_plans p ON p.id = t.subscription_plan_id WHERE t.id = ?`,
       args: [l.tenantId],
     });

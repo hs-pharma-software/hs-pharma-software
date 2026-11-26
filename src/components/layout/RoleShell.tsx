@@ -7,21 +7,25 @@ import { useAuthStore } from "@/store/authStore";
 import { AppShell } from "./AppShell";
 import { SuperAdminShell } from "./SuperAdminShell";
 import { SubSuperShell } from "./SubSuperShell";
+import { VendorShell } from "./VendorShell";
 import { AppManifestLinks } from "./AppManifestLinks";
 
 /** Picks which chrome wraps the current page based on who's logged in — the
  * Super Admin never sees pharmacy business screens (or any tenant's private
  * data), so `/admin/*` and every other route are two separate worlds. A Sub
- * Super (distributor) sees only their workspace at /sub-super; the server
- * refuses them everything else in any case. */
+ * Super (distributor) sees only their workspace at /sub-super, and a
+ * hospital's vendor only the vendor portal at /vendor; the server refuses
+ * them everything else in any case. */
 export function RoleShell({ children }: { children: React.ReactNode }) {
   const role = useAuthStore((s) => s.currentUser?.role);
   const distributor = useAuthStore((s) => s.currentUser?.platformRole === "distributor");
+  const vendor = useAuthStore((s) => s.currentUser?.platformRole === "vendor");
   const pathname = usePathname();
   const publicPage = usePublicPage();
   const router = useRouter();
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
   const isSubSuperRoute = pathname === "/sub-super" || pathname.startsWith("/sub-super/");
+  const isVendorRoute = pathname === "/vendor" || pathname.startsWith("/vendor/");
   const isSuperAdmin = role === "super_admin";
 
   useEffect(() => {
@@ -30,17 +34,22 @@ export function RoleShell({ children }: { children: React.ReactNode }) {
       if (!isSubSuperRoute) router.replace("/sub-super");
       return;
     }
-    if (isSubSuperRoute) router.replace(isSuperAdmin ? "/admin/sub-supers" : "/dashboard");
+    if (vendor) {
+      if (!isVendorRoute) router.replace("/vendor");
+      return;
+    }
+    if (isSubSuperRoute || isVendorRoute) router.replace(isSuperAdmin ? (isSubSuperRoute ? "/admin/sub-supers" : "/admin") : "/dashboard");
     else if (isSuperAdmin && !isAdminRoute) router.replace("/admin");
     else if (!isSuperAdmin && isAdminRoute) router.replace("/dashboard");
-  }, [publicPage, role, distributor, isSuperAdmin, isAdminRoute, isSubSuperRoute, router]);
+  }, [publicPage, role, distributor, vendor, isSuperAdmin, isAdminRoute, isSubSuperRoute, isVendorRoute, router]);
 
   // Landing page — no shell, no sidebar
   if (publicPage) return <>{children}</>;
 
   if (distributor) return <><AppManifestLinks /><SubSuperShell>{isSubSuperRoute ? children : null}</SubSuperShell></>;
+  if (vendor) return <><AppManifestLinks /><VendorShell>{isVendorRoute ? children : null}</VendorShell></>;
   if (isSuperAdmin) {
     return <><AppManifestLinks /><SuperAdminShell>{children}</SuperAdminShell></>;
   }
-  return <><AppManifestLinks /><AppShell>{isSubSuperRoute ? null : children}</AppShell></>;
+  return <><AppManifestLinks /><AppShell>{isSubSuperRoute || isVendorRoute ? null : children}</AppShell></>;
 }

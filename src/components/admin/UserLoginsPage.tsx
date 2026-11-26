@@ -63,7 +63,8 @@ export function UserLoginsPage({
     ]);
     const rank = { super_admin: 0, owner: 1, staff: 2 } as const;
     setUsers(
-      (tenantFilter === null ? u.filter((x) => x.tenant_id === null && !x.platform_role) : u).sort(
+      // Vendor portal logins are managed in Purchase Cell > Vendor Logins (and are not staff logins).
+      (tenantFilter === null ? u.filter((x) => x.tenant_id === null && !x.platform_role) : u.filter((x) => x.platform_role !== "vendor")).sort(
         (a, b) => rank[a.role] - rank[b.role] || a.username.localeCompare(b.username)
       )
     );

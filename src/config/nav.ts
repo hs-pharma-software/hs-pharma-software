@@ -716,9 +716,13 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Dashboard", href: "/hospital/purchase-cell" },
       // The purchase officer's store purchases: each item's store; verified by the store keepers.
       { label: "Purchase", href: "/hospital/purchase-cell/purchases" },
+      // Requests for rates to vendors (petty purchase / quotation), rate comparison, purchase orders.
+      { label: "Purchase Orders", href: "/hospital/purchase-cell/orders" },
       { label: "Indent Books", href: "/hospital/purchase-cell/indent-books" },
       shared("Products", "products"),
       shared("Supplier & Vendors", "suppliers"),
+      // Logins to the vendor portal (quote, see orders, submit invoices).
+      { label: "Vendor Logins", href: "/hospital/purchase-cell/vendor-logins" },
       {
         label: "Vendor Services",
         href: "/hospital/purchase-cell/services",

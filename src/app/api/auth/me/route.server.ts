@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request): Promise<Response> {
   try {
-    const c = await callerOf(req, { allowDistributor: true });
+    const c = await callerOf(req, { allowDistributor: true, allowVendor: true });
     const body = { userId: c.userId, role: c.role, tenantId: c.tenantId, platformRole: c.platformRole ?? null };
     // Only the cookie is renewed: a Bearer token (the offline engine) keeps its own sign-in.
     const secret = serverConfig().sessionSecret;
