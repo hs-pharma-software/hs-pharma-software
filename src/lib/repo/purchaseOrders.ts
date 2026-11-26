@@ -1,4 +1,5 @@
-/** Hospital Purchase Cell > Purchase Orders (schema v109).
+/** Hospital Purchase Cell > eProcurement (schema v109), a special service the
+ * Super Admin switches on per hospital (tenants.eprocurement_allowed).
  *
  * The purchase officer asks vendors for rates (a request for quotation:
  * items with specification, quantity and unit). One vendor asked makes it a
@@ -15,6 +16,7 @@ import { currentActor, type Actor } from "./medicalRecord";
 import { suppliersRepo } from "./suppliers";
 import { postStorePurchase, saveStorePurchase } from "./hospitalStores";
 import { isStoreId, type StoreId } from "../../config/hospitalStores";
+import { useAuthStore } from "../../store/authStore";
 
 export type RfqKind = "petty" | "quotation";
 export type RfqStatus = "open" | "awarded" | "cancelled";
@@ -55,7 +57,13 @@ const round = (n: number) => Math.round(n * 100) / 100;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 const who = (a: Actor) => (a.designation ? `${a.name}, ${a.designation}` : a.name);
 
+/** eProcurement is a special service the Super Admin switches on for the hospital. */
+export function eprocurementActive(): boolean {
+  return useAuthStore.getState().currentTenant?.eprocurementAllowed === true;
+}
+
 async function needPurchaseOfficer(): Promise<Actor> {
+  if (!eprocurementActive()) throw new Error("eProcurement is not active for this hospital. Contact MAVIN.pk to switch it on.");
   const a = await currentActor();
   const roles = a.roles?.length ? a.roles : [a.role ?? ""];
   if (!a.full && !roles.includes("purchase_officer")) throw new Error("Purchase orders are made by the purchase officer.");

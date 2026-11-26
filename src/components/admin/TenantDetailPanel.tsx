@@ -85,6 +85,9 @@ export function TenantDetailPanel({
   const [fbrAllowed, setFbrAllowed] = useState(tenant.fbr_allowed !== 0);
   const [templatesEditable, setTemplatesEditable] = useState(tenant.print_templates_editable !== 0);
   const [medicineAllowed, setMedicineAllowed] = useState(tenant.medicine_invoice_allowed === 1);
+  // Hospital special service (schema v109): purchase orders with the vendor portal.
+  const eprocInitial = (tenant as typeof tenant & { eprocurement_allowed?: number }).eprocurement_allowed === 1;
+  const [eprocAllowed, setEprocAllowed] = useState(eprocInitial);
   const [paper, setPaper] = useState<PaperSize>("a4");
   const [editorOpen, setEditorOpen] = useState(false);
   const [fbrSetupOpen, setFbrSetupOpen] = useState(false);
@@ -137,7 +140,9 @@ export function TenantDetailPanel({
         fbr_allowed: fbrAllowed ? 1 : 0,
         print_templates_editable: templatesEditable ? 1 : 0,
         medicine_invoice_allowed: medicineAllowed ? 1 : 0,
-      });
+        // Sent only when changed: before the v109 database update the column does not exist.
+        ...(eprocAllowed !== eprocInitial ? { eprocurement_allowed: eprocAllowed ? 1 : 0 } : {}),
+      } as Parameters<typeof tenantsRepo.update>[1]);
       await saveDefaultPaper(a4OnlyType(typeId) ? "a4" : paper, tenant.id);
       setMessage({ ok: true, text: "Saved. Applies to this business's logins on their next screen change." });
       onSaved();
@@ -248,6 +253,19 @@ export function TenantDetailPanel({
                 {medicineAllowed
                   ? "Invoices can be General or Medicine. A Medicine invoice has a batch on each line, printed on the invoice."
                   : "Invoices are General only: no batch on the invoice."}
+              </span>
+            </div>
+          </Section>
+        )}
+
+        {type.id === "hospital" && (
+          <Section title="eProcurement (special service)">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Toggle on={eprocAllowed} onChange={setEprocAllowed} onLabel="Allowed" offLabel="Not Allowed" />
+              <span className="text-[11px] text-neutral-500">
+                {eprocAllowed
+                  ? "Purchase Cell › eProcurement: quotations and purchase orders, with a vendor portal where vendors quote rates and submit invoices."
+                  : "eProcurement is hidden; vendor logins cannot sign in to the vendor portal."}
               </span>
             </div>
           </Section>

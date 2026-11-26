@@ -50,6 +50,8 @@ export interface SessionTenant {
   printTemplatesEditable?: boolean;
   /** Contractor: may make Medicine invoices (Super Admin). */
   medicineInvoiceAllowed?: boolean;
+  /** Hospital: the eProcurement service (purchase orders, vendor portal), switched on by the Super Admin. */
+  eprocurementAllowed?: boolean;
 }
 
 interface AuthState {

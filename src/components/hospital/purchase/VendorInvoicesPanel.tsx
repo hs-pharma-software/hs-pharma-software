@@ -6,6 +6,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { FormError } from "@/components/ui/FormError";
 import { isTauri } from "@/lib/platform";
+import { useAuthStore } from "@/store/authStore";
 import { notify } from "@/lib/notify";
 import { STORES, isStoreId, type StoreId } from "@/config/hospitalStores";
 import { forwardVendorInvoice, getPurchaseOrder, listVendorInvoices, returnVendorInvoice, type VendorInvoiceRow } from "@/lib/repo/purchaseOrders";
@@ -19,13 +20,14 @@ const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function VendorInvoicesPanel({ onForwarded }: { onForwarded: () => void }) {
   const [rows, setRows] = useState<VendorInvoiceRow[]>([]);
   const [opened, setOpened] = useState<VendorInvoiceRow | null>(null);
+  const active = useAuthStore((s) => s.currentTenant?.eprocurementAllowed === true);
   const load = useCallback(async () => {
-    if (!isTauri()) return;
+    if (!isTauri() || !active) return;
     // Before the v109 database update there are none to show.
     setRows(await listVendorInvoices("submitted").catch(() => []));
-  }, []);
+  }, [active]);
   useEffect(() => { void load(); }, [load]);
-  if (!rows.length) return null;
+  if (!active || !rows.length) return null;
   return (
     <section className="rise-in mb-4 rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200" aria-label="Invoices from vendors">
       <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-sky-950">

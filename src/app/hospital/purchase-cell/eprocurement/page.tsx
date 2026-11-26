@@ -8,7 +8,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { FormError } from "@/components/ui/FormError";
 import { ProductPicker } from "@/components/products/ProductPicker";
-import { KIND_CLS, printPurchaseOrder } from "@/components/vendor/portal";
+import { EprocurementInactive, KIND_CLS, printPurchaseOrder } from "@/components/vendor/portal";
 import { isTauri } from "@/lib/platform";
 import { localDate } from "@/lib/localDate";
 import { notify } from "@/lib/notify";
@@ -28,8 +28,9 @@ const UOMS = ["Nos", "Pack", "Box", "Carton", "Dozen", "Kg", "Gram", "Litre", "m
 const RFQ_TONE: Record<RfqStatus, string> = { open: "bg-amber-100 text-amber-800", awarded: "bg-emerald-100 text-emerald-800", cancelled: "bg-neutral-100 text-neutral-500" };
 const PO_TONE: Record<PoStatus, string> = { issued: "bg-sky-100 text-sky-800", invoiced: "bg-emerald-100 text-emerald-800", cancelled: "bg-neutral-100 text-neutral-500" };
 
-/** Purchase Cell > Purchase Orders: requests for rates to vendors, the rate comparison, and the orders issued. */
-export default function PurchaseOrdersPage() {
+/** Purchase Cell > eProcurement: requests for rates to vendors, the rate comparison, and the orders issued. */
+export default function EprocurementPage() {
+  const active = useAuthStore((s) => s.currentTenant?.eprocurementAllowed === true);
   const [tab, setTab] = useState<"requests" | "orders">("requests");
   const [creating, setCreating] = useState(false);
   const [openRfq, setOpenRfq] = useState<string | null>(null);
@@ -37,12 +38,13 @@ export default function PurchaseOrdersPage() {
   const [stamp, setStamp] = useState(0);
   const refresh = () => setStamp((s) => s + 1);
 
+  if (!active) return <EprocurementInactive title="eProcurement" />;
   return (
     <div>
-      <PageHeader title="Purchase Orders" actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} className="mr-1" />New Order</Button>} />
+      <PageHeader title="eProcurement" actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} className="mr-1" />New Order</Button>} />
       <p className="mb-3 text-sm text-neutral-600">
         Ask one vendor (a <b>petty purchase</b>) or several (a <b>quotation</b>) for rates. Each vendor quotes in the vendor portal; compare the rates here and issue the purchase order.
-        Vendors without a login yet: Purchase Cell › Vendor Logins.
+        Vendors without a login yet: eProcurement › Vendor Logins.
       </p>
       <div role="tablist" aria-label="Purchase orders" className="mb-3 inline-flex rounded-xl bg-neutral-200/70 p-1 text-sm">
         {([["requests", "Quotation requests"], ["orders", "Purchase orders"]] as const).map(([k, label]) => (
@@ -391,7 +393,7 @@ function RfqModal({ id, onClose, onChanged, onOpenPo }: { id: string; onClose: (
       )}
       {open && (
         <div className="mt-3">
-          {!anyQuote && <p role="status" className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">No vendor has quoted yet. Vendors quote in the vendor portal (Purchase Cell › Vendor Logins gives them a login).</p>}
+          {!anyQuote && <p role="status" className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">No vendor has quoted yet. Vendors quote in the vendor portal (eProcurement › Vendor Logins gives them a login).</p>}
           <Field label="Note on the purchase order (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Deliver to the General Store by 5 December" /></Field>
           <p className="mt-2 text-sm text-neutral-600">Chosen: <b className="tabular-nums">{rs(chosenTotal)}</b> · the lowest rate is chosen for each item; pick another vendor with the round buttons (e.g. a better specification).</p>
         </div>

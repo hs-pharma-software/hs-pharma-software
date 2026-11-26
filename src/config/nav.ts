@@ -61,6 +61,9 @@ import {
   DoorOpen,
 } from "lucide-react";
 
+/** Integrations and special services a menu entry can require: PRA, and eProcurement (switched on per business by the Super Admin). */
+export type Integration = "pra" | "eprocurement";
+
 export interface NavChild {
   label: string;
   href: string;
@@ -75,7 +78,7 @@ export interface NavChild {
   /** Third level: the pages inside this child. The child then only expands. */
   children?: NavChild[];
   /** Only shown when the business has this integration (config/navFilter.ts). */
-  requires?: "pra";
+  requires?: Integration;
 }
 
 export interface NavItem {
@@ -91,7 +94,7 @@ export interface NavItem {
   /** i18n key (lib/i18n/dict.ts) for translated menus. */
   labelKey?: string;
   /** Only shown when the business has this integration (config/navFilter.ts). */
-  requires?: "pra";
+  requires?: Integration;
 }
 
 const BASE_NAV: NavItem[] = [
@@ -716,13 +719,21 @@ const HOSPITAL_NAV: NavItem[] = [
       { label: "Dashboard", href: "/hospital/purchase-cell" },
       // The purchase officer's store purchases: each item's store; verified by the store keepers.
       { label: "Purchase", href: "/hospital/purchase-cell/purchases" },
-      // Requests for rates to vendors (petty purchase / quotation), rate comparison, purchase orders.
-      { label: "Purchase Orders", href: "/hospital/purchase-cell/orders" },
+      // eProcurement, a special service the Super Admin switches on per hospital:
+      // requests for rates (petty purchase / quotation), rate comparison, purchase
+      // orders, and the vendors' logins to the vendor portal.
+      {
+        label: "eProcurement",
+        href: "/hospital/purchase-cell/eprocurement",
+        requires: "eprocurement",
+        children: [
+          { label: "Quotations & Orders", href: "/hospital/purchase-cell/eprocurement" },
+          { label: "Vendor Logins", href: "/hospital/purchase-cell/eprocurement/vendor-logins" },
+        ],
+      },
       { label: "Indent Books", href: "/hospital/purchase-cell/indent-books" },
       shared("Products", "products"),
       shared("Supplier & Vendors", "suppliers"),
-      // Logins to the vendor portal (quote, see orders, submit invoices).
-      { label: "Vendor Logins", href: "/hospital/purchase-cell/vendor-logins" },
       {
         label: "Vendor Services",
         href: "/hospital/purchase-cell/services",

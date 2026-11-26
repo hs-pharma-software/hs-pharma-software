@@ -1,4 +1,4 @@
-/** Purchase Cell > Purchase Orders and the vendor portal (schema v109):
+/** Purchase Cell > eProcurement and the vendor portal (schema v109), a special service the Super Admin switches on:
  * requests for rates (petty purchase / quotation), vendor logins, quotes that
  * only their vendor sees, the comparison and purchase orders, the vendor's
  * invoice forwarded to the stores, and the payment status the vendor sees. */
@@ -28,7 +28,7 @@ const H = "hosp-a";
 let db: DatabaseSync;
 const tenant: SessionTenant = {
   id: H, name: "City Hospital", subscriptionStatus: "active", subscriptionExpiresAt: null, allowedModules: [], maxStaffLogins: 30,
-  maxInvoicesPerMonth: null, mrpDiscountPct: 0, sourceTenantId: null, businessType: "hospital",
+  maxInvoicesPerMonth: null, mrpDiscountPct: 0, sourceTenantId: null, businessType: "hospital", eprocurementAllowed: true,
 };
 const owner: Caller = { userId: "owner", role: "owner", tenantId: H, permissions: null };
 const asOwner = () => useAuthStore.setState({ currentUser: { id: "owner", username: "o", displayName: "Admin", role: "owner", tenantId: H, permissions: null }, currentTenant: tenant });
@@ -45,7 +45,7 @@ async function as(staff: Staff) {
 
 beforeEach(() => {
   db = fullSchemaDb();
-  db.prepare(`INSERT INTO tenants (id, name, business_type, created_at, updated_at) VALUES (?, 'City Hospital', 'hospital', 'x', 'x')`).run(H);
+  db.prepare(`INSERT INTO tenants (id, name, business_type, eprocurement_allowed, created_at, updated_at) VALUES (?, 'City Hospital', 'hospital', 1, 'x', 'x')`).run(H);
   db.prepare(`INSERT INTO tenants (id, name, business_type, created_at, updated_at) VALUES ('shop', 'Corner Shop', 'general_store', 'x', 'x')`).run();
   setTestDb(db);
   asOwner();
@@ -239,4 +239,20 @@ test("the server keeps vendor logins to the portal and vendors' rates to the ven
   assert.equal(check(`INSERT INTO hospital_rfq_quotes (id) VALUES (?)`, owner).ok, false);
   assert.equal(check(`UPDATE hospital_rfqs SET status = 'open' WHERE id = ?`).ok, true);
   assert.equal(check(`SELECT * FROM vendor_portal_logins`, owner).ok, false, "which supplier a login is: server only");
+});
+
+test("eProcurement switched off by the Super Admin: no requests, no vendor logins, and the portal refuses vendors", async () => {
+  const s = await setup();
+  await as(s.officer);
+  const r = await createRfq({ vendorIds: [s.ali.id], items });
+  db.prepare(`UPDATE tenants SET eprocurement_allowed = 0 WHERE id = ?`).run(H);
+  useAuthStore.setState({ currentTenant: { ...tenant, eprocurementAllowed: false } });
+  await assert.rejects(createRfq({ vendorIds: [s.ali.id], items }), /not active/);
+  await assert.rejects(issuePurchaseOrders(r.id, {}), /not active/);
+  await assert.rejects(vendorLoginAction(sqliteSql(db), owner, { action: "list" }), /not active/);
+  const uid = String((db.prepare(`SELECT id FROM users WHERE username = 'ali'`).get() as { id: string }).id);
+  await assert.rejects(vendorActorFor(sqliteSql(db), { userId: uid, platformRole: "vendor" }), /not active/);
+  // A new business starts without it.
+  db.prepare(`INSERT INTO tenants (id, name, business_type, created_at, updated_at) VALUES ('hosp-b', 'B', 'hospital', 'x', 'x')`).run();
+  assert.equal((db.prepare(`SELECT eprocurement_allowed AS e FROM tenants WHERE id = 'hosp-b'`).get() as { e: number }).e, 0);
 });

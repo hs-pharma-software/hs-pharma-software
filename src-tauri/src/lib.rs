@@ -1889,6 +1889,10 @@ fn schema_sql_v109() -> &'static str {
     -- to the stores as a store purchase (v103): store keepers verify it and
     -- Finance pays it. A vendor login is a users row with platform_role
     -- 'vendor' linked here to its supplier (vendor_portal_logins: server only).
+    -- eProcurement is a special service: the Super Admin switches it on per
+    -- hospital (tenants.eprocurement_allowed); off, the tabs are hidden and
+    -- the vendor portal and vendor logins are refused.
+    ALTER TABLE tenants ADD COLUMN eprocurement_allowed INTEGER NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS hospital_rfqs (
         id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_no TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'quotation', title TEXT, status TEXT NOT NULL DEFAULT 'open',
         due_date TEXT, note TEXT, created_by_name TEXT, awarded_at TEXT, awarded_by_name TEXT, cancelled_at TEXT, cancel_reason TEXT,

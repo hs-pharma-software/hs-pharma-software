@@ -1,4 +1,4 @@
-import { NAV, type NavChild, type NavItem } from "./nav";
+import { NAV, type Integration, type NavChild, type NavItem } from "./nav";
 import { businessType, moduleAllowedForType } from "./businessTypes";
 
 /** Clinic sidebar, top to bottom. Anything not listed (Products, Customers,
@@ -102,10 +102,10 @@ export function visibleNavFor(
   allowedModules: string[] | null,
   userPermissions: string[] | null,
   /** Integrations this business has: entries that require one stay hidden without it. */
-  integrations: { pra?: boolean } = {}
+  integrations: Partial<Record<Integration, boolean>> = {}
 ): NavItem[] {
   const typeId = businessType(businessTypeValue).id;
-  const integrated = (x: { requires?: "pra" }) => !x.requires || integrations[x.requires] === true;
+  const integrated = (x: { requires?: Integration }) => !x.requires || integrations[x.requires] === true;
   const has = (key: string) => userPermissions === null || userPermissions.includes(key);
   const inPlan = (key: string) => key.startsWith("hospital_") || !allowedModules || allowedModules.length === 0 || allowedModules.includes(key);
 

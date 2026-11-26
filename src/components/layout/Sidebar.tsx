@@ -62,7 +62,8 @@ export function Sidebar() {
   const setSidebarMobileOpen = useAppStore((s) => s.setSidebarMobileOpen);
   const label = (x: { label: string; labelKey?: string }) => (x.labelKey ? translate(x.labelKey, lang) : x.label);
   const pra = usePraContractor();
-  const visibleNav = visibleNavFor(typeId, allowedModules, userPermissions, { pra: pra.integrated });
+  const eprocurement = useAuthStore((s) => s.currentTenant?.eprocurementAllowed === true);
+  const visibleNav = visibleNavFor(typeId, allowedModules, userPermissions, { pra: pra.integrated, eprocurement });
   const activeHref = findActiveHref(pathname, visibleNav);
   const activeTop = visibleNav.find((item) => containsHref(item, activeHref));
   const [openLabel, setOpenLabel] = useState<string | null>(activeTop?.label ?? null);

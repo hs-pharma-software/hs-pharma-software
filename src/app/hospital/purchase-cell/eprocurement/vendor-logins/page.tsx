@@ -10,15 +10,18 @@ import { FormError } from "@/components/ui/FormError";
 import { notify } from "@/lib/notify";
 import { SERVER_DB, desktopViaServer, serverJson } from "@/lib/serverMode";
 import type { VendorLoginRow } from "@/server/vendorPortal";
+import { useAuthStore } from "@/store/authStore";
+import { EprocurementInactive } from "@/components/vendor/portal";
 
 const card = "rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] sm:p-5";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const call = async <T,>(body: Record<string, unknown>) => (await serverJson<{ result: T }>("/api/hospital/vendor-logins/", body)).result;
 
-/** Purchase Cell > Vendor Logins: a login for each supplier / vendor to the vendor portal,
+/** Purchase Cell > eProcurement > Vendor Logins: a login for each supplier / vendor to the vendor portal,
  * where they quote rates, receive purchase orders and submit invoices. */
 export default function VendorLoginsPage() {
   const online = SERVER_DB || desktopViaServer();
+  const active = useAuthStore((s) => s.currentTenant?.eprocurementAllowed === true);
   const [rows, setRows] = useState<VendorLoginRow[] | null>(null);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<{ row: VendorLoginRow; mode: "create" | "password" } | null>(null);
@@ -29,7 +32,7 @@ export default function VendorLoginsPage() {
     try { setRows(await call<VendorLoginRow[]>({ action: "list" })); setError(null); }
     catch (e) { setRows([]); setError(/no such table/i.test(msg(e)) ? "The vendor portal needs the database update (v109)." : msg(e)); }
   }, []);
-  useEffect(() => { if (online) void load(); }, [load, online]);
+  useEffect(() => { if (online && active) void load(); }, [load, online, active]);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,6 +45,7 @@ export default function VendorLoginsPage() {
     catch (e) { notify(msg(e)); } finally { setBusy(null); }
   }
 
+  if (!active) return <EprocurementInactive title="Vendor Logins" />;
   if (!online) {
     return (
       <div>

@@ -106,6 +106,7 @@ async function buildSessionTenant(tenant: Tenant): Promise<SessionTenant> {
     fbrAllowed: tenant.fbr_allowed !== 0,
     printTemplatesEditable: tenant.print_templates_editable !== 0,
     medicineInvoiceAllowed: tenant.medicine_invoice_allowed === 1,
+    eprocurementAllowed: (tenant as Tenant & { eprocurement_allowed?: number }).eprocurement_allowed === 1,
   };
 }
 

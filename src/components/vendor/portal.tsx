@@ -1,4 +1,18 @@
 /** Shared pieces of the purchase-order screens: the vendor portal and the Purchase Cell. */
+import { PageHeader } from "@/components/ui/PageHeader";
+
+/** Shown on the eProcurement pages of a hospital whose service is not switched on (Super Admin). */
+export function EprocurementInactive({ title }: { title: string }) {
+  return (
+    <div>
+      <PageHeader title={title} />
+      <p role="status" className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-200">
+        <b>eProcurement is a special service.</b> Quotations and purchase orders with a vendor portal (vendors quote their rates, receive orders and submit invoices online).
+        Contact MAVIN.pk to switch it on for your hospital.
+      </p>
+    </div>
+  );
+}
 
 /** Petty purchase (one vendor asked) or quotation (several). */
 export const KIND_CLS: Record<string, string> = { petty: "bg-violet-100 text-violet-800", quotation: "bg-indigo-100 text-indigo-800" };

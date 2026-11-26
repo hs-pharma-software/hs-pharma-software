@@ -36,13 +36,15 @@ export const RFQ_KIND_LABEL: Record<string, string> = { petty: "Petty purchase",
 export async function vendorActorFor(sql: Sql, caller: Pick<Caller, "userId" | "platformRole">): Promise<VendorActor> {
   if (caller.platformRole !== "vendor") throw new HttpError(403, "The vendor portal is for vendor logins.");
   const r = (await sql.execute(
-    `SELECT l.tenant_id, l.vendor_id, s.name AS vendor_name, s.vendor_no, t.name AS hospital_name, u.username
+    `SELECT l.tenant_id, l.vendor_id, s.name AS vendor_name, s.vendor_no, t.name AS hospital_name, t.eprocurement_allowed, u.username
      FROM vendor_portal_logins l
      JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL AND u.is_active = 1
      JOIN suppliers s ON s.id = l.vendor_id AND s.tenant_id = l.tenant_id AND s.deleted_at IS NULL
      LEFT JOIN tenants t ON t.id = l.tenant_id
      WHERE l.user_id = ? AND l.deleted_at IS NULL`, [caller.userId])).rows[0];
   if (!r) throw new HttpError(403, "This login is not linked to a vendor. Ask the hospital's purchase officer.");
+  // eProcurement is a special service the Super Admin switches on per hospital.
+  if (num(r.eprocurement_allowed) !== 1) throw new HttpError(403, `The vendor portal of ${str(r.hospital_name) ?? "this hospital"} is not active.`);
   return {
     userId: caller.userId, tenantId: String(r.tenant_id), vendorId: String(r.vendor_id), vendorName: String(r.vendor_name),
     vendorNo: str(r.vendor_no), hospitalName: str(r.hospital_name) ?? "Hospital", username: String(r.username),
@@ -287,14 +289,16 @@ export async function vendorAction(sql: Sql, a: VendorActor, b: Record<string, u
 
 // ── The hospital's side: vendor logins ─────────────────────────────────────
 
-/** Vendor logins are made by the owner / administrator or the Purchase Cell, for a hospital. */
+/** Vendor logins are made by the owner / administrator or the Purchase Cell, for a hospital
+ * whose eProcurement service the Super Admin has switched on. */
 async function assertMayManage(sql: Sql, caller: Caller): Promise<string> {
   if (caller.platformRole) throw new HttpError(403, "Not available for this login.");
   if (!caller.tenantId) throw new HttpError(403, "This login is not attached to a hospital.");
   const staffOk = caller.role !== "staff" || caller.permissions == null || caller.permissions.includes("hospital_purchase_cell");
   if (!staffOk) throw new HttpError(403, "Vendor logins are managed by the Purchase Cell or the administrator.");
-  const t = (await sql.execute(`SELECT business_type FROM tenants WHERE id = ?`, [caller.tenantId])).rows[0];
+  const t = (await sql.execute(`SELECT business_type, eprocurement_allowed FROM tenants WHERE id = ?`, [caller.tenantId])).rows[0];
   if (String(t?.business_type ?? "") !== "hospital") throw new HttpError(403, "The vendor portal is for hospitals.");
+  if (num(t?.eprocurement_allowed) !== 1) throw new HttpError(403, "eProcurement is not active for this hospital. Contact MAVIN.pk to switch it on.");
   return caller.tenantId;
 }
 

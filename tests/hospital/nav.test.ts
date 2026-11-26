@@ -30,7 +30,7 @@ test("Episodes and Billing are separate; Invoices is reachable through Billing",
 
 test("Purchase Cell sub-tabs, exact order, each keeping its existing pages", () => {
   const pc = find(nav(), "Purchase Cell")!;
-  assert.deepEqual(kids(pc), ["Dashboard", "Purchase", "Purchase Orders", "Indent Books", "Products", "Supplier & Vendors", "Vendor Logins", "Vendor Services", "Cash Register", "Banks", "Expenses", "Other Revenue", "Tasks", "Utilities"]);
+  assert.deepEqual(kids(pc), ["Dashboard", "Purchase", "Indent Books", "Products", "Supplier & Vendors", "Vendor Services", "Cash Register", "Banks", "Expenses", "Other Revenue", "Tasks", "Utilities"]);
   const byLabel = (l: string) => pc.children!.find((c) => c.label === l)!;
   assert.equal(byLabel("Products").href, "/products");
   assert.ok(byLabel("Products").children!.some((c) => c.href === "/products/uom"));
@@ -80,7 +80,7 @@ test("no duplicate entries: labels unique per level, no link repeated across the
 
 test("permissions: a group key grants all its sub-tabs; a child key grants just that one; none hides the group", () => {
   const pc = (perms: string[]) => find(nav(null, perms), "Purchase Cell");
-  assert.equal(kids(pc(["hospital_purchase_cell"])).length, 14);
+  assert.equal(kids(pc(["hospital_purchase_cell"])).length, 12);
   assert.deepEqual(kids(pc(["banks"])), ["Banks"]);
   assert.deepEqual(kids(pc(["products", "tasks"])), ["Products", "Tasks"]);
   assert.equal(pc(["hospital_patients"]), undefined, "no key for any Purchase Cell child: group hidden");
@@ -96,10 +96,23 @@ test("permissions: a group key grants all its sub-tabs; a child key grants just 
 
 test("the subscription plan still limits the shared sub-tabs, not the hospital's own tabs", () => {
   const n = nav(["products", "banks"]);
-  assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Purchase Orders", "Indent Books", "Products", "Vendor Logins", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
+  assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Indent Books", "Products", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
   assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records", "Duty Roster", "Trainees"], "shared Staff is not in this plan; the hospital's own HR tabs are");
   assert.equal(find(n, "Billing"), undefined, "billing still requires Invoices in the plan");
   assert.ok(find(n, "Patient") && find(n, "Labs"), "hospital sections are not plan-limited");
+});
+
+test("eProcurement: a special service, in Purchase Cell only when the Super Admin switched it on", () => {
+  const pc = (on: boolean, perms: string[] | null = null) => find(visibleNavFor("hospital", null, perms, { eprocurement: on }), "Purchase Cell");
+  assert.ok(!kids(pc(false)).includes("eProcurement"));
+  assert.deepEqual(kids(pc(true)).slice(0, 4), ["Dashboard", "Purchase", "eProcurement", "Indent Books"]);
+  const ep = pc(true)!.children!.find((c) => c.label === "eProcurement")!;
+  assert.deepEqual(ep.children!.map((c) => [c.label, c.href]), [["Quotations & Orders", "/hospital/purchase-cell/eprocurement"], ["Vendor Logins", "/hospital/purchase-cell/eprocurement/vendor-logins"]]);
+  // A Purchase Cell login sees it; the pages are guarded as Purchase Cell pages.
+  assert.ok(kids(pc(true, ["hospital_purchase_cell"])).includes("eProcurement"));
+  assert.equal(pc(true, ["hospital_patients"]), undefined);
+  for (const c of ep.children!) assert.equal(moduleKeyForPath(c.href), "hospital_purchase_cell");
+  for (const c of ep.children!) assert.ok(existsSync(join(process.cwd(), "src", "app", ...c.href.split("/").filter(Boolean), "page.tsx")), c.href);
 });
 
 test("other business types do not get the hospital menu and keep Invoices / Staff at top level", () => {
