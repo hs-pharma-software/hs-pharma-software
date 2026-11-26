@@ -2025,6 +2025,39 @@ fn schema_sql_v107() -> &'static str {
     "#
 }
 
+fn schema_sql_v108() -> &'static str {
+    r#"
+    CREATE TABLE IF NOT EXISTS hospital_salary_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, salary_id TEXT NOT NULL REFERENCES salaries(id),
+        amount REAL NOT NULL CHECK (amount > 0), method TEXT NOT NULL, paid_at TEXT NOT NULL,
+        reference TEXT, notes TEXT, paid_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_salary_payments_salary ON hospital_salary_payments (tenant_id, salary_id, paid_at);
+    CREATE TRIGGER IF NOT EXISTS trg_hospital_salary_payment_apply AFTER INSERT ON hospital_salary_payments BEGIN
+        SELECT RAISE(ABORT, 'Payment exceeds the remaining salary balance or salary record is missing.')
+         WHERE NOT EXISTS (
+            SELECT 1 FROM salaries WHERE id = NEW.salary_id AND tenant_id = NEW.tenant_id AND deleted_at IS NULL
+              AND balance_salary >= NEW.amount
+        );
+        UPDATE salaries
+           SET paid_salary = COALESCE(paid_salary, 0) + NEW.amount,
+               balance_salary = MAX(0, COALESCE(balance_salary, 0) - NEW.amount),
+               pay_status = CASE WHEN COALESCE(balance_salary, 0) - NEW.amount <= 0.004 THEN 'paid' ELSE 'partial' END,
+               paid_at = NEW.paid_at, payment_method = NEW.method, updated_at = NEW.updated_at
+         WHERE id = NEW.salary_id AND tenant_id = NEW.tenant_id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_ins AFTER INSERT ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_upd AFTER UPDATE ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_del AFTER DELETE ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    "#
+}
+
 fn schema_sql_v106() -> &'static str {
     r#"
     ALTER TABLE hospital_indents ADD COLUMN received_by_name TEXT;
@@ -7155,6 +7188,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 107,
             description: "hospital_payroll_records",
             sql: schema_sql_v107(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 108,
+            description: "hospital_salary_payment_history",
+            sql: schema_sql_v108(),
             kind: MigrationKind::Up,
         },
         Migration {

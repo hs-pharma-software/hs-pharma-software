@@ -84,6 +84,16 @@ export interface Salary extends TenantRow {
   created_by_name?: string | null;
 }
 
+export interface HospitalSalaryPayment extends TenantRow {
+  salary_id: string;
+  amount: number;
+  method: string;
+  paid_at: string;
+  reference: string | null;
+  notes: string | null;
+  paid_by_name: string | null;
+}
+
 export type PartyType = "customer" | "supplier" | "staff";
 
 export interface LedgerAdjustment extends TenantRow {

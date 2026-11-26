@@ -13,6 +13,7 @@ import { admitFromVisit, listSurgeryBookings, saveSurgeryType } from "@/lib/repo
 import { cleanShares, parseShares, sharesTotal, surgeryProfit } from "@/config/surgeryShares";
 import { pharmacyCatalogue, type PharmacyPreInvoice } from "@/server/pharmacyBrands";
 import { departmentPl, doctorShares, episodePl, insurancePl, periodOf } from "@/lib/repo/hospitalReports";
+import { doctorPayrollSummary } from "@/lib/repo/hospitalPayroll";
 import { visibleNavFor } from "@/config/navFilter";
 import { localDate } from "@/lib/localDate";
 
@@ -94,6 +95,8 @@ test("reports: OPD, lab, radiology, insurance, episode and doctor share, by peri
     [today.slice(0, 4), "Dr Saeed", 1500, 200, 1700],
     [today.slice(0, 4), "Doctor not recorded (lab / radiology)", 0, 300, 300],
   ]);
+  const payrollSummary = await doctorPayrollSummary(doc.id, range);
+  assert.deepEqual([payrollSummary.testsOrdered, payrollSummary.consultation, payrollSummary.services, payrollSummary.total], [2, 1500, 200, 1700]);
   assert.equal(periodOf("2026-11-23", "month", range), "2026-11");
 });
 

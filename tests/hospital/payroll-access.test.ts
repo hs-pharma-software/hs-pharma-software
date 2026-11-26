@@ -4,7 +4,9 @@ import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant, type SessionUser } from "@/store/authStore";
 import { staffRepo } from "@/lib/repo/staff";
-import { listPayrollRecords, listPayrollStaff, savePayrollRecord } from "@/lib/repo/hospitalPayroll";
+import {
+  listPayrollPayments, listPayrollRecords, listPayrollStaff, recordPayrollPayment, savePayrollRecord,
+} from "@/lib/repo/hospitalPayroll";
 
 test("payroll estimates require HR, Finance or full access and stay within the tenant", async () => {
   setTestDb(fullSchemaDb());
@@ -45,11 +47,18 @@ test("payroll records save once per employee and month and calculate balances", 
   const staff = await staffRepo.create({ name: "Dr A", staff_category: "consultant", basic_pay: 45000 });
   const first = await savePayrollRecord({
     staffId: staff.id, month: "July", year: 2026, basic: 45000, overtimeHours: 32,
-    overtimePay: 10000, deductions: 5000, shares: 2500, payable: 52500, paid: 30000, paymentMethod: "Bank",
+    overtimePay: 10000, deductions: 5000, shares: 2500, payable: 52500, paid: 0, paymentMethod: "Bank",
   });
-  assert.equal(first.pay_status, "partial");
-  assert.equal(first.balance_salary, 22500);
+  assert.equal(first.pay_status, "unpaid");
+  assert.equal(first.balance_salary, 52500);
   assert.ok(first.slip_no?.startsWith("SL-2026-JUL"));
+  await recordPayrollPayment({ salaryId: first.id, amount: 30000, method: "Bank", date: "2026-07-20", reference: "TR-1" });
+  const partial = (await listPayrollRecords("July", 2026))[0];
+  assert.equal(partial.pay_status, "partial");
+  assert.equal(partial.balance_salary, 22500);
+  assert.equal(partial.paid_salary, 30000);
+  assert.equal((await listPayrollPayments(first.id))[0].reference, "TR-1");
+  await recordPayrollPayment({ salaryId: first.id, amount: 22500, method: "Cash", date: "2026-07-21" });
   const updated = await savePayrollRecord({
     staffId: staff.id, month: "July", year: 2026, basic: 45000, overtimeHours: 32,
     overtimePay: 10000, deductions: 5000, shares: 2500, payable: 52500, paid: 52500, paymentMethod: "Bank",
@@ -58,6 +67,9 @@ test("payroll records save once per employee and month and calculate balances", 
   assert.equal(updated.pay_status, "paid");
   assert.equal(updated.balance_salary, 0);
   assert.equal((await listPayrollRecords("July", 2026)).length, 1);
+  assert.equal((await listPayrollPayments(first.id)).length, 2);
+  await assert.rejects(recordPayrollPayment({ salaryId: first.id, amount: 1, method: "Cash", date: "2026-07-22" }), /remaining salary balance/i);
+  await assert.rejects(recordPayrollPayment({ salaryId: first.id, amount: -1, method: "Cash", date: "2026-07-22" }), /greater than zero/i);
   await assert.rejects(savePayrollRecord({
     staffId: staff.id, month: "July", year: 2026, basic: 45000, overtimeHours: 0,
     overtimePay: 0, deductions: 0, shares: 0, payable: 100, paid: 101, paymentMethod: "Cash",
