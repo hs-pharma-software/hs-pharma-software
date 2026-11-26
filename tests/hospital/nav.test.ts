@@ -45,7 +45,7 @@ test("Purchase Cell sub-tabs, exact order, each keeping its existing pages", () 
 
 test("HR Department holds Staff", () => {
   const hr = find(nav(), "HR Department")!;
-  assert.deepEqual(kids(hr), ["Staff", "Staff Records", "Duty Roster", "Trainees"]);
+  assert.deepEqual(kids(hr), ["Staff", "Staff Records", "Salaries (Estimate)", "Doctors Payments (Estimate)", "Duty Roster", "Trainees"]);
   const staff = hr.children![0];
   assert.equal(staff.href, "/staff");
   assert.deepEqual((staff.children ?? []).map((c) => c.href), ["/staff", "/staff/ledger", "/staff/attendance"]);
@@ -97,7 +97,7 @@ test("permissions: a group key grants all its sub-tabs; a child key grants just 
 test("the subscription plan still limits the shared sub-tabs, not the hospital's own tabs", () => {
   const n = nav(["products", "banks"]);
   assert.deepEqual(kids(find(n, "Purchase Cell")), ["Dashboard", "Purchase", "Indent Books", "Products", "Vendor Services", "Banks"], "the Purchase Cell's own tabs are not plan-limited");
-  assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records", "Duty Roster", "Trainees"], "shared Staff is not in this plan; the hospital's own HR tabs are");
+  assert.deepEqual(kids(find(n, "HR Department")), ["Staff Records", "Salaries (Estimate)", "Doctors Payments (Estimate)", "Duty Roster", "Trainees"], "shared Staff is not in this plan; the hospital's own HR tabs are");
   assert.equal(find(n, "Billing"), undefined, "billing still requires Invoices in the plan");
   assert.ok(find(n, "Patient") && find(n, "Labs"), "hospital sections are not plan-limited");
 });
