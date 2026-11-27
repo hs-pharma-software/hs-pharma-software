@@ -37,7 +37,9 @@ import { can, NO_PERMISSION_MESSAGE } from "@/lib/actionPermissions";
 import type { Purchase } from "@/lib/types2";
 import { assignProductToSupplier } from "@/lib/repo/productSuppliers";
 import { listUomsWithShared } from "@/lib/repo/uoms";
-import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty } from "@/lib/uom";
+import { hasSecondaryUnit, convertQtyOnUnitToggle, convertPriceOnUnitToggle, toBaseUnitQty, unitsSet, missingUnitLabel } from "@/lib/uom";
+import { ProductFormModal } from "@/components/products/ProductFormModal";
+import { notify } from "@/lib/notify";
 import { imeiListProblem, imeisOfPurchase, parseImeis, receiveImeis, removePurchaseImeis } from "@/lib/repo/imei";
 import { useAuthStore } from "@/store/authStore";
 import type { Supplier, Product, Uom } from "@/lib/types";
@@ -198,6 +200,9 @@ export function PurchaseFormModal({
   const [description, setDescription] = useState(purchase?.description ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Products in the purchase whose units are not set (base unit, secondary unit, packing): saving waits for them.
+  const [unitless, setUnitless] = useState<Product[]>([]);
+  const [fixing, setFixing] = useState<Product | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(isEdit || Boolean(draftId) || Boolean(fromOrder));
   const [uoms, setUoms] = useState<Uom[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
@@ -466,6 +471,7 @@ export function PurchaseFormModal({
       focusCell(cellsOf(existing).find(isEmpty) ?? cellsOf(existing)[0]);
       return;
     }
+    if (!unitsSet(p)) notify(`${p.name}: ${missingUnitLabel(p)}. Set its base unit, secondary unit and packing before saving the purchase.`);
     const price = await getLatestPrice(p.id);
     const salePrice = price?.salePrice ?? 0;
     focusRow.current = lines.length;
@@ -514,6 +520,15 @@ export function PurchaseFormModal({
         // Already open: focus now; otherwise once it has opened.
         if (!tryFocusField()) setOpenRow(bad);
       }
+      return;
+    }
+    // Every product needs its units (read again: they may have been set meanwhile).
+    const current = await Promise.all(lines.map((l) => productsRepo.get(l.product.id).then((p) => p ?? l.product, () => l.product)));
+    const missing = current.filter((p, i) => !unitsSet(p) && current.findIndex((x) => x.id === p.id) === i);
+    setUnitless(missing);
+    if (missing.length) {
+      setError(null);
+      document.getElementById("purchase-unitless")?.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
     setSaving(true);
@@ -1018,6 +1033,20 @@ export function PurchaseFormModal({
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
 
+        {unitless.length > 0 && (
+          <div id="purchase-unitless" role="alert" className="field-msg rounded-xl bg-amber-50 p-3 text-sm text-amber-900 ring-1 ring-amber-200">
+            <p className="flex items-center gap-1.5 font-semibold"><AlertCircle size={16} aria-hidden="true" />These products have no units set. Set the packing first:</p>
+            <ul className="mt-2 flex flex-col divide-y divide-amber-200/70">
+              {unitless.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                  <span className="min-w-0"><b>{p.name}</b> <span className="text-xs text-amber-800">({missingUnitLabel(p)})</span></span>
+                  <Button type="button" onClick={() => setFixing(p)}>Set units</Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <FormError message={error} />
 
         {!isEdit && draftStatus && <p className="text-[11px] text-neutral-400 sm:hidden">{draftStatus}</p>}
@@ -1042,6 +1071,23 @@ export function PurchaseFormModal({
           </Button>
         </div>
       </form>
+      )}
+
+      {fixing && (
+        <ProductFormModal
+          product={fixing}
+          onClose={() => setFixing(null)}
+          onSaved={() => {
+            const id = fixing.id;
+            setFixing(null);
+            void productsRepo.get(id).then((p) => {
+              if (!p) return;
+              // The line uses the product's new units; the warning goes once they are all set.
+              setLines((prev) => prev.map((l) => (l.product.id === id ? { ...l, product: p } : l)));
+              setUnitless((prev) => (unitsSet(p) ? prev.filter((x) => x.id !== id) : prev.map((x) => (x.id === id ? p : x))));
+            });
+          }}
+        />
       )}
 
       {quickAddSupplier && (

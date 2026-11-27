@@ -1,5 +1,19 @@
 ﻿import type { Product } from "./types";
 
+/** Base unit, secondary unit and packing all set: a product needs them before it can be purchased
+ * (stock is counted in the base unit and bought by the box or strip). */
+export function unitsSet(product: Pick<Product, "base_unit_id" | "secondary_unit_id" | "packing">): boolean {
+  return Boolean(product.base_unit_id) && Boolean(product.secondary_unit_id) && Number(product.packing) > 0;
+}
+
+/** What is missing, for the message ("no base unit", "no secondary unit", "no packing"), or null. */
+export function missingUnitLabel(product: Pick<Product, "base_unit_id" | "secondary_unit_id" | "packing">): string | null {
+  if (!product.base_unit_id) return "no base unit";
+  if (!product.secondary_unit_id) return "no secondary unit";
+  if (!(Number(product.packing) > 0)) return "no packing";
+  return null;
+}
+
 /** Whether a product actually has a distinct secondary unit worth offering
  * a Pack/sub-unit toggle for \u2014 no secondary unit (or same as base) means
  * there's nothing to convert to, so callers should just show a plain

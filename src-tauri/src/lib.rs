@@ -1877,6 +1877,27 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v112() -> &'static str {
+    r#"
+    -- Super Admin > Duplicate Products. Products whose names match by more
+    -- than half (in the shared catalogue, or a business's own product against
+    -- a shared one) are shown to the Super Admin, who merges them: every record
+    -- of the merged product (stock, prices, invoices, purchases, ...) moves to
+    -- the kept one and the merged product is removed. product_merges keeps each
+    -- merge; product_duplicate_dismissals the pairs marked "not duplicates".
+    -- Both are server-only.
+    CREATE TABLE IF NOT EXISTS product_merges (
+        id TEXT PRIMARY KEY, survivor_id TEXT NOT NULL, survivor_name TEXT NOT NULL, merged_id TEXT NOT NULL, merged_name TEXT NOT NULL,
+        merged_tenant_id TEXT, moved TEXT, merged_by TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_merges_created ON product_merges (created_at);
+    CREATE TABLE IF NOT EXISTS product_duplicate_dismissals (
+        id TEXT PRIMARY KEY, a_id TEXT NOT NULL, b_id TEXT NOT NULL, dismissed_by TEXT, created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_product_duplicate_dismissals ON product_duplicate_dismissals (a_id, b_id)
+    "#
+}
+
 fn schema_sql_v111() -> &'static str {
     r#"
     -- eProcurement vendor registration. A vendor signs up at ep.mavin.pk and
@@ -7307,6 +7328,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 111,
             description: "eprocurement_vendor_registration",
             sql: schema_sql_v111(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 112,
+            description: "duplicate_products_merge",
+            sql: schema_sql_v112(),
             kind: MigrationKind::Up,
         },
     ]
