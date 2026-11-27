@@ -832,7 +832,7 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
      * "Products: import / export CSV" switch for this business. */
     async importProducts(rows: Record<string, string>[]) {
       await need("catalog.manage");
-      if (!tenantAllows(context().deniedActions, "products.csv")) throw new DistError("FORBIDDEN", "CSV import is not switched on for your business. Ask MAVIN.pk.");
+      if (!tenantAllows(context().deniedActions, "products.csv")) throw new DistError("FORBIDDEN", "CSV import is switched off for your business. Ask MAVIN.pk.");
       if (!Array.isArray(rows) || !rows.length) throw new DistError("INVALID", "The file has no product rows.");
       if (rows.length > 5000) throw new DistError("INVALID", "Up to 5000 products per file.");
       const pick = (r: Record<string, string>, ...keys: string[]) => {

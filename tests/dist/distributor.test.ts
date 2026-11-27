@@ -561,7 +561,7 @@ test("narcotics: a controlled generic is detected; only customers with a valid C
   assert.equal(g.is_narcotic, 0);
 });
 
-test("products CSV import: off until the Super Admin switches it on; updates by code, creates the rest, reports bad rows", async () => {
+test("products CSV import: on for every business unless the Super Admin switches it off; updates by code, creates the rest, reports bad rows", async () => {
   const h = makeDist();
   const A = await distributor(h, "pA", "pharma");
   const rows: Record<string, string>[] = [
@@ -569,8 +569,8 @@ test("products CSV import: off until the Super Admin switches it on; updates by 
     { Code: "NEW1", Name: "Brand New Tab", Company: "Fresh Labs", Category: "Brand New Category", "Trade Price": "25", Generic_Name: "Alprazolam", "Opening Qty": "40" },
     { code: "BAD1", name: "No price", company: "Fresh Labs" },
   ];
-  await assert.rejects(() => h.as(A.owner).importProducts(rows), /not switched on/);
-  const on = h.as({ ...A.owner, deniedActions: ["+products.csv"] });
+  await assert.rejects(() => h.as({ ...A.owner, deniedActions: ["products.csv"] }).importProducts(rows), /switched off/);
+  const on = h.as(A.owner);
   const r = await on.importProducts(rows);
   assert.deepEqual([r.created, r.updated], [1, 1]);
   assert.deepEqual(r.errors.map((e) => [e.row, e.code]), [[4, "BAD1"]]);
@@ -580,7 +580,7 @@ test("products CSV import: off until the Super Admin switches it on; updates by 
   assert.deepEqual([fresh.stock, fresh.is_narcotic, fresh.company_name, fresh.category_name], [40, 1, "Fresh Labs", "Brand New Category"]);
   // Without catalogue rights the switch is not enough.
   const clerk = A.t.staff("clerk");
-  await assert.rejects(() => h.as({ ...clerk, deniedActions: ["+products.csv"] }).importProducts(rows), /catalog\.manage/);
+  await assert.rejects(() => h.as(clerk).importProducts(rows), /catalog\.manage/);
 });
 
 // ── Salesmen: wages, salaries, month closing, leaving ──

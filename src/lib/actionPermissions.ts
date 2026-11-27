@@ -23,7 +23,7 @@ export const ACTION_PERMISSIONS: readonly { key: string; label: string; group: s
   { key: "payments.refund", label: "Refund online payments", group: "Payments", tenantOptIn: true, optIn: true },
   { key: "customer.extra_discount", label: "Turn customers' extra discount on or off", group: "Invoices", optIn: true },
   { key: "desktop.offline", label: "Offline desktop (pilot: one checkout per branch)", group: "Offline Desktop", tenantOptIn: true },
-  { key: "products.csv", label: "Products: import CSV, export CSV and sample file", group: "Products", tenantOptIn: true },
+  { key: "products.csv", label: "Products: import CSV, export CSV and sample file", group: "Products" },
   { key: "memorized.edit", label: "Edit memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.delete", label: "Delete memorized invoices", group: "Memorized Invoices", optIn: true },
   { key: "memorized.convert", label: "Convert to invoice", group: "Memorized Invoices", optIn: true },

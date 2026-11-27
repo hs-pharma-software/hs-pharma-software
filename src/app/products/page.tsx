@@ -30,7 +30,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  // Import / export / sample file: switched on per business by the Super Admin (off by default).
+  // Import / export / sample file: on for every business (the Super Admin can switch it off for one).
   const canCsv = useCan("products.csv");
 
   // Contractors top up stock by hand per item, here as on the Stock page.
