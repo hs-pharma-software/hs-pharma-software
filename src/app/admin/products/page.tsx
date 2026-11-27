@@ -21,6 +21,12 @@ import {
   type UnownedProductRow,
 } from "@/lib/repo/catalogAdmin";
 import type { Tenant } from "@/lib/types2";
+import { PHARMACY_FAMILY_TYPES } from "@/lib/catalogAccess";
+
+/** Retail pharmacies, medical stores and hospital pharmacies: one shared Pharmacy catalogue, and one tab for their own products. */
+const PHARMACIES_TAB = "pharmacies";
+const PHARMACY_TYPES: readonly string[] = PHARMACY_FAMILY_TYPES;
+const pharmacyTypeNames = PHARMACY_TYPES.map((t) => businessType(t).label);
 
 // Rows with no business (tenant_id NULL): the shared catalogues every business of a
 // type sees, and the quarantine bucket of rows that belong to no catalogue.
@@ -31,7 +37,7 @@ const isNoBusinessTab = (t: TabId) => t === "unowned" || t.startsWith("shared:")
 const tabOfShared = (p: { catalog_group: string | null }): TabId =>
   p.catalog_group === "general_store" ? "shared:general_store" : p.catalog_group == null || p.catalog_group === "pharma" ? "shared:pharma" : "unowned";
 const SHARED_INFO: Record<SharedTab, { label: string; seenBy: string }> = {
-  "shared:pharma": { label: "Pharmacy catalogue (shared)", seenBy: "every pharmacy, medical store and hospital pharmacy" },
+  "shared:pharma": { label: "Pharmacy catalogue (shared)", seenBy: `every ${pharmacyTypeNames.join(", ")}` },
   "shared:general_store": { label: "General store catalogue (shared)", seenBy: "every general store, pharmacy and medical store" },
 };
 
@@ -42,7 +48,7 @@ export default function AdminCatalogReviewPage() {
   const [unownedCount, setUnownedCount] = useState(0);
 
   // Per-tab data
-  const [tenantRows, setTenantRows] = useState<TenantProductRow[]>([]);
+  const [tenantRows, setTenantRows] = useState<(TenantProductRow & { btype?: string })[]>([]);
   const [unownedRows, setUnownedRows] = useState<UnownedProductRow[]>([]);
   const [unownedMeta, setUnownedMeta] = useState<Record<string, number>>({});
 
@@ -80,8 +86,10 @@ export default function AdminCatalogReviewPage() {
         setUnownedRows(rows);
         setTenants(allTenants);
       } else {
-        const rows = await listProductsByBusinessType(tab);
-        setTenantRows(rows);
+        // The pharmacies' tab: their three types together, each row marked with its type.
+        const types = tab === PHARMACIES_TAB ? PHARMACY_TYPES : [tab];
+        const lists = await Promise.all(types.map(async (t) => (await listProductsByBusinessType(t)).map((r) => ({ ...r, btype: t }))));
+        setTenantRows(lists.flat().sort((a, b) => a.tenant_name.localeCompare(b.tenant_name) || a.name.localeCompare(b.name)));
       }
     } finally {
       setLoading(false);
@@ -131,7 +139,8 @@ export default function AdminCatalogReviewPage() {
   const tabs: { id: TabId; label: string; count: number }[] = [
     { id: "shared:pharma", label: SHARED_INFO["shared:pharma"].label, count: unownedRows.length ? noBusinessCount("shared:pharma") : unownedCount },
     { id: "shared:general_store", label: SHARED_INFO["shared:general_store"].label, count: noBusinessCount("shared:general_store") },
-    ...BUSINESS_TYPES.map((bt) => ({
+    { id: PHARMACIES_TAB, label: "Pharmacies (own)", count: PHARMACY_TYPES.reduce((n, t) => n + (typeCounts[t] ?? 0), 0) },
+    ...BUSINESS_TYPES.filter((bt) => !PHARMACY_TYPES.includes(bt.id)).map((bt) => ({
       id: bt.id as TabId,
       label: `${bt.label} (own)`,
       count: typeCounts[bt.id] ?? 0,
@@ -216,7 +225,10 @@ export default function AdminCatalogReviewPage() {
                   : "bg-white text-neutral-600 ring-1 ring-black/10 hover:bg-neutral-50"
               }`}
             >
-              {tab.label}
+              <span className="flex flex-col items-start leading-tight">
+                {tab.label}
+                {tab.id === "shared:pharma" && <span className={`text-[10px] font-normal ${active ? "text-white/70" : "text-neutral-400"}`}>{pharmacyTypeNames.join(" · ")}</span>}
+              </span>
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
                   active ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
@@ -309,7 +321,7 @@ export default function AdminCatalogReviewPage() {
         <>
           {/* Description */}
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-            <span className="font-semibold">{businessType(activeTab).label}</span> — each business&apos;s own products (not shared with others). Products these businesses add to a shared catalogue are in the shared catalogue tabs.
+            <span className="font-semibold">{activeTab === PHARMACIES_TAB ? `Pharmacies (${pharmacyTypeNames.join(", ")})` : businessType(activeTab).label}</span> — each business&apos;s own products (not shared with others). Products these businesses add to a shared catalogue are in the shared catalogue tabs.
             {shownTenant.length > 0 && (
               <span className="ml-2 text-neutral-400">{shownTenant.length.toLocaleString()} product{shownTenant.length !== 1 ? "s" : ""}</span>
             )}
@@ -362,6 +374,7 @@ export default function AdminCatalogReviewPage() {
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
                         {p.tenant_name}
                       </span>
+                      {activeTab === PHARMACIES_TAB && p.btype && <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{businessType(p.btype).label}</span>}
                     </td>
                     <td className="px-3 py-2 text-xs">{p.barcode ?? "—"}</td>
                     <td className="px-3 py-2 font-medium">{p.name}</td>
@@ -392,7 +405,7 @@ export default function AdminCatalogReviewPage() {
                 {!loading && !shownTenant.length && (
                   <tr>
                     <td colSpan={9} className="py-8 text-center text-neutral-400">
-                      {typeCounts[activeTab] === 0 || !typeCounts[activeTab]
+                      {!tabs.find((t) => t.id === activeTab)?.count
                         ? "No tenants of this type have products yet."
                         : "No products match the filter."}
                     </td>
