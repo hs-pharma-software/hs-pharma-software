@@ -1,0 +1,13 @@
+# Netlify hosting (the site also still runs on Vercel, which ignores this file).
+# Netlify detects Next.js and builds it with its own Next.js runtime.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "24"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[functions]
+  # Server code runs close to the database (pick the region in Site settings too).
+  node_bundler = "esbuild"

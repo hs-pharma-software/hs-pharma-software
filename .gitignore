@@ -55,3 +55,6 @@ scripts/product-audit.json
 
 # Product data imported from other systems (local only)
 imports/
+
+# Netlify local folder
+.netlify
