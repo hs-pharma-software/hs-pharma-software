@@ -1,7 +1,7 @@
 /** Creating logins and changing passwords: done by the server only, so
  * password hashes are never written or read by the browser. */
 import { randomBytes, randomUUID } from "node:crypto";
-import { serverDb, passwordHash, HttpError } from "./db";
+import { serverDb, storedPasswordHash, HttpError } from "./db";
 import type { Caller } from "./sqlPolicy";
 import { normalizeEmail, normalizeMobile } from "./recovery";
 
@@ -81,7 +81,7 @@ export async function createLogin(caller: Caller | null, l: NewLogin): Promise<{
   await db.execute({
     sql: `INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, is_active, permissions, denied_actions, created_at, updated_at, deleted_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL)`,
-    args: [id, l.tenantId, username, passwordHash(l.password, salt), salt, l.role, l.displayName ?? null, permissions != null ? JSON.stringify(permissions) : null, actions.length ? JSON.stringify(actions) : null, now, now],
+    args: [id, l.tenantId, username, storedPasswordHash(l.password, salt), salt, l.role, l.displayName ?? null, permissions != null ? JSON.stringify(permissions) : null, actions.length ? JSON.stringify(actions) : null, now, now],
   });
   if (email || mobile) await db.execute({ sql: `UPDATE users SET email = ?, mobile = ? WHERE id = ?`, args: [email, mobile, id] });
   return { id };
@@ -100,7 +100,7 @@ export async function setPassword(caller: Caller, userId: string, newPassword: s
   const salt = randomBytes(16).toString("hex");
   await db.execute({
     sql: `UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = ?`,
-    args: [passwordHash(newPassword, salt), salt, new Date().toISOString(), userId],
+    args: [storedPasswordHash(newPassword, salt), salt, new Date().toISOString(), userId],
   });
 }
 

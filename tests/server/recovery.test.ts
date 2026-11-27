@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { fullSchemaDb } from "../catalog/fullDb.ts";
 import { sqliteSql } from "./sqliteSql.ts";
-import { passwordHash } from "@/server/db";
+import { checkPassword, passwordHash } from "@/server/db";
 import {
   CODES_PER_LOGIN, MAX_TRIES, RECOVERY_MESSAGE, completeReset, getContact, maskEmail, maskMobile, normalizeEmail, normalizeMobile, requestReset, resetRateLimits, setContact,
 } from "@/server/recovery";
@@ -30,7 +30,7 @@ function addUser(id: string, username: string, o: { tenant?: string | null; role
 }
 const passwordIs = (id: string, pw: string) => {
   const r = one(`SELECT password_hash, password_salt FROM users WHERE id = ?`, id);
-  return passwordHash(pw, String(r.password_salt)) === r.password_hash;
+  return checkPassword(pw, String(r.password_salt), String(r.password_hash)).ok;
 };
 
 function mailbox() {

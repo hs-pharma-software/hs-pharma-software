@@ -9,7 +9,7 @@ import { setTestDb } from "../shims/db.ts";
 import { sqliteSql } from "../server/sqliteSql.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
 import { createDemoHospital, DEMO_STAFF, DEMO_TRAINEES, DEMO_DEPARTMENTS } from "@/server/demoHospital";
-import { passwordHash } from "@/server/db";
+import { checkPassword } from "@/server/db";
 import { listTrainees, saveTrainee, moveTrainee, endTraining, traineeCounts, currentPlacement } from "@/lib/repo/trainees";
 import { rosterRange, setRosterShift, hospitalStaffList } from "@/lib/repo/hrRecords";
 import { listForms } from "@/lib/repo/medicalRecord";
@@ -72,7 +72,7 @@ test("demo hospital: the business, 10 departments, 28 staff with a login each, t
   // Every login works with the demo password, and opens exactly its designation's sections.
   for (const l of r.logins) {
     const u = one(`SELECT password_hash, password_salt, permissions, role, is_active FROM users WHERE username = ?`, l.username);
-    assert.equal(u.password_hash, passwordHash("Demo@2026", String(u.password_salt)), l.username);
+    assert.ok(checkPassword("Demo@2026", String(u.password_salt), String(u.password_hash)).ok, l.username);
     assert.equal(u.is_active, 1);
     const s = one(`SELECT staff_category, user_id, employee_id, license_no FROM staff s JOIN users u ON u.id = s.user_id WHERE u.username = ?`, l.username);
     if (u.role === "owner") { assert.equal(s, undefined); continue; }

@@ -122,7 +122,6 @@ export function ProductFormModal({
 
   // Description list + FBR auto-fill from description.
   const [genericNames, setGenericNames] = useState<string[]>([]);
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [autofill, setAutofill] = useState<
     | { status: "idle" }
     | { status: "running" }
@@ -140,10 +139,9 @@ export function ProductFormModal({
   >({ status: "idle" });
 
   useEffect(() => {
-    void Promise.all([listGenericNames(), productsRepo.list()]).then(([names, products]) => {
-      setGenericNames(names);
-      setCatalog(products);
-    });
+    // Only the description list here: the whole catalogue (thousands of shared products) is never
+    // downloaded just to open this form; auto-fill reads the products with the same description.
+    void listGenericNames().then(setGenericNames);
   }, []);
 
   function currentFbr(): FbrFields {
@@ -165,7 +163,12 @@ export function ProductFormModal({
     lastAutofilled.current = key;
     const previous = currentFbr();
     setAutofill({ status: "running" });
-    const suggestion = await suggestFbrDetails(name, desc, catalog, { excludeId: product?.id, forceAi: opts.forceAi });
+    const same: CatalogProduct[] = opts.forceAi ? [] : await productsRepo.list({
+      where: "hs_code IS NOT NULL AND UPPER(TRIM(description)) = ?",
+      params: [desc.replace(/\s+/g, " ").trim().toUpperCase()],
+      orderBy: "updated_at DESC LIMIT 200",
+    }).catch(() => []);
+    const suggestion = await suggestFbrDetails(name, desc, same, { excludeId: product?.id, forceAi: opts.forceAi });
     applyFbr(suggestion);
     setAutofill({ status: "done", suggestion, previous });
   }

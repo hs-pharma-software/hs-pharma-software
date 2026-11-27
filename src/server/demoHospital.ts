@@ -10,7 +10,7 @@
  * usernames already exists. All names, phone and licence numbers are made up
  * and marked as demo. */
 import { randomBytes, randomUUID } from "node:crypto";
-import { HttpError, passwordHash } from "./db";
+import { HttpError, storedPasswordHash } from "./db";
 import { pkToday } from "./appDocs";
 import { businessType, defaultModulesFor } from "../config/businessTypes";
 import { designation } from "../config/hospitalStaff";
@@ -151,7 +151,7 @@ export async function createDemoHospital(sql: Sql, caller: Caller, input: DemoHo
     const s = salt();
     push(`INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, is_active, permissions, denied_actions, created_at, updated_at, deleted_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, NULL)`,
-      [id, T, username, passwordHash(password, s), s, role, displayName, permissions ? JSON.stringify(permissions) : null, now, now]);
+      [id, T, username, storedPasswordHash(password, s), s, role, displayName, permissions ? JSON.stringify(permissions) : null, now, now]);
     return id;
   };
   addUser(`${prefix}.admin`, "owner", "Demo Administrator", null);

@@ -10,7 +10,7 @@ import { sqliteSql } from "./sqliteSql.ts";
 import * as ss from "@/server/subSupers";
 import { distributorAction, ownerAction } from "@/server/subSupersApi";
 import type { Actor, Sql } from "@/server/subSupers";
-import { passwordHash, refuseDistributor, HttpError } from "@/server/db";
+import { checkPassword, refuseDistributor, HttpError } from "@/server/db";
 import { scopeStatement, ScopeError } from "@/server/tenantScope";
 
 let db: DatabaseSync;
@@ -152,7 +152,7 @@ test("the owner verifies and activates: one tenant, one owner login, one subscri
   // The password is set only through the one-time link; it never existed in plaintext.
   await ss.redeemSetupToken(sql, r.setupToken!, "first-pass-123");
   const after = db.prepare(`SELECT password_hash, password_salt FROM users WHERE id = ?`).get(owner.id) as Record<string, string>;
-  assert.equal(after.password_hash, passwordHash("first-pass-123", after.password_salt));
+  assert.ok(checkPassword("first-pass-123", String(after.password_salt), String(after.password_hash)).ok);
   await assert.rejects(ss.redeemSetupToken(sql, r.setupToken!, "again-123"), /expired or was already used/);
 });
 

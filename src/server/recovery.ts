@@ -12,7 +12,7 @@
  * SMS is not connected yet: a mobile number identifies the login, and the
  * code still goes to its email. */
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import { HttpError, passwordHash } from "./db";
+import { HttpError, checkPassword, storedPasswordHash } from "./db";
 import type { Caller } from "./sqlPolicy";
 import type { Sql } from "./subSupers";
 import { chooseLoginMail, codeMail, type SendMail } from "./mailer";
@@ -82,7 +82,7 @@ export async function setContact(sql: Sql, caller: Caller, userId: string, p: { 
   // Changing your own recovery email needs your password, so a borrowed open session cannot take over the login.
   if (self && caller.role !== "super_admin") {
     const pw = typeof p.currentPassword === "string" ? p.currentPassword : "";
-    if (!pw || !sameHash(passwordHash(pw, String(row.password_salt)), String(row.password_hash))) throw new HttpError(403, "Your current password is not correct.");
+    if (!pw || !checkPassword(pw, String(row.password_salt), String(row.password_hash)).ok) throw new HttpError(403, "Your current password is not correct.");
   }
   const email = normalizeEmail(p.email);
   const mobile = normalizeMobile(p.mobile);
@@ -191,6 +191,6 @@ export async function completeReset(sql: Sql, requestId: unknown, code: unknown,
   // Claim the code first so a second request with it cannot also succeed.
   const claimed = await sql.execute(`UPDATE password_resets SET used_at = ? WHERE id = ? AND channel = 'email' AND used_at IS NULL`, [t, id]);
   if (!claimed.rowsAffected) throw wrong;
-  await sql.execute(`UPDATE users SET password_hash = ?, password_salt = ?, password_changed_at = ?, updated_at = ? WHERE id = ?`, [passwordHash(pw, salt), salt, t, t, u.id]);
+  await sql.execute(`UPDATE users SET password_hash = ?, password_salt = ?, password_changed_at = ?, updated_at = ? WHERE id = ?`, [storedPasswordHash(pw, salt), salt, t, t, u.id]);
   return { username: String(u.username) };
 }

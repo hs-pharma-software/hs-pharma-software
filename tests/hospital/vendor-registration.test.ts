@@ -16,7 +16,7 @@ import { eprocurementAction, vendorAction, vendorActorFor, type VendorOption } f
 import { requestReset } from "@/server/recovery";
 import { analyzeSql, authorize, type Caller } from "@/server/sqlPolicy";
 import { emptyProfile, stepProblems, type VendorProfile } from "@/lib/vendorProfile";
-import { passwordHash } from "@/server/db";
+import { checkPassword } from "@/server/db";
 
 const H = "hosp-a";
 let db: DatabaseSync;
@@ -58,7 +58,7 @@ test("sign-up: the vendor's own account (no business), checked fields, one email
   const { account } = await vendor();
   const u = db.prepare(`SELECT tenant_id, platform_role, role, permissions, email, password_hash, password_salt FROM users WHERE username = 'ali'`).get() as Record<string, string | null>;
   assert.deepEqual([u.tenant_id, u.platform_role, u.role, u.permissions, u.email], [null, "vendor", "staff", "[]", "sales@ali.pk"]);
-  assert.equal(u.password_hash, passwordHash("secret123", String(u.password_salt)));
+  assert.ok(checkPassword("secret123", String(u.password_salt), String(u.password_hash)).ok);
   const a = await account();
   assert.deepEqual([a.status, a.vendorCode, a.editable, a.complete, a.profile.company.name, a.profile.owner.name], ["draft", "EP-0001", true, false, "Ali Traders", "Ali Khan"]);
   await assert.rejects(signUp(sql(), input({ username: "ali2" }), null), /already exists/);
@@ -192,7 +192,7 @@ test("forgot password: the code goes to the vendor's own email; the Super Admin 
   await assert.rejects(adminEprocurementAction(sql(), owner, { action: "setPassword", id, password: "newsecret1" }), /platform owner/);
   await admin({ action: "setPassword", id, password: "newsecret1" });
   const u = db.prepare(`SELECT password_hash, password_salt, password_changed_at FROM users WHERE username = 'ali'`).get() as Record<string, string>;
-  assert.equal(u.password_hash, passwordHash("newsecret1", u.password_salt));
+  assert.ok(checkPassword("newsecret1", String(u.password_salt), String(u.password_hash)).ok);
   assert.ok(u.password_changed_at, "earlier sessions end");
 });
 

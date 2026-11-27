@@ -18,7 +18,7 @@
  *
  * ep_* tables are server-only (never through /api/db). */
 import { randomBytes, randomUUID } from "node:crypto";
-import { HttpError, passwordHash } from "./db";
+import { HttpError, storedPasswordHash } from "./db";
 import { normalizeEmail } from "./recovery";
 import type { Caller } from "./sqlPolicy";
 import type { Sql } from "./subSupers";
@@ -91,7 +91,7 @@ export async function signUp(sql: Sql, b: Record<string, unknown>, ip: string | 
     {
       sql: `INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, email, is_active, permissions, platform_role, created_at, updated_at, deleted_at)
             VALUES (?, NULL, ?, ?, ?, 'staff', ?, ?, 1, '[]', 'vendor', ?, ?, NULL)`,
-      args: [userId, username, passwordHash(password, salt), salt, contactName, email, t, t],
+      args: [userId, username, storedPasswordHash(password, salt), salt, contactName, email, t, t],
     },
     {
       sql: `INSERT INTO ep_vendors (id, vendor_code, user_id, name, email, phone, status, profile, self_registered, signup_ip, created_at, updated_at)
@@ -398,7 +398,7 @@ export async function adminEprocurementAction(sql: Sql, caller: Caller, b: Recor
       if (password.length < MIN_PASSWORD) throw new HttpError(400, `The password must be at least ${MIN_PASSWORD} characters.`);
       const salt = randomBytes(16).toString("hex");
       await sql.execute(`UPDATE users SET password_hash = ?, password_salt = ?, password_changed_at = ?, updated_at = ? WHERE id = ? AND platform_role = 'vendor'`,
-        [passwordHash(password, salt), salt, t, t, r.user_id]);
+        [storedPasswordHash(password, salt), salt, t, t, r.user_id]);
       return { ok: true };
     }
     case "categories":

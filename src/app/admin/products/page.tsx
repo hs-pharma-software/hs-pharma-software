@@ -160,7 +160,7 @@ export default function AdminCatalogReviewPage() {
     const skipped: { name: string; reason: string }[] = [];
     try {
       // Large lists go in parts (the server takes a few hundred at a time).
-      for (let round = 0; round < 50; round++) {
+      for (let round = 0; round < 200; round++) {
         const r = (await serverJson<{ result: ShareResult }>("/api/catalog/share/", { tenantId: openPharmacy.id, target: shareTarget, ...(ids === "all" ? { all: true } : { productIds: ids }) })).result;
         shared += r.shared; merged += r.merged; skipped.push(...r.skipped);
         if (ids !== "all" || r.remaining === 0 || r.shared + r.merged === 0) break;

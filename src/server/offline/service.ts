@@ -18,6 +18,7 @@ import { formatMr } from "@/lib/hospitalMr";
 import type { Sql } from "../subSupers";
 import { callerCan, type Caller } from "../sqlPolicy";
 import { HttpError } from "../db";
+import { KEEP_DAYS, pruneOldest } from "../prune";
 import { deviceReenrolMail, type SendMail } from "../mailer";
 import { maskEmail } from "../recovery";
 import { callContext, callSummary, idSource, jsonList as callList, runCall, type CallDb } from "@/offline/calls";
@@ -957,10 +958,8 @@ export async function decideHeld(sql: Sql, caller: Caller, opId: string, approve
 
 /** Keeps the change log bounded: entries older than `days` go (a device whose
  * cursor is older then downloads everything again; see pull()). */
-export async function pruneChanges(sql: Sql, days = 45) {
-  const cut = new Date(Date.now() - days * 86_400_000).toISOString();
-  const r = await sql.execute(`DELETE FROM offline_changes WHERE seq < (SELECT COALESCE(MIN(seq), 0) FROM offline_changes WHERE changed_at >= ?)`, [cut]);
-  return { removed: r.rowsAffected };
+export async function pruneChanges(sql: Sql, days: number = KEEP_DAYS.changes) {
+  return pruneOldest(sql, "offline_changes", "changed_at", days, { key: "seq" });
 }
 
 // ── Read-only copy for the desktop screens (shown offline) ────────────────

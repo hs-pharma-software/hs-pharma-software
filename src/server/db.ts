@@ -1,7 +1,7 @@
 /** The server's connection to the shared Turso database, the caller check,
  * and running the statements the browser sends (after sqlPolicy allows them). */
 import { createClient, type Client, type InStatement, type ResultSet } from "@libsql/client/web";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { serverConfig } from "./config";
 import { verifySession, requestToken, sessionIssuedAt } from "./session";
 import { analyzeSql, authorize, callerCan, costHidden, personalScope, HIDDEN_COLUMNS, type Analysis, type Caller } from "./sqlPolicy";
@@ -213,8 +213,29 @@ export function shape(r: Pick<ResultSet, "columns" | "rows" | "rowsAffected" | "
 
 export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
-/** Same scheme the app has always used (lib/auth.ts), so existing passwords keep working. */
+/** The old scheme (one SHA-256): still accepted at sign-in, and replaced by scrypt then. */
 export const passwordHash = (password: string, salt: string) => sha256(`${salt}:${password}`);
+
+/** Passwords are stored as scrypt ("scrypt$<N>$<hex>"): slow on purpose, so a copied
+ * database cannot be tried against millions of passwords. About 50 ms per sign-in. */
+const SCRYPT_N = 16384;
+const scrypt = (password: string, salt: string, n: number, bytes: number) =>
+  scryptSync(password, salt, bytes, { N: n, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+export const storedPasswordHash = (password: string, salt: string) => `scrypt$${SCRYPT_N}$${scrypt(password, salt, SCRYPT_N, 32).toString("hex")}`;
+
+/** Checks a password against what is stored. `upgrade`: right, but stored the old way (save it again as scrypt). */
+export function checkPassword(password: string, salt: string, stored: string): { ok: boolean; upgrade: boolean } {
+  if (stored.startsWith("scrypt$")) {
+    const [, n, hex] = stored.split("$");
+    const N = Number(n);
+    if (!Number.isInteger(N) || N < 1024 || N > 1 << 20 || !hex || hex.length % 2) return { ok: false, upgrade: false };
+    const want = Buffer.from(hex, "hex");
+    return { ok: timingSafeEqual(scrypt(password, salt, N, want.length), want), upgrade: N !== SCRYPT_N };
+  }
+  const a = Buffer.from(passwordHash(password, salt)), b = Buffer.from(stored);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  return { ok, upgrade: ok };
+}
 
 export function clientIp(req: Request): string | null {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null;

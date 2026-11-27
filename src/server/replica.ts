@@ -12,6 +12,7 @@ import { costHidden, HIDDEN_COLUMNS, type Caller } from "./sqlPolicy";
 import type { Schema, Scope } from "./tenantScope";
 import type { Sql } from "./subSupers";
 import { REPLICA_EXCLUDED, replicaTableKind } from "./replicaTables";
+import { KEEP_DAYS, pruneOldest } from "./prune";
 
 export interface ReplicaInfo { names: Set<string>; schema: Schema }
 export const REPLICA_PAGE = 1000;
@@ -141,8 +142,6 @@ export async function replicaChanges(sql: Sql, caller: Caller, info: ReplicaInfo
 
 /** Keeps the change log bounded (daily job): entries older than `days` go;
  * a computer whose position is older copies everything again. */
-export async function pruneDataChanges(sql: Sql, days = 45) {
-  const cut = new Date(Date.now() - days * 86_400_000).toISOString();
-  const r = await sql.execute(`DELETE FROM data_changes WHERE seq < (SELECT COALESCE(MIN(seq), 0) FROM data_changes WHERE changed_at >= ?)`, [cut]);
-  return { removed: r.rowsAffected };
+export async function pruneDataChanges(sql: Sql, days: number = KEEP_DAYS.changes) {
+  return pruneOldest(sql, "data_changes", "changed_at", days, { key: "seq" });
 }

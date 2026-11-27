@@ -12,7 +12,7 @@
  * SQLite; the API routes pass the shared database (sqlForServer). */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { BUSINESS_TYPES, businessType, defaultModulesFor } from "../config/businessTypes";
-import { HttpError, passwordHash } from "./db";
+import { HttpError, storedPasswordHash } from "./db";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -96,7 +96,7 @@ export async function redeemSetupToken(sql: Sql, token: string, password: string
   const row = await one(sql, `SELECT u.username FROM users u WHERE u.id = (${live}) AND u.deleted_at IS NULL`, [hash, t]);
   if (!row) throw new HttpError(400, "This link has expired or was already used. Ask for a new one.");
   const [changed] = await sql.batch([
-    { sql: `UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = (${live})`, args: [passwordHash(password, salt), salt, t, hash, t] },
+    { sql: `UPDATE users SET password_hash = ?, password_salt = ?, updated_at = ? WHERE id = (${live})`, args: [storedPasswordHash(password, salt), salt, t, hash, t] },
     { sql: `UPDATE password_setup_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL`, args: [t, hash] },
   ]);
   if (!changed) throw new HttpError(400, "This link has expired or was already used. Ask for a new one.");
@@ -106,7 +106,7 @@ export async function redeemSetupToken(sql: Sql, token: string, password: string
 /** A login nobody can sign in to until the setup link is used. */
 const unusableLogin = () => {
   const salt = randomBytes(16).toString("hex");
-  return { salt, hash: passwordHash(randomBytes(32).toString("hex"), salt) };
+  return { salt, hash: storedPasswordHash(randomBytes(32).toString("hex"), salt) };
 };
 
 // ── Distributors (owner) ─────────────────────────────────────────────────

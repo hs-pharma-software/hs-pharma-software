@@ -18,8 +18,9 @@ import { sharedCatalogGroupsFor, type SharedCatalogGroup } from "../lib/catalogA
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
 const str = (v: unknown) => (v == null || v === "" ? null : String(v));
-/** At most this many products per request (the screen asks again for the rest). */
-export const SHARE_BATCH = 300;
+/** At most this many products per request (the screen asks again for the rest): small enough to
+ * finish well inside any host's time limit for one request. */
+export const SHARE_BATCH = 100;
 
 export interface ShareResult { shared: number; merged: number; skipped: { name: string; reason: string }[]; remaining: number }
 
