@@ -457,6 +457,23 @@ function FbrCell({
   const showError = errorAt !== null;
   const valid = !!row.fbr_invoice_no;
 
+  // A fixed box does not move with the page: close it on any scroll or resize so it never
+  // stays behind, away from its row (or off the screen).
+  useEffect(() => {
+    if (!errorAt) return;
+    const close = (e: Event) => {
+      // Scrolling a long message inside the box itself keeps it open.
+      if (e.target instanceof Element && e.target.closest("[data-fbr-error]")) return;
+      setErrorAt(null);
+    };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [errorAt]);
+
   function toggleError(e: React.MouseEvent<HTMLButtonElement>) {
     if (!error) return;
     if (errorAt) return setErrorAt(null);
@@ -496,6 +513,7 @@ function FbrCell({
         {showError && error && createPortal(
           <div
             role="alert"
+            data-fbr-error
             style={errorAt}
             className="fixed z-50 w-80 max-w-[calc(100vw-16px)] whitespace-normal break-words rounded-lg bg-rose-50 p-3 text-left text-xs text-rose-700 shadow-lg ring-1 ring-rose-200"
           >
