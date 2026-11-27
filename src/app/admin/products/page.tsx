@@ -22,12 +22,22 @@ import {
 } from "@/lib/repo/catalogAdmin";
 import type { Tenant } from "@/lib/types2";
 
-// "unowned" is the virtual tab for the quarantine bucket
-type TabId = string | "unowned";
+// Rows with no business (tenant_id NULL): the shared catalogues every business of a
+// type sees, and the quarantine bucket of rows that belong to no catalogue.
+type SharedTab = "shared:pharma" | "shared:general_store";
+type TabId = string | SharedTab | "unowned";
+const isNoBusinessTab = (t: TabId) => t === "unowned" || t.startsWith("shared:");
+/** Which tab a row with no business belongs to. Rows from before v32 have no group: pharmacies see them. */
+const tabOfShared = (p: { catalog_group: string | null }): TabId =>
+  p.catalog_group === "general_store" ? "shared:general_store" : p.catalog_group == null || p.catalog_group === "pharma" ? "shared:pharma" : "unowned";
+const SHARED_INFO: Record<SharedTab, { label: string; seenBy: string }> = {
+  "shared:pharma": { label: "Pharmacy catalogue (shared)", seenBy: "every pharmacy, medical store and hospital pharmacy" },
+  "shared:general_store": { label: "General store catalogue (shared)", seenBy: "every general store, pharmacy and medical store" },
+};
 
 export default function AdminCatalogReviewPage() {
   const tauri = useIsTauri();
-  const [activeTab, setActiveTab] = useState<TabId>("unowned");
+  const [activeTab, setActiveTab] = useState<TabId>("shared:pharma");
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const [unownedCount, setUnownedCount] = useState(0);
 
@@ -65,7 +75,7 @@ export default function AdminCatalogReviewPage() {
     setPickedTenant(new Set());
     setMsg(null);
     try {
-      if (tab === "unowned") {
+      if (isNoBusinessTab(tab)) {
         const [rows, allTenants] = await Promise.all([listUnownedProducts(), tenantsRepo.list({ orderBy: "name ASC" })]);
         setUnownedRows(rows);
         setTenants(allTenants);
@@ -80,7 +90,7 @@ export default function AdminCatalogReviewPage() {
 
   useEffect(() => {
     void loadCounts();
-    void loadTab("unowned");
+    void loadTab("shared:pharma");
   }, []);
 
   const switchTab = (tab: TabId) => {
@@ -97,8 +107,9 @@ export default function AdminCatalogReviewPage() {
 
   // ── Unowned tab view ────────────────────────────────────────────────────────
   const term = search.trim().toLowerCase();
+  const noBusinessCount = (t: TabId) => unownedRows.filter((p) => tabOfShared(p) === t).length;
   const shownUnowned = unownedRows.filter(
-    (p) => !term || p.name.toLowerCase().includes(term) || (p.barcode ?? "").toLowerCase().includes(term) || (p.company_name ?? "").toLowerCase().includes(term)
+    (p) => tabOfShared(p) === activeTab).filter((p) => !term || p.name.toLowerCase().includes(term) || (p.barcode ?? "").toLowerCase().includes(term) || (p.company_name ?? "").toLowerCase().includes(term)
   );
   const togglePick = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const togglePickTenant = (id: string) => setPickedTenant((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -118,20 +129,29 @@ export default function AdminCatalogReviewPage() {
 
   // ── Tab bar ─────────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; count: number }[] = [
+    { id: "shared:pharma", label: SHARED_INFO["shared:pharma"].label, count: unownedRows.length ? noBusinessCount("shared:pharma") : unownedCount },
+    { id: "shared:general_store", label: SHARED_INFO["shared:general_store"].label, count: noBusinessCount("shared:general_store") },
     ...BUSINESS_TYPES.map((bt) => ({
       id: bt.id as TabId,
-      label: bt.label,
+      label: `${bt.label} (own)`,
       count: typeCounts[bt.id] ?? 0,
     })),
-    { id: "unowned", label: "Unowned", count: unownedCount },
+    { id: "unowned", label: "Unowned", count: noBusinessCount("unowned") },
   ];
+  const sharedTab = activeTab.startsWith("shared:") ? SHARED_INFO[activeTab as SharedTab] : null;
 
   return (
     <div className="space-y-3">
       <PageHeader
         title="Catalog Review"
         actions={
-          activeTab === "unowned" ? (
+          sharedTab ? (
+            <>
+              {/* No copies to businesses: they already see the shared catalogue (a copy would show twice). */}
+              <Button disabled={!picked.size} onClick={() => setGiving("move")} title="Take the product out of the shared catalogue and give it to one business only">Move to one tenant</Button>
+              <Button onClick={() => { void loadTab(activeTab); void loadCounts(); }}>Refresh</Button>
+            </>
+          ) : activeTab === "unowned" ? (
             <>
               <Button disabled={!picked.size} onClick={() => setGiving("move")}>Move to tenant</Button>
               <Button disabled={!picked.size} onClick={() => setGiving("copy")}>Copy to tenant</Button>
@@ -216,15 +236,22 @@ export default function AdminCatalogReviewPage() {
         </div>
       )}
 
-      {/* ── Unowned tab ── */}
-      {activeTab === "unowned" && (
+      {/* ── Shared catalogue and unowned tabs ── */}
+      {isNoBusinessTab(activeTab) && (
         <>
+          {sharedTab ? (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <b>{sharedTab.label}</b>: products added by businesses to the shared catalogue, seen by <b>{sharedTab.seenBy}</b>. Nothing needs assigning.
+              Duplicates are merged in Super Admin › Duplicate Products. {shownUnowned.length.toLocaleString()} product{shownUnowned.length === 1 ? "" : "s"}.
+            </div>
+          ) : (
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-            These rows belong to no tenant — the ownership migration could not attribute them.
+            These rows belong to no business and no shared catalogue: the ownership migration could not attribute them.
             <b> Move</b> gives the row to one tenant; <b>Copy</b> gives a tenant its own copy and keeps the original here.
             Unowned: {unownedMeta.products ?? 0} products, {unownedMeta.categories ?? 0} categories,{" "}
-            {unownedMeta.sub_categories ?? 0} sub categories, {unownedMeta.uoms ?? 0} units, {unownedMeta.generic_names ?? 0} generic names.
+            {unownedMeta.sub_categories ?? 0} sub categories, {unownedMeta.uoms ?? 0} units, {unownedMeta.generic_names ?? 0} generic names (all rows with no business, shared catalogues included).
           </div>
+          )}
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, barcode, company" />
           <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-black/5">
             <table className="w-full text-sm">
@@ -256,9 +283,11 @@ export default function AdminCatalogReviewPage() {
                       <Button
                         variant="ghost"
                         onClick={async () => {
-                          if (!confirm(`Delete "${p.name}" from the unowned catalog?`)) return;
+                          if (!confirm(sharedTab
+                            ? `Delete "${p.name}" from the shared catalogue? It disappears from the product list of ${sharedTab.seenBy} (their past records stay).`
+                            : `Delete "${p.name}" from the unowned catalog?`)) return;
                           await deleteUnownedProduct(p.id);
-                          void loadTab("unowned");
+                          void loadTab(activeTab);
                           void loadCounts();
                         }}
                       >
@@ -268,7 +297,7 @@ export default function AdminCatalogReviewPage() {
                   </tr>
                 ))}
                 {loading && <tr><td colSpan={8} className="py-8 text-center text-neutral-400">Loading…</td></tr>}
-                {!loading && !shownUnowned.length && <tr><td colSpan={8} className="py-8 text-center text-neutral-400">No unowned products</td></tr>}
+                {!loading && !shownUnowned.length && <tr><td colSpan={8} className="py-8 text-center text-neutral-400">{sharedTab ? "No products in this catalogue" : "No unowned products"}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -276,11 +305,11 @@ export default function AdminCatalogReviewPage() {
       )}
 
       {/* ── Business-type tabs ── */}
-      {activeTab !== "unowned" && (
+      {!isNoBusinessTab(activeTab) && (
         <>
           {/* Description */}
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-            <span className="font-semibold">{businessType(activeTab).label}</span> — products owned by tenants of this type.
+            <span className="font-semibold">{businessType(activeTab).label}</span> — each business&apos;s own products (not shared with others). Products these businesses add to a shared catalogue are in the shared catalogue tabs.
             {shownTenant.length > 0 && (
               <span className="ml-2 text-neutral-400">{shownTenant.length.toLocaleString()} product{shownTenant.length !== 1 ? "s" : ""}</span>
             )}
@@ -405,7 +434,7 @@ export default function AdminCatalogReviewPage() {
                       text: `${r.done.length} product(s) ${verb}.` + (r.skipped.length ? ` ${r.skipped.length} not ${verb}: ${why}${r.skipped.length > 5 ? " …" : ""}` : ""),
                     });
                     setGiving(null);
-                    void loadTab("unowned");
+                    void loadTab(activeTab);
                     void loadCounts();
                   } catch (e) {
                     setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
