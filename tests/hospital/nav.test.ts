@@ -107,7 +107,7 @@ test("eProcurement: a special service, in Purchase Cell only when the Super Admi
   assert.ok(!kids(pc(false)).includes("eProcurement"));
   assert.deepEqual(kids(pc(true)).slice(0, 4), ["Dashboard", "Purchase", "eProcurement", "Indent Books"]);
   const ep = pc(true)!.children!.find((c) => c.label === "eProcurement")!;
-  assert.deepEqual(ep.children!.map((c) => [c.label, c.href]), [["Quotations & Orders", "/hospital/purchase-cell/eprocurement"], ["Vendor Logins", "/hospital/purchase-cell/eprocurement/vendor-logins"]]);
+  assert.deepEqual(ep.children!.map((c) => [c.label, c.href]), [["Quotations & Orders", "/hospital/purchase-cell/eprocurement"], ["Vendors", "/hospital/purchase-cell/eprocurement/vendor-logins"]]);
   // A Purchase Cell login sees it; the pages are guarded as Purchase Cell pages.
   assert.ok(kids(pc(true, ["hospital_purchase_cell"])).includes("eProcurement"));
   assert.equal(pc(true, ["hospital_patients"]), undefined);

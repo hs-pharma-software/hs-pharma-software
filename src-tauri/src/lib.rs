@@ -1877,6 +1877,68 @@ fn schema_sql_v93() -> &'static str {
     "#
 }
 
+fn schema_sql_v111() -> &'static str {
+    r#"
+    -- eProcurement vendor registration. A vendor signs up at ep.mavin.pk and
+    -- fills four steps (company, owner and business type; address; bank;
+    -- review), then submits it to the Super Admin, who approves, rejects,
+    -- asks for changes, suspends or blacklists. Only approved vendors appear in
+    -- the directory hospitals add vendors from. Hospitals no longer create
+    -- vendor logins or set their passwords. Accounts made by hospitals before
+    -- this stay approved (the vendor completes the details at next sign-in).
+    -- profile: the registration details (JSON, server-only like all ep_*).
+    ALTER TABLE ep_vendors ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';
+    ALTER TABLE ep_vendors ADD COLUMN profile TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN business_kind TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN categories TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN city TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN self_registered INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE ep_vendors ADD COLUMN signup_ip TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN submitted_at TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN reviewed_at TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN reviewed_by TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN review_note TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN blacklisted_at TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN blacklist_reason TEXT;
+    CREATE INDEX IF NOT EXISTS idx_ep_vendors_status ON ep_vendors (status, submitted_at);
+    -- The kinds of work a vendor picks from (Super Admin > eProcurement > Business types).
+    CREATE TABLE IF NOT EXISTS ep_categories (
+        id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_categories_name ON ep_categories (kind, name) WHERE deleted_at IS NULL;
+    INSERT OR IGNORE INTO ep_categories (id, kind, name, is_active, sort, created_at, updated_at) VALUES
+    ('epcat-sup-01', 'supplier', 'Medicines & pharmaceuticals', 1, 1, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-02', 'supplier', 'Surgical & disposables', 1, 2, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-03', 'supplier', 'Medical equipment', 1, 3, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-04', 'supplier', 'Laboratory reagents & supplies', 1, 4, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-05', 'supplier', 'Radiology & imaging supplies', 1, 5, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-06', 'supplier', 'Stationery & printing', 1, 6, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-07', 'supplier', 'Furniture & fixtures', 1, 7, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-08', 'supplier', 'IT & electronics', 1, 8, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-09', 'supplier', 'Cleaning & housekeeping supplies', 1, 9, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-10', 'supplier', 'Food & kitchen supplies', 1, 10, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-11', 'supplier', 'Linen & uniforms', 1, 11, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-12', 'supplier', 'Medical gases', 1, 12, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-01', 'services', 'Equipment maintenance & repair', 1, 1, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-02', 'services', 'Building maintenance & construction', 1, 2, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-03', 'services', 'Cleaning & janitorial', 1, 3, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-04', 'services', 'Security services', 1, 4, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-05', 'services', 'Catering', 1, 5, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-06', 'services', 'Laundry', 1, 6, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-07', 'services', 'Waste management', 1, 7, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-08', 'services', 'IT services & software', 1, 8, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-09', 'services', 'Transport & ambulance', 1, 9, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-10', 'services', 'Printing services', 1, 10, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-11', 'services', 'Consultancy', 1, 11, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-12', 'services', 'Pest control', 1, 12, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z');
+    -- Forgot password emails the code to the login's email: give earlier vendor logins the vendor's email.
+    UPDATE users SET email = (SELECT lower(trim(e.email)) FROM ep_vendors e WHERE e.user_id = users.id AND e.deleted_at IS NULL AND e.email LIKE '%_@_%._%')
+     WHERE platform_role = 'vendor' AND (email IS NULL OR email = '')
+       AND EXISTS (SELECT 1 FROM ep_vendors e WHERE e.user_id = users.id AND e.deleted_at IS NULL AND e.email LIKE '%_@_%._%');
+    "#
+}
+
 fn schema_sql_v110() -> &'static str {
     r#"
     -- eProcurement across hospitals. A vendor has ONE account (ep_vendors,
@@ -7239,6 +7301,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 110,
             description: "eprocurement_shared_vendors_items",
             sql: schema_sql_v110(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 111,
+            description: "eprocurement_vendor_registration",
+            sql: schema_sql_v111(),
             kind: MigrationKind::Up,
         },
     ]

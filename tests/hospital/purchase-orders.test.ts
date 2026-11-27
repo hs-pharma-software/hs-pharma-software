@@ -20,6 +20,7 @@ import {
 } from "@/lib/repo/purchaseOrders";
 import { eprocurementAction, vendorAction, vendorActorFor, vendorLoginAction, type ItemOption, type VendorActor, type VendorOption } from "@/server/vendorPortal";
 import { refuseVendor, HttpError } from "@/server/db";
+import { adminEprocurementAction, signUp } from "@/server/vendorRegistration";
 import { eprocurementRoute, isAppHost, isEprocurementHost } from "@/lib/webRoute";
 import { analyzeSql, authorize, type Caller } from "@/server/sqlPolicy";
 import { pagesForStaff } from "@/config/hospitalStaff";
@@ -52,11 +53,19 @@ beforeEach(() => {
   asOwner();
 });
 
-/** A vendor login made by the owner, and the portal actor it signs in as. */
+const superAdmin: Caller = { userId: "sa", role: "super_admin", tenantId: null, permissions: null };
+/** A vendor who registered at ep.mavin.pk, approved by the Super Admin and linked by the owner to the
+ * hospital's supplier row; and the portal actor it signs in as. */
 async function portalLogin(vendorId: string, username: string): Promise<VendorActor> {
   const sql = sqliteSql(db);
-  const r = (await vendorLoginAction(sql, owner, { action: "create", vendorId, username, password: "secret1" })) as { userId: string };
-  return vendorActorFor(sql, { userId: r.userId, platformRole: "vendor" });
+  const name = String((db.prepare(`SELECT name FROM suppliers WHERE id = ?`).get(vendorId) as { name: string }).name);
+  await signUp(sql, { companyName: name, contactName: "Owner", email: `${username}@vendors.pk`, phone: "0300-1234567", username, password: "secret123" }, null);
+  const userId = String((db.prepare(`SELECT id FROM users WHERE username = ?`).get(username) as { id: string }).id);
+  const epId = String((db.prepare(`SELECT id FROM ep_vendors WHERE user_id = ?`).get(userId) as { id: string }).id);
+  db.prepare(`UPDATE ep_vendors SET status = 'pending' WHERE id = ?`).run(epId);
+  await adminEprocurementAction(sql, superAdmin, { action: "approve", id: epId });
+  await vendorLoginAction(sql, owner, { action: "link", vendorId, epVendorId: epId });
+  return vendorActorFor(sql, { userId, platformRole: "vendor" });
 }
 const portal = (a: VendorActor, body: Record<string, unknown>) => vendorAction(sqliteSql(db), a, body);
 
@@ -91,31 +100,29 @@ test("one vendor asked is a petty purchase, several a quotation; a request needs
   await assert.rejects(createRfq({ vendorIds: [s.ali.id], items }), /purchase officer/);
 });
 
-test("vendor logins: made by the owner or the Purchase Cell, once per vendor, only for hospitals", async () => {
+test("vendors: hospitals never create vendor logins or set their passwords; they link approved vendors, by the owner or the Purchase Cell, only in hospitals", async () => {
   const sql = sqliteSql(db);
   const v = await saveVendor(null, { name: "Bilal Surgical" });
-  await vendorLoginAction(sql, owner, { action: "create", vendorId: v.id, username: "bilal", password: "secret1" });
-  await assert.rejects(vendorLoginAction(sql, owner, { action: "create", vendorId: v.id, username: "bilal2", password: "secret1" }), /already has a login/);
+  await assert.rejects(vendorLoginAction(sql, owner, { action: "create", vendorId: v.id, username: "bilal", password: "secret1" }), /make their own account/);
+  await assert.rejects(vendorLoginAction(sql, owner, { action: "password", vendorId: v.id, password: "secret1" }), /make their own account/);
+  const bilal = await portalLogin(v.id, "bilal");
   const other = await saveVendor(null, { name: "Other" });
-  await assert.rejects(vendorLoginAction(sql, owner, { action: "create", vendorId: other.id, username: "bilal", password: "secret1" }), /already taken/);
-  await assert.rejects(vendorLoginAction(sql, owner, { action: "create", vendorId: other.id, username: "x y", password: "secret1" }), /Username/);
-  await assert.rejects(vendorLoginAction(sql, owner, { action: "create", vendorId: other.id, username: "other", password: "123" }), /at least 6/);
+  // The same portal vendor twice in one hospital: refused.
+  await assert.rejects(vendorLoginAction(sql, owner, { action: "link", vendorId: other.id, epVendorId: bilal.epVendorId }), /already one of this hospital's vendors/);
+  await assert.rejects(vendorLoginAction(sql, owner, { action: "link", vendorId: v.id, epVendorId: bilal.epVendorId }), /already linked/);
   // A nurse's login cannot; a login with the Purchase Cell section can.
   await assert.rejects(vendorLoginAction(sql, { ...owner, userId: "n", role: "staff", permissions: ["hospital_ipd"] }, { action: "list" }), /Purchase Cell/);
-  const list = (await vendorLoginAction(sql, { ...owner, userId: "p", role: "staff", permissions: ["hospital_purchase_cell"] }, { action: "list" })) as { vendorName: string; username: string | null }[];
-  assert.deepEqual(list.map((r) => [r.vendorName, r.username]), [["Bilal Surgical", "bilal"], ["Other", null]]);
+  const list = (await vendorLoginAction(sql, { ...owner, userId: "p", role: "staff", permissions: ["hospital_purchase_cell"] }, { action: "list" })) as { vendorName: string; username: string | null; accountStatus: string | null; active: boolean }[];
+  assert.deepEqual(list.map((r) => [r.vendorName, r.username, r.accountStatus, r.active]), [["Bilal Surgical", "bilal", "approved", true], ["Other", null, null, false]]);
   // Not a hospital: no vendor portal.
   await assert.rejects(vendorLoginAction(sql, { ...owner, tenantId: "shop" }, { action: "list" }), /for hospitals/);
-  // The login is the vendor's own account (no business, no sections) in the eProcurement directory.
-  const u = db.prepare(`SELECT tenant_id, role, platform_role, permissions FROM users WHERE username = 'bilal'`).get() as Record<string, unknown>;
-  assert.deepEqual([u.tenant_id, u.role, u.platform_role, u.permissions], [null, "staff", "vendor", "[]"]);
-  const e = db.prepare(`SELECT vendor_code, name, created_by_tenant FROM ep_vendors`).get() as Record<string, unknown>;
-  assert.deepEqual([e.vendor_code, e.name, e.created_by_tenant], ["EP-0001", "Bilal Surgical", H]);
-  // Turned off by its only hospital, it can no longer use the portal.
+  // The login is the vendor's own account (no business, no sections), with the email Forgot password sends the code to.
+  const u = db.prepare(`SELECT tenant_id, role, platform_role, permissions, email FROM users WHERE username = 'bilal'`).get() as Record<string, unknown>;
+  assert.deepEqual([u.tenant_id, u.role, u.platform_role, u.permissions, u.email], [null, "staff", "vendor", "[]", "bilal@vendors.pk"]);
+  // Turned off by its only hospital: the portal shows no hospital.
   await vendorLoginAction(sql, owner, { action: "active", vendorId: v.id, active: false });
-  const uid = String((db.prepare(`SELECT id FROM users WHERE username = 'bilal'`).get() as { id: string }).id);
-  await assert.rejects(vendorActorFor(sql, { userId: uid, platformRole: "vendor" }), /not active/);
-  await assert.rejects(vendorActorFor(sql, { userId: uid }), /for vendor logins/);
+  assert.deepEqual((await vendorActorFor(sql, { userId: bilal.userId, platformRole: "vendor" })).links, []);
+  await assert.rejects(vendorActorFor(sql, { userId: bilal.userId }), /for vendor logins/);
 });
 
 test("each vendor sees only the requests sent to them and only their own rates", async () => {
@@ -254,8 +261,9 @@ test("eProcurement switched off by the Super Admin: no requests, no vendor login
   await assert.rejects(createRfq({ vendorIds: [s.ali.id], items }), /not active/);
   await assert.rejects(issuePurchaseOrders(r.id, {}), /not active/);
   await assert.rejects(vendorLoginAction(sqliteSql(db), owner, { action: "list" }), /not active/);
-  const uid = String((db.prepare(`SELECT id FROM users WHERE username = 'ali'`).get() as { id: string }).id);
-  await assert.rejects(vendorActorFor(sqliteSql(db), { userId: uid, platformRole: "vendor" }), /not active/);
+  // The vendor's portal no longer shows this hospital (nothing of it can be reached).
+  assert.deepEqual((await vendorActorFor(sqliteSql(db), { userId: s.aliP.userId, platformRole: "vendor" })).links, []);
+  await assert.rejects(portal(await vendorActorFor(sqliteSql(db), { userId: s.aliP.userId, platformRole: "vendor" }), { action: "decline", rfqId: r.id }), /not found/);
   // A new business starts without it.
   db.prepare(`INSERT INTO tenants (id, name, business_type, created_at, updated_at) VALUES ('hosp-b', 'B', 'hospital', 'x', 'x')`).run();
   assert.equal((db.prepare(`SELECT eprocurement_allowed AS e FROM tenants WHERE id = 'hosp-b'`).get() as { e: number }).e, 0);
@@ -303,11 +311,11 @@ test("directory: another hospital finds a portal vendor by name, number, email o
   // Asim (only at A, not asked) sees nothing.
   assert.equal(((await portal(s.asimP, { action: "requests" })) as unknown[]).length, 0);
 
-  // B may not reset the password of the account A made; it turns Ali off for itself only.
-  const bList = (await vendorLoginAction(sqliteSql(db), ownerB, { action: "list" })) as { vendorName: string; canResetPassword: boolean; sharedWith: number }[];
-  assert.deepEqual(bList.map((r) => [r.vendorName, r.canResetPassword, r.sharedWith]), [["Ali Traders", false, 1]]);
-  await assert.rejects(vendorLoginAction(sqliteSql(db), ownerB, { action: "password", vendorId: supplierId, password: "hacked1" }), /another hospital/);
-  await vendorLoginAction(sqliteSql(db), owner, { action: "password", vendorId: s.ali.id, password: "newpass1" });
+  // No hospital sets the vendor's password; B turns Ali off for itself only.
+  const bList = (await vendorLoginAction(sqliteSql(db), ownerB, { action: "list" })) as { vendorName: string; sharedWith: number }[];
+  assert.deepEqual(bList.map((r) => [r.vendorName, r.sharedWith]), [["Ali Traders", 1]]);
+  await assert.rejects(vendorLoginAction(sqliteSql(db), ownerB, { action: "password", vendorId: supplierId, password: "hacked1" }), /make their own account/);
+  await assert.rejects(vendorLoginAction(sqliteSql(db), owner, { action: "password", vendorId: s.ali.id, password: "newpass1" }), /make their own account/);
   await vendorLoginAction(sqliteSql(db), ownerB, { action: "active", vendorId: supplierId, active: false });
   const after = await vendorActorFor(sqliteSql(db), { userId: s.aliP.userId, platformRole: "vendor" });
   assert.deepEqual(after.links.map((l) => l.hospitalName), ["City Hospital"]);

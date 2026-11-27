@@ -17,13 +17,17 @@
  * (portal vendors of all hospitals, searchable by name, number, email,
  * phone and address; picking one adds them to the hospital's suppliers),
  * the shared item list (items every hospital has asked rates for), and the
- * vendor logins.
+ * hospital's vendors (approved portal vendors it added, each on or off here).
+ * Vendors register themselves and are approved by the Super Admin
+ * (vendorRegistration.ts); a hospital never creates a vendor login or sets
+ * its password.
  *
  * The server refuses a vendor login on every other route (callerOf), so it
  * never reaches /api/db or any business data. ep_* tables and
  * vendor_portal_logins are server-only (sqlPolicy.ts). */
-import { randomBytes, randomUUID } from "node:crypto";
-import { HttpError, passwordHash } from "./db";
+import { randomUUID } from "node:crypto";
+import { HttpError } from "./db";
+import { notApprovedMessage, VENDOR_STATUS_LABEL, type VendorStatus } from "./vendorRegistration";
 import type { Caller } from "./sqlPolicy";
 import type { Sql } from "./subSupers";
 
@@ -55,14 +59,18 @@ export async function vendorActorFor(sql: Sql, caller: Pick<Caller, "userId" | "
      JOIN suppliers s ON s.id = l.vendor_id AND s.tenant_id = l.tenant_id AND s.deleted_at IS NULL
      JOIN tenants t ON t.id = l.tenant_id
      WHERE l.user_id = ? AND l.deleted_at IS NULL ORDER BY t.name`, [caller.userId])).rows : [];
-  if (!user || !all.length) throw new HttpError(403, "This login is not linked to a vendor. Ask the hospital's purchase officer.");
+  if (!user) throw new HttpError(403, "The vendor portal is for vendor logins.");
+  const ep = (await sql.execute(`SELECT id, name, vendor_code, status FROM ep_vendors WHERE user_id = ? AND deleted_at IS NULL`, [caller.userId])).rows[0];
+  // Only an approved vendor reaches quote requests, orders and payments (a self-registered one after the Super Admin's approval).
+  const status = (ep ? String(ep.status ?? "approved") : "approved") as VendorStatus;
+  if (status !== "approved") throw new HttpError(403, notApprovedMessage(status));
+  if (!ep && !all.length) throw new HttpError(403, "This login is not a vendor account.");
   // eProcurement is a special service the Super Admin switches on per hospital; a hospital can also turn a vendor off.
+  // An approved vendor no hospital has added yet sees empty lists.
   const active = all.filter((r) => num(r.eprocurement_allowed) === 1 && num(r.link_active) === 1);
-  if (!active.length) throw new HttpError(403, "The vendor portal is not active for any of your hospitals.");
-  const ep = (await sql.execute(`SELECT id, name, vendor_code FROM ep_vendors WHERE user_id = ? AND deleted_at IS NULL`, [caller.userId])).rows[0];
   return {
     userId: caller.userId, username: String(user.username), epVendorId: ep ? String(ep.id) : null,
-    vendorName: ep ? String(ep.name) : String(active[0].supplier_name), vendorNo: ep ? str(ep.vendor_code) : str(active[0].vendor_no),
+    vendorName: ep ? String(ep.name) : String(all[0].supplier_name), vendorNo: ep ? str(ep.vendor_code) : str(all[0].vendor_no),
     links: active.map((r) => ({ tenantId: String(r.tenant_id), vendorId: String(r.vendor_id), hospitalName: str(r.hospital_name) ?? "Hospital" })),
   };
 }
@@ -315,7 +323,7 @@ export async function vendorAction(sql: Sql, a: VendorActor, b: Record<string, u
   switch (b.action) {
     case "me": {
       const hospitals = a.links.map((l) => l.hospitalName);
-      return { vendorName: a.vendorName, vendorNo: a.vendorNo, username: a.username, hospitals, hospitalName: hospitals.length === 1 ? hospitals[0] : `${hospitals.length} hospitals` };
+      return { vendorName: a.vendorName, vendorNo: a.vendorNo, username: a.username, hospitals, hospitalName: hospitals.length === 1 ? hospitals[0] : hospitals.length ? `${hospitals.length} hospitals` : "no hospital yet" };
     }
     case "requests": return portalRequests(sql, a);
     case "quote": return submitQuote(sql, a, b);
@@ -346,10 +354,6 @@ async function nextSupplierNo(sql: Sql, tenantId: string): Promise<string> {
   const r = (await sql.execute(`SELECT MAX(CAST(substr(vendor_no, 3) AS INTEGER)) AS n FROM suppliers WHERE tenant_id = ? AND vendor_no GLOB 'V-[0-9]*'`, [tenantId])).rows[0];
   return `V-${String(num(r?.n) + 1).padStart(4, "0")}`;
 }
-async function nextEpCode(sql: Sql): Promise<string> {
-  const r = (await sql.execute(`SELECT MAX(CAST(substr(vendor_code, 4) AS INTEGER)) AS n FROM ep_vendors WHERE vendor_code GLOB 'EP-[0-9]*'`)).rows[0];
-  return `EP-${String(num(r?.n) + 1).padStart(4, "0")}`;
-}
 
 /** A vendor in the New Order search: this hospital's own supplier, or a portal vendor of the shared directory. */
 export interface VendorOption {
@@ -371,7 +375,7 @@ async function searchVendors(sql: Sql, tenantId: string, q: string): Promise<Ven
   const dir = (await sql.execute(
     `SELECT e.id, e.name, e.vendor_code, e.email, e.phone, e.address
      FROM ep_vendors e JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.is_active = 1
-     WHERE e.deleted_at IS NULL
+     WHERE e.deleted_at IS NULL AND COALESCE(e.status, 'approved') = 'approved'
        AND NOT EXISTS (SELECT 1 FROM vendor_portal_logins l WHERE l.user_id = e.user_id AND l.tenant_id = ? AND l.deleted_at IS NULL)
        ${q ? "AND (e.name LIKE ? ESCAPE '\\' OR e.vendor_code LIKE ? ESCAPE '\\' OR e.email LIKE ? ESCAPE '\\' OR e.phone LIKE ? ESCAPE '\\' OR e.address LIKE ? ESCAPE '\\')" : ""}
      ORDER BY e.name LIMIT 20`, [tenantId, ...(q ? [L, L, L, L, L] : [])])).rows;
@@ -392,6 +396,7 @@ async function addDirectoryVendor(sql: Sql, tenantId: string, caller: Caller, ep
   const e = typeof epVendorId === "string" ? (await sql.execute(
     `SELECT e.* FROM ep_vendors e JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.is_active = 1 WHERE e.id = ? AND e.deleted_at IS NULL`, [epVendorId])).rows[0] : undefined;
   if (!e) throw new HttpError(404, "Vendor not found in the eProcurement directory.");
+  if (String(e.status ?? "approved") !== "approved") throw new HttpError(409, `${e.name} is not an approved vendor.`);
   const existing = (await sql.execute(
     `SELECT vendor_id FROM vendor_portal_logins WHERE user_id = ? AND tenant_id = ? AND deleted_at IS NULL`, [e.user_id, tenantId])).rows[0];
   if (existing) return { supplierId: String(existing.vendor_id) };
@@ -461,18 +466,20 @@ export async function eprocurementAction(sql: Sql, caller: Caller, b: Record<str
 }
 
 export interface VendorLoginRow {
-  vendorId: string; vendorName: string; vendorNo: string | null; phone: string | null; userId: string | null; username: string | null;
-  /** On for this hospital (each hospital turns a vendor on or off for itself). */
+  vendorId: string; vendorName: string; vendorNo: string | null; phone: string | null;
+  /** The vendor's portal account (registered at ep.mavin.pk), or null: a supplier not on the portal. */
+  epVendorId: string | null; epCode: string | null; username: string | null;
+  /** The account's status at MAVIN.pk (approved, suspended, blacklisted…). */
+  accountStatus: VendorStatus | null; accountStatusLabel: string | null;
+  /** On for this hospital (each hospital turns a vendor on or off for itself) and approved. */
   active: boolean;
-  /** This hospital made the vendor's account, so it may set a new password (the account may serve other hospitals too). */
-  canResetPassword: boolean;
   /** Other hospitals this vendor also supplies through the portal. */
   sharedWith: number;
 }
 
-const MIN_PASSWORD = 6;
-
-/** Purchase Cell > eProcurement > Vendor Logins. */
+/** Purchase Cell > eProcurement > Vendors: this hospital's suppliers and their portal accounts.
+ * A hospital adds approved vendors from the directory or links one of its own
+ * suppliers to one; it never creates a vendor login or sets a password. */
 export async function vendorLoginAction(sql: Sql, caller: Caller, b: Record<string, unknown>): Promise<unknown> {
   const tenantId = await assertMayManage(sql, caller);
   const vendorOf = async (vendorId: unknown) => {
@@ -481,81 +488,55 @@ export async function vendorLoginAction(sql: Sql, caller: Caller, b: Record<stri
     return v;
   };
   const loginOf = async (vendorId: string) => (await sql.execute(
-    `SELECT l.id, l.user_id, u.tenant_id AS user_tenant, e.created_by_tenant FROM vendor_portal_logins l
-     JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL LEFT JOIN ep_vendors e ON e.user_id = l.user_id AND e.deleted_at IS NULL
-     WHERE l.tenant_id = ? AND l.vendor_id = ? AND l.deleted_at IS NULL`, [tenantId, vendorId])).rows[0];
-  // Accounts from v109 (one hospital each) carry the hospital on the users row.
-  const ownsAccount = (l: Record<string, unknown>) => (l.created_by_tenant != null ? String(l.created_by_tenant) === tenantId : String(l.user_tenant ?? "") === tenantId);
+    `SELECT id, user_id FROM vendor_portal_logins WHERE tenant_id = ? AND vendor_id = ? AND deleted_at IS NULL`, [tenantId, vendorId])).rows[0];
   const t = now();
   switch (b.action) {
     case "list": {
       const rows = (await sql.execute(
-        `SELECT s.id, s.name, s.vendor_no, s.phone, u.id AS user_id, u.username, u.is_active AS user_active, u.tenant_id AS user_tenant, COALESCE(l.is_active, 1) AS link_active,
-                e.created_by_tenant,
+        `SELECT s.id, s.name, s.vendor_no, s.phone, u.id AS user_id, u.username, u.is_active AS user_active, COALESCE(l.is_active, 1) AS link_active,
+                e.id AS ep_id, e.vendor_code, e.status AS ep_status,
                 (SELECT COUNT(*) FROM vendor_portal_logins o WHERE o.user_id = l.user_id AND o.tenant_id != s.tenant_id AND o.deleted_at IS NULL) AS shared_with
          FROM suppliers s
          LEFT JOIN vendor_portal_logins l ON l.vendor_id = s.id AND l.tenant_id = s.tenant_id AND l.deleted_at IS NULL
          LEFT JOIN users u ON u.id = l.user_id AND u.deleted_at IS NULL
          LEFT JOIN ep_vendors e ON e.user_id = l.user_id AND e.deleted_at IS NULL
          WHERE s.tenant_id = ? AND s.deleted_at IS NULL ORDER BY s.name LIMIT 1000`, [tenantId])).rows;
-      return rows.map((r): VendorLoginRow => ({
-        vendorId: String(r.id), vendorName: String(r.name), vendorNo: str(r.vendor_no), phone: str(r.phone),
-        userId: str(r.user_id), username: str(r.username), active: r.user_id != null && num(r.user_active) === 1 && num(r.link_active) === 1,
-        canResetPassword: r.user_id != null && ownsAccount(r), sharedWith: num(r.shared_with),
-      }));
+      return rows.map((r): VendorLoginRow => {
+        const status = r.user_id == null ? null : (String(r.ep_status ?? "approved") as VendorStatus);
+        return {
+          vendorId: String(r.id), vendorName: String(r.name), vendorNo: str(r.vendor_no), phone: str(r.phone),
+          epVendorId: str(r.ep_id), epCode: str(r.vendor_code), username: str(r.username),
+          accountStatus: status, accountStatusLabel: status ? VENDOR_STATUS_LABEL[status] ?? status : null,
+          active: r.user_id != null && num(r.user_active) === 1 && num(r.link_active) === 1 && status === "approved",
+          sharedWith: num(r.shared_with),
+        };
+      });
     }
-    case "create": {
+    case "link": {
+      // One of this hospital's own suppliers is the same company as an approved portal vendor: link them (its history stays).
       const v = await vendorOf(b.vendorId);
-      if (await loginOf(String(v.id))) throw new HttpError(409, `${v.name} already has a login.`);
-      const username = text(b.username, 60);
-      if (!/^[A-Za-z0-9._@-]{3,60}$/.test(username)) throw new HttpError(400, "Username: at least 3 letters or digits (. _ - @ allowed, no spaces).");
-      const password = typeof b.password === "string" ? b.password : "";
-      if (password.length < MIN_PASSWORD) throw new HttpError(400, `The password must be at least ${MIN_PASSWORD} characters.`);
-      if ((await sql.execute(`SELECT 1 FROM users WHERE username = ? AND deleted_at IS NULL`, [username])).rows[0]) throw new HttpError(409, `Username "${username}" is already taken.`);
-      const userId = randomUUID();
-      const epId = randomUUID();
-      const salt = randomBytes(16).toString("hex");
-      // The vendor's own account (no business: platform_role 'vendor' keeps it out of everything but the portal),
-      // listed in the shared directory so other hospitals can add the same vendor.
-      await sql.batch([
-        {
-          sql: `INSERT INTO users (id, tenant_id, username, password_hash, password_salt, role, display_name, is_active, permissions, platform_role, created_at, updated_at, deleted_at)
-                VALUES (?, NULL, ?, ?, ?, 'staff', ?, 1, '[]', 'vendor', ?, ?, NULL)`,
-          args: [userId, username, passwordHash(password, salt), salt, String(v.name), t, t],
-        },
-        {
-          sql: `INSERT INTO ep_vendors (id, vendor_code, user_id, name, email, phone, address, created_by_tenant, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          args: [epId, await nextEpCode(sql), userId, String(v.name), str(v.email), str(v.phone), str(v.address), tenantId, t, t],
-        },
-        {
-          sql: `INSERT INTO vendor_portal_logins (id, tenant_id, user_id, vendor_id, ep_vendor_id, is_active, created_by_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-          args: [randomUUID(), tenantId, userId, v.id, epId, caller.userId, t, t],
-        },
-      ]);
-      return { ok: true, userId };
-    }
-    case "password": {
-      const v = await vendorOf(b.vendorId);
-      const l = await loginOf(String(v.id));
-      if (!l) throw new HttpError(404, `${v.name} has no login yet.`);
-      // The account may serve other hospitals: only the hospital that made it sets a new password.
-      if (!ownsAccount(l)) throw new HttpError(403, `${v.name}'s account was made by another hospital: the vendor changes the password in the portal.`);
-      const password = typeof b.password === "string" ? b.password : "";
-      if (password.length < MIN_PASSWORD) throw new HttpError(400, `The password must be at least ${MIN_PASSWORD} characters.`);
-      const salt = randomBytes(16).toString("hex");
-      // password_changed_at ends the sessions signed in with the old password.
-      await sql.execute(`UPDATE users SET password_hash = ?, password_salt = ?, password_changed_at = ?, updated_at = ? WHERE id = ? AND platform_role = 'vendor'`,
-        [passwordHash(password, salt), salt, t, t, l.user_id]);
+      if (await loginOf(String(v.id))) throw new HttpError(409, `${v.name} is already linked to a portal vendor.`);
+      const e = typeof b.epVendorId === "string" ? (await sql.execute(`SELECT * FROM ep_vendors WHERE id = ? AND deleted_at IS NULL`, [b.epVendorId])).rows[0] : undefined;
+      if (!e) throw new HttpError(404, "Vendor not found in the eProcurement directory.");
+      if (String(e.status ?? "approved") !== "approved") throw new HttpError(409, `${e.name} is not an approved vendor.`);
+      if ((await sql.execute(`SELECT 1 FROM vendor_portal_logins WHERE user_id = ? AND tenant_id = ? AND deleted_at IS NULL`, [e.user_id, tenantId])).rows[0]) {
+        throw new HttpError(409, `${e.name} is already one of this hospital's vendors.`);
+      }
+      await sql.execute(`INSERT INTO vendor_portal_logins (id, tenant_id, user_id, vendor_id, ep_vendor_id, is_active, created_by_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        [randomUUID(), tenantId, e.user_id, v.id, e.id, caller.userId, t, t]);
       return { ok: true };
     }
     case "active": {
       // On or off for this hospital only; the vendor's other hospitals are not affected.
       const v = await vendorOf(b.vendorId);
       const l = await loginOf(String(v.id));
-      if (!l) throw new HttpError(404, `${v.name} has no login yet.`);
+      if (!l) throw new HttpError(404, `${v.name} is not on the vendor portal.`);
       await sql.execute(`UPDATE vendor_portal_logins SET is_active = ?, updated_at = ? WHERE id = ?`, [b.active ? 1 : 0, t, l.id]);
       return { ok: true };
     }
+    case "create":
+    case "password":
+      throw new HttpError(403, "Vendors make their own account at ep.mavin.pk and set their own password. Add an approved vendor from the eProcurement directory.");
     default: throw new HttpError(400, "Unknown action.");
   }
 }

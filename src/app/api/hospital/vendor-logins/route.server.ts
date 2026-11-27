@@ -1,4 +1,4 @@
-/** Purchase Cell > eProcurement > Vendor Logins: the vendor portal logins of the hospital's
+/** Purchase Cell > eProcurement > Vendors: the portal accounts of the hospital's
  * suppliers and vendors (src/server/vendorPortal.ts). Passwords are set by the server only. */
 import { callerOf, jsonError } from "@/server/db";
 import { sqlForServer } from "@/server/subSupersApi";

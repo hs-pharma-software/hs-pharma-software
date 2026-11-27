@@ -404,6 +404,7 @@ const MIGRATIONS = [
   { version: 108, label: 'Hospital: individual salary payments and payment history', statements: rustSchemaStatementsWithTriggers(108) },
   { version: 109, label: 'Hospital: purchase orders, quotations and the vendor portal', statements: rustSchemaStatementsWithTriggers(109) },
   { version: 110, label: 'eProcurement: one vendor account for many hospitals, shared vendor directory and item list', statements: rustSchemaStatementsWithTriggers(110) },
+  { version: 111, label: 'eProcurement: vendor sign-up and registration, Super Admin approval, business types', statements: rustSchemaStatementsWithTriggers(111) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

@@ -728,7 +728,7 @@ const HOSPITAL_NAV: NavItem[] = [
         requires: "eprocurement",
         children: [
           { label: "Quotations & Orders", href: "/hospital/purchase-cell/eprocurement" },
-          { label: "Vendor Logins", href: "/hospital/purchase-cell/eprocurement/vendor-logins" },
+          { label: "Vendors", href: "/hospital/purchase-cell/eprocurement/vendor-logins" },
         ],
       },
       { label: "Indent Books", href: "/hospital/purchase-cell/indent-books" },

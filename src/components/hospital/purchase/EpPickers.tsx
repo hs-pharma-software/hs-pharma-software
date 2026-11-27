@@ -114,7 +114,7 @@ export function VendorSearch({ picked, onPick, onRemove, invalid }: {
               <span className="min-w-0 flex-1">
                 <b className="block truncate text-sm">{v.name}</b>
                 <span className={small}>{[v.number, v.email, v.phone].filter(Boolean).join(" · ")}</span>
-                {!v.onPortal && <span className="block text-[11px] text-amber-700">No portal login yet: give one in eProcurement › Vendor Logins.</span>}
+                {!v.onPortal && <span className="block text-[11px] text-amber-700">Not on the portal: the vendor registers at ep.mavin.pk, then link them in eProcurement › Vendors.</span>}
               </span>
               <button type="button" aria-label={`Remove ${v.name}`} onClick={() => onRemove(v.supplierId!)}
                 className="-m-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-rose-50 hover:text-rose-600"><X size={14} /></button>

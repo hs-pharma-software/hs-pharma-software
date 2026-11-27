@@ -42,7 +42,7 @@ export default function EprocurementPage() {
       <PageHeader title="eProcurement" actions={<Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} className="mr-1" />New Order</Button>} />
       <p className="mb-3 text-sm text-neutral-600">
         Ask one vendor (a <b>petty purchase</b>) or several (a <b>quotation</b>) for rates. Each vendor quotes in the vendor portal; compare the rates here and issue the purchase order.
-        Vendors without a login yet: eProcurement › Vendor Logins.
+        Vendors not on the portal yet: they register at ep.mavin.pk; add or link them in eProcurement › Vendors.
       </p>
       <div role="tablist" aria-label="Purchase orders" className="mb-3 inline-flex rounded-xl bg-neutral-200/70 p-1 text-sm">
         {([["requests", "Quotation requests"], ["orders", "Purchase orders"]] as const).map(([k, label]) => (
@@ -370,7 +370,7 @@ function RfqModal({ id, onClose, onChanged, onOpenPo }: { id: string; onClose: (
       )}
       {open && (
         <div className="mt-3">
-          {!anyQuote && <p role="status" className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">No vendor has quoted yet. Vendors quote in the vendor portal (eProcurement › Vendor Logins gives them a login).</p>}
+          {!anyQuote && <p role="status" className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">No vendor has quoted yet. Vendors quote in the vendor portal at ep.mavin.pk (eProcurement › Vendors lists who is on it).</p>}
           <Field label="Note on the purchase order (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Deliver to the General Store by 5 December" /></Field>
           <p className="mt-2 text-sm text-neutral-600">Chosen: <b className="tabular-nums">{rs(chosenTotal)}</b> · the lowest rate is chosen for each item; pick another vendor with the round buttons (e.g. a better specification).</p>
         </div>

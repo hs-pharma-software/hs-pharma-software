@@ -10,6 +10,7 @@ import { StandaloneRecovery } from "@/components/standalone/StandaloneRecovery";
 import { STANDALONE } from "@/lib/edition";
 import { useAuthStore } from "@/store/authStore";
 import { MuawinTagline } from "@/components/brand/MuawinTagline";
+import { VendorSignUp } from "@/components/vendor/VendorSignUp";
 import { AppManifestLinks } from "@/components/layout/AppManifestLinks";
 
 /** `notice`: why the accounts could not be checked (e.g. no connection). */
@@ -24,7 +25,9 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
   const [info, setInfo] = useState<string | null>(null);
   // At ep.mavin.pk the same sign-in is the eProcurement vendor portal's (read after mount: the server render does not know the address).
   const [vendorPortal, setVendorPortal] = useState(false);
-  useEffect(() => { setVendorPortal(isEprocurementHost(window.location.host)); }, []);
+  // ep.mavin.pk, or the vendor portal's pages on the main address.
+  useEffect(() => { setVendorPortal(isEprocurementHost(window.location.host) || /^\/vendor(\/|$)/.test(window.location.pathname)); }, []);
+  const [signUp, setSignUp] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -75,11 +78,24 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
           <h1 className="sr-only">MAVIN.pk</h1>
           <Image src="/mavin-logo-tagline.png" alt="MAVIN.pk - Aap Key Business Ka معاون" width={487} height={132} priority className="h-auto w-full max-w-[320px] object-contain" />
           {vendorPortal && (
-            <p className="text-center text-sm font-semibold text-neutral-700">eProcurement · Vendor portal<span className="block text-xs font-normal text-neutral-500">Sign in with the login your hospital gave you</span></p>
+            <p className="text-center text-sm font-semibold text-neutral-700">eProcurement · Vendor portal<span className="block text-xs font-normal text-neutral-500">Sign in to your vendor account, or create one</span></p>
           )}
         </div>
 
-        {forgot && STANDALONE ? (
+        {signUp && vendorPortal ? (
+          <VendorSignUp
+            onCancel={() => setSignUp(false)}
+            onDone={(newUser, newPassword) => {
+              // Signed in straight away: the registration steps open next.
+              setSignUp(false);
+              setUsername(newUser);
+              setLoading(true);
+              login(newUser, newPassword).then(({ user, tenant }) => setSession(user, tenant))
+                .catch((err) => { setPassword(""); setInfo("Account made. Sign in with your new username and password."); setError(err instanceof AuthError ? err.message : null); })
+                .finally(() => setLoading(false));
+            }}
+          />
+        ) : forgot && STANDALONE ? (
           <StandaloneRecovery
             onDone={(username) => { setForgot(false); setUsername(username); setPassword(""); setError(null); setInfo("Password reset. Sign in with your new password."); }}
             onCancel={() => setForgot(false)}
@@ -163,6 +179,12 @@ export function LoginScreen({ notice = null }: { notice?: string | null } = {}) 
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>
+          {vendorPortal && (
+            <p className="text-center text-sm text-neutral-600">
+              New supplier or service company?{" "}
+              <button type="button" onClick={() => { setSignUp(true); setError(null); setInfo(null); }} className="font-semibold text-[#1565c0] hover:underline">Create a vendor account</button>
+            </p>
+          )}
         </form>
         )}
 

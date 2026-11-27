@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, Building2, Layers, Users, Pill, Shapes, Sparkles, Handshake, Inbox, TrendingUp, Mail, CreditCard, Receipt, KeyRound, Landmark, Scale } from "lucide-react";
+import { LayoutDashboard, Building2, Layers, Users, Pill, Shapes, Sparkles, Handshake, Inbox, TrendingUp, Mail, CreditCard, Receipt, KeyRound, Landmark, Scale, ClipboardCheck } from "lucide-react";
 
 export interface AdminNavItem {
   label: string;
@@ -21,6 +21,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "PRA Integration", href: "/admin/pra", icon: Landmark },
   { label: "PRA Tax Suggestions", href: "/admin/pra/rules", icon: Scale },
   { label: "Offline Tenants", href: "/admin/offline-tenants", icon: KeyRound },
+  { label: "eProcurement", href: "/admin/eprocurement", icon: ClipboardCheck },
   { label: "Queries", href: "/admin/queries", icon: Inbox },
   { label: "Mail", href: "/admin/mail", icon: Mail },
   { label: "SEO", href: "/admin/seo", icon: TrendingUp },

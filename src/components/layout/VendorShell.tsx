@@ -6,7 +6,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ClipboardList, FileText, KeyRound, LogOut, Wallet } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { changeOwnPassword, errText, portalMe, type PortalMe } from "@/lib/vendorPortalClient";
+import { changeOwnPassword, errText, portalAccount, portalMe, type PortalMe, type VendorAccount } from "@/lib/vendorPortalClient";
+import { AccountStatusScreen, RegistrationWizard } from "@/components/vendor/VendorRegistration";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
@@ -67,11 +68,19 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname().replace(/\/+$/, "") || "/";
   const logout = useAuthStore((s) => s.logout);
   const [me, setMe] = useState<PortalMe | null>(null);
+  const [account, setAccount] = useState<VendorAccount | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pwOpen, setPwOpen] = useState(false);
-  useEffect(() => {
-    portalMe().then(setMe).catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  // First the vendor's own account: a new or returned registration opens its steps, a waiting or
+  // closed account its status; an approved one with complete details gets the portal.
+  const loadAccount = () => {
+    portalAccount().then((a) => {
+      setAccount(a);
+      if (a.status === "approved" && !a.editable) portalMe().then(setMe).catch((e) => setError(errText(e)));
+    }).catch((e) => setError(errText(e)));
+  };
+  useEffect(loadAccount, []);
+  const ready = account !== null && account.status === "approved" && !account.editable;
   const active = (href: string) => (href === "/vendor" ? pathname === "/vendor" : pathname.startsWith(href));
 
   return (
@@ -81,8 +90,8 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 items-center gap-2.5">
             <Image src="/mavin-mark.png" alt="MAVIN.pk" width={256} height={256} priority className="h-8 w-8 shrink-0 object-contain" />
             <div className="min-w-0 leading-tight">
-              <p className="truncate text-sm font-semibold text-neutral-900">{me?.vendorName ?? "Vendor portal"}{me?.vendorNo ? <span className="ml-1.5 font-mono text-xs font-normal text-neutral-500">{me.vendorNo}</span> : null}</p>
-              <p className="truncate text-[11px] text-neutral-500" title={me?.hospitals.join(", ")}>{me ? `Supplier to ${me.hospitalName}` : "Loading…"}</p>
+              <p className="truncate text-sm font-semibold text-neutral-900">{me?.vendorName ?? account?.profile.company.name ?? "Vendor portal"}{(me?.vendorNo ?? account?.vendorCode) ? <span className="ml-1.5 font-mono text-xs font-normal text-neutral-500">{me?.vendorNo ?? account?.vendorCode}</span> : null}</p>
+              <p className="truncate text-[11px] text-neutral-500" title={me?.hospitals.join(", ")}>{me ? (me.hospitals.length ? `Supplier to ${me.hospitalName}` : "Approved · no hospital has added you yet") : account ? account.statusLabel : "Loading…"}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -97,27 +106,36 @@ export function VendorShell({ children }: { children: React.ReactNode }) {
         </header>
         <div className="flex min-h-0 flex-1">
           {/* Computer: a sidebar. Phone: the tabs along the bottom. */}
-          <nav aria-label="Vendor portal" className="hidden w-56 shrink-0 flex-col gap-1 border-r border-black/[0.06] bg-white p-3 md:flex print:hidden">
+          {ready && <nav aria-label="Vendor portal" className="hidden w-56 shrink-0 flex-col gap-1 border-r border-black/[0.06] bg-white p-3 md:flex print:hidden">
             {TABS.map((t) => (
               <Link key={t.href} href={t.href} aria-current={active(t.href) ? "page" : undefined}
                 className={`flex min-h-10 items-center gap-2.5 rounded-xl px-3 text-sm font-medium transition-colors ${active(t.href) ? "bg-[var(--accent)] text-white shadow-sm" : "text-neutral-700 hover:bg-neutral-100"}`}>
                 <t.icon size={16} aria-hidden="true" />{t.label}
               </Link>
             ))}
-          </nav>
+          </nav>}
           <main className="min-w-0 flex-1 overflow-y-auto p-3 pb-24 sm:p-5 md:pb-5">
             {error && <p role="alert" className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">{error}</p>}
-            <PageTransition>{children}</PageTransition>
+            {account === null && !error ? <div className="mx-auto mt-6 h-40 max-w-3xl animate-pulse rounded-2xl bg-white/70" aria-busy="true" />
+              : account && !ready ? (account.editable ? <RegistrationWizard account={account} onChanged={loadAccount} /> : <AccountStatusScreen account={account} />)
+              : ready ? <>
+                {me && me.hospitals.length === 0 && (
+                  <p role="status" className="rise-in mb-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800 ring-1 ring-emerald-200">
+                    Your account is approved. Hospitals using MAVIN.pk eProcurement can now add you as a vendor; their quote requests and orders will appear here.
+                  </p>
+                )}
+                <PageTransition>{children}</PageTransition>
+              </> : null}
           </main>
         </div>
-        <nav aria-label="Vendor portal" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-black/[0.06] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden print:hidden">
+        {ready && <nav aria-label="Vendor portal" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-black/[0.06] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden print:hidden">
           {TABS.map((t) => (
             <Link key={t.href} href={t.href} aria-current={active(t.href) ? "page" : undefined}
               className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-[color,transform] duration-150 active:scale-95 ${active(t.href) ? "text-[var(--accent)]" : "text-neutral-500"}`}>
               <t.icon size={19} aria-hidden="true" />{t.label}
             </Link>
           ))}
-        </nav>
+        </nav>}
         {pwOpen && <PasswordModal onClose={() => setPwOpen(false)} />}
       </div>
     </MeContext.Provider>
