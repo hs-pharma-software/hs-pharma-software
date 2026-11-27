@@ -22,6 +22,9 @@ import {
 } from "@/lib/repo/catalogAdmin";
 import type { Tenant } from "@/lib/types2";
 import { PHARMACY_FAMILY_TYPES } from "@/lib/catalogAccess";
+import { serverJson } from "@/lib/serverMode";
+import type { ShareResult } from "@/server/catalogShare";
+import { ArrowLeft, Share2, Store } from "lucide-react";
 
 /** Retail pharmacies, medical stores and hospital pharmacies: one shared Pharmacy catalogue, and one tab for their own products. */
 const PHARMACIES_TAB = "pharmacies";
@@ -62,6 +65,9 @@ export default function AdminCatalogReviewPage() {
   const [tenantId, setTenantId] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  // Pharmacies (own): a pharmacy's products shared to a shared catalogue.
+  const [shareTarget, setShareTarget] = useState<"pharma" | "general_store">("pharma");
+  const [sharing, setSharing] = useState<string | null>(null);
 
   // Load tab counts (badges) once on mount
   async function loadCounts() {
@@ -135,6 +141,43 @@ export default function AdminCatalogReviewPage() {
     );
   });
 
+  // ── Pharmacies (own): each pharmacy, then its products and sharing ─────────
+  const pharmacyCards = [...tenantRows.reduce((m, r) => {
+    const c = m.get(r.tenant_id) ?? { id: r.tenant_id, name: r.tenant_name, btype: r.btype ?? "", count: 0 };
+    c.count++;
+    return m.set(r.tenant_id, c);
+  }, new Map<string, { id: string; name: string; btype: string; count: number }>()).values()].sort((a, b) => a.name.localeCompare(b.name));
+  const openPharmacy = activeTab === PHARMACIES_TAB ? pharmacyCards.find((c) => c.id === tenantFilter) ?? null : null;
+  const targetLabel = shareTarget === "pharma" ? "Pharmacy catalogue (shared)" : "General store catalogue (shared)";
+
+  async function shareProducts(ids: string[] | "all") {
+    if (!openPharmacy) return;
+    const what = ids === "all" ? `all ${openPharmacy.count} products of ${openPharmacy.name}` : `${ids.length} product(s) of ${openPharmacy.name}`;
+    if (!confirm(`Share ${what} to the ${targetLabel}?\n\nEvery pharmacy then sees them. ${openPharmacy.name} keeps its stock, prices and history on the same products, so nothing shows twice. A product the catalogue already has (same name) is merged into it.`)) return;
+    setSharing(ids === "all" ? "all" : ids.length === 1 ? ids[0] : "picked");
+    setMsg(null);
+    let shared = 0, merged = 0;
+    const skipped: { name: string; reason: string }[] = [];
+    try {
+      // Large lists go in parts (the server takes a few hundred at a time).
+      for (let round = 0; round < 50; round++) {
+        const r = (await serverJson<{ result: ShareResult }>("/api/catalog/share/", { tenantId: openPharmacy.id, target: shareTarget, ...(ids === "all" ? { all: true } : { productIds: ids }) })).result;
+        shared += r.shared; merged += r.merged; skipped.push(...r.skipped);
+        if (ids !== "all" || r.remaining === 0 || r.shared + r.merged === 0) break;
+      }
+      setMsg({ ok: skipped.length === 0, text: `${shared} product(s) now in the ${targetLabel}; ${merged} merged into products it already had.` + (skipped.length ? ` ${skipped.length} not shared: ${skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join(" · ")}` : "") });
+      setPickedTenant(new Set());
+      void loadCounts();
+      const keep = tenantFilter;
+      await loadTab(activeTab);
+      setTenantFilter(keep);
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSharing(null);
+    }
+  }
+
   // ── Tab bar ─────────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; count: number }[] = [
     { id: "shared:pharma", label: SHARED_INFO["shared:pharma"].label, count: unownedRows.length ? noBusinessCount("shared:pharma") : unownedCount },
@@ -188,6 +231,18 @@ export default function AdminCatalogReviewPage() {
             </>
           ) : (
             <>
+              {openPharmacy && <>
+                <Select className="!w-auto" value={shareTarget} onChange={(e) => setShareTarget(e.target.value as "pharma" | "general_store")} aria-label="Share to">
+                  <option value="pharma">To Pharmacy catalogue</option>
+                  <option value="general_store">To General store catalogue</option>
+                </Select>
+                <Button loading={sharing === "picked"} disabled={!pickedTenant.size || sharing !== null} onClick={() => void shareProducts([...pickedTenant])}>
+                  <Share2 size={14} className="mr-1" />Share selected ({pickedTenant.size})
+                </Button>
+                <Button variant="primary" loading={sharing === "all"} disabled={sharing !== null || !openPharmacy.count} onClick={() => void shareProducts("all")}>
+                  <Share2 size={14} className="mr-1" />Share all {openPharmacy.count}
+                </Button>
+              </>}
               <Button
                 disabled={!pickedTenant.size}
                 onClick={async () => {
@@ -321,21 +376,42 @@ export default function AdminCatalogReviewPage() {
         <>
           {/* Description */}
           <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700">
-            <span className="font-semibold">{activeTab === PHARMACIES_TAB ? `Pharmacies (${pharmacyTypeNames.join(", ")})` : businessType(activeTab).label}</span> — each business&apos;s own products (not shared with others). Products these businesses add to a shared catalogue are in the shared catalogue tabs.
+            <span className="font-semibold">{openPharmacy ? `${openPharmacy.name} (${businessType(openPharmacy.btype).label})` : activeTab === PHARMACIES_TAB ? `Pharmacies (${pharmacyTypeNames.join(", ")})` : businessType(activeTab).label}</span> — each business&apos;s own products (not shared with others). Products these businesses add to a shared catalogue are in the shared catalogue tabs.
             {shownTenant.length > 0 && (
               <span className="ml-2 text-neutral-400">{shownTenant.length.toLocaleString()} product{shownTenant.length !== 1 ? "s" : ""}</span>
             )}
           </div>
 
+          {activeTab === PHARMACIES_TAB && !openPharmacy ? (
+            loading ? <div className="h-32 animate-pulse rounded-xl bg-neutral-100" aria-busy="true" />
+            : pharmacyCards.length === 0 ? <p className="py-8 text-center text-sm text-neutral-400">No pharmacy has products of its own.</p> : (
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {pharmacyCards.map((c, i) => (
+                <li key={c.id} className="row-in" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }}>
+                  <button type="button" onClick={() => { setTenantFilter(c.id); setPickedTenant(new Set()); setSearch(""); }}
+                    className="flex w-full items-center gap-3 rounded-xl bg-white p-3 text-left shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/5 transition hover:shadow-md hover:ring-[var(--accent)]/40">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Store size={18} aria-hidden="true" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-neutral-900">{c.name}</span>
+                      <span className="block text-xs text-neutral-500">{businessType(c.btype).label} · {c.count.toLocaleString()} own product{c.count === 1 ? "" : "s"}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )) : <>
           {/* Filters */}
           <div className="flex flex-wrap gap-2">
+            {openPharmacy && (
+              <Button onClick={() => { setTenantFilter(""); setPickedTenant(new Set()); setSearch(""); }}><ArrowLeft size={14} className="mr-1" />All pharmacies</Button>
+            )}
             <Input
               className="!w-72"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, barcode, company, tenant"
             />
-            {tenantOptions.length > 1 && (
+            {tenantOptions.length > 1 && !openPharmacy && (
               <Select className="!w-56" value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)}>
                 <option value="">All tenants</option>
                 {tenantOptions.map(([id, name]) => (
@@ -382,7 +458,12 @@ export default function AdminCatalogReviewPage() {
                     <td className="px-3 py-2">{p.category_name ?? "—"}</td>
                     <td className="px-3 py-2">{p.unit_name ?? "—"}</td>
                     <td className="px-3 py-2 text-xs">{p.created_at.slice(0, 10)}</td>
-                    <td className="px-3 py-2 text-end">
+                    <td className="whitespace-nowrap px-3 py-2 text-end">
+                      {openPharmacy && (
+                        <Button variant="ghost" loading={sharing === p.id} disabled={sharing !== null} onClick={() => void shareProducts([p.id])} title={`Share to the ${targetLabel}`}>
+                          <Share2 size={13} className="mr-1" />Share
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         onClick={async () => {
@@ -414,6 +495,7 @@ export default function AdminCatalogReviewPage() {
               </tbody>
             </table>
           </div>
+          </>}
         </>
       )}
 
