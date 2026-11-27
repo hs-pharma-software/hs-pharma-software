@@ -42,7 +42,7 @@ export function eprocurementRoute(pathname: string): { kind: "app" } | { kind: "
 /** Hosts that are never a business website. */
 export function isAppHost(host: string | null): boolean {
   const h = bare(host);
-  return !h || h === APP_HOST || h === EP_HOST || h === "localhost" || /^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.endsWith(".vercel.app") || h.endsWith(".localhost")
+  return !h || h === APP_HOST || h === EP_HOST || h === "localhost" || /^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.endsWith(".vercel.app") || h.endsWith(".netlify.app") || h.endsWith(".localhost")
     || h === PLATFORM_DOMAIN || h === `www.${PLATFORM_DOMAIN}` || isSiteHost(h);
 }
 

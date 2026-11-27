@@ -49,7 +49,7 @@ function fakeVercel(state: { ready: boolean; conflict?: boolean }) {
 }
 
 test("routing: app and corporate hosts keep their routes; business hosts go to /web; /web is never reachable directly", () => {
-  for (const h of ["app.mavin.pk", "localhost:3000", "hs-pharma-software.vercel.app", "www.mavin.pk", "mavin.pk"]) assert.ok(isAppHost(h), h);
+  for (const h of ["app.mavin.pk", "localhost:3000", "hs-pharma-software.vercel.app", "hs-pharma-software.netlify.app", "www.mavin.pk", "mavin.pk"]) assert.ok(isAppHost(h), h);
   assert.deepEqual(webRoute("app.mavin.pk", "/dashboard"), { kind: "app" });
   assert.deepEqual(webRoute("app.mavin.pk", "/web/anything"), { kind: "block" });
   assert.deepEqual(webRoute("handspharmacy.mavin.pk", "/"), { kind: "rewrite", host: "handspharmacy.mavin.pk", path: "/web" });
