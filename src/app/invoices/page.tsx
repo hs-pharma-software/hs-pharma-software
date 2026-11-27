@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { invoiceLabel } from "@/lib/invoiceLabel";
 import { Eye, Pencil, Trash2, Printer, Send, CheckCircle2, XCircle, BadgeCheck, Copy, FileDown, MessageCircle } from "lucide-react";
@@ -450,8 +451,9 @@ function FbrCell({
   onSubmit: () => void;
   canSubmit: boolean;
 }) {
-  // Fixed position so the table's overflow container can't clip the popup.
-  const [errorAt, setErrorAt] = useState<{ top: number; left: number } | null>(null);
+  // Drawn on the page body (not inside the table) at a fixed position, so neither the table's
+  // scrolling box nor a row's animation can clip it or push it off the screen.
+  const [errorAt, setErrorAt] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   const showError = errorAt !== null;
   const valid = !!row.fbr_invoice_no;
 
@@ -459,8 +461,12 @@ function FbrCell({
     if (!error) return;
     if (errorAt) return setErrorAt(null);
     const r = e.currentTarget.getBoundingClientRect();
-    const width = 320;
-    setErrorAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) });
+    const width = Math.min(320, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    // Near the bottom of the screen it opens upwards.
+    setErrorAt(window.innerHeight - r.bottom < 300 && r.top > window.innerHeight / 2
+      ? { bottom: window.innerHeight - r.top + 6, left }
+      : { top: r.bottom + 6, left });
   }
 
   return (
@@ -487,9 +493,10 @@ function FbrCell({
         </button>
 
         {/* Error tooltip */}
-        {showError && error && (
+        {showError && error && createPortal(
           <div
-            style={{ top: errorAt.top, left: errorAt.left }}
+            role="alert"
+            style={errorAt}
             className="fixed z-50 w-80 max-w-[calc(100vw-16px)] whitespace-normal break-words rounded-lg bg-rose-50 p-3 text-left text-xs text-rose-700 shadow-lg ring-1 ring-rose-200"
           >
             <p className="font-semibold">FBR Error</p>
@@ -501,7 +508,8 @@ function FbrCell({
             >
               Dismiss
             </button>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 

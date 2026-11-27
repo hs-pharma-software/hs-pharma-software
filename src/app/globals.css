@@ -102,11 +102,13 @@ body {
 }
 
 .fade-in { animation: fade-in var(--dur-base) var(--ease-out) both; }
-.rise-in { animation: rise-in var(--dur-slow) var(--ease-out) both; }
+/* "backwards", never "both": a transform animation that stays applied after it ends makes
+   its element the anchor for every "fixed" pop-up and dialog inside it, throwing them off screen. */
+.rise-in { animation: rise-in var(--dur-slow) var(--ease-out) backwards; }
 /* Menus and pop-overs grow from where they were opened. */
-.pop-in { animation: pop-in var(--dur-base) var(--ease-out) both; transform-origin: top right; }
+.pop-in { animation: pop-in var(--dur-base) var(--ease-out) backwards; transform-origin: top right; }
 /* Table rows arrive one after another (the delay is set per row). */
-.row-in { animation: rise-in var(--dur-base) var(--ease-out) both; }
+.row-in { animation: rise-in var(--dur-base) var(--ease-out) backwards; }
 /* A field's error message draws the eye once. */
 .field-msg { animation: shake-x 240ms var(--ease-out) 1; }
 
