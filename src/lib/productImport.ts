@@ -1,16 +1,21 @@
 import { productsRepo, productBatchesRepo, priceListRepo } from "./repo/products";
+import { addGenericName, findExact, listGenericNames, normalizeGenericName } from "./repo/genericNames";
 import { categoriesRepo, subCategoriesRepo, listCategoriesWithShared, listSubCategoriesWithShared } from "./repo/categories";
 import { uomsRepo, listUomsWithShared } from "./repo/uoms";
 
 /** Columns the product import reads (Products > Sample File). */
+/** Medicines: "Generic Name / Description" is the salt / formula (e.g. Paracetamol), saved as the
+ * product's Description (Generic Name), as on the product form. Other businesses: the description. */
 export const PRODUCT_IMPORT_HEADERS = [
-  "Name*", "Barcode", "Company", "Category", "Sub Category", "UOM*", "Purchase Price", "Sale Price",
+  "Name*", "Generic Name / Description", "Barcode", "Company", "Category", "Sub Category", "UOM*", "Purchase Price", "Sale Price",
   "Wholesale Price", "MRP", "HS Code", "Packing (units per box)", "Opening Qty",
 ];
 
 export interface ImportRow {
   line: number;
   name: string;
+  /** Generic name (medicines) or description. */
+  description: string;
   barcode: string;
   company: string;
   category: string;
@@ -77,6 +82,7 @@ export function readImportRows(table: string[][]): { rows: ImportRow[]; problems
     if (!uom) problems.push(`Line ${line} (${name}): no UOM; "Pcs" will be used.`);
     rows.push({
       line, name,
+      description: normalizeGenericName(get(r, "Generic Name / Description", "Generic Name", "Description (Generic Name)", "Description", "Generic", "Formula", "Salt")),
       barcode: get(r, "Barcode", "SKU"),
       company: get(r, "Company", "Brand"),
       category: get(r, "Category"),
@@ -155,6 +161,19 @@ export async function runImport(
     return uoms.get(k)!;
   };
 
+  // Each new description joins the business's Description (Generic Name) suggestions, once.
+  let known = await listGenericNames().catch(() => [] as string[]);
+  const describe = async (value: string): Promise<string | null> => {
+    if (!value) return null;
+    try {
+      const stored = await addGenericName(value, known);
+      if (!findExact(known, stored)) known = [...known, stored];
+      return stored;
+    } catch {
+      return value;
+    }
+  };
+
   let created = 0;
   const failed: { name: string; error: string }[] = [];
   for (const [i, r] of plan.add.entries()) {
@@ -164,7 +183,7 @@ export async function runImport(
         barcode: r.barcode || null,
         name: r.name,
         company_name: r.company || null,
-        description: null,
+        description: await describe(r.description),
         category_id: catId,
         sub_category_id: await subCategoryId(catId, r.subCategory),
         base_unit_id: await uomId(r.uom),

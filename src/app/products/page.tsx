@@ -187,9 +187,9 @@ export default function ProductsPage() {
             {canCsv && <Button className="max-sm:hidden"
               onClick={() => {
                 const sample = [
-                  ["PARACETAMOL 500MG TAB","5000168002658","GSK","Analgesics","Tablets","Tablet","4.20","5.00","4.50","5.50","3004.9090","10","0"],
-                  ["AMOXICILLIN 250MG CAP","5000168007553","Pharmatec","Antibiotics","Capsules","Capsule","12.00","15.00","13.50","16.00","3004.2090","14","0"],
-                  ["(* = required)","","","","","","","","","","","",""],
+                  ["PARACETAMOL 500MG TAB","PARACETAMOL","5000168002658","GSK","Analgesics","Tablets","Tablet","4.20","5.00","4.50","5.50","3004.9090","10","0"],
+                  ["AMOXICILLIN 250MG CAP","AMOXICILLIN","5000168007553","Pharmatec","Antibiotics","Capsules","Capsule","12.00","15.00","13.50","16.00","3004.2090","14","0"],
+                  ["(* = required)","","","","","","","","","","","","",""],
                 ];
                 downloadCsv("products-import-sample.csv", buildCsv(PRODUCT_IMPORT_HEADERS, sample));
               }}

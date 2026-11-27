@@ -91,12 +91,13 @@ export function ProductImportModal({ onClose, onDone }: { onClose: () => void; o
             <div className="max-h-56 overflow-auto rounded-lg ring-1 ring-neutral-200">
               <table className="w-full min-w-max text-xs">
                 <thead className="bg-neutral-50 text-left text-neutral-500">
-                  <tr>{["Name", "Company", "Category", "UOM", "Purchase", "Sale", "Qty"].map((h) => <th key={h} className="px-2 py-1.5">{h}</th>)}</tr>
+                  <tr>{["Name", "Generic Name / Description", "Company", "Category", "UOM", "Purchase", "Sale", "Qty"].map((h) => <th key={h} className="px-2 py-1.5">{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {plan.add.slice(0, 100).map((r) => (
                     <tr key={r.line} className="border-t border-neutral-100">
                       <td className="px-2 py-1">{r.name}</td>
+                      <td className="px-2 py-1 text-neutral-600">{r.description}</td>
                       <td className="px-2 py-1">{r.company}</td>
                       <td className="px-2 py-1">{r.category}</td>
                       <td className="px-2 py-1">{r.uom}</td>

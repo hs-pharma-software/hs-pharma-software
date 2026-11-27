@@ -7,7 +7,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { fullSchemaDb } from "./fullDb.ts";
 import { setTestDb } from "../shims/db.ts";
 import { useAuthStore, type SessionTenant } from "@/store/authStore";
-import { parseCsv, planImport, readImportRows, runImport } from "@/lib/productImport";
+import { parseCsv, planImport, readImportRows, runImport, PRODUCT_IMPORT_HEADERS } from "@/lib/productImport";
 import { getLatestPrice } from "@/lib/repo/products";
 
 const T = "con-a";
@@ -59,6 +59,27 @@ test("opening stock is added only when asked", async () => {
   await runImport(plan, { openingStock: true });
   const q = db.prepare(`SELECT b.qty FROM product_batches b JOIN products p ON p.id = b.product_id WHERE p.name = 'inf Gelofusine'`).get() as { qty: number };
   assert.equal(q.qty, 42);
+});
+
+test("medicines: the Generic Name / Description column (or Generic Name, Description) is saved as the product's description and joins the suggestions once", async () => {
+  assert.equal(PRODUCT_IMPORT_HEADERS[1], "Generic Name / Description");
+  const csv = [
+    `${PRODUCT_IMPORT_HEADERS.join(",")}`,
+    "PANADOL 500MG TAB,  Paracetamol ,,GSK,Analgesics,,Tablet,4,5,,,,10,0",
+    "CALPOL SYRUP,Paracetamol,,GSK,Analgesics,,Bottle,80,95,,,,1,0",
+    "AUGMENTIN 625MG,Amoxicillin + Clavulanic Acid,,GSK,Antibiotics,,Tablet,30,35,,,,6,0",
+  ].join("\n");
+  const { rows } = readImportRows(parseCsv(csv));
+  assert.deepEqual(rows.map((r) => r.description), ["Paracetamol", "Paracetamol", "Amoxicillin + Clavulanic Acid"]);
+  // Other header spellings are read too.
+  assert.equal(readImportRows(parseCsv("Name*,Generic Name,UOM*\nX,Ibuprofen,Tab")).rows[0].description, "Ibuprofen");
+  assert.equal(readImportRows(parseCsv("Name,Description,UOM\nY,Blue ink,Pcs")).rows[0].description, "Blue ink");
+  const r = await runImport(await planImport(rows), { openingStock: false });
+  assert.equal(r.created, 3);
+  const got = db.prepare(`SELECT name, description FROM products WHERE tenant_id = ? AND description IS NOT NULL ORDER BY name`).all(T) as { name: string; description: string }[];
+  assert.deepEqual(got.map((g) => [g.name, g.description]), [["AUGMENTIN 625MG", "Amoxicillin + Clavulanic Acid"], ["CALPOL SYRUP", "Paracetamol"], ["PANADOL 500MG TAB", "Paracetamol"]]);
+  const names = db.prepare(`SELECT name FROM generic_names WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY name`).all(T) as { name: string }[];
+  assert.deepEqual(names.map((n) => n.name), ["Amoxicillin + Clavulanic Acid", "Paracetamol"]);
 });
 
 test("the generated Hadayat Ullah & Sons file reads cleanly", async () => {
