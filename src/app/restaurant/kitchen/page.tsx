@@ -28,8 +28,7 @@ function Kitchen() {
 
   useEffect(() => {
     const t = setInterval(() => {
-      void reload();
-      void all.reload();
+      if (!document.hidden) { void reload(); void all.reload(); }
       setNow(Date.now());
     }, 10000);
     return () => clearInterval(t);

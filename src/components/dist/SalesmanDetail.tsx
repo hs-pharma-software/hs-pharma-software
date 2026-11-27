@@ -14,7 +14,7 @@ export function SalesmanDetail({ salesmanId, showLocation }: { salesmanId: strin
   // Refresh the location without reloading the page.
   useEffect(() => {
     if (!showLocation) return;
-    const h = setInterval(() => void loc.reload(), 20000);
+    const h = setInterval(() => { if (!document.hidden) void loc.reload(); }, 20000);
     return () => clearInterval(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [salesmanId, showLocation]);

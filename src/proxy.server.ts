@@ -74,6 +74,8 @@ export default async function proxy(req: NextRequest) {
   return NextResponse.next({ request: { headers } });
 }
 
+// Not for files (images, icons, fonts, downloads): no host decides anything for them, and
+// every request the proxy sees is billed server time. robots.txt and sitemap.xml still go through.
 export const config = {
-  matcher: ["/((?!_next/).*)"],
+  matcher: ["/((?!_next/|.*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|otf|css|js|map|webmanifest|mp4|webm|mp3|pdf|apk|exe|blockmap|yml|zip)$).*)"],
 };

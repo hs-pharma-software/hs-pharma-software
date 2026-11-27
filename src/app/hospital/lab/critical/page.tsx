@@ -27,7 +27,7 @@ export default function CriticalResultsPage() {
   };
   useEffect(() => {
     void reload();
-    const t = window.setInterval(() => void reload(), 60000);
+    const t = window.setInterval(() => { if (!document.hidden) void reload(); }, 60000);
     return () => window.clearInterval(t);
   }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
   return (

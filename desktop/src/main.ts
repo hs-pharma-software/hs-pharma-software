@@ -24,7 +24,15 @@ import { callAllowed, PROTOCOL_VERSION, type CallModule } from "../../src/offlin
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
 const SYNC_EVERY_MS = 60_000;
 const PROBE_EVERY_MS = 15_000;
-const MIRROR_EVERY_MS = 5 * 60_000;
+// MAVIN.pk is billed for every call: a computer left on all day must not keep asking.
+/** Online: the connection is checked this often (offline: every PROBE_EVERY_MS, to notice it coming back). */
+const PROBE_ONLINE_EVERY_MS = 5 * 60_000;
+/** Nothing to send: changes are fetched this often while the window is in use, and while it is not. */
+const SYNC_IN_USE_EVERY_MS = 2 * 60_000;
+const SYNC_IDLE_EVERY_MS = 10 * 60_000;
+/** The local copy, while the window is not in use (in use: every minute, and at once when it comes back to the front). */
+const COPY_IDLE_EVERY_MS = 10 * 60_000;
+const MIRROR_EVERY_MS = 15 * 60_000;
 const PIN_HASH_KEY = "app-pin-hash";
 const PIN_USER_KEY = "app-pin-user";
 /** Incremental after the initial copy; full refresh once daily. */
@@ -399,6 +407,7 @@ const QUIET_PROBE_EVERY = 4;
 const quietDevice = () => Boolean(device?.provisioned) && device.businessType === "radiology_center";
 const windowInUse = () => Boolean(win && !win.isDestroyed() && win.isFocused());
 let lastQuietSync = 0;
+let lastSyncRun = 0;
 let lastCopyRun = 0;
 let quietProbes = 0;
 
@@ -412,6 +421,9 @@ function syncAll(force = false): Promise<void> {
       if (!device?.provisioned || quitting || (!force && Date.now() < syncRetryAt)) return;
       // Nothing to send: a Radiology Centre's computer stays quiet (its offline allowance is renewed a few times a day).
       if (!force && quietDevice() && !device.hasUnsent && Date.now() - lastQuietSync < QUIET_SYNC_EVERY_MS) return;
+      // Nothing waiting to be sent: fetch changes every few minutes, less often when nobody is at the computer.
+      if (!force && !device.hasUnsent && Date.now() - lastSyncRun < (windowInUse() ? SYNC_IN_USE_EVERY_MS : SYNC_IDLE_EVERY_MS)) return;
+      lastSyncRun = Date.now();
       const startedSync = new Date(Date.now() - 1000).toISOString();
       const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
       // A save from here that MAVIN.pk held or refused: its rows in the copy were never made there; read the copy again.
@@ -791,7 +803,9 @@ async function printReceipt(text: string) {
 }
 
 /** Is MAVIN.pk reachable? (any answer counts; no data is sent) */
+let lastProbe = 0;
 async function probe() {
+  lastProbe = Date.now();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
@@ -845,6 +859,8 @@ if (primary) {
     const probeIfNeeded = () => {
       // Online and not in use: a quiet computer checks the connection once a minute.
       if (quietDevice() && online === true && !windowInUse() && ++quietProbes % QUIET_PROBE_EVERY !== 0) return;
+      // Online: the syncs and saves already show the connection works; check it only now and then.
+      if (online === true && Date.now() - lastProbe < PROBE_ONLINE_EVERY_MS) return;
       void probe();
     };
     timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(probeIfNeeded, PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
@@ -853,11 +869,12 @@ if (primary) {
     // The local copy of the business: filled once, then kept up to date.
     timers.push(setInterval(() => {
       if (quietDevice() && !windowInUse() && Date.now() - lastCopyRun < QUIET_COPY_EVERY_MS) return;
+      if (!windowInUse() && Date.now() - lastCopyRun < COPY_IDLE_EVERY_MS) return;
       void refreshReplica();
     }, REPLICA_EVERY_MS));
     setTimeout(() => void refreshReplica(), 5_000);
     // Back at the computer: the screens show the latest straight away.
-    app.on("browser-window-focus", () => { if (quietDevice() && Date.now() - lastCopyRun > REPLICA_EVERY_MS) void refreshReplica(); });
+    app.on("browser-window-focus", () => { if (Date.now() - lastCopyRun > REPLICA_EVERY_MS) void refreshReplica(); });
   });
 
   app.on("second-instance", () => { if (app.isReady()) showWindow(); });

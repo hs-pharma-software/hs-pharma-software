@@ -94,7 +94,8 @@ export async function replicaPage(sql: Sql, caller: Caller, info: ReplicaInfo, b
 /** The rows changed after `since` (this business's, and shared catalogue rows):
  * current values of those this login may read, and the keys to remove (deleted,
  * or no longer readable by it). */
-export async function replicaChanges(sql: Sql, caller: Caller, info: ReplicaInfo, branch: Scope["branch"] | undefined, since: unknown, tables: Set<string>) {
+/** `tables`: the tables this login copies, or a function giving them (called only when there are changes). */
+export async function replicaChanges(sql: Sql, caller: Caller, info: ReplicaInfo, branch: Scope["branch"] | undefined, since: unknown, tablesOf: Set<string> | (() => Promise<Set<string>>)) {
   needBusiness(caller);
   const from = Number.isInteger(Number(since)) && Number(since) >= 0 ? Number(since) : 0;
   // Older than the kept log (a computer switched off for weeks): it copies everything again.
@@ -108,6 +109,7 @@ export async function replicaChanges(sql: Sql, caller: Caller, info: ReplicaInfo
   const own = (await sql.execute(`SELECT seq, tbl, row_id FROM data_changes WHERE tenant_id = ? AND seq > ? AND seq <= ? ORDER BY seq LIMIT ?`, [caller.tenantId, from, top, CHANGES_PAGE])).rows;
   const shared = (await sql.execute(`SELECT seq, tbl, row_id FROM data_changes WHERE tenant_id IS NULL AND seq > ? AND seq <= ? ORDER BY seq LIMIT ?`, [from, top, CHANGES_PAGE])).rows;
   const log = [...own, ...shared].sort((a, b) => Number(a.seq) - Number(b.seq)).slice(0, CHANGES_PAGE);
+  const tables = !log.length ? new Set<string>() : typeof tablesOf === "function" ? await tablesOf() : tablesOf;
   const byTable = new Map<string, Set<string>>();
   for (const r of log) {
     const t = String(r.tbl);

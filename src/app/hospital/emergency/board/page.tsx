@@ -39,7 +39,7 @@ function Board() {
     if (!isTauri()) return;
     const load = () => void erBoard().then(setRows).catch(err);
     load();
-    const t = window.setInterval(load, 60000);
+    const t = window.setInterval(() => { if (!document.hidden) load(); }, 60000);
     return () => window.clearInterval(t);
   }, []);
   const untriaged = rows.filter((r) => !r.triage).length;

@@ -19,10 +19,8 @@ export async function POST(req: Request): Promise<Response> {
     switch (body.action) {
       case "tables": return Response.json({ result: await replicaTables(sql, caller, info, branch) });
       case "page": return Response.json({ result: await replicaPage(sql, caller, info, branch, body.table, body.after) });
-      case "changes": {
-        const { tables } = await replicaTables(sql, caller, info, branch);
-        return Response.json({ result: await replicaChanges(sql, caller, info, branch, body.since, new Set(tables)) });
-      }
+      // The tables this login may copy are worked out only when there are changes to sort (most checks have none).
+      case "changes": return Response.json({ result: await replicaChanges(sql, caller, info, branch, body.since, async () => new Set((await replicaTables(sql, caller, info, branch)).tables)) });
       default: throw new HttpError(400, "Unknown action.");
     }
   } catch (e) {

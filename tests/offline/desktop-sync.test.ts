@@ -497,7 +497,7 @@ function serverRow(table: string, values: Record<string, unknown>) {
 }
 const copyQty = (m: Mirror, id: string) => Number(m.query(`SELECT qty FROM product_batches WHERE id = ?`, [id])[0]?.qty);
 
-test("mirror refresh reads only changes when idle, applies tombstones, and reconciles hard deletes daily", async () => {
+test("mirror refresh reads only changes when idle, applies tombstones, and reconciles hard deletes weekly", async () => {
   const d = await provisioned();
   const m = await copyOf(d);
   const received: Record<string, unknown>[] = [];
@@ -527,7 +527,10 @@ test("mirror refresh reads only changes when idle, applies tombstones, and recon
   run(`DELETE FROM products WHERE id = 'pdelete'`);
   clock = new Date(clock.getTime() + 25 * 3_600_000);
   await m.refresh(["products"], fetchPage, clock);
-  assert.equal(m.query(`SELECT id FROM products WHERE id = 'pdelete'`, []).length, 0, "daily rebuild catches hard deletes");
+  assert.equal(m.query(`SELECT id FROM products WHERE id = 'pdelete'`, []).length, 1, "a day later only changes are read (the full copy is weekly)");
+  clock = new Date(clock.getTime() + 7 * 24 * 3_600_000);
+  await m.refresh(["products"], fetchPage, clock);
+  assert.equal(m.query(`SELECT id FROM products WHERE id = 'pdelete'`, []).length, 0, "the weekly rebuild catches hard deletes");
 });
 
 test("empty history checks advance to server time and failures leave the cursor unchanged", async () => {

@@ -53,7 +53,7 @@ export default function ConsultationsPage() {
 
   useEffect(() => {
     void reload().catch((e) => notify(e instanceof Error ? e.message : String(e)));
-    const t = setInterval(() => void reload().catch(() => undefined), 30_000);
+    const t = setInterval(() => { if (!document.hidden) void reload().catch(() => undefined); }, 30_000);
     return () => clearInterval(t);
   }, [tenantId, date]); // eslint-disable-line react-hooks/exhaustive-deps
 

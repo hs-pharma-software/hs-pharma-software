@@ -89,7 +89,7 @@ function RefreshBar({ seconds, paused, refresh, doneRef }: { seconds: number; pa
     if (!auto || paused) return;
     const t = setInterval(() => {
       leftRef.current -= 1;
-      if (leftRef.current <= 0) { leftRef.current = seconds; void refresh(); }
+      if (leftRef.current <= 0) { leftRef.current = seconds; if (!document.hidden) void refresh(); }
       setLeft(leftRef.current);
     }, 1000);
     return () => clearInterval(t);

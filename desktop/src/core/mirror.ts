@@ -22,6 +22,8 @@ const HISTORY_PARENT: Record<string, { table: string; column: string }> = {
 };
 
 const WRITE = /\b(INSERT|UPDATE|DELETE|REPLACE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|ANALYZE|BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i;
+/** How often each table is copied again in full (between: only what changed). */
+export const MIRROR_FULL_EVERY_MS = 7 * 24 * 3_600_000;
 
 /** Only one SELECT (or WITH ... SELECT); string literals and comments are ignored when checking. */
 export function readOnlySql(sql: string): boolean {
@@ -160,7 +162,9 @@ export class Mirror {
     for (const table of tables) {
       const seen = this.meta(`mirror_since:${table}`);
       const lastFull = this.meta(`mirror_full:${table}`);
-      const full = !seen || !lastFull || now.getTime() - Date.parse(lastFull) >= 24 * 3_600_000;
+      // A full copy once a week (changes, deletions included, arrive in between): a catalogue of
+      // thousands of products copied daily by every computer is a large share of the server's work.
+      const full = !seen || !lastFull || now.getTime() - Date.parse(lastFull) >= MIRROR_FULL_EVERY_MS;
       const since = full ? null : this.meta(`mirror_cursor:${table}`) ?? new Date(Date.parse(seen!) - 10 * 60_000).toISOString();
       const got = await this.fetchAll(table, fetchPage, since);
       if (!got) continue;

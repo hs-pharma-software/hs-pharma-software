@@ -58,7 +58,7 @@ function Floor({ onOpen }: { onOpen: (orderId: string) => void }) {
   });
   const act = useAction();
   useEffect(() => {
-    const t = setInterval(() => void reload(), 15000);
+    const t = setInterval(() => { if (!document.hidden) void reload(); }, 15000);
     return () => clearInterval(t);
   }, [reload]);
 

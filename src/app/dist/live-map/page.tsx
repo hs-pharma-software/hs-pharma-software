@@ -19,7 +19,7 @@ function LiveMap() {
   const [filter, setFilter] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   useEffect(() => {
-    const h = setInterval(() => void data.reload(), 20000);
+    const h = setInterval(() => { if (!document.hidden) void data.reload(); }, 20000);
     return () => clearInterval(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
