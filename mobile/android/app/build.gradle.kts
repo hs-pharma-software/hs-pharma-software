@@ -41,6 +41,14 @@ android {
         versionName = flutter.versionName
     }
 
+    // A phone-only build (--target-platform android-arm,android-arm64) must not keep a
+    // plugin's x86_64 library on its own: an x86 device would pick that folder and find
+    // no Flutter engine in it.
+    val targets = project.findProperty("target-platform") as String?
+    if (targets != null && !targets.contains("android-x64")) {
+        packaging { jniLibs { excludes += "lib/x86_64/**" } }
+    }
+
     signingConfigs {
         create("release") {
             if (signing.isNotEmpty()) {

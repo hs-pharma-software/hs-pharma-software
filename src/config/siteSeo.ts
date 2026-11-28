@@ -49,7 +49,7 @@ export const PAGE_SEO: Record<string, { title: string; description: string; h1?:
   },
   "/download": {
     title: "Download the MAVIN Business Android App",
-    description: "Download MAVIN Business for Android (APK): your MAVIN.pk account full screen on your phone. Install steps, update help and release notes.",
+    description: "Download MAVIN Business for Android (APK): sales, purchases, stock and reports on your phone. Install steps, update help and release notes.",
     h1: "MAVIN Business for Android",
   },
   "/help": {

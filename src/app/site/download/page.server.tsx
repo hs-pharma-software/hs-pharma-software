@@ -27,8 +27,8 @@ export default function DownloadPage() {
   return (
     <>
       <PageIntro eyebrow="Download" title="MAVIN Business for Android">
-        The MAVIN.pk app for Android phones and tablets. It opens your MAVIN.pk account full screen and uses MAVIN.pk&apos;s online
-        services, so it needs an internet connection.
+        The MAVIN.pk app for Android phones and tablets: sales, purchases, products and reports on screens made for your phone, with
+        every other section inside the app. It uses MAVIN.pk&apos;s online services, so it needs an internet connection.
       </PageIntro>
 
       <Section>

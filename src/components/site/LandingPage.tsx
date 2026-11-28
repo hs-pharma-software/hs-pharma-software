@@ -453,7 +453,7 @@ export function LandingPage() {
                   {ANDROID_RELEASE.appName} on your phone
                 </h2>
                 <p style={{color:"#64748b",fontSize:15,lineHeight:1.7,marginBottom:12}}>
-                  Your MAVIN.pk account full screen on Android. The app uses MAVIN.pk&apos;s online services, so it needs an internet connection.
+                  Sales, purchases, products and reports on your phone. The app uses MAVIN.pk&apos;s online services, so it needs an internet connection.
                 </p>
                 <p style={{color:"#94a3b8",fontSize:13}}>
                   Version {ANDROID_RELEASE.versionName} · {androidSizeLabel()} · Released {androidReleaseDateLabel()} · {ANDROID_RELEASE.minAndroid}
