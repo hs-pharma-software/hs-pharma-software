@@ -8,6 +8,8 @@ interface Device {
   id: string; name: string; code: string; branchName: string; status: string; users: string[]; modules: string[]; maxOfflineHours: number;
   registeredAt: string; revokedAt: string | null; revokeReason: string | null; lastSeenAt: string | null; lastSyncAt: string | null;
   pendingOnDevice: number | null; failedOnDevice: number | null; held: number; rejected: number; openExceptions: number; appVersion: string | null;
+  /** Super Admin only: the (hidden) folder where the computer keeps its databases and backups. */
+  dataPath?: string | null;
 }
 interface Exception { id: string; kind: string; qty: number; detail: string; status: string; invoiceNo: number | null; offlineRef: string | null; deviceName: string | null; resolution: string | null; createdAt: string }
 interface Held { opId: string; kind?: string; label?: string; offlineRef: string; date: string; payable: number; lines: number; receivedAt: string; reason?: string | null }
@@ -76,7 +78,8 @@ export function OfflineDevicesManager({ tenantId, superAdmin = false }: { tenant
                       : <span className="text-rose-700" title={v.revokeReason ?? ""}>Turned off {when(v.revokedAt)}</span>}
                     {v.revokeReason && v.status !== "active" && <span className="block text-xs text-neutral-500">{v.revokeReason}</span>}
                   </td>
-                  <td>{when(v.lastSyncAt)}<span className="block text-xs text-neutral-500">seen {when(v.lastSeenAt)}{v.appVersion ? ` · v${v.appVersion}` : ""}</span></td>
+                  <td>{when(v.lastSyncAt)}<span className="block text-xs text-neutral-500">seen {when(v.lastSeenAt)}{v.appVersion ? ` · v${v.appVersion}` : ""}</span>
+                    {v.dataPath && <span className="block break-all font-mono text-[11px] text-neutral-500" title="Where this computer keeps its databases and backups (hidden folder)">Data: {v.dataPath}</span>}</td>
                   <td className="text-xs">
                     {v.pendingOnDevice == null ? "—" : `${v.pendingOnDevice} on device`}
                     {v.held ? <span className="block text-rose-700">{v.held} held</span> : null}

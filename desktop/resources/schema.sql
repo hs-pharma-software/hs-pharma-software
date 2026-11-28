@@ -5827,13 +5827,13 @@
     ALTER TABLE staff ADD COLUMN extra_roles TEXT;
     ALTER TABLE hospital_services ADD COLUMN ordering_doctor_share REAL;
     ALTER TABLE hospital_charges ADD COLUMN ordering_doctor_share REAL
-
+    
 ;
 -- schema_sql_v102
 
     -- A doctor's qualification (MBBS, FCPS ...), printed on the prescription under the name.
     ALTER TABLE staff ADD COLUMN qualification TEXT
-
+    
 ;
 -- schema_sql_v103
 
@@ -5892,7 +5892,7 @@
     CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_store_stock_del AFTER DELETE ON hospital_store_stock BEGIN
         INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_store_stock', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
     END;
-
+    
 ;
 -- schema_sql_v104
 
@@ -5946,17 +5946,316 @@
     CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_indent_items_del AFTER DELETE ON hospital_indent_items BEGIN
         INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_indent_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
     END;
-
+    
 ;
 -- schema_sql_v105
 
     ALTER TABLE staff ADD COLUMN working_hours_per_day REAL;
     ALTER TABLE staff ADD COLUMN sunday_off INTEGER;
     ALTER TABLE staff ADD COLUMN overtime_multiplier REAL;
-
+    
 ;
 -- schema_sql_v106
 
     ALTER TABLE hospital_indents ADD COLUMN received_by_name TEXT;
+    
+;
+-- schema_sql_v107
 
+    ALTER TABLE salaries ADD COLUMN overtime_hours REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN overtime_pay REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN shares REAL DEFAULT 0;
+    ALTER TABLE salaries ADD COLUMN pay_status TEXT DEFAULT 'unpaid';
+    ALTER TABLE salaries ADD COLUMN paid_at TEXT;
+    ALTER TABLE salaries ADD COLUMN slip_no TEXT;
+    ALTER TABLE salaries ADD COLUMN created_by_name TEXT;
+    CREATE INDEX IF NOT EXISTS idx_salary_staff_month ON salaries (tenant_id, staff_id, salary_month, salary_year) WHERE deleted_at IS NULL;
+    
+;
+-- schema_sql_v108
+
+    CREATE TABLE IF NOT EXISTS hospital_salary_payments (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, salary_id TEXT NOT NULL REFERENCES salaries(id),
+        amount REAL NOT NULL CHECK (amount > 0), method TEXT NOT NULL, paid_at TEXT NOT NULL,
+        reference TEXT, notes TEXT, paid_by_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_salary_payments_salary ON hospital_salary_payments (tenant_id, salary_id, paid_at);
+    CREATE TRIGGER IF NOT EXISTS trg_hospital_salary_payment_apply AFTER INSERT ON hospital_salary_payments BEGIN
+        SELECT RAISE(ABORT, 'Payment exceeds the remaining salary balance or salary record is missing.')
+         WHERE NOT EXISTS (
+            SELECT 1 FROM salaries WHERE id = NEW.salary_id AND tenant_id = NEW.tenant_id AND deleted_at IS NULL
+              AND balance_salary >= NEW.amount
+        );
+        UPDATE salaries
+           SET paid_salary = COALESCE(paid_salary, 0) + NEW.amount,
+               balance_salary = MAX(0, COALESCE(balance_salary, 0) - NEW.amount),
+               pay_status = CASE WHEN COALESCE(balance_salary, 0) - NEW.amount <= 0.004 THEN 'paid' ELSE 'partial' END,
+               paid_at = NEW.paid_at, payment_method = NEW.method, updated_at = NEW.updated_at
+         WHERE id = NEW.salary_id AND tenant_id = NEW.tenant_id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_ins AFTER INSERT ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_upd AFTER UPDATE ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_salary_payments_del AFTER DELETE ON hospital_salary_payments BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_salary_payments', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v109
+
+    -- Hospital Purchase Cell: purchase orders and the vendor portal.
+    -- The purchase officer sends a request for rates (RFQ: items with
+    -- specification, quantity and unit) to one vendor (a petty purchase) or
+    -- several (a quotation). Each vendor signs in to the vendor portal and sees
+    -- only the requests sent to them, quotes a rate per item (never seeing
+    -- another vendor's rate), receives the purchase orders issued to them and
+    -- submits an invoice against one. The purchase officer forwards the invoice
+    -- to the stores as a store purchase (v103): store keepers verify it and
+    -- Finance pays it. A vendor login is a users row with platform_role
+    -- 'vendor' linked here to its supplier (vendor_portal_logins: server only).
+    -- eProcurement is a special service: the Super Admin switches it on per
+    -- hospital (tenants.eprocurement_allowed); off, the tabs are hidden and
+    -- the vendor portal and vendor logins are refused.
+    ALTER TABLE tenants ADD COLUMN eprocurement_allowed INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS hospital_rfqs (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_no TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'quotation', title TEXT, status TEXT NOT NULL DEFAULT 'open',
+        due_date TEXT, note TEXT, created_by_name TEXT, awarded_at TEXT, awarded_by_name TEXT, cancelled_at TEXT, cancel_reason TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_rfqs_no ON hospital_rfqs (tenant_id, rfq_no) WHERE deleted_at IS NULL;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfqs_ins AFTER INSERT ON hospital_rfqs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfqs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfqs_upd AFTER UPDATE ON hospital_rfqs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfqs', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfqs_del AFTER DELETE ON hospital_rfqs BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfqs', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_rfq_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_id TEXT NOT NULL, product_id TEXT, product_name TEXT NOT NULL, specification TEXT,
+        qty REAL NOT NULL DEFAULT 0, uom TEXT, store TEXT, sort INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_rfq_items ON hospital_rfq_items (tenant_id, rfq_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_items_ins AFTER INSERT ON hospital_rfq_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_items_upd AFTER UPDATE ON hospital_rfq_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_items_del AFTER DELETE ON hospital_rfq_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_rfq_vendors (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_id TEXT NOT NULL, vendor_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'requested',
+        quoted_at TEXT, delivery_days INTEGER, valid_till TEXT, remarks TEXT, decline_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_rfq_vendors ON hospital_rfq_vendors (tenant_id, rfq_id, vendor_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_hospital_rfq_vendors_vendor ON hospital_rfq_vendors (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_vendors_ins AFTER INSERT ON hospital_rfq_vendors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_vendors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_vendors_upd AFTER UPDATE ON hospital_rfq_vendors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_vendors', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_vendors_del AFTER DELETE ON hospital_rfq_vendors BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_vendors', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_rfq_quotes (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, rfq_id TEXT NOT NULL, rfq_item_id TEXT NOT NULL, vendor_id TEXT NOT NULL, rate REAL,
+        offered_spec TEXT, available INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_rfq_quotes ON hospital_rfq_quotes (tenant_id, rfq_item_id, vendor_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_hospital_rfq_quotes ON hospital_rfq_quotes (tenant_id, rfq_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_quotes_ins AFTER INSERT ON hospital_rfq_quotes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_quotes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_quotes_upd AFTER UPDATE ON hospital_rfq_quotes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_quotes', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_rfq_quotes_del AFTER DELETE ON hospital_rfq_quotes BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_rfq_quotes', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_purchase_orders (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_no TEXT NOT NULL, rfq_id TEXT, vendor_id TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'quotation',
+        status TEXT NOT NULL DEFAULT 'issued', total REAL NOT NULL DEFAULT 0, delivery_days INTEGER, note TEXT, issued_by_name TEXT, issued_at TEXT,
+        cancelled_at TEXT, cancel_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_hospital_purchase_orders_no ON hospital_purchase_orders (tenant_id, po_no) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_hospital_purchase_orders_vendor ON hospital_purchase_orders (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_purchase_orders_ins AFTER INSERT ON hospital_purchase_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_purchase_orders', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_purchase_orders_upd AFTER UPDATE ON hospital_purchase_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_purchase_orders', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_purchase_orders_del AFTER DELETE ON hospital_purchase_orders BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_purchase_orders', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_po_items (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_id TEXT NOT NULL, rfq_item_id TEXT, product_id TEXT, product_name TEXT NOT NULL, specification TEXT,
+        qty REAL NOT NULL DEFAULT 0, uom TEXT, rate REAL NOT NULL DEFAULT 0, store TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_po_items ON hospital_po_items (tenant_id, po_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_po_items_ins AFTER INSERT ON hospital_po_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_po_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_po_items_upd AFTER UPDATE ON hospital_po_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_po_items', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_po_items_del AFTER DELETE ON hospital_po_items BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_po_items', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS hospital_vendor_invoices (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, po_id TEXT NOT NULL, vendor_id TEXT NOT NULL, invoice_no TEXT NOT NULL, invoice_date TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0, note TEXT, status TEXT NOT NULL DEFAULT 'submitted', store_purchase_id TEXT, return_reason TEXT, submitted_at TEXT,
+        forwarded_at TEXT, forwarded_by_name TEXT, returned_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hospital_vendor_invoices ON hospital_vendor_invoices (tenant_id, status);
+    CREATE INDEX IF NOT EXISTS idx_hospital_vendor_invoices_po ON hospital_vendor_invoices (tenant_id, po_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_invoices_ins AFTER INSERT ON hospital_vendor_invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_invoices', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_invoices_upd AFTER UPDATE ON hospital_vendor_invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_invoices', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_hospital_vendor_invoices_del AFTER DELETE ON hospital_vendor_invoices BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('hospital_vendor_invoices', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TABLE IF NOT EXISTS vendor_portal_logins (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, vendor_id TEXT NOT NULL, created_by_name TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_vendor_portal_logins_user ON vendor_portal_logins (user_id) WHERE deleted_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_vendor_portal_logins_vendor ON vendor_portal_logins (tenant_id, vendor_id);
+    CREATE TRIGGER IF NOT EXISTS trg_dc_vendor_portal_logins_ins AFTER INSERT ON vendor_portal_logins BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('vendor_portal_logins', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_vendor_portal_logins_upd AFTER UPDATE ON vendor_portal_logins BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('vendor_portal_logins', NEW.id, NEW.tenant_id, NULL, 'u', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    CREATE TRIGGER IF NOT EXISTS trg_dc_vendor_portal_logins_del AFTER DELETE ON vendor_portal_logins BEGIN
+        INSERT INTO data_changes (tbl, row_id, tenant_id, branch_id, op, changed_at) VALUES ('vendor_portal_logins', OLD.id, OLD.tenant_id, NULL, 'd', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+    
+;
+-- schema_sql_v110
+
+    -- eProcurement across hospitals. A vendor has ONE account (ep_vendors,
+    -- signed in at ep.mavin.pk) linked to every hospital that uses them: a
+    -- vendor_portal_logins row per hospital (its own supplier row there), so
+    -- the portal shows requests and orders from all of them while each hospital
+    -- sees only its own. Portal vendors form a shared directory the purchase
+    -- officers search; picking one adds them to the hospital's suppliers.
+    -- ep_items: the shared list of items every hospital has asked rates for.
+    -- Both are global and server-only (never through /api/db).
+    CREATE TABLE IF NOT EXISTS ep_vendors (
+        id TEXT PRIMARY KEY, vendor_code TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, phone TEXT, address TEXT,
+        created_by_tenant TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_vendors_code ON ep_vendors (vendor_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_vendors_user ON ep_vendors (user_id) WHERE deleted_at IS NULL;
+    CREATE TABLE IF NOT EXISTS ep_items (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL, uom TEXT, specification TEXT, uses INTEGER NOT NULL DEFAULT 0,
+        created_by_tenant TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_items_name ON ep_items (name_key) WHERE deleted_at IS NULL;
+    -- One login, several hospitals: unique per (login, hospital) instead of per login.
+    DROP INDEX IF EXISTS ux_vendor_portal_logins_user;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_vendor_portal_logins_user_tenant ON vendor_portal_logins (user_id, tenant_id) WHERE deleted_at IS NULL;
+    ALTER TABLE vendor_portal_logins ADD COLUMN ep_vendor_id TEXT;
+    ALTER TABLE vendor_portal_logins ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+    
+;
+-- schema_sql_v111
+
+    -- eProcurement vendor registration. A vendor signs up at ep.mavin.pk and
+    -- fills four steps (company, owner and business type; address; bank;
+    -- review), then submits it to the Super Admin, who approves, rejects,
+    -- asks for changes, suspends or blacklists. Only approved vendors appear in
+    -- the directory hospitals add vendors from. Hospitals no longer create
+    -- vendor logins or set their passwords. Accounts made by hospitals before
+    -- this stay approved (the vendor completes the details at next sign-in).
+    -- profile: the registration details (JSON, server-only like all ep_*).
+    ALTER TABLE ep_vendors ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';
+    ALTER TABLE ep_vendors ADD COLUMN profile TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN business_kind TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN categories TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN city TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN self_registered INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE ep_vendors ADD COLUMN signup_ip TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN submitted_at TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN reviewed_at TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN reviewed_by TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN review_note TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN blacklisted_at TEXT;
+    ALTER TABLE ep_vendors ADD COLUMN blacklist_reason TEXT;
+    CREATE INDEX IF NOT EXISTS idx_ep_vendors_status ON ep_vendors (status, submitted_at);
+    -- The kinds of work a vendor picks from (Super Admin > eProcurement > Business types).
+    CREATE TABLE IF NOT EXISTS ep_categories (
+        id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_ep_categories_name ON ep_categories (kind, name) WHERE deleted_at IS NULL;
+    INSERT OR IGNORE INTO ep_categories (id, kind, name, is_active, sort, created_at, updated_at) VALUES
+    ('epcat-sup-01', 'supplier', 'Medicines & pharmaceuticals', 1, 1, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-02', 'supplier', 'Surgical & disposables', 1, 2, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-03', 'supplier', 'Medical equipment', 1, 3, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-04', 'supplier', 'Laboratory reagents & supplies', 1, 4, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-05', 'supplier', 'Radiology & imaging supplies', 1, 5, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-06', 'supplier', 'Stationery & printing', 1, 6, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-07', 'supplier', 'Furniture & fixtures', 1, 7, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-08', 'supplier', 'IT & electronics', 1, 8, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-09', 'supplier', 'Cleaning & housekeeping supplies', 1, 9, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-10', 'supplier', 'Food & kitchen supplies', 1, 10, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-11', 'supplier', 'Linen & uniforms', 1, 11, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-sup-12', 'supplier', 'Medical gases', 1, 12, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-01', 'services', 'Equipment maintenance & repair', 1, 1, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-02', 'services', 'Building maintenance & construction', 1, 2, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-03', 'services', 'Cleaning & janitorial', 1, 3, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-04', 'services', 'Security services', 1, 4, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-05', 'services', 'Catering', 1, 5, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-06', 'services', 'Laundry', 1, 6, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-07', 'services', 'Waste management', 1, 7, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-08', 'services', 'IT services & software', 1, 8, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-09', 'services', 'Transport & ambulance', 1, 9, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-10', 'services', 'Printing services', 1, 10, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-11', 'services', 'Consultancy', 1, 11, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z'),
+    ('epcat-ser-12', 'services', 'Pest control', 1, 12, '2026-11-27T00:00:00.000Z', '2026-11-27T00:00:00.000Z');
+    -- Forgot password emails the code to the login's email: give earlier vendor logins the vendor's email.
+    UPDATE users SET email = (SELECT lower(trim(e.email)) FROM ep_vendors e WHERE e.user_id = users.id AND e.deleted_at IS NULL AND e.email LIKE '%_@_%._%')
+     WHERE platform_role = 'vendor' AND (email IS NULL OR email = '')
+       AND EXISTS (SELECT 1 FROM ep_vendors e WHERE e.user_id = users.id AND e.deleted_at IS NULL AND e.email LIKE '%_@_%._%');
+    
+;
+-- schema_sql_v112
+
+    -- Super Admin > Duplicate Products. Products whose names match by more
+    -- than half (in the shared catalogue, or a business's own product against
+    -- a shared one) are shown to the Super Admin, who merges them: every record
+    -- of the merged product (stock, prices, invoices, purchases, ...) moves to
+    -- the kept one and the merged product is removed. product_merges keeps each
+    -- merge; product_duplicate_dismissals the pairs marked "not duplicates".
+    -- Both are server-only.
+    CREATE TABLE IF NOT EXISTS product_merges (
+        id TEXT PRIMARY KEY, survivor_id TEXT NOT NULL, survivor_name TEXT NOT NULL, merged_id TEXT NOT NULL, merged_name TEXT NOT NULL,
+        merged_tenant_id TEXT, moved TEXT, merged_by TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_merges_created ON product_merges (created_at);
+    CREATE TABLE IF NOT EXISTS product_duplicate_dismissals (
+        id TEXT PRIMARY KEY, a_id TEXT NOT NULL, b_id TEXT NOT NULL, dismissed_by TEXT, created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_product_duplicate_dismissals ON product_duplicate_dismissals (a_id, b_id)
+    
+;
+-- schema_sql_v113
+
+    -- MAVIN Offline 0.3.8 keeps its databases and backups in a hidden folder
+    -- on a drive other than C: when the computer has one. The device reports
+    -- that folder so the Super Admin can find it (support, recovery).
+    ALTER TABLE offline_devices ADD COLUMN data_path TEXT;
+    
 ;

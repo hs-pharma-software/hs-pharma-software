@@ -57,7 +57,7 @@ import { getRxForInvoice, markPrescriptionInvoiced } from "@/lib/repo/clinic";
 import { localDate } from "@/lib/localDate";
 import { serverJson } from "@/lib/serverMode";
 import { desktopCall, useDesktopStatus, NeedsInternetError } from "@/lib/desktopBridge";
-import { enterToNextField, useFieldHotkeys } from "@/lib/formKeys";
+import { enterToNextField, lineNext, useFieldHotkeys } from "@/lib/formKeys";
 import { FormError } from "@/components/ui/FormError";
 
 /** Today as YYYY-MM-DD in local (Pakistan) time, not UTC. */
@@ -97,7 +97,6 @@ const COL_BONUS = 1;
 const COL_PRICE = 2;
 const COL_TAX = 3;
 const COL_DISC = 4;
-const LAST_COL = COL_DISC;
 
 export function InvoiceFormModal({
   invoice,
@@ -249,21 +248,11 @@ export function InvoiceFormModal({
     lineInputRefs.current[rowIdx][colIdx] = el;
   }
 
-  /** Enter on a line input: the next column that can be typed in (locked ones,
-   * e.g. bonus and price offline, are skipped); after the last, back to the
-   * product search bar. */
-  function handleLineEnter(e: React.KeyboardEvent, rowIdx: number, colIdx: number) {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    for (let c = colIdx + 1; c <= LAST_COL; c++) {
-      const el = lineInputRefs.current[rowIdx]?.[c];
-      if (el && !el.disabled && !el.readOnly) {
-        el.focus();
-        el.select();
-        return;
-      }
-    }
-    pickerRef.current?.focus();
+  /** Enter or Tab on a line input: the line's next EMPTY box that can be typed
+   * in (locked ones, e.g. bonus and price offline, are skipped); after the
+   * last, back to the product search bar for the next product. */
+  function handleLineEnter(e: React.KeyboardEvent<HTMLElement>) {
+    lineNext(e, () => pickerRef.current?.focus());
   }
 
   useFieldHotkeys(formRef, active);
@@ -1302,7 +1291,7 @@ export function InvoiceFormModal({
                         step="any"
                         value={l.qty}
                         onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
-                        onKeyDown={(e) => handleLineEnter(e, idx, COL_QTY)}
+                        onKeyDown={(e) => handleLineEnter(e)}
                         onFocus={() => setRateLine(idx)}
                         onBlur={() => setRateLine((cur) => (cur === idx ? null : cur))}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
@@ -1317,7 +1306,7 @@ export function InvoiceFormModal({
                         value={l.bonusQty}
                         disabled={service}
                         onChange={(e) => updateLine(idx, { bonusQty: Number(e.target.value) })}
-                        onKeyDown={(e) => handleLineEnter(e, idx, COL_BONUS)}
+                        onKeyDown={(e) => handleLineEnter(e)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
@@ -1331,7 +1320,7 @@ export function InvoiceFormModal({
                         disabled={offline}
                         title={offline ? "Offline, the price list price is used" : undefined}
                         onChange={(e) => updateLine(idx, { salePrice: Number(e.target.value) })}
-                        onKeyDown={(e) => handleLineEnter(e, idx, COL_PRICE)}
+                        onKeyDown={(e) => handleLineEnter(e)}
                         className="w-24 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
@@ -1345,7 +1334,7 @@ export function InvoiceFormModal({
                         disabled={offline || service}
                         title={service ? "Set on the service (Products > Services)" : offline ? "Offline, the product's tax rate is used" : undefined}
                         onChange={(e) => updateLine(idx, { taxPct: Number(e.target.value) })}
-                        onKeyDown={(e) => handleLineEnter(e, idx, COL_TAX)}
+                        onKeyDown={(e) => handleLineEnter(e)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>
@@ -1357,7 +1346,7 @@ export function InvoiceFormModal({
                         step="any"
                         value={l.discountPct}
                         onChange={(e) => updateLine(idx, { discountPct: Number(e.target.value) })}
-                        onKeyDown={(e) => handleLineEnter(e, idx, COL_DISC)}
+                        onKeyDown={(e) => handleLineEnter(e)}
                         className="w-16 rounded border border-neutral-300 px-1.5 py-1"
                       />
                     </td>

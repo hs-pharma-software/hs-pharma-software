@@ -26,7 +26,8 @@ function DesktopPinCard() {
 
   useEffect(() => {
     if (!currentUser || !window.mavinDesktop?.hasSavedPin) return;
-    void window.mavinDesktop.hasSavedPin().then((v) => setHasPin(v)).catch(() => setHasPin(false));
+    // The desktop answers { ok, value } (every call does).
+    void window.mavinDesktop.hasSavedPin().then((v) => setHasPin(typeof v === "boolean" ? v : Boolean((v as { ok?: boolean; value?: unknown })?.ok && (v as { value?: unknown }).value === true))).catch(() => setHasPin(false));
   }, [currentUser]);
 
   const savePin = async () => {

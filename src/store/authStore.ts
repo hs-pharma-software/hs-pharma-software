@@ -1,6 +1,7 @@
 ﻿import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { desktopViaServer, SERVER_DB, serverJson, setDesktopSession } from "../lib/serverMode";
+import { desktopBridge } from "../lib/desktopBridge";
 import { localBridge, localSession, setLocalSession } from "@/lib/edition";
 
 export type UserRole = "super_admin" | "owner" | "staff";
@@ -82,6 +83,9 @@ export const useAuthStore = create<AuthState>()(
         if ((SERVER_DB || desktopViaServer()) && typeof window !== "undefined") {
           void serverJson("/api/auth/logout/", {}).catch(() => undefined);
           if (desktopViaServer()) setDesktopSession(null);
+          // The Windows app forgets the remembered login: every way a session ends asks for the
+          // password next time (and never signs the ended one straight back in).
+          void desktopBridge()?.signOut?.().catch(() => undefined);
         }
         // Mavin Pharmacy Offline: end the local session in the desktop too.
         const local = localBridge();

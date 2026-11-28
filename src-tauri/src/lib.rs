@@ -1898,6 +1898,15 @@ fn schema_sql_v112() -> &'static str {
     "#
 }
 
+fn schema_sql_v113() -> &'static str {
+    r#"
+    -- MAVIN Offline 0.3.8 keeps its databases and backups in a hidden folder
+    -- on a drive other than C: when the computer has one. The device reports
+    -- that folder so the Super Admin can find it (support, recovery).
+    ALTER TABLE offline_devices ADD COLUMN data_path TEXT;
+    "#
+}
+
 fn schema_sql_v111() -> &'static str {
     r#"
     -- eProcurement vendor registration. A vendor signs up at ep.mavin.pk and
@@ -7334,6 +7343,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 112,
             description: "duplicate_products_merge",
             sql: schema_sql_v112(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 113,
+            description: "offline_device_data_path",
+            sql: schema_sql_v113(),
             kind: MigrationKind::Up,
         },
     ]

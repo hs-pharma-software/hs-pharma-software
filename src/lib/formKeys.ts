@@ -1,6 +1,8 @@
 /** Keyboard help for the long entry forms (invoice, quotation, purchase).
  *
- * - Enter in a field moves to the next EMPTY field, as in the item lines,
+ * - Enter in a field moves to the next EMPTY field, as in the item lines
+ *   (where Tab does the same, and after the line's last empty box the
+ *   cursor goes to the product search for the next product),
  *   skipping locked (disabled / read-only) ones. Item lines keep their own
  *   Enter handling and are skipped over. With no field left after it, Enter
  *   does what it did before (saves the form).
@@ -32,21 +34,36 @@ const focusSelect = (el: Control) => {
   if (el instanceof HTMLInputElement && el.type !== "date" && el.type !== "checkbox") el.select();
 };
 
+/** An item line: Enter or Tab moves to the line's next EMPTY box (locked ones
+ * skipped); after the last one, `home` (the product search, for the next
+ * product). Shift+Tab still goes back. True when it handled the key. */
+export function lineNext(e: KeyboardEvent<HTMLElement>, home?: () => void, empty: (el: Control) => boolean = isEmpty): boolean {
+  if ((e.key !== "Enter" && e.key !== "Tab") || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.nativeEvent.isComposing) return false;
+  const from = e.target as Element;
+  if (!(from instanceof HTMLInputElement || from instanceof HTMLSelectElement)) return false;
+  if (from instanceof HTMLInputElement && SKIP_TYPES.has(from.type)) return false;
+  const row = from.closest("tr, [data-row]");
+  if (!row) return false;
+  e.preventDefault();
+  const cells = Array.from(row.querySelectorAll<Control>("input, select")).filter(usable);
+  const next = cells.slice(cells.indexOf(from as Control) + 1).find(empty);
+  if (next) focusSelect(next);
+  else home?.();
+  return true;
+}
+
 /** Form onKeyDown: Enter moves to the next empty field. In an item line
  * without its own Enter handling: the next box in that line, then `home`
  * (the product search); never saves from a line. */
 export function enterToNextField(e: KeyboardEvent<HTMLElement>, home?: () => void) {
+  // Tab in an item line works like Enter there (next empty box, then the product search).
+  if (e.key === "Tab" && !e.defaultPrevented && e.target instanceof Element && inLines(e.target)) { lineNext(e, home); return; }
   if (e.key !== "Enter" || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return;
   const from = e.target as Element;
   if (!(from instanceof HTMLInputElement || from instanceof HTMLSelectElement)) return;
   if (from instanceof HTMLInputElement && SKIP_TYPES.has(from.type)) return;
   if (inLines(from)) {
-    e.preventDefault();
-    const row = from.closest("tr, [data-row]")!;
-    const cells = Array.from(row.querySelectorAll<Control>("input, select")).filter(usable);
-    const next = cells[cells.indexOf(from as Control) + 1];
-    if (next) focusSelect(next);
-    else home?.();
+    lineNext(e, home);
     return;
   }
   const all = Array.from(e.currentTarget.querySelectorAll<Control>("input, select, textarea")).filter((el) => usable(el) && !inLines(el));

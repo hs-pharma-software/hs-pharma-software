@@ -10,15 +10,16 @@
  *   server exactly once when the connection returns.
  * The window is locked down: context isolation, no Node in the page, sandbox,
  * no navigation away from the app, a fixed list of validated calls. */
-import { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } from "electron";
 import { autoUpdater } from "electron-updater";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { pathToFileURL } from "node:url";
 import { OfflineDevice, TransportError, type OriginalInvoice, type SaleInput, type SecretStore, type Transport } from "./core/device";
 import { Mirror, readOnlySql } from "./core/mirror";
 import { answerableLocally, copiedTables, copyReady, fillCopy, followCopy } from "./core/replicaSync";
+import { dataLocation } from "./core/dataLocation";
 import { callAllowed, PROTOCOL_VERSION, type CallModule } from "../../src/offline/protocol";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
@@ -43,18 +44,33 @@ const APP_ORIGIN = "mavin://app";
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCKOUT_MS = 5 * 60_000;
 const PIN_ATTEMPTS_KEY = "app-pin-attempts";
+/** The login last signed in on this computer: signed in again when the app opens (no password). */
+const LAST_USER_KEY = "last-user";
 
 protocol.registerSchemesAsPrivileged([{ scheme: "mavin", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 /** Development only (never in the installed app): a separate data folder for
  * test runs (set before the instance lock, which belongs to the folder). */
 if (!app.isPackaged && process.env.MAVIN_DATA_DIR) app.setPath("userData", process.env.MAVIN_DATA_DIR);
-const dataRoot = app.getPath("userData");
+/** The app's own folder (Windows-encrypted secrets, browser data). */
+const appData = app.getPath("userData");
 
 /** One process per Windows user: one writer of the database. A second copy
  * hands over to the first (which shows its window) and exits at once. */
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.exit(0);
+/** Databases and backups: a hidden folder on a drive other than C: when there is one (core/dataLocation.ts). */
+const dataRoot = primary && app.isPackaged ? chooseDataRoot() : appData;
+function chooseDataRoot(): string {
+  try {
+    return dataLocation(appData, process.env.USERNAME || "user");
+  } catch (e) {
+    // Never start empty beside the real data: say what is wrong and close.
+    dialog.showErrorBox("MAVIN Offline cannot open its data", e instanceof Error ? e.message : String(e));
+    app.exit(1);
+    return appData;
+  }
+}
 const resources = app.isPackaged ? process.resourcesPath : join(__dirname, "..", "resources");
 const webRoot = app.isPackaged ? join(process.resourcesPath, "web") : join(__dirname, "..", "..", "out");
 /** Development only (never in the installed app): a test server's public key. */
@@ -63,16 +79,16 @@ const publicKeyFile = !app.isPackaged && process.env.MAVIN_PUBLIC_KEY_FILE ? pro
 /** Secrets encrypted by Windows for this user account (safeStorage = DPAPI). */
 const secrets: SecretStore & { del(name: string): void } = {
   get(name) {
-    const f = join(dataRoot, "secrets", `${name}.bin`);
+    const f = join(appData, "secrets", `${name}.bin`);
     if (!existsSync(f) || !safeStorage.isEncryptionAvailable()) return null;
     try { return safeStorage.decryptString(readFileSync(f)); } catch { return null; }
   },
   set(name, value) {
     if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows secure storage is not available for this account.");
-    mkdirSync(join(dataRoot, "secrets"), { recursive: true });
-    writeFileSync(join(dataRoot, "secrets", `${name}.bin`), safeStorage.encryptString(value));
+    mkdirSync(join(appData, "secrets"), { recursive: true });
+    writeFileSync(join(appData, "secrets", `${name}.bin`), safeStorage.encryptString(value));
   },
-  del(name) { try { writeFileSync(join(dataRoot, "secrets", `${name}.bin`), Buffer.alloc(0)); } catch { /* none */ } },
+  del(name) { try { writeFileSync(join(appData, "secrets", `${name}.bin`), Buffer.alloc(0)); } catch { /* none */ } },
 };
 
 // ── Connection state ──────────────────────────────────────────────────────
@@ -135,8 +151,8 @@ function pinAttempts(): { failures: number; lockedUntil: number } {
   try {
     const state = JSON.parse(secrets.get(PIN_ATTEMPTS_KEY) ?? "null") as { failures?: unknown; lockedUntil?: unknown } | null;
     return {
-      failures: Number.isInteger(state?.failures) && Number(state.failures) >= 0 ? Number(state.failures) : 0,
-      lockedUntil: Number.isFinite(state?.lockedUntil) && Number(state.lockedUntil) > 0 ? Number(state.lockedUntil) : 0,
+      failures: Number.isInteger(state?.failures) && Number(state?.failures) >= 0 ? Number(state?.failures) : 0,
+      lockedUntil: Number.isFinite(state?.lockedUntil) && Number(state?.lockedUntil) > 0 ? Number(state?.lockedUntil) : 0,
     };
   } catch {
     return { failures: 0, lockedUntil: 0 };
@@ -166,6 +182,7 @@ function hasSavedPin(): boolean {
 
 function setSavedPin(userId: string, pin: string) {
   if (!/^\d{4}$/.test(pin)) throw new Error("Enter a 4-digit PIN.");
+  pinUnlocked = true;
   secrets.set(PIN_USER_KEY, userId);
   secrets.set(PIN_HASH_KEY, pinHash(pin));
   secrets.del(PIN_ATTEMPTS_KEY);
@@ -258,6 +275,15 @@ let mirror: Mirror | null = null;
 let win: BrowserWindow | null = null;
 let quitting = false;
 let passwordLoginRequired = false;
+/** The saved PIN was entered in this run (or none is set). */
+let pinUnlocked = false;
+
+/** The offline engine signs the remembered login in again, so offline sales work without a password. */
+function resumeDeviceUser() {
+  const userId = secrets.get(LAST_USER_KEY);
+  if (!userId || !device?.provisioned) return;
+  try { device.resumeUser(userId); } catch (e) { console.error("[resume]", e instanceof Error ? e.message : e); }
+}
 let lastMirror = 0;
 let lastHistory = 0;
 let mirrorFailures = 0;
@@ -289,7 +315,8 @@ function overlay() {
 // as the page, and nothing saved from here is still on its way into it;
 // otherwise they read MAVIN.pk as before. Saving always goes to MAVIN.pk.
 
-const REPLICA_EVERY_MS = 60_000;
+/** While the window is in use (a save from here refreshes it at once; other computers' changes show within this). */
+const REPLICA_EVERY_MS = 2 * 60_000;
 let replicaFailures = 0;
 let replicaRetryAt = 0;
 let replica: { m: Mirror; userId: string; tenantId: string; branch: string } | null = null;
@@ -513,6 +540,7 @@ function createPinWindow() {
   });
   lockWin.removeMenu();
   lockWin.on("closed", () => { lockWin = null; });
+  lockWin.once("ready-to-show", () => { lockWin?.show(); lockWin?.focus(); });
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -534,11 +562,11 @@ function createPinWindow() {
     const collect = () => inputs.map((i) => i.value).join('');
     const focusNext = (target) => { const idx = inputs.indexOf(target); if (idx < inputs.length - 1) inputs[idx + 1].focus(); }
     inputs.forEach((input, idx) => {
-      input.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 1); if (e.target.value) focusNext(e.target); });
+      input.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 1); if (e.target.value) focusNext(e.target); });
       input.addEventListener('keydown', (e) => { if (e.key === 'Backspace' && !e.target.value && idx > 0) inputs[idx - 1].focus(); });
       input.addEventListener('paste', (e) => {
         e.preventDefault();
-        const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 4);
+        const text = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '').slice(0, 4);
         text.split('').forEach((d, i) => { if (inputs[i]) inputs[i].value = d; });
         let last = inputs[0];
         for (const item of inputs) if (item.value) last = item;
@@ -548,7 +576,7 @@ function createPinWindow() {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const pin = collect();
-      if (!/^\d{4}$/.test(pin)) { error.textContent = 'Enter all 4 digits.'; return; }
+      if (!/^[0-9]{4}$/.test(pin)) { error.textContent = 'Enter all 4 digits.'; return; }
       try {
         const result = await window.mavinDesktop.unlockPin(pin);
         if (!result || !result.ok) throw new Error(result?.error || 'Incorrect PIN.');
@@ -564,6 +592,8 @@ function createPinWindow() {
 
 function showWindow() {
   if (quitting) return;
+  // Locked: opening the app again shows the PIN screen, never the business behind it.
+  if (hasSavedPin() && !pinUnlocked && !passwordLoginRequired) { createPinWindow(); return; }
   if (!win || win.isDestroyed()) { createWindow(); return; }
   if (win.isMinimized()) win.restore();
   win.show();
@@ -669,6 +699,7 @@ const handlers: Record<string, Handler> = {
     const userId = String(o?.session?.user?.id ?? "");
     if (!userId) throw new Error("No session.");
     secrets.set(sessionKey(userId), JSON.stringify({ username: username.trim().toLowerCase(), session: o.session }));
+    secrets.set(LAST_USER_KEY, userId);
     passwordLoginRequired = false;
     if (typeof o?.pin === "string" && /^\d{4}$/.test(o.pin.trim())) setSavedPin(userId, o.pin.trim());
     if (device.provisioned) {
@@ -693,16 +724,39 @@ const handlers: Record<string, Handler> = {
     const userId = verifySavedPin(pin);
     if (!userId) rejectPinAttempt();
     secrets.del(PIN_ATTEMPTS_KEY);
-    if (lockWin && !lockWin.isDestroyed()) lockWin.close();
+    pinUnlocked = true;
+    passwordLoginRequired = false;
+    // The PIN's login opens signed in (also offline). The main window first: closing the only window quits the app.
+    secrets.set(LAST_USER_KEY, userId);
+    resumeDeviceUser();
     if (!win || win.isDestroyed()) createWindow();
     showWindow();
+    if (lockWin && !lockWin.isDestroyed()) lockWin.close();
     return { ok: true, userId };
   },
   usePasswordInstead: () => {
     passwordLoginRequired = true;
-    if (lockWin && !lockWin.isDestroyed()) lockWin.close();
     if (!win || win.isDestroyed()) createWindow();
     showWindow();
+    if (lockWin && !lockWin.isDestroyed()) lockWin.close();
+    return { ok: true };
+  },
+  /** The page has no signed-in user: the session of the login last signed in here (no
+   * password asked), unless a PIN is set and not entered yet, or a password was asked for. */
+  resumeSession: (a) => {
+    if (passwordLoginRequired || (hasSavedPin() && !pinUnlocked)) return null;
+    // `a`: the user the page is already signed in as (a login from before 0.3.8 was not remembered here).
+    const userId = secrets.get(LAST_USER_KEY) || (typeof a === "string" ? a : "");
+    const saved = userId ? secrets.get(sessionKey(userId)) : null;
+    if (!userId || !saved) return null;
+    secrets.set(LAST_USER_KEY, userId);
+    resumeDeviceUser();
+    try { return (JSON.parse(saved) as { session: unknown }).session ?? null; } catch { return null; }
+  },
+  /** Signed out on purpose: the next opening asks for the password again. */
+  signOut: () => {
+    secrets.del(LAST_USER_KEY);
+    device?.signOut();
     return { ok: true };
   },
   clearPin: () => {
@@ -716,6 +770,7 @@ const handlers: Record<string, Handler> = {
     const user = await device.signIn(str(o?.username, 80, "username"), str(o?.password, 200, "password"));
     const saved = secrets.get(sessionKey(user.id));
     if (!saved) throw new Error("Sign in once while online on this computer, then you can sign in offline.");
+    secrets.set(LAST_USER_KEY, user.id);
     passwordLoginRequired = false;
     return (JSON.parse(saved) as { session: unknown }).session;
   },
@@ -740,7 +795,7 @@ const handlers: Record<string, Handler> = {
     const secret = secrets.get(`device-secret-${identity.deviceId}`);
     if (!secret) throw new Error("The device key is missing from this Windows account. Contact MAVIN.pk support.");
     const r = await asLogin<{ result: { grant: import("../../src/offline/protocol").SignedGrant } }>("/api/offline/", {
-      action: "deviceReenrolConfirm", protocol: PROTOCOL_VERSION, requestId: str(a?.requestId, 32, "request"), code: str(a?.code, 6, "code"),
+      action: "deviceReenrolConfirm", protocol: PROTOCOL_VERSION, requestId: str((a as { requestId?: unknown })?.requestId, 32, "request"), code: str((a as { code?: unknown })?.code, 6, "code"),
     }, { "X-Mavin-Device": `${identity.deviceId}:${secret}` });
     device.acceptReenrol(r.result.grant);
     await syncAll(true);
@@ -780,9 +835,13 @@ const handlers: Record<string, Handler> = {
   printText: (a) => printReceipt(str(a, 20000, "receipt")),
 };
 
+/** The PIN window (a data: page, not the app) may make only these calls. */
+const LOCK_CALLS = new Set(["unlockPin", "usePasswordInstead"]);
+
 for (const [name, fn] of Object.entries(handlers)) {
   ipcMain.handle(`mavin:${name}`, async (e, arg) => {
-    if (!e.senderFrame?.url?.startsWith(`${APP_ORIGIN}/`)) return { ok: false, error: "Not allowed." };
+    const fromLock = Boolean(lockWin && !lockWin.isDestroyed() && e.sender === lockWin.webContents && LOCK_CALLS.has(name));
+    if (!fromLock && !e.senderFrame?.url?.startsWith(`${APP_ORIGIN}/`)) return { ok: false, error: "Not allowed." };
     try {
       return { ok: true, value: await fn(arg) };
     } catch (err) {
@@ -820,6 +879,19 @@ async function probe() {
 
 let timers: ReturnType<typeof setInterval>[] = [];
 
+/** One backup a day of the offline database (sales not yet sent are in it), in <data folder>\backups. */
+function dailyBackup() {
+  if (quitting || !device?.provisioned) return;
+  const dir = join(dataRoot, "backups");
+  try {
+    const newest = existsSync(dir) ? readdirSync(dir).filter((f) => /^mavin-.*\.db$/.test(f)).map((f) => statSync(join(dir, f)).mtimeMs).reduce((a, b) => Math.max(a, b), 0) : 0;
+    if (Date.now() - newest < 24 * 3_600_000) return;
+    device.backupNow("daily");
+  } catch (e) {
+    console.error("[backup]", e instanceof Error ? e.message : e);
+  }
+}
+
 // ── Updates ───────────────────────────────────────────────────────────────
 
 /** Where new versions are published (latest.yml, the installer and its
@@ -851,9 +923,10 @@ if (primary) {
     protocol.handle("mavin", serveApp);
     device = new OfflineDevice({ dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets });
     openMirror();
-    if (device.provisioned && hasSavedPin()) {
+    if (hasSavedPin()) {
       createPinWindow();
     } else {
+      resumeDeviceUser();
       createWindow();
     }
     const probeIfNeeded = () => {
@@ -867,6 +940,9 @@ if (primary) {
     void probe().then(() => syncAll(false));
     startUpdates();
     // The local copy of the business: filled once, then kept up to date.
+    // A backup of the computer's own database once a day (the newest 10 are kept, in the data folder).
+    setTimeout(dailyBackup, 3 * 60_000);
+    timers.push(setInterval(dailyBackup, 3 * 3_600_000));
     timers.push(setInterval(() => {
       if (quietDevice() && !windowInUse() && Date.now() - lastCopyRun < QUIET_COPY_EVERY_MS) return;
       if (!windowInUse() && Date.now() - lastCopyRun < COPY_IDLE_EVERY_MS) return;

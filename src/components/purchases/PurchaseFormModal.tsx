@@ -451,7 +451,8 @@ export function PurchaseFormModal({
   });
   function onLineKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const el = e.target as HTMLInputElement;
-    if (e.key !== "Enter" || !el.dataset?.cell) return;
+    // Enter or Tab: the next empty box; after the last one, the product search (Shift+Tab goes back).
+    if ((e.key !== "Enter" && e.key !== "Tab") || e.shiftKey || e.ctrlKey || e.altKey || !el.dataset?.cell) return;
     e.preventDefault();
     const row = Number(el.closest<HTMLElement>("[data-row]")?.dataset.row);
     const cells = cellsOf(row);

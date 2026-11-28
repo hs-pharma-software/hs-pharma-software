@@ -324,12 +324,18 @@ export async function enrolUser(sql: Sql, d: Device, caller: Caller) {
 }
 
 /** What the device reports about itself on each call. */
-async function touch(sql: Sql, d: Device, status: { pending?: unknown; failed?: unknown; appVersion?: unknown } | undefined, synced: boolean) {
+async function touch(sql: Sql, d: Device, status: { pending?: unknown; failed?: unknown; appVersion?: unknown; dataPath?: unknown } | undefined, synced: boolean) {
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : null);
   await sql.execute(
     `UPDATE offline_devices SET last_seen_at = ?, last_sync_at = CASE WHEN ? THEN ? ELSE last_sync_at END, last_pending = COALESCE(?, last_pending), last_failed = COALESCE(?, last_failed), app_version = COALESCE(?, app_version) WHERE id = ?`,
     [iso(), synced ? 1 : 0, iso(), n(status?.pending), n(status?.failed), typeof status?.appVersion === "string" ? status.appVersion.slice(0, 20) : null, d.id],
   );
+  // Where the computer keeps its data (desktop 0.3.8+), written only when it changed. A database
+  // not yet at v113 has no such column: the device's own report above is never held up by it.
+  const dataPath = typeof status?.dataPath === "string" ? status.dataPath.trim().slice(0, 260) : "";
+  if (dataPath && dataPath !== (d as { data_path?: string | null }).data_path) {
+    await sql.execute(`UPDATE offline_devices SET data_path = ? WHERE id = ?`, [dataPath, d.id]).catch(() => undefined);
+  }
 }
 
 export function checkProtocol(v: unknown) {
@@ -855,6 +861,8 @@ export async function listDevices(sql: Sql, caller: Caller, tenantId: string) {
       rejected: Number(counts.find((c) => c.device_id === r.id && c.status === "rejected")?.n ?? 0),
       openExceptions: Number(open.find((c) => c.device_id === r.id)?.n ?? 0),
       appVersion: (r.app_version as string | null) ?? null,
+      // Only the platform owner sees the folder on the computer (support, recovery).
+      ...(caller.role === "super_admin" && !caller.platformRole ? { dataPath: (r.data_path as string | null | undefined) ?? null } : {}),
     })),
   };
 }

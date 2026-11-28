@@ -231,6 +231,21 @@ export class OfflineDevice {
     return this.session.user;
   }
 
+  /** The login last signed in on this computer, signed in again when the app
+   * opens (no password asked): only one that signed in here with its password
+   * before (has a verifier) and that a valid allowance still lists. Online
+   * calls of the offline engine still need a fresh password sign-in. */
+  resumeUser(userId: string): SessionUser | null {
+    if (this.session?.user.id === userId) return this.session.user;
+    if (!this.db || !this.binding) return null;
+    const u = this.db.get<{ id: string; name: string; role: string; verifier: string | null }>(`SELECT id, name, role, verifier FROM users WHERE id = ?`, userId);
+    if (!u?.verifier) return null;
+    const g = this.grant();
+    if (g && !g.users.some((x) => x.id === u.id)) return null;
+    this.session = { user: { id: u.id, name: u.name, role: u.role, online: false }, token: null };
+    return this.session.user;
+  }
+
   /** Signing out keeps every sale and every pending operation on this computer. */
   signOut() { this.session = null; }
   get user() { return this.session?.user ?? null; }
@@ -649,7 +664,8 @@ export class OfflineDevice {
   private counts() {
     const { db } = this.need();
     const c = (s: string) => Number(db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM outbox WHERE status ${s}`)?.n ?? 0);
-    return { pending: c("= 'pending'"), failed: c("IN ('rejected', 'held')"), appVersion: this.cfg.appVersion };
+    // dataPath: where this computer keeps its data, for the Super Admin (support, recovery).
+    return { pending: c("= 'pending'"), failed: c("IN ('rejected', 'held')"), appVersion: this.cfg.appVersion, dataPath: this.cfg.dataRoot };
   }
 
   /** Everything the sync bar shows. "Online" does not mean everything is sent. */
@@ -746,9 +762,9 @@ export class OfflineDevice {
   }
 
   /** A copy of the local database into the backups folder. */
-  backupNow() {
+  backupNow(label = "manual") {
     const { db } = this.need();
-    return backupTo(db, join(this.cfg.dataRoot, "backups"), "manual", this.now);
+    return backupTo(db, join(this.cfg.dataRoot, "backups"), label, this.now);
   }
 }
 

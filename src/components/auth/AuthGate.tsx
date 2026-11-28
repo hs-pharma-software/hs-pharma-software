@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { anyUserExists } from "@/lib/repo/users";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, type SessionTenant, type SessionUser } from "@/store/authStore";
 import { isTauriShell } from "@/lib/platform";
 import { isTursoConfigured, pullAuthData } from "@/lib/sync/engine";
 import { Button } from "@/components/ui/Button";
@@ -41,9 +41,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
     let active = true;
-    void bridge.status().then((result) => {
+    void bridge.status().then(async (result) => {
       if (!active) return;
       if (!result.ok || result.value.passwordLoginRequired !== false) logout();
+      else {
+        // The desktop's remembered login (after a PIN: the PIN's own) is the page's session,
+        // and the offline engine is signed in with it.
+        const current = useAuthStore.getState().currentUser?.id;
+        const resumed = await bridge.resumeSession?.(current).catch(() => null);
+        const session = resumed?.ok ? (resumed.value as { user: SessionUser; tenant: SessionTenant | null } | null) : null;
+        if (!active) return;
+        if (current && session?.user?.id && session.user.id !== current) useAuthStore.getState().setSession(session.user, session.tenant ?? null);
+      }
       setDesktopUnlockChecked(true);
     }).catch(() => {
       if (!active) return;
@@ -71,6 +80,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     // Desktop through the server: the server checks the login, then the app
     // downloads that business's accounts (lib/auth.ts login).
     if (desktopViaServer()) {
+      // The MAVIN Windows app: the login last signed in here opens signed in (after its PIN, if one is set).
+      const resumed = await desktopBridge()?.resumeSession?.().catch(() => null);
+      const session = resumed?.ok ? (resumed.value as { user: SessionUser; tenant: SessionTenant | null } | null) : null;
+      if (session?.user?.id) {
+        useAuthStore.getState().setSession(session.user, session.tenant ?? null);
+        // Online: the login's current permissions and plan, from MAVIN.pk (the saved one may be days old).
+        void resumeServerSession().then((fresh) => {
+          if (fresh && fresh.user.id === session.user.id) useAuthStore.getState().setSession(fresh.user, fresh.tenant);
+        }).catch(() => undefined);
+        return;
+      }
       setState("login");
       return;
     }
