@@ -384,7 +384,7 @@ export const BUSINESS_TYPES: BusinessTypeDef[] = [
     billing: ["KOT per station", "Running table bill", "Split bill", "Void with reason", "Provincial tax per payment method (configurable)"],
     reports: ["Item sales", "Food cost %", "Theoretical vs actual consumption", "Waiter sales", "Voids"],
     validations: ["KOT void needs reason + permission", "Recipe units convertible to stock units"],
-    mvp: ["Menu items", "Takeaway billing", "Thermal receipt", "FBR DI / provincial tax"],
+    mvp: ["Menu items", "Takeaway billing", "Thermal receipt", "FBR DI / PRA"],
     advanced: ["Tables + KOT", "Recipes + ingredient deduction", "Delivery riders", "Kitchen display"],
     // Restaurant sections follow the business type (config/nav.ts onlyFor);
     // pharmacy stock/purchase screens are not needed.

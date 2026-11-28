@@ -22,8 +22,8 @@ export const PAGE_SEO: Record<string, { title: string; description: string; h1?:
     description: "One platform for billing, stock, purchasing, reports, users and permissions: works offline on Windows and online in the browser.",
   },
   "/integrations": {
-    title: "FBR, PRA & DRAP Integrations for POS Software",
-    description: "MAVIN.pk connects to FBR Digital Invoicing, provincial restaurant tax and DRAP product data, so invoices and records stay compliant.",
+    title: "FBR & PRA Integrations for POS Software",
+    description: "MAVIN.pk connects to FBR Digital Invoicing and the Punjab Revenue Authority (PRA), so invoices are reported from the billing screen.",
   },
   "/integrations/fbr-digital-invoicing": {
     title: "FBR Digital Invoicing POS Integration in Pakistan",
@@ -72,7 +72,7 @@ export const PRODUCT_SEO: Record<string, { title: string; description: string; h
   "hospital-pharmacy": { title: "Hospital Pharmacy Software", h1: "Hospital pharmacy software", description: "Counter dispensing for a pharmacy inside a hospital: OPD patients, batch-tracked stock, prescriptions from the hospital and FBR invoicing." },
   "general-store-pos": { title: "General Store & Grocery POS Software", h1: "General store POS software", description: "Fast barcode billing for grocery, kiryana and general stores, with stock, purchases, reports and FBR Digital Invoicing in one place." },
   "contractor-invoicing": { title: "Invoicing Software for Contractors & Suppliers", h1: "Contractor invoicing software", description: "Quotations, sales tax invoices and payments for contractors and suppliers in Pakistan, with or without stock, and FBR Digital Invoicing." },
-  "restaurant-pos": { title: "Restaurant POS Software in Pakistan", h1: "Restaurant POS software", description: "Restaurant POS for dine-in, takeaway and delivery: orders, kitchen tickets, bills and provincial restaurant tax, on Windows or the web." },
+  "restaurant-pos": { title: "Restaurant POS Software in Pakistan", h1: "Restaurant POS software", description: "Restaurant POS for dine-in, takeaway and delivery: orders, kitchen tickets, bills and PRA (Punjab) tax reporting, on Windows or the web." },
   "electronics-solar-pos": { title: "Electronics & Solar Shop POS Software", h1: "Electronics and solar shop POS software", description: "POS for electrical, electronics and solar shops: serial numbers, warranties, quotations for complete systems, stock and invoices." },
   "distribution-software": { title: "Distribution Software for Distributors", h1: "Distribution software", description: "Software for pharma and general distributors: company catalogues, salesman order booking, credit invoicing and recovery." },
   "mobile-shop-pos": { title: "Mobile Shop POS Software with IMEI", h1: "Mobile shop POS software", description: "Mobile phone shop software: every handset bought and sold by IMEI, accessories, buyer details on each sale, stock and reports." },

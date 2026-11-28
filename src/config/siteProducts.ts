@@ -93,7 +93,7 @@ export const SITE_PRODUCTS: SiteProduct[] = [
     slug: "restaurant-pos", typeId: "restaurant", name: "Restaurant POS", group: "Food & Events", cta: "demo",
     headline: "Orders, kitchen tickets and bills for restaurants.",
     intro: "For dine-in, takeaway and delivery restaurants: take the order, send it to the kitchen, run the bill and close the table, with menu items linked to ingredient stock.",
-    setup: [...COMMON_SETUP, "A thermal (80 mm) printer for bills and kitchen tickets", "Your provincial tax registration where it applies"],
+    setup: [...COMMON_SETUP, "A thermal (80 mm) printer for bills and kitchen tickets", "Your Punjab Revenue Authority (PRA) registration, if your restaurant is in Punjab"],
     faqs: [
       { q: "Which tax authority applies to restaurants?", a: "Restaurant services are usually taxed by the province. We confirm the applicable authority with you during onboarding." },
       { q: "Do you have kitchen display screens?", a: "Not yet. Kitchen tickets print; per-station display screens are on the roadmap." },

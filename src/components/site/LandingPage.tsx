@@ -5,6 +5,8 @@ import Link from "next/link";
 import { PRODUCT_GROUPS, SITE_PRODUCTS, productFacts, type ProductGroup } from "@/config/siteProducts";
 import { APP_URL, isSiteHost } from "@/config/site";
 import { SiteAnalytics } from "@/components/site/SiteAnalytics";
+import { Hero } from "@/components/site/Hero";
+import { hasMedicineCatalogue, medicinesAdded } from "@/config/medicineCatalogue";
 import { ANDROID_RELEASE, androidReleaseDateLabel, androidSizeLabel } from "@/config/androidRelease";
 import { WINDOWS_RELEASE, windowsReleaseDateLabel, windowsSizeLabel } from "@/config/windowsRelease";
 
@@ -181,136 +183,7 @@ export function LandingPage() {
           </nav>
 
           {/* ══════════ HERO ══════════ */}
-          <section style={{
-            minHeight:"calc(100vh - 64px)",
-            display:"flex",flexDirection:"column",
-            alignItems:"center",justifyContent:"center",
-            padding:"80px 24px 60px",
-            textAlign:"center",
-          }}>
-
-            {/* badge */}
-            <div className="fi1" style={{
-              display:"inline-flex",alignItems:"center",gap:8,
-              padding:"6px 18px",borderRadius:100,
-              fontSize:13,fontWeight:600,color:"#0b2a6b",
-              marginBottom:28,border:"1.5px solid #0b2a6b30",
-              background:"#0b2a6b08",
-              animation:"badge-pulse 2.8s ease-in-out infinite",
-            }}>
-              <span style={{
-                width:7,height:7,borderRadius:"50%",background:"#1e88e5",
-                display:"inline-block",
-                boxShadow:"0 0 8px rgba(30,136,229,.8)",
-                animation:"pulse-ring 1.8s ease-out infinite",
-              }}/>
-              One Platform · {SITE_PRODUCTS.length} Business Solutions · FBR Digital Invoicing
-            </div>
-
-            {/* heading */}
-            <h1 className="fi2" style={{
-              fontSize:"clamp(36px,6vw,76px)",
-              fontWeight:900,lineHeight:1.08,
-              marginBottom:22,maxWidth:860,
-              letterSpacing:"-.04em",
-              color:"#0f172a",
-            }}>
-              POS and business software for billing, stock and daily operations in Pakistan.
-            </h1>
-
-            {/* subtext */}
-            <p className="fi3" style={{
-              fontSize:"clamp(15px,2vw,18px)",
-              color:"#64748b",
-              maxWidth:520,lineHeight:1.75,marginBottom:44,
-            }}>
-              Billing, stock, purchasing &amp; accounts for pharmacies, stores, restaurants, distributors,
-              clinics, hospitals, labs and more {"\u2014"} one platform built for Pakistani businesses.
-            </p>
-
-            {/* CTA row */}
-            <div className="fi4" style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginBottom:64}}>
-              <a href="#solutions" className="dl-btn" style={{
-                display:"inline-flex",alignItems:"center",gap:10,
-                padding:"15px 30px",
-                background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
-                borderRadius:13,color:"white",
-                textDecoration:"none",fontSize:16,fontWeight:800,
-                letterSpacing:"-.02em",
-              }}>
-                Find Your Solution ↓
-              </a>
-              <Link href={link.site("/demo")} className="dl-btn" style={{
-                display:"inline-flex",alignItems:"center",gap:10,
-                padding:"15px 30px",
-                background:"linear-gradient(135deg,#16a34a 0%,#15803d 100%)",
-                borderRadius:13,color:"white",
-                textDecoration:"none",fontSize:16,fontWeight:800,
-                letterSpacing:"-.02em",
-              }}>
-                Book a Free Demo
-              </Link>
-              <a href={link.app("/dashboard")} className="web-btn" style={{
-                display:"inline-flex",alignItems:"center",gap:9,
-                padding:"15px 30px",
-                background:"#fff",
-                border:"1.5px solid #e2e8f0",
-                borderRadius:13,color:"#334155",
-                textDecoration:"none",fontSize:16,fontWeight:700,
-                letterSpacing:"-.01em",
-                boxShadow:"0 2px 8px rgba(0,0,0,.06)",
-              }}>
-                🌐 Open Web App
-              </a>
-            </div>
-            {/* The apps: Windows and Android, on their own row under the three buttons */}
-            <div className="fi4" style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center",marginTop:-50,marginBottom:64}}>
-              <Link href={link.site("/download#windows")} className="dl-btn" title={`${WINDOWS_RELEASE.appName} ${WINDOWS_RELEASE.versionName} · ${windowsSizeLabel()}`} style={{
-                display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
-                padding:"15px 28px",
-                background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
-                borderRadius:13,color:"white",
-                textDecoration:"none",fontSize:16,fontWeight:800,
-                letterSpacing:"-.02em",
-              }}>
-                <WindowsIcon />
-                Request for Windows
-              </Link>
-              <a href={ANDROID_RELEASE.path} download type="application/vnd.android.package-archive" className="dl-btn" title={`${ANDROID_RELEASE.appName} ${ANDROID_RELEASE.versionName} · ${androidSizeLabel()}`} style={{
-                display:"inline-flex",alignItems:"center",justifyContent:"center",gap:10,
-                padding:"15px 28px",
-                background:"linear-gradient(135deg,#0b2a6b 0%,#1565c0 100%)",
-                borderRadius:13,color:"white",
-                textDecoration:"none",fontSize:16,fontWeight:800,
-                letterSpacing:"-.02em",
-              }}>
-                Download for Android
-              </a>
-            </div>
-
-            {/* stat pills */}
-            <div className="fi5" style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-              {[
-                {v:String(SITE_PRODUCTS.length),l:"Business Types"},
-                {v:"18+",l:"Modules"},
-                {v:"Web",l:"Any Browser"},
-                {v:"FBR",l:"Digital Invoicing"},
-                {v:"Staff",l:"Roles & Permissions"},
-              ].map((s,i)=>(
-                <div key={i} style={{
-                  padding:"8px 18px",
-                  background:"#fff",
-                  border:"1.5px solid #e2e8f0",
-                  borderRadius:100,
-                  display:"flex",gap:8,alignItems:"center",
-                  boxShadow:"0 1px 4px rgba(0,0,0,.05)",
-                }}>
-                  <span style={{fontWeight:800,color:"#1e88e5",fontSize:14}}>{s.v}</span>
-                  <span style={{fontSize:13,color:"#94a3b8"}}>{s.l}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+          <Hero site={link.site} app={link.app} />
 
           {/* ══════════ SOLUTIONS (one tile per business type) ══════════ */}
           <section id="solutions" style={{padding:"80px 24px",maxWidth:1200,margin:"0 auto",scrollMarginTop:72}}>
@@ -350,6 +223,9 @@ export function LandingPage() {
                         </div>
                       </div>
                       <p style={{fontSize:13.5,color:"#475569",lineHeight:1.55,marginBottom:12}}>{p.headline}</p>
+                      {hasMedicineCatalogue(p.typeId) && medicinesAdded() && (
+                        <p style={{alignSelf:"flex-start",fontSize:12.5,fontWeight:700,color:"#166534",background:"#dcfce7",borderRadius:100,padding:"4px 12px",marginBottom:12}}>{medicinesAdded()}</p>
+                      )}
                       <ul style={{listStyle:"none",padding:0,margin:"0 0 14px",display:"flex",flexDirection:"column",gap:6}}>
                         {facts.mvp.slice(0, 5).map((f) => (
                           <li key={f} style={{display:"flex",gap:8,fontSize:13,color:"#334155",lineHeight:1.4}}>
@@ -587,8 +463,8 @@ const FEATURES = [
    desc:"Profit/loss by product, category, customer & company. Tax, bonus-claim, trial balance, balance sheet."},
   {icon:"🏦",color:"#14b8a6",title:"Cash & Bank Management",
    desc:"Multi-bank accounts, cash register in/out, expense categories, salary with deductions."},
-  {icon:"🏛️",color:"#1e88e5",title:"FBR Tax Compliance",
-   desc:"GST, WHT & Further Tax per line item. SRO / PCT codes on products. Digital invoicing integration."},
+  {icon:"🏛️",color:"#1e88e5",title:"FBR & PRA Compliance",
+   desc:"GST, WHT & Further Tax per line item. SRO / PCT codes on products. FBR Digital Invoicing and Punjab Revenue Authority (PRA) reporting."},
   {icon:"☁️",color:"#6366f1",title:"Cloud Web App",
    desc:"Works in any modern browser. Your data stays in one place and is reachable from every counter, office and branch."},
   {icon:"🔐",color:"#ec4899",title:"Staff & Access Control",

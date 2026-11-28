@@ -20,7 +20,7 @@ const AREAS = [
 const PLATFORMS: [string, string, string][] = [
   ["Windows desktop app", "Available", "Keeps a local copy: billing continues offline and changes sync when the connection returns. Needs internet for the first sign-in on each computer."],
   ["Web browser", "Available", "Works in a current browser with an internet connection. No offline mode."],
-  ["Android app", "Not available yet", "Field and phone use is through the web browser for now."],
+  ["Android app", "Available", "Sales, purchases, products and reports on phones and tablets, with other sections opening inside the app. Needs an internet connection."],
 ];
 
 export default async function PlatformPage() {

@@ -66,7 +66,7 @@ export default function DownloadPage() {
 
       <Section title="Already have the app?">
         <div className="max-w-3xl space-y-3 text-sm leading-relaxed text-slate-600">
-          <p>Install the new version over the old one, the same way as above, without uninstalling first. Android keeps you signed in and keeps the app&apos;s settings.</p>
+          <p>Install the new version over the old one, the same way as above, without uninstalling first. Your business records stay on MAVIN.pk. Coming from version 1.0.1, sign in once after the update.</p>
           <p>
             If Android says the app is <b>not installed</b> or <b>conflicts with an existing package</b>, the app on your phone was signed with a different key
             (for example a test copy). Android cannot update it. Only in that case, uninstall the old app first, then install this one. Uninstalling can clear what the

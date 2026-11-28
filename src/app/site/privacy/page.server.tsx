@@ -34,7 +34,7 @@ export default function PrivacyPage() {
           <div>
             <h2 className="text-base font-semibold text-[#0b2a6b]">Optional services that send data to third parties</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>FBR Digital Invoicing and provincial tax reporting: when a business switches them on, invoice details are sent to the tax authority.</li>
+              <li>FBR Digital Invoicing and Punjab Revenue Authority (PRA) reporting: when a business switches them on, invoice details are sent to the tax authority.</li>
               <li>The in-app assistant: when switched on, the question and the data needed to answer it are sent to the AI provider the business uses (OpenAI or Google).</li>
             </ul>
           </div>

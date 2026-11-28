@@ -6,6 +6,7 @@ import { JsonLd } from "@/components/site/JsonLd";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SITE_PRODUCTS, productFacts, siteProduct } from "@/config/siteProducts";
+import { hasMedicineCatalogue, medicinesAdded } from "@/config/medicineCatalogue";
 import { CtaLink, PageIntro, Section, at, siteBase } from "@/components/site/chrome";
 
 export const dynamicParams = false;
@@ -53,6 +54,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <PageIntro eyebrow={`${p.group} · ${p.name}`} title={seo?.h1 ?? p.headline}>
         {seo?.h1 && <p className="text-lg font-medium text-slate-800">{p.headline}</p>}
         <p>{p.intro}</p>
+        {hasMedicineCatalogue(p.typeId) && medicinesAdded() && (
+          <p className="mt-4 inline-block rounded-full bg-emerald-100 px-4 py-1.5 text-sm font-bold text-emerald-800">{medicinesAdded()}</p>
+        )}
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {cta}
           {pilot && <span className="text-sm text-slate-500">Offered as a supervised pilot while the remaining workflows are completed.</span>}
