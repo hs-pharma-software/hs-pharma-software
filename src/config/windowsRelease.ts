@@ -10,16 +10,19 @@
  * then copy latest.yml LAST (installed apps update from it), and update these values. */
 export const WINDOWS_RELEASE = {
   appName: "MAVIN for Windows",
-  versionName: "0.3.4",
+  versionName: "0.3.8",
   /** Release date shown on the website. */
-  releaseDate: "2026-11-21",
-  fileName: "MAVIN-Offline-Setup-0.3.4.exe",
-  sizeBytes: 113_093_030,
-  sha256: "C3257598F9C3782E84D2949CFFFCD96C888FF1EF2151423B0A9AC6A9DB7BC16B",
+  releaseDate: "2026-11-28",
+  fileName: "MAVIN-Offline-Setup-0.3.8.exe",
+  sizeBytes: 113_930_384,
+  sha256: "59A093B469D043ABDE22957AA5613AEF458D5675C79424C2DDE531C17BB696D9",
   needs: "Windows 10 or 11 (64-bit)",
-  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.3.4.exe",
+  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.3.8.exe",
   notes: [
-    "Stays signed in: the app no longer asks you to log in every time it is opened (sign in once after this update).",
+    "Opens signed in: no password every time (sign in once after this update). A 4-digit PIN can lock the app.",
+    "Faster item entry: in invoices and purchases, Enter or Tab moves to the next empty box, then back to the product search.",
+    "Your business's data and a daily backup are kept on a second drive (not the Windows drive) when the computer has one.",
+    "Lighter on the computer: fewer background checks.",
     "New: Radiology Centres work offline — reception, registration, orders, fees, examinations and signing reports are saved on this computer and synced when the internet returns.",
     "Ultrasound reports are written out in sentences from the values entered, with an editable preview before signing; values stay as entered and a signed report cannot change.",
     "Reports print on one A4 page with the business logo, the radiologist's name and the QR code; Radiology and Lab use A4 report templates only.",

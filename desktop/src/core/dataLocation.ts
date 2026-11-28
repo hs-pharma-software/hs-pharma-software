@@ -59,6 +59,15 @@ function remember(cfgFile: string, path: string): string {
   return path;
 }
 
+/** Lists "D:|free bytes" for the computer's own drives. External (USB) hard
+ * disks also call themselves fixed drives: they are left out, so the data is
+ * never put on a disk that gets unplugged. */
+const INTERNAL_DRIVES = [
+  "$out = Get-CimInstance Win32_DiskDrive | Where-Object { $_.InterfaceType -eq 'USB' -or $_.PNPDeviceID -like 'USB*' -or $_.MediaType -like 'External*' -or $_.MediaType -like 'Removable*' }",
+  "$usb = @($out | ForEach-Object { Get-CimAssociatedInstance $_ -ResultClassName Win32_DiskPartition } | ForEach-Object { Get-CimAssociatedInstance $_ -ResultClassName Win32_LogicalDisk } | ForEach-Object { $_.DeviceID })",
+  "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Where-Object { $usb -notcontains $_.DeviceID } | ForEach-Object { $_.DeviceID + '|' + $_.FreeSpace }",
+].join("; ");
+
 /** This Windows user's folder inside a hidden "MAVIN Data" on a fixed drive
  * (not the Windows drive): the one that already has it, else the most free space. */
 function pickFolder(windowsUser: string, log: Log): string | null {
@@ -67,7 +76,7 @@ function pickFolder(windowsUser: string, log: Log): string | null {
   let out = "";
   try {
     const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-      "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ForEach-Object { $_.DeviceID + '|' + $_.FreeSpace }"],
+      INTERNAL_DRIVES],
     { encoding: "utf8", timeout: 20_000, windowsHide: true });
     out = r.stdout ?? "";
   } catch (e) {
