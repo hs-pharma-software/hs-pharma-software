@@ -22,6 +22,9 @@ const nextCli = path.join(root, "node_modules", "next", "dist", "bin", "next");
 const r = spawnSync(process.execPath, [nextCli, "build"], { cwd: root, env, stdio: "inherit" });
 if (r.status !== 0) process.exit(r.status ?? 1);
 
+// The website's Android downloads are not part of the Windows app.
+fs.rmSync(path.join(root, "out", "downloads", "android"), { recursive: true, force: true });
+
 // Secret check.
 const envFile = path.join(root, ".env.local");
 const values = fs.existsSync(envFile)
