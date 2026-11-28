@@ -10,15 +10,16 @@
  * then copy latest.yml LAST (installed apps update from it), and update these values. */
 export const WINDOWS_RELEASE = {
   appName: "MAVIN for Windows",
-  versionName: "0.3.8",
+  versionName: "0.3.9",
   /** Release date shown on the website. */
   releaseDate: "2026-11-28",
-  fileName: "MAVIN-Offline-Setup-0.3.8.exe",
-  sizeBytes: 113_930_384,
-  sha256: "59A093B469D043ABDE22957AA5613AEF458D5675C79424C2DDE531C17BB696D9",
+  fileName: "MAVIN-Offline-Setup-0.3.9.exe",
+  sizeBytes: 113_945_447,
+  sha256: "9951BE6A43CAA056535A8FD1FB6C2336E30E43D15D11B567C9307E72FE64E9AB",
   needs: "Windows 10 or 11 (64-bit)",
-  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.3.8.exe",
+  url: "https://www.mavin.pk/downloads/windows/MAVIN-Offline-Setup-0.3.9.exe",
   notes: [
+    "Pharmacies and general stores: when a product's retail price changes, tell others with one answer, and see this week's price and pack size changes on the dashboard.",
     "Opens signed in: no password every time (sign in once after this update). A 4-digit PIN can lock the app.",
     "Faster item entry: in invoices and purchases, Enter or Tab moves to the next empty box, then back to the product search.",
     "Your business's data and a daily backup are kept on a second drive (not the Windows drive) when the computer has one.",
