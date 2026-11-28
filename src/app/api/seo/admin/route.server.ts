@@ -7,7 +7,7 @@ import * as studio from "@/server/seo/studio";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // "Run now" waits for the job (a first Search Console import can take a while).
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
   try {
