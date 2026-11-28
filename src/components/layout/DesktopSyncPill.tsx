@@ -129,7 +129,7 @@ export function DesktopSyncPill({ status }: { status: DesktopStatus }) {
             )}
             {status.localCopy && (
               <p className="text-neutral-500">
-                {status.localCopy.note ?? (status.localCopy.ready ? "Fast mode: screens read this computer's copy of your business, kept up to date every few seconds." : "Preparing this computer's copy of your business…")}
+                {status.localCopy.note ?? (status.localCopy.ready ? "Fast mode: screens read this computer's copy of your business, brought up to date while you work." : "Preparing this computer's copy of your business…")}
               </p>
             )}
             <p className="text-neutral-400">App version {status.appVersion ?? "?"}</p>

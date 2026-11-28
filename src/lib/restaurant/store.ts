@@ -16,6 +16,8 @@
  * charge, double deduct stock or double submit.
  */
 
+import { localDate } from "../localDate.ts";
+import { oneMovePerDocument, type LedgerView, type MoveKind } from "../stockLedger.ts";
 import {
   type DealComponent,
   type DealLike,
@@ -731,6 +733,26 @@ export function createRestaurantStore(db: RestDb, context: () => RestContext) {
       await db.outbox("rest_ingredients", ingredientId, "update", row as unknown as Record<string, unknown>);
       await audit(`stock.${kind}`, "ingredient", ingredientId, { delta, note });
       return row;
+    },
+
+    /** An ingredient's history: stock in, use in orders, wastage and counts, and the stock left. */
+    async ingredientLedger(ingredientId: string): Promise<LedgerView> {
+      const ing = await owned<IngredientRow>("rest_ingredients", ingredientId, "Ingredient");
+      const rows = await db.select<{ id: string; qty: number; reason: string; note: string | null; created_at: string; created_by: string | null; order_id: string | null; order_no: number | null }>(
+        `SELECT m.id, m.qty, m.reason, m.note, m.created_at, m.created_by, o.id AS order_id, o.order_no
+         FROM rest_stock_moves m
+         LEFT JOIN rest_order_items i ON i.id = m.ref_id AND i.tenant_id = m.tenant_id
+         LEFT JOIN rest_orders o ON o.id = i.order_id AND o.tenant_id = m.tenant_id
+         WHERE m.tenant_id = ? AND m.ingredient_id = ?`, [tenant(), ingredientId]);
+      const KINDS: Record<string, { kind: MoveKind; label: string }> = {
+        sale: { kind: "sale", label: "Used in order" }, reversal: { kind: "sale_return", label: "Order cancelled" }, purchase: { kind: "purchase", label: "Stock in" },
+        wastage: { kind: "wastage", label: "Wastage" }, adjustment: { kind: "adjust", label: "Adjusted" }, count: { kind: "adjust", label: "Stock count" },
+      };
+      const moves = oneMovePerDocument(rows, (r) => (r.order_id ? `${r.order_id} ${r.reason}` : null), (r, qty) => ({
+        id: r.id, date: localDate(new Date(r.created_at)), at: r.created_at, ...(KINDS[r.reason] ?? { kind: "adjust" as const, label: r.reason }), qty,
+        ref: r.order_no != null ? `Order #${r.order_no}` : null, party: null, details: [r.note ?? "", r.created_by ? `By ${r.created_by}` : ""].filter(Boolean),
+      }));
+      return { name: ing.name, units: { unit: ing.unit }, available: Number(ing.stock) || 0, moves };
     },
 
     // Deals

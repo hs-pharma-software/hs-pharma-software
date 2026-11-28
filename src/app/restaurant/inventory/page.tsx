@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { DataTable } from "@/components/ui/DataTable";
 import { restaurant } from "@/lib/restaurant";
+import { StockItemsRegister } from "@/components/stock/StockItemsRegister";
 import { today, type IngredientRow } from "@/lib/restaurant/store";
 import { Badge, Note, RestGuard, money, useAction, useLoad } from "@/components/restaurant/ui";
 
@@ -25,6 +26,10 @@ function Inventory() {
   const usage = useLoad(() => restaurant.ingredientUsage(from, to), [from, to]);
   const [edit, setEdit] = useState<Partial<IngredientRow> | null>(null);
   const [adjust, setAdjust] = useState<IngredientRow | null>(null);
+  const loadItems = useCallback(async () => (await restaurant.listIngredients()).map((i) => ({ id: i.id, name: i.name, stock: Number(i.stock) || 0, units: { unit: i.unit } })), []);
+  const loadLedger = useCallback((id: string) => restaurant.ingredientLedger(id), []);
+  /** Changes after a stock entry, so the register is read again. */
+  const [version, setVersion] = useState(0);
   const low = (list.data ?? []).filter((i) => i.reorder_level > 0 && i.stock <= i.reorder_level);
   return (
     <div className="space-y-4">
@@ -47,6 +52,11 @@ function Inventory() {
       />
 
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/[0.05]">
+        <h2 className="mb-2 text-base font-semibold">Stock register</h2>
+        <StockItemsRegister key={version} loadItems={loadItems} loadLedger={loadLedger} onlyWhenSearched />
+      </div>
+
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/[0.05]">
         <div className="mb-2 flex flex-wrap items-end gap-2">
           <h2 className="mr-auto text-base font-semibold">Usage &amp; wastage</h2>
           <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
@@ -64,7 +74,7 @@ function Inventory() {
       </div>
 
       {edit && <IngredientModal value={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void list.reload(); }} />}
-      {adjust && <AdjustModal ing={adjust} onClose={() => setAdjust(null)} onSaved={() => { setAdjust(null); void list.reload(); void usage.reload(); }} />}
+      {adjust && <AdjustModal ing={adjust} onClose={() => setAdjust(null)} onSaved={() => { setAdjust(null); setVersion((v) => v + 1); void list.reload(); void usage.reload(); }} />}
     </div>
   );
 }

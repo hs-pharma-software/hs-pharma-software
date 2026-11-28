@@ -178,3 +178,15 @@ test("product codes and barcodes are unique per store; spec fields validated", a
   assert.equal(panel.serial_tracked, 1, "panels default to serial tracking");
   assert.equal(panel.stock, 2);
 });
+
+test("stock register: purchases with their supplier, invoices, hand adjustments and the stock now", async () => {
+  await store.createPurchase({ supplierId: supplier, lines: [{ productId: S.cable.id, qty: 100, cost: 90 }] });
+  await store.createSale({ lines: [{ productId: S.cable.id, qty: 40 }], payments: [{ method: "cash", amount: 10000 }] });
+  await store.adjustStock(S.cable.id, "adjustment", -2, "Damaged");
+  const item = (await store.stockSearchItems()).find((i) => i.id === S.cable.id)!;
+  assert.deepEqual([item.stock, item.distributors], [58, ["Pak Cables Ltd"]]);
+  const ledger = await store.productLedger(S.cable.id);
+  assert.equal(ledger.available, 58);
+  assert.deepEqual(ledger.moves.map((m) => [m.label, m.qty]).sort(), [["Adjusted", -2], ["Purchased", 100], ["Sold", -40]]);
+  assert.equal(ledger.moves.find((m) => m.label === "Purchased")!.party, "Pak Cables Ltd");
+});

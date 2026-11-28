@@ -1,5 +1,5 @@
 import { BRANCH_TAB_KEY, BRANCH_UNAVAILABLE } from "@/config/branchTables";
-import { desktopBridge } from "./desktopBridge";
+import { desktopBridge, type DesktopBridge } from "./desktopBridge";
 /** The web version reaches the database through the server (/api/db) instead
  * of holding a database token in the page. Set NEXT_PUBLIC_DB_MODE=server in
  * Vercel to switch it on (see docs/server-layer.md). The desktop app keeps its
@@ -65,6 +65,18 @@ export function tabBranch(): string | null {
   }
 }
 
+let confirming: Promise<void> | null = null;
+/** Asks MAVIN.pk once whether the Windows app's sign-in has really ended (no answer: it is kept). */
+export function confirmSessionEnded(bridge: Pick<DesktopBridge, "request">): Promise<void> {
+  if (confirming) return confirming;
+  const asked = bridge.request({ path: "/api/auth/me/", method: "GET", headers: {} })
+    .then((r) => { if (r.ok && r.value.status === 401) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)); })
+    .catch(() => undefined)
+    .finally(() => { confirming = null; });
+  confirming = asked;
+  return asked;
+}
+
 export async function serverJson<T>(path: string, body?: unknown, method = body === undefined ? "GET" : "POST"): Promise<T> {
   const desktop = desktopViaServer();
   const headers: Record<string, string> = body === undefined ? {} : { "Content-Type": "application/json" };
@@ -96,7 +108,9 @@ export async function serverJson<T>(path: string, body?: unknown, method = body 
       window.location.reload();
     }
     if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/api/auth/login")) {
-      if (desktop) setDesktopSession(null); // keep working offline; the next login resumes sync
+      // The MAVIN Windows app: screens would stay empty, so the login screen shows once MAVIN.pk confirms it.
+      if (bridge) void confirmSessionEnded(bridge);
+      else if (desktop) setDesktopSession(null); // keep working offline; the next login resumes sync
       else window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
     }
     throw new ServerRequestError(res.status, data.error ?? `Server error ${res.status}`);

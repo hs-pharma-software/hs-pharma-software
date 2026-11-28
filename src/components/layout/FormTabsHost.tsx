@@ -2,17 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Minus, Plus, ShoppingCart, X, Maximize2 } from "lucide-react";
+import { FileText, Loader2, Minus, Plus, ShoppingCart, X, Maximize2 } from "lucide-react";
 import { InvoiceFormModal } from "@/components/invoices/InvoiceFormModal";
 import { InvoiceSavedNotice } from "@/components/invoices/InvoiceShare";
 import { PurchaseFormModal } from "@/components/purchases/PurchaseFormModal";
+import { InvoiceViewModal } from "@/components/invoices/InvoiceViewModal";
+import { desktopBridge, desktopCall } from "@/lib/desktopBridge";
+import { invoiceViewRow } from "@/lib/repo/invoices";
+import { isPraInvoice } from "@/lib/pra/services";
+import { notify } from "@/lib/notify";
 import { canOpenKind, tabLabel, useFormTabs } from "@/store/formTabsStore";
 
 /** Keeps every open invoice / purchase form mounted (so typed data survives
  * switching), shows only the active one, and renders the floating tab bar. */
 export function FormTabsHost() {
   const router = useRouter();
-  const { tabs, activeId, minimized, openNew, activate, close, cycle, setMinimized, markSaved } = useFormTabs();
+  const { tabs, activeId, minimized, saving, openNew, activate, close, cycle, setMinimized, markSaved, saveStarted, needsAttention } = useFormTabs();
+  // The Windows app: new invoices waiting for the default printer, one at a time.
+  const [toPrint, setToPrint] = useState<NonNullable<Awaited<ReturnType<typeof invoiceViewRow>>>[]>([]);
+  const printing = toPrint[0] ?? null;
   // The invoice just saved: PDF / WhatsApp offered (when allowed) after its tab closes.
   const [saved, setSaved] = useState<{ id: string; no: number | null; offlineReceipt?: string; offlineRef?: string } | null>(null);
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
@@ -54,8 +62,32 @@ export function FormTabsHost() {
     return () => window.removeEventListener("keydown", onKey);
   }, [tabs, openNew, cycle, activate, router]);
 
-  const notice = saved && <InvoiceSavedNotice key={saved.id} invoiceId={saved.id} invoiceNo={saved.no} offlineReceipt={saved.offlineReceipt} offlineRef={saved.offlineRef} onClose={() => setSaved(null)} />;
-  if (tabs.length === 0) return notice || null;
+  // Closing the app while something is still being saved asks first.
+  useEffect(() => {
+    if (saving.length === 0) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saving.length]);
+
+  /** The Windows app prints a new invoice by itself, on the default printer. */
+  function printNew(inv: { id: string; offlineReceipt?: string }) {
+    if (!desktopBridge()) return;
+    const failed = (e: unknown) => notify(`The receipt did not print: ${e instanceof Error ? e.message : String(e)}`);
+    if (inv.offlineReceipt) { void desktopCall((b) => b.printText(inv.offlineReceipt!)).catch(failed); return; }
+    void invoiceViewRow(inv.id).then((row) => {
+      // A PRA Invoice is printed once PRA has given its number.
+      if (row && !isPraInvoice(row.invoice.invoice_type)) setToPrint((q) => [...q, row]);
+    }).catch(failed);
+  }
+
+  const notice = (
+    <>
+      {saved && <InvoiceSavedNotice key={saved.id} invoiceId={saved.id} invoiceNo={saved.no} offlineReceipt={saved.offlineReceipt} offlineRef={saved.offlineRef} onClose={() => setSaved(null)} />}
+      {printing && <InvoiceViewModal key={printing.invoice.id} row={printing} autoPrint onClose={() => setToPrint((q) => q.slice(1))} />}
+    </>
+  );
+  if (tabs.length === 0) return notice;
 
   return (
     <>
@@ -65,19 +97,28 @@ export function FormTabsHost() {
         const done = (inv?: { id: string; no: number | null; offlineReceipt?: string; offlineRef?: string }) => {
           markSaved(t.kind);
           close(t.id);
-          if (t.kind === "invoice" && inv) setSaved(inv);
+          if (t.kind === "invoice" && inv) {
+            setSaved(inv);
+            if (!t.invoice) printNew(inv);
+          }
         };
+        // The Windows app saves a new invoice or purchase behind the person's back.
+        const background = desktopBridge() && !t.invoice && !t.purchase
+          ? { onSaving: () => saveStarted(t.id), onAttention: () => needsAttention(t.id) } : {};
+        // Only the form in front closes itself (Escape): never one that is hidden or still saving.
+        const dismiss = () => { if (visible) close(t.id); };
         return (
           <div key={t.id} className={visible ? "" : "hidden"}>
             {t.kind === "invoice" ? (
-              <InvoiceFormModal invoice={t.invoice ?? null} rxId={t.rxId} webOrderId={t.webOrderId} preInvoiceId={t.preInvoiceId} cloneFrom={t.cloneFrom} active={visible} onClose={() => close(t.id)} onSaved={done} />
+              <InvoiceFormModal invoice={t.invoice ?? null} rxId={t.rxId} webOrderId={t.webOrderId} preInvoiceId={t.preInvoiceId} cloneFrom={t.cloneFrom} active={visible} onClose={dismiss} onSaved={done} {...background} />
             ) : (
               <PurchaseFormModal
                 purchase={t.purchase ?? null}
                 draftId={t.draftId}
                 active={visible}
-                onClose={() => close(t.id)}
+                onClose={dismiss}
                 onSaved={() => done()}
+                {...background}
               />
             )}
           </div>
@@ -88,6 +129,13 @@ export function FormTabsHost() {
         {tabs.map((t, i) => {
           const isActive = t.id === activeId && !minimized;
           const Icon = t.kind === "invoice" ? FileText : ShoppingCart;
+          if (saving.includes(t.id)) {
+            return (
+              <div key={t.id} role="status" className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs text-amber-300">
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />Saving {tabLabel(t)}…
+              </div>
+            );
+          }
           return (
             <div
               key={t.id}

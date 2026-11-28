@@ -262,3 +262,13 @@ test("dashboard figures come from real records without double counting", async (
   assert.equal(d.payments.cash, 0);
   assert.equal(d.bestSellers[0].label, "Chicken Tikka");
 });
+
+test("stock register: an ingredient's stock in, wastage and the stock now", async () => {
+  const flour = await store.saveIngredient({ name: "Flour", unit: "kg" });
+  await store.adjustStock(flour.id, "purchase", 25, "Mill delivery");
+  await store.adjustStock(flour.id, "wastage", 2, "Spoiled");
+  const ledger = await store.ingredientLedger(flour.id);
+  assert.deepEqual([ledger.name, ledger.units.unit, ledger.available], ["Flour", "kg", 23]);
+  assert.deepEqual(ledger.moves.map((m) => [m.label, m.qty]).sort(), [["Stock in", 25], ["Wastage", -2]]);
+  assert.ok(ledger.moves.every((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.date!)));
+});

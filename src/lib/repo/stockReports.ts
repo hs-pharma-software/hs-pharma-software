@@ -18,6 +18,11 @@ export const STOCK_GROUPS: Record<StockGroup, string> = { product: "Product wise
 
 const NONE: Record<StockGroup, string> = { product: "", company: "No company", distributor: "No distributor", generic: "No generic name" };
 
+/** The company, distributor or generic name a product is grouped under. */
+export function groupLabel(row: { company: string | null; distributor: string | null; generic: string | null }, by: Exclude<StockGroup, "product">): string {
+  return (by === "company" ? row.company : by === "distributor" ? row.distributor : row.generic) || NONE[by];
+}
+
 /** SQL for a product's distributor (latest purchase's supplier, else an assigned one). */
 const DISTRIBUTOR = `COALESCE(
   (SELECT s.name FROM purchase_items pi JOIN purchases pu ON pu.id = pi.purchase_id JOIN suppliers s ON s.id = pu.supplier_id
@@ -94,11 +99,33 @@ export interface RegisterRow {
   sold: number;
   purchaseReturns: number;
   closing: number;
+  /** "Noor Enterprises → ABC Traders" when the distributor changed in the period (or with its first purchase in it). */
+  distributorTrail?: string | null;
 }
 export interface RegisterGroupRow { id: string; label: string; products: number; opening: number; received: number; saleReturns: number; sold: number; purchaseReturns: number; closing: number }
 
-/** Movements per product in a period (quantities in packs, bonus included), opening and closing worked out from today's stock. */
-export async function stockRegister(from: string, to: string, search = ""): Promise<RegisterRow[]> {
+/** For each product whose distributor changed in the period: the one before it, then each new one. */
+async function distributorTrails(from: string, to: string): Promise<Map<string, string>> {
+  const rows = await dbSelect<{ pid: string; d: string; name: string }>(
+    `SELECT pi.product_id AS pid, substr(pu.date, 1, 10) AS d, s.name
+     FROM purchase_items pi JOIN purchases pu ON pu.id = pi.purchase_id JOIN suppliers s ON s.id = pu.supplier_id
+     WHERE pu.tenant_id = ? AND pu.deleted_at IS NULL AND pi.deleted_at IS NULL AND COALESCE(pu.is_return, 0) = 0 AND substr(pu.date, 1, 10) <= ?
+     ORDER BY pu.date, pu.created_at`,
+    [requireCurrentTenantId(), to]
+  );
+  const trails = new Map<string, string[]>();
+  for (const r of rows) {
+    const t = trails.get(r.pid) ?? [];
+    // Before the period only the latest distributor matters.
+    if (r.d < from) trails.set(r.pid, [r.name]);
+    else if (t[t.length - 1] !== r.name) trails.set(r.pid, [...t, r.name]);
+  }
+  return new Map([...trails].filter(([, t]) => t.length > 1).map(([pid, t]) => [pid, t.join(" → ")]));
+}
+
+/** Movements per product in a period (quantities in packs, bonus included), opening and closing worked out from today's stock.
+ * Products with nothing in stock and no movement in the period are left out, unless `all` is asked (a search for them). */
+export async function stockRegister(from: string, to: string, search = "", options: { all?: boolean } = {}): Promise<RegisterRow[]> {
   const T = requireCurrentTenantId();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error("Choose the From and To dates.");
   if (to < from) throw new Error("The To date is before the From date.");
@@ -136,16 +163,18 @@ export async function stockRegister(from: string, to: string, search = ""): Prom
        AND (st.pid IS NOT NULL OR m.pid IS NOT NULL)
        ${q ? "AND (p.name LIKE ? OR p.barcode LIKE ? OR p.description LIKE ? OR p.company_name LIKE ?)" : ""}
      GROUP BY p.id
-     HAVING received + sale_returns + sold + purchase_returns + now_qty <> 0
+     ${options.all ? "" : "HAVING received + sale_returns + sold + purchase_returns + now_qty <> 0"}
      ORDER BY p.name COLLATE NOCASE`,
     [T, T, T, T, T, from, to, from, to, from, to, from, to, to, T, ...(q ? [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`] : [])]
   );
+  const trails = await distributorTrails(from, to);
   return rows.map((r) => {
     const closing = r.now_qty - r.net_after;
     const opening = closing - r.received - r.sale_returns + r.sold + r.purchase_returns;
     return {
       id: r.id, name: r.name, company: r.company, generic: r.generic, distributor: r.distributor, packing: r.packing || 1,
       opening, received: r.received, saleReturns: r.sale_returns, sold: r.sold, purchaseReturns: r.purchase_returns, closing,
+      distributorTrail: trails.get(r.id) ?? null,
     };
   });
 }

@@ -20,19 +20,15 @@ import { OfflineDevice, TransportError, type OriginalInvoice, type SaleInput, ty
 import { Mirror, readOnlySql } from "./core/mirror";
 import { answerableLocally, copiedTables, copyReady, fillCopy, followCopy } from "./core/replicaSync";
 import { dataLocation } from "./core/dataLocation";
+import { AFTER_SAVE_MS, REFRESH_AFTER_AWAY_MS, copyFresh, syncNeeded } from "./core/syncPolicy";
 import { callAllowed, PROTOCOL_VERSION, type CallModule } from "../../src/offline/protocol";
 
 const API_BASE = (process.env.MAVIN_API_BASE || "https://app.mavin.pk").replace(/\/+$/, "");
-const SYNC_EVERY_MS = 60_000;
+// MAVIN.pk is billed for every call: nothing is asked unless there is a reason (core/syncPolicy.ts).
+/** How often this computer looks (locally) for something waiting to be sent. */
+const SYNC_CHECK_EVERY_MS = 60_000;
+/** The connection is watched this often: Windows' own network state, and, only while offline, MAVIN.pk. */
 const PROBE_EVERY_MS = 15_000;
-// MAVIN.pk is billed for every call: a computer left on all day must not keep asking.
-/** Online: the connection is checked this often (offline: every PROBE_EVERY_MS, to notice it coming back). */
-const PROBE_ONLINE_EVERY_MS = 5 * 60_000;
-/** Nothing to send: changes are fetched this often while the window is in use, and while it is not. */
-const SYNC_IN_USE_EVERY_MS = 2 * 60_000;
-const SYNC_IDLE_EVERY_MS = 10 * 60_000;
-/** The local copy, while the window is not in use (in use: every minute, and at once when it comes back to the front). */
-const COPY_IDLE_EVERY_MS = 10 * 60_000;
 const MIRROR_EVERY_MS = 15 * 60_000;
 const PIN_HASH_KEY = "app-pin-hash";
 const PIN_USER_KEY = "app-pin-user";
@@ -139,7 +135,15 @@ const transport: Transport = {
 
 // ── The page's own server calls (the web app's /api/...), with the session cookie kept here ──
 
-const cookies = new Map<string, string>(Object.entries(JSON.parse(secrets.get("web-cookies") || "{}") as Record<string, string>));
+const cookies = new Map<string, string>();
+/** The sign-in kept from the last run. Only once the app is ready: before that Windows
+ * encryption does not work and the saved sign-in reads as none (every screen then
+ * opened empty after a restart, "Your session has ended"). */
+function loadCookies() {
+  try {
+    for (const [k, v] of Object.entries(JSON.parse(secrets.get("web-cookies") || "{}") as Record<string, string>)) cookies.set(k, v);
+  } catch { /* unreadable: the next sign-in saves it again */ }
+}
 
 function pinHash(pin: string): string {
   const salt = randomBytes(16);
@@ -243,7 +247,7 @@ async function pageRequest(a: unknown) {
       const res = await fetch(`${API_BASE}${path}`, { method, headers, body, signal: ctrl.signal });
       keepCookies(res);
       setOnline(true);
-      if (saving) { lastWriteAt = Date.now(); setTimeout(() => void refreshReplica(), 200); }
+      if (saving) { lastWriteAt = Date.now(); setTimeout(() => void refreshReplica(), 200); syncAfterSave(); }
       return { status: res.status, body: await res.text() };
     } catch (e) {
       // A kept-alive connection the server had closed: sent again once, only if repeating is harmless.
@@ -317,8 +321,6 @@ function overlay() {
 // as the page, and nothing saved from here is still on its way into it;
 // otherwise they read MAVIN.pk as before. Saving always goes to MAVIN.pk.
 
-/** While the window is in use (a save from here refreshes it at once; other computers' changes show within this). */
-const REPLICA_EVERY_MS = 2 * 60_000;
 let replicaFailures = 0;
 let replicaRetryAt = 0;
 let replica: { m: Mirror; userId: string; tenantId: string; branch: string } | null = null;
@@ -421,6 +423,11 @@ function localRead(a: unknown): { local: true; rows: Record<string, unknown>[] }
   // Same login and branch as the page, and nothing saved from here still on its way into the copy.
   if (o.userId !== r.userId || String(o.branch ?? "") !== r.branch || lastWriteAt >= caughtUpFrom) return { local: false };
   if (!readOnlySql(o.sql) || !answerableLocally(o.sql, copiedTables(r.m), r.m.tableNames())) return { local: false };
+  // Not brought up to date lately: MAVIN.pk answers this one, and the copy catches up for the next.
+  if (!copyFresh(caughtUpFrom, Date.now())) {
+    if (!replicaBusy) void refreshReplica();
+    return { local: false };
+  }
   try {
     return { local: true, rows: r.m.query(o.sql, Array.isArray(o.params) ? o.params : []) };
   } catch {
@@ -428,30 +435,20 @@ function localRead(a: unknown): { local: true; rows: Record<string, unknown>[] }
   }
 }
 
-/** A Radiology Centre's computer reads MAVIN.pk only when there is a reason to:
- * something to send, the window in use, or the connection just came back. */
-const QUIET_SYNC_EVERY_MS = 6 * 3_600_000;
-const QUIET_COPY_EVERY_MS = 15 * 60_000;
-const QUIET_PROBE_EVERY = 4;
+/** A Radiology Centre has no stock or sales lists kept for offline selling. */
 const quietDevice = () => Boolean(device?.provisioned) && device.businessType === "radiology_center";
-const windowInUse = () => Boolean(win && !win.isDestroyed() && win.isFocused());
-let lastQuietSync = 0;
 let lastSyncRun = 0;
 let lastCopyRun = 0;
-let quietProbes = 0;
 
 let syncing: Promise<void> | null = null;
 let syncFailures = 0;
 let syncRetryAt = 0;
-/** Sends pending sales, downloads changes, and refreshes the copy (at most every few minutes unless forced). */
+/** Sends pending sales, downloads changes, and refreshes the offline copy. Called when there is a
+ * reason to (core/syncPolicy.ts); `force` ("Sync now", back online) ignores the back-off after a failure. */
 function syncAll(force = false): Promise<void> {
   if (!syncing) {
     syncing = (async () => {
-      if (!device?.provisioned || quitting || (!force && Date.now() < syncRetryAt)) return;
-      // Nothing to send: a Radiology Centre's computer stays quiet (its offline allowance is renewed a few times a day).
-      if (!force && quietDevice() && !device.hasUnsent && Date.now() - lastQuietSync < QUIET_SYNC_EVERY_MS) return;
-      // Nothing waiting to be sent: fetch changes every few minutes, less often when nobody is at the computer.
-      if (!force && !device.hasUnsent && Date.now() - lastSyncRun < (windowInUse() ? SYNC_IN_USE_EVERY_MS : SYNC_IDLE_EVERY_MS)) return;
+      if (!device?.provisioned || quitting || (!force && (online === false || Date.now() < syncRetryAt))) return;
       lastSyncRun = Date.now();
       const startedSync = new Date(Date.now() - 1000).toISOString();
       const r = await device.sync({ manual: force }).catch((e) => { console.error("[sync]", e instanceof Error ? e.message : e); return null; });
@@ -469,7 +466,6 @@ function syncAll(force = false): Promise<void> {
       }
       syncFailures = 0;
       syncRetryAt = 0;
-      lastQuietSync = Date.now();
       // A Radiology Centre has no stock or sales lists to refresh: its local copy follows only what changed.
       if (quietDevice()) { overlay(); pushStatus(); return; }
       const due = force || Date.now() - lastMirror > MIRROR_EVERY_MS;
@@ -501,6 +497,20 @@ function syncAll(force = false): Promise<void> {
     })().finally(() => { syncing = null; });
   }
   return syncing;
+}
+
+/** The regular local check: syncs only when something waits to be sent (or the allowance is ending). */
+function syncIfNeeded() {
+  if (!device?.provisioned || quitting) return;
+  if (syncNeeded({ hasUnsent: device.hasUnsent, allowanceEndsAt: device.grant()?.expiresAt, lastSyncAt: lastSyncRun, now: Date.now() })) void syncAll(false);
+}
+
+/** Something was saved online from here: the offline stock and prices catch up once the saves pause. */
+let afterSave: ReturnType<typeof setTimeout> | null = null;
+function syncAfterSave() {
+  if (!device?.provisioned || quietDevice()) return;
+  if (afterSave) clearTimeout(afterSave);
+  afterSave = setTimeout(() => void syncAll(false), AFTER_SAVE_MS);
 }
 
 function statusNow() {
@@ -609,6 +619,14 @@ function createWindow() {
   });
   win.removeMenu();
   win.on("closed", () => { win = null; });
+  // The page holds the close while an invoice or purchase is still being saved.
+  win.webContents.on("will-prevent-unload", (e) => {
+    const choice = dialog.showMessageBoxSync(win!, {
+      type: "warning", buttons: ["Wait", "Close anyway"], defaultId: 0, cancelId: 0, title: "Still saving",
+      message: "An invoice or purchase is still being saved.", detail: "Closing now may leave it partly saved. It takes a few seconds.",
+    });
+    if (choice === 1) e.preventDefault();
+  });
   // Inside the app only; MAVIN.pk links open in the browser.
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith(`${APP_ORIGIN}/`)) { e.preventDefault(); if (/^https:\/\//.test(url)) void shell.openExternal(url); } });
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -835,6 +853,7 @@ const handlers: Record<string, Handler> = {
   },
   syncNow: async () => { await syncAll(true); return statusNow(); },
   printText: (a) => printReceipt(str(a, 20000, "receipt")),
+  printPage: (a) => printPage(a),
 };
 
 /** The PIN window (a data: page, not the app) may make only these calls. */
@@ -852,21 +871,36 @@ for (const [name, fn] of Object.entries(handlers)) {
   });
 }
 
-/** Prints a receipt text through a hidden window (the Windows print dialog). */
+/** Windows' default printer, no dialog. */
+function silentPrint(target: BrowserWindow, options: Electron.WebContentsPrintOptions): Promise<boolean> {
+  return new Promise((resolve, reject) => target.webContents.print({ ...options, silent: true }, (ok, why) => (ok ? resolve(true) : reject(new Error(why === "cancelled" ? "Printing was cancelled." : `The printer did not take the job (${why || "no default printer"}).`)))));
+}
+
+/** The page's print area (an invoice) on the default printer, at the paper size the page asks. */
+async function printPage(a: unknown) {
+  const o = a as { widthMm?: unknown; heightMm?: unknown };
+  const mm = (v: unknown, d: number) => (typeof v === "number" && v > 0 && v < 2000 ? v : d);
+  if (!win || win.isDestroyed()) throw new Error("No window.");
+  const width = mm(o?.widthMm, 210), height = mm(o?.heightMm, 297);
+  if (!app.isPackaged && process.env.MAVIN_NO_PRINT === "1") { console.log(`[print] page ${width}x${height} mm`); return true; }
+  return silentPrint(win, { printBackground: true, pageSize: { width: Math.round(width * 1000), height: Math.round(height * 1000) }, margins: { marginType: "custom", top: 0, bottom: 0, left: 0, right: 0 } });
+}
+
+/** Prints a receipt text through a hidden window, on the default printer. */
 async function printReceipt(text: string) {
   if (!app.isPackaged && process.env.MAVIN_NO_PRINT === "1") { console.log(`[print]\n${text}`); return true; }
   const p = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false } });
   const esc = text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   await p.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><meta charset="utf-8"><style>@page{margin:4mm}body{margin:0;font:12px/1.35 Consolas,monospace;white-space:pre}</style><body>${esc}</body>`)}`);
-  await new Promise<void>((resolve, reject) => p.webContents.print({ silent: false, printBackground: false }, (ok, why) => (ok || why === "cancelled" ? resolve() : reject(new Error(why)))));
-  p.destroy();
-  return true;
+  try {
+    return await silentPrint(p, { printBackground: false });
+  } finally {
+    p.destroy();
+  }
 }
 
 /** Is MAVIN.pk reachable? (any answer counts; no data is sent) */
-let lastProbe = 0;
 async function probe() {
-  lastProbe = Date.now();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
@@ -923,6 +957,7 @@ function startUpdates() {
 if (primary) {
   app.whenReady().then(() => {
     protocol.handle("mavin", serveApp);
+    loadCookies();
     device = new OfflineDevice({ dataRoot, publicKeyPem: readFileSync(publicKeyFile, "utf8"), appVersion: app.getVersion(), transport, secrets });
     openMirror();
     if (hasSavedPin()) {
@@ -931,28 +966,25 @@ if (primary) {
       resumeDeviceUser();
       createWindow();
     }
-    const probeIfNeeded = () => {
-      // Online and not in use: a quiet computer checks the connection once a minute.
-      if (quietDevice() && online === true && !windowInUse() && ++quietProbes % QUIET_PROBE_EVERY !== 0) return;
-      // Online: the syncs and saves already show the connection works; check it only now and then.
-      if (online === true && Date.now() - lastProbe < PROBE_ONLINE_EVERY_MS) return;
-      void probe();
+    const watchConnection = () => {
+      // Windows says there is no network: nothing to ask. Online: saves and screens show whether it still works.
+      if (!net.isOnline()) setOnline(false);
+      else if (online !== true) void probe();
     };
-    timers = [setInterval(() => void syncAll(false), SYNC_EVERY_MS), setInterval(probeIfNeeded, PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
+    timers = [setInterval(syncIfNeeded, SYNC_CHECK_EVERY_MS), setInterval(watchConnection, PROBE_EVERY_MS), setInterval(pushStatus, PROBE_EVERY_MS)];
+    // Once at the start: what is waiting is sent and what changed meanwhile is fetched.
     void probe().then(() => syncAll(false));
     startUpdates();
     // The local copy of the business: filled once, then kept up to date.
     // A backup of the computer's own database once a day (the newest 10 are kept, in the data folder).
     setTimeout(dailyBackup, 3 * 60_000);
     timers.push(setInterval(dailyBackup, 3 * 3_600_000));
-    timers.push(setInterval(() => {
-      if (quietDevice() && !windowInUse() && Date.now() - lastCopyRun < QUIET_COPY_EVERY_MS) return;
-      if (!windowInUse() && Date.now() - lastCopyRun < COPY_IDLE_EVERY_MS) return;
-      void refreshReplica();
-    }, REPLICA_EVERY_MS));
     setTimeout(() => void refreshReplica(), 5_000);
-    // Back at the computer: the screens show the latest straight away.
-    app.on("browser-window-focus", () => { if (Date.now() - lastCopyRun > REPLICA_EVERY_MS) void refreshReplica(); });
+    // Back at the computer after a while: what changed elsewhere is fetched.
+    app.on("browser-window-focus", () => {
+      if (Date.now() - lastCopyRun > REFRESH_AFTER_AWAY_MS) void refreshReplica();
+      if (!quietDevice() && Date.now() - lastSyncRun > REFRESH_AFTER_AWAY_MS) void syncAll(false);
+    });
   });
 
   app.on("second-instance", () => { if (app.isReady()) showWindow(); });
@@ -961,6 +993,7 @@ if (primary) {
     if (quitting) return;
     quitting = true;
     for (const t of timers) clearInterval(t);
+    if (afterSave) clearTimeout(afterSave);
     try { mirror?.close(); } catch { /* closed */ }
     try { replica?.m.close(); } catch { /* closed */ }
     try { device?.close(); } catch { /* the saved data is already on disk (WAL) */ }

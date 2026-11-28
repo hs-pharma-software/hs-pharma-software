@@ -820,3 +820,22 @@ test("purchase edit: lines and totals replaced, stock moves by the difference, n
   assert.equal((await admin.balances("supplier")).find((r) => r.id === A.company.id)?.balance, 2000);
   assert.equal((await admin.ledger("supplier", A.company.id)).docs.length, 1);
 });
+
+test("stock register: a product's suppliers, invoices and stock after each; another distributor sees none of it", async () => {
+  const h = makeDist();
+  const A = await distributor(h, "pA", "pharma");
+  const B = await distributor(h, "pB", "pharma");
+  h.sql.prepare(`INSERT INTO suppliers (id, tenant_id, name, created_at, updated_at) VALUES ('sup1', 'pA', 'Principal', 'x', 'x')`).run();
+  const admin = h.as(A.owner);
+  await admin.createPurchase({ supplierId: "sup1", supplierInvoiceNo: "INV-9", lines: [{ productId: A.product.id, qty: 20, cost: 80 }] });
+  await admin.createSale({ customerId: A.customer.id, lines: [{ productId: A.product.id, qty: 5 }] });
+  const item = (await admin.stockSearchItems()).find((i) => i.id === A.product.id)!;
+  assert.deepEqual([item.company, item.distributors, item.stock], ["pA Pharma Co", ["Principal"], 1015]);
+  const ledger = await admin.productLedger(A.product.id);
+  assert.equal(ledger.available, 1015);
+  assert.deepEqual(ledger.moves.map((m) => [m.label, m.qty, m.party, Boolean(m.supplied)]).sort(), [
+    ["Opening stock", 1000, null, false], ["Purchased", 20, "Principal", true], ["Sold", -5, "pA Medical Store", false],
+  ]);
+  await assert.rejects(h.as(B.owner).productLedger(A.product.id), /Product not found/);
+  await assert.rejects(h.as(A.sm).productLedger(A.product.id), /reports\.view|permission/i);
+});

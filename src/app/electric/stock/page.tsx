@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useT } from "@/lib/i18n";
 import { electric, errorText } from "@/lib/electric";
+import { StockItemsRegister } from "@/components/stock/StockItemsRegister";
 import { Err, EsGuard, Id, Note, PageTitle, Txt, money, useLoad } from "@/components/electric/ui";
 
 export default function StockPage() {
@@ -29,10 +30,19 @@ function Stock() {
   );
 
   const moves = useLoad(() => electric.stockMoves(null, 200), []);
+  const loadItems = useCallback(() => electric.stockSearchItems(), []);
+  const loadLedger = useCallback((id: string) => electric.productLedger(id), []);
+  /** Changes after an adjustment, so the register is read again. */
+  const [version, setVersion] = useState(0);
 
   return (
     <div className="space-y-4">
       <PageTitle title={t("st.title")} />
+
+      <section className="rounded-xl bg-white p-4 ring-1 ring-black/5">
+        <h2 className="mb-2 text-sm font-semibold text-neutral-700">Stock register</h2>
+        <StockItemsRegister key={version} loadItems={loadItems} loadLedger={loadLedger} onlyWhenSearched />
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Stock levels */}
@@ -155,6 +165,7 @@ function Stock() {
             setAdjusting(null);
             void list.reload();
             void moves.reload();
+            setVersion((v) => v + 1);
           }}
         />
       )}

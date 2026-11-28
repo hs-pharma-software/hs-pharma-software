@@ -10,7 +10,7 @@ import { staffRepo } from "@/lib/repo/staff";
 import { usersRepo } from "@/lib/repo/users";
 import { saveHospitalStaff } from "@/lib/repo/hospitalOpd";
 import { saveVendor } from "@/lib/repo/vendors";
-import { deadStockRegister, postStorePurchase, recordDeadStock, saveStorePurchase, storeArrivals, storeDashboard, storeItemHistory, storeRegister, storeRegisterSuggestions, storeStock, verifyStoreItems } from "@/lib/repo/hospitalStores";
+import { deadStockRegister, postStorePurchase, recordDeadStock, saveStorePurchase, storeArrivals, storeDashboard, storeItemHistory, storeRegister, storeItemLedger, storeSearchItems, storeStock, verifyStoreItems } from "@/lib/repo/hospitalStores";
 import { createIndent, decideIndentReturn, issueIndent, issueIndentBook, myIndents, receiveIndent, requestIndentBook, returnIndentItems, storeIndents } from "@/lib/repo/storeIndents";
 import { pagesForStaff } from "@/config/hospitalStaff";
 import type { Staff } from "@/lib/types";
@@ -70,14 +70,13 @@ test("indent book: ordered by the purchase officer, issued by a store keeper; th
   assert.ok(perms.includes("hospital_indent"));
 });
 
-test("register suggestions include products, companies and vendor names and numbers only for an accessible store", async () => {
+test("register search lists the store's items with company, vendor name and number, only for an accessible store", async () => {
   const { vendor } = await stocked();
-  const suggestions = await storeRegisterSuggestions("general");
-  assert.deepEqual(suggestions.products, ["Floor cleaner", "Hand-wash soap"]);
-  assert.deepEqual(suggestions.companies, ["Soap Company"]);
-  assert.ok(suggestions.vendors.includes(vendor.name));
-  assert.ok(suggestions.vendors.includes(vendor.vendor_no!));
-  await assert.rejects(storeRegisterSuggestions("lab"), /do not work/);
+  const items = await storeSearchItems("general");
+  assert.deepEqual(items.map((i) => [i.name, i.company, i.stock]), [["Floor cleaner", null, 10], ["Hand-wash soap", "Soap Company", 20]]);
+  assert.deepEqual(items[0].distributors, [vendor.name]);
+  assert.deepEqual(items[0].codes, [vendor.vendor_no]);
+  await assert.rejects(storeSearchItems("lab"), /do not work/);
 });
 
 test("duplicate indent lines cannot together issue more than the available stock", async () => {
@@ -162,4 +161,12 @@ test("an indent: issued in part, a shortfall explained, a return accepted back i
   await assert.rejects(storeItemHistory("general", { productId: null, productName: "Hand-wash soap" }, { from: "2026-02-01", to: "2026-01-01" }), /start date/);
   d = await storeDashboard("general");
   assert.deepEqual([d.pendingIndents, d.pendingReturns, d.lowStock.length], [0, 0, 0]);
+});
+
+test("stock register: a store item's arrivals with the vendor and the stock now", async () => {
+  const { vendor } = await stocked();
+  const soap = (await storeSearchItems("general")).find((i) => i.name === "Hand-wash soap")!;
+  const ledger = await storeItemLedger("general", { productId: soap.productId, productName: soap.name });
+  assert.deepEqual([ledger.available, ledger.company], [20, "Soap Company"]);
+  assert.deepEqual(ledger.moves.map((m) => [m.label, m.qty, m.party, m.supplied]), [["Arrived", 20, vendor.name, true]]);
 });

@@ -47,6 +47,8 @@ import {
   fromBaseUnitQty,
 } from "@/lib/uom";
 import { loadFbrSettings } from "@/lib/fbr";
+import { inTurn } from "@/lib/saveQueue";
+import { notify } from "@/lib/notify";
 import { FBR_PROVINCES, isValidNtnOrCnic, isValidPkMobile, normalizeNtn } from "@/lib/fbrData";
 import type { Customer, Product, Uom } from "@/lib/types";
 import type { Salesman, Invoice } from "@/lib/types2";
@@ -107,6 +109,8 @@ export function InvoiceFormModal({
   onClose,
   onSaved,
   active = true,
+  onSaving,
+  onAttention,
 }: {
   /** Pass an existing invoice to edit it in place; omit to create a new one. */
   invoice?: Invoice | null;
@@ -124,6 +128,10 @@ export function InvoiceFormModal({
   /** False while another invoice tab is in front: keyboard shortcuts are
    * ignored so only the visible form reacts. */
   active?: boolean;
+  /** The Windows app: the save runs while the next bill is entered. Called when it starts... */
+  onSaving?: () => void;
+  /** ...and when it needs the person again (it failed). */
+  onAttention?: () => void;
 }) {
   const isEdit = Boolean(invoice);
   // MAVIN desktop app without internet: this same form saves cash sales on the computer.
@@ -728,6 +736,24 @@ export function InvoiceFormModal({
     return null;
   }
 
+  /** As stockProblem, against the stock as it is now. */
+  async function freshStockProblem(): Promise<string | null> {
+    const need = new Map<string, { name: string; qty: number }>();
+    for (const l of lines) {
+      if (isPraService(l.product)) continue;
+      const isSecondary = l.unit === "secondary";
+      const packing = l.product.packing || 1;
+      const cur = need.get(l.product.id) ?? { name: l.product.name, qty: 0 };
+      cur.qty += toBaseUnitQty(l.qty, isSecondary, packing) + toBaseUnitQty(l.bonusQty, isSecondary, packing);
+      need.set(l.product.id, cur);
+    }
+    for (const [id, n] of need) {
+      const avail = totalStock(await listAvailableBatches(id));
+      if (n.qty > avail + STOCK_EPS) return `Only ${Math.round(avail * 1000) / 1000} of ${n.name} is in stock now, ${Math.round(n.qty * 1000) / 1000} entered. Nothing was saved.`;
+    }
+    return null;
+  }
+
   function invoiceHeader() {
     return {
       date: canPickDate ? invoiceDate : invoice?.date ?? localToday(),
@@ -807,48 +833,61 @@ export function InvoiceFormModal({
     }
     setSaving(true);
     setError(null);
+    const background = Boolean(onSaving) && !isEdit;
+    if (background) onSaving!();
     try {
-      let invoiceId: string;
-      // The edited invoice keeps its number; a new one gets the next.
-      let savedNo: number | null = invoice?.invoice_no ?? null;
-      if (isEdit && invoice) {
-        // Put back what the original items had deducted, delete them, then
-        // deduct fresh for whatever the form now says - this way editing
-        // can't drift from a plain delete+recreate's stock bookkeeping.
-        if (!isDraft) await restoreInvoiceStock(originalItems);
-        for (const item of originalItems) await invoiceItemsRepo.remove(item.id);
-        await invoicesRepo.update(invoice.id, invoiceHeader());
-        invoiceId = invoice.id;
-      } else {
-        const invoiceNo = await nextInvoiceNo();
-        savedNo = invoiceNo;
-        const created = await invoicesRepo.create({
-          ...invoiceHeader(),
-          invoice_no: invoiceNo,
-          is_return: 0,
-          is_memorized: 0,
-          converted_invoice_id: null,
-        });
-        invoiceId = created.id;
-      }
-      await buildLineItems(invoiceId, isDraft);
-      if (isClothStore && measurement) await touchMeasurement(measurement.id).catch(() => undefined);
-      // Handsets: sold to this buyer (an edited bill's earlier ones go back first).
-      if (!isDraft && (lines.some((l) => l.product.track_imei) || isEdit)) {
-        await sellImeis(
-          invoiceId,
-          lines.filter((l) => l.product.track_imei).map((l) => ({ productId: l.product.id, productName: l.product.name, imeis: l.imeis ?? [] })),
-          { name: customerName.trim() || null, mobile: customerPhone.trim() || null, cnic: normalizeNtn(buyerNtn) || null }
-        );
-      }
-      // Billed from a received prescription: mark it invoiced so it is not billed twice.
-      if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
-      // Billed from a website order: link it once, so it is not billed twice and its stock hold ends.
-      if (webOrderId && !invoice && !isDraft) await serverJson("/api/web/manage/", { action: "linkInvoice", id: webOrderId, invoiceId }).catch(() => undefined);
-      // PRA eIMS (businesses MAVIN's server fiscalises): recorded before sending, never twice; billing doesn't wait on it.
-      if (!isDraft) await fiscalizeInvoice(invoiceId);
-      onSaved(isDraft ? undefined : { id: invoiceId, no: savedNo });
+      await inTurn(async () => {
+        // Checked again when its turn comes: the bill before it may have taken the stock.
+        if (background && !isDraft) {
+          const late = await freshStockProblem();
+          if (late) throw new Error(late);
+        }
+        let invoiceId: string;
+        // The edited invoice keeps its number; a new one gets the next.
+        let savedNo: number | null = invoice?.invoice_no ?? null;
+        if (isEdit && invoice) {
+          // Put back what the original items had deducted, delete them, then
+          // deduct fresh for whatever the form now says - this way editing
+          // can't drift from a plain delete+recreate's stock bookkeeping.
+          if (!isDraft) await restoreInvoiceStock(originalItems);
+          for (const item of originalItems) await invoiceItemsRepo.remove(item.id);
+          await invoicesRepo.update(invoice.id, invoiceHeader());
+          invoiceId = invoice.id;
+        } else {
+          const invoiceNo = await nextInvoiceNo();
+          savedNo = invoiceNo;
+          const created = await invoicesRepo.create({
+            ...invoiceHeader(),
+            invoice_no: invoiceNo,
+            is_return: 0,
+            is_memorized: 0,
+            converted_invoice_id: null,
+          });
+          invoiceId = created.id;
+        }
+        await buildLineItems(invoiceId, isDraft);
+        if (isClothStore && measurement) await touchMeasurement(measurement.id).catch(() => undefined);
+        // Handsets: sold to this buyer (an edited bill's earlier ones go back first).
+        if (!isDraft && (lines.some((l) => l.product.track_imei) || isEdit)) {
+          await sellImeis(
+            invoiceId,
+            lines.filter((l) => l.product.track_imei).map((l) => ({ productId: l.product.id, productName: l.product.name, imeis: l.imeis ?? [] })),
+            { name: customerName.trim() || null, mobile: customerPhone.trim() || null, cnic: normalizeNtn(buyerNtn) || null }
+          );
+        }
+        // Billed from a received prescription: mark it invoiced so it is not billed twice.
+        if (rxId && !invoice) await markPrescriptionInvoiced(rxId, invoiceId).catch(() => undefined);
+        // Billed from a website order: link it once, so it is not billed twice and its stock hold ends.
+        if (webOrderId && !invoice && !isDraft) await serverJson("/api/web/manage/", { action: "linkInvoice", id: webOrderId, invoiceId }).catch(() => undefined);
+        // PRA eIMS (businesses MAVIN's server fiscalises): recorded before sending, never twice; billing doesn't wait on it.
+        if (!isDraft) await fiscalizeInvoice(invoiceId);
+        onSaved(isDraft ? undefined : { id: invoiceId, no: savedNo });
+      });
     } catch (err) {
+      if (background) {
+        onAttention?.();
+        notify(`The invoice was not saved: ${err instanceof Error ? err.message : String(err)}`);
+      }
       // Desktop app: the connection dropped during the save. Part of it may be on the server already.
       if (err instanceof NeedsInternetError) {
         setUncertainSave(true);

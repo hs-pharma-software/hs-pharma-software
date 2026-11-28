@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { dist } from "@/lib/dist";
+import { StockItemsRegister } from "@/components/stock/StockItemsRegister";
 import { DistGuard, Err, PageTitle, Stat, downloadCsv, money, monthStart, todayYmd, useLoad } from "@/components/dist/ui";
 
 type Tab = "company" | "category" | "salesman" | "customer" | "day" | "wht" | "bookings" | "stock";
@@ -15,7 +16,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "day", label: "Daily sales" },
   { id: "wht", label: "Withholding tax" },
   { id: "bookings", label: "Booking → invoice" },
-  { id: "stock", label: "Stock movement" },
+  { id: "stock", label: "Stock register" },
 ];
 
 export default function ReportsPage() {
@@ -23,6 +24,8 @@ export default function ReportsPage() {
 }
 
 function Reports() {
+  const loadItems = useCallback(() => dist.stockSearchItems(), []);
+  const loadLedger = useCallback((id: string) => dist.productLedger(id), []);
   const [from, setFrom] = useState(monthStart);
   const [to, setTo] = useState(todayYmd);
   const [tab, setTab] = useState<Tab>("company");
@@ -30,7 +33,7 @@ function Reports() {
   const rows = useLoad<Record<string, unknown>[]>(async () => {
     if (tab === "wht") return dist.whtReport(from, to);
     if (tab === "bookings") return dist.bookingConversion(from, to);
-    if (tab === "stock") return (await dist.stockMoves()) as Record<string, unknown>[];
+    if (tab === "stock") return [];
     return dist.salesBy(tab, from, to);
   }, [tab, from, to]);
   const s = summary.data;
@@ -38,7 +41,7 @@ function Reports() {
   const cols = data[0] ? Object.keys(data[0]).filter((k) => !["id", "tenant_id", "updated_at", "deleted_at", "doc_item_id", "product_id"].includes(k)) : [];
   return (
     <div className="space-y-3">
-      <PageTitle title="Reports" actions={<Button onClick={() => downloadCsv(`${tab}-${from}-${to}.csv`, data)}>Export CSV</Button>} />
+      <PageTitle title="Reports" actions={tab !== "stock" ? <Button onClick={() => downloadCsv(`${tab}-${from}-${to}.csv`, data)}>Export CSV</Button> : undefined} />
       <div className="flex flex-wrap items-end gap-2">
         <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
         <Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
@@ -59,6 +62,7 @@ function Reports() {
         ))}
       </div>
       {tab === "wht" && <p className="text-xs text-neutral-500">Withholding by customer, section and ATL status at invoice time (credit notes subtracted). Use with your monthly withholding statement; reconcile against FBR records.</p>}
+      {tab === "stock" ? <StockItemsRegister loadItems={loadItems} loadLedger={loadLedger} /> : (
       <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-black/5">
         <table className="w-full text-sm">
           <thead className="bg-neutral-50 text-xs text-neutral-500">
@@ -74,6 +78,7 @@ function Reports() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

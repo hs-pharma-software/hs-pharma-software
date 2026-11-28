@@ -70,6 +70,19 @@ export async function listInvoicesForGrid(opts: { isReturn?: boolean; isMemorize
   );
 }
 
+/** One saved invoice as its view and print need it. */
+export async function invoiceViewRow(id: string) {
+  const invoice = await invoicesRepo.get(id);
+  if (!invoice) return null;
+  const [names] = await dbSelect<{ customer_name: string; salesman_name: string | null }>(
+    `SELECT COALESCE(NULLIF(i.customer_name, ''), c.name, 'Walk-in') AS customer_name, sm.name AS salesman_name
+     FROM invoices i LEFT JOIN customers c ON c.id = i.customer_id LEFT JOIN salesmen sm ON sm.id = i.salesman_id
+     WHERE i.id = ? AND i.tenant_id = ?`,
+    [id, currentTenantId()]
+  );
+  return { invoice, customerName: names?.customer_name ?? "Walk-in", salesmanName: names?.salesman_name ?? null };
+}
+
 export interface NarcoticInvoiceRow {
   id: string;
   invoice_no: number | null;

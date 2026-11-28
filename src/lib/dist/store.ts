@@ -16,6 +16,7 @@
  * Relative imports only (runs under `node --test`).
  */
 import type { RestDb as DistDb, RestContext as DistContext } from "../restaurant/store.ts";
+import { latestLast, oneMovePerDocument, type LedgerView, type MoveKind, type SearchItem } from "../stockLedger.ts";
 import { detectNarcotic } from "../narcotics.ts";
 import { tenantAllows } from "../tenantFeatures.ts";
 import {
@@ -1912,6 +1913,55 @@ export function createDistStore(db: DistDb, context: () => DistContext) {
          WHERE b.tenant_id = ? AND b.date BETWEEN ? AND ? AND b.deleted_at IS NULL GROUP BY b.status`,
         [tenant(), from, to]
       );
+    },
+    /** The stock register's search: every product in stock or with a stock movement (also finished), with its company, generic name and suppliers. */
+    async stockSearchItems(): Promise<SearchItem[]> {
+      await need("reports.view");
+      const [products, bought] = await Promise.all([
+        db.select<{ id: string; name: string; code: string; barcode: string | null; unit: string; stock: number; company: string | null; generic: string | null }>(
+          `SELECT p.id, p.name, p.code, p.barcode, p.unit, p.stock, c.name AS company, NULLIF(TRIM(p.generic_name), '') AS generic
+           FROM dist_products p LEFT JOIN dist_companies c ON c.id = p.company_id AND c.tenant_id = p.tenant_id
+           WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND (p.stock <> 0 OR p.id IN (SELECT product_id FROM dist_stock_moves WHERE tenant_id = ?))
+           ORDER BY p.name`, [tenant(), tenant()]),
+        db.select<{ pid: string; name: string | null }>(
+          `SELECT i.product_id AS pid, d.party_name AS name FROM dist_doc_items i JOIN dist_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id
+           WHERE i.tenant_id = ? AND d.doc_type = 'purchase' AND d.deleted_at IS NULL AND i.deleted_at IS NULL ORDER BY d.date, d.created_at`, [tenant()]),
+      ]);
+      const suppliers = latestLast(bought);
+      return products.map((p) => ({ id: p.id, name: p.name, codes: [p.code, p.barcode], company: p.company, generic: p.generic, distributors: suppliers.get(p.id) ?? [], stock: Number(p.stock) || 0, units: { unit: p.unit } }));
+    },
+    /** A product's history: each purchase with its supplier, each invoice, returns, and the stock left. */
+    async productLedger(productId: string): Promise<LedgerView> {
+      await need("reports.view");
+      const [products, rows] = await Promise.all([
+        db.select<{ name: string; unit: string; stock: number; company: string | null; generic: string | null }>(
+          `SELECT p.name, p.unit, p.stock, c.name AS company, NULLIF(TRIM(p.generic_name), '') AS generic
+           FROM dist_products p LEFT JOIN dist_companies c ON c.id = p.company_id AND c.tenant_id = p.tenant_id WHERE p.id = ? AND p.tenant_id = ?`, [productId, tenant()]),
+        db.select<{ id: string; qty: number; reason: string; note: string | null; created_at: string; created_by: string | null; doc_id: string | null; doc_no: number | null; date: string | null; party: string | null; supplier_no: string | null; batch_no: string | null; expiry: string | null }>(
+          `SELECT m.id, m.qty, m.reason, m.note, m.created_at, m.created_by, d.id AS doc_id, d.doc_no, d.date, d.party_name AS party, d.supplier_invoice_no AS supplier_no, i.batch_no, i.expiry
+           FROM dist_stock_moves m LEFT JOIN dist_docs d ON d.id = m.doc_id AND d.tenant_id = m.tenant_id
+           LEFT JOIN dist_doc_items i ON i.id = m.doc_item_id AND i.tenant_id = m.tenant_id
+           WHERE m.tenant_id = ? AND m.product_id = ?`, [tenant(), productId]),
+      ]);
+      const p = products[0];
+      if (!p) throw new DistError("NOT_FOUND", "Product not found.");
+      const KINDS: Record<string, { kind: MoveKind; label: string; number: string }> = {
+        opening: { kind: "opening", label: "Opening stock", number: "" }, purchase: { kind: "purchase", label: "Purchased", number: "Purchase" },
+        sale: { kind: "sale", label: "Sold", number: "Invoice" }, sale_return: { kind: "sale_return", label: "Sale return", number: "Credit note" },
+        purchase_return: { kind: "purchase_return", label: "Returned to supplier", number: "Purchase return" }, purchase_edit: { kind: "adjust", label: "Purchase edited", number: "Purchase" },
+      };
+      const moves = oneMovePerDocument(rows, (r) => (r.doc_id && r.reason !== "purchase_edit" ? `${r.doc_id} ${r.reason}` : null), (r, qty, all) => {
+        const k = KINDS[r.reason] ?? { kind: "adjust" as const, label: r.reason.replace(/_/g, " "), number: "" };
+        const batches = [...new Set(all.filter((x) => x.batch_no).map((x) => `Batch ${x.batch_no}${x.expiry ? `, expiry ${x.expiry}` : ""}`))];
+        // An edit of a purchase is dated when it was made, not with the purchase.
+        const date = r.reason === "purchase_edit" || !r.date ? r.created_at.slice(0, 10) : r.date.slice(0, 10);
+        return {
+          id: r.id, date, at: r.created_at, kind: k.kind, label: k.label, qty, supplied: r.reason === "purchase",
+          ref: r.doc_no != null && k.number ? [`${k.number} #${r.doc_no}`, r.reason === "purchase" && r.supplier_no ? `Bill ${r.supplier_no}` : ""].filter(Boolean).join(" · ") : null,
+          party: r.party, details: [...batches, r.note ?? "", r.created_by ? `By ${r.created_by}` : ""].filter(Boolean),
+        };
+      });
+      return { name: p.name, company: p.company, generic: p.generic, units: { unit: p.unit }, available: Number(p.stock) || 0, moves };
     },
     async stockMoves(productId?: string | null) {
       await need("catalog.view");

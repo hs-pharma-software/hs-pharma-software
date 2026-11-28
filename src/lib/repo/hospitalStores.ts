@@ -14,6 +14,7 @@ import { currentActor, type Actor } from "./medicalRecord";
 import { staffRepo } from "./staff";
 import { suppliersRepo } from "./suppliers";
 import { localDate } from "../localDate";
+import { dayMonthYear, type LedgerMove, type LedgerView, type MoveKind, type SearchItem } from "../stockLedger";
 import { STORE_ROLES, isStoreId, staffStores, storeLabel, type StoreId } from "../../config/hospitalStores";
 
 export type StorePurchaseStatus = "draft" | "posted" | "returned" | "verified" | "cancelled";
@@ -345,28 +346,73 @@ export async function storeItemHistory(
   );
 }
 
-export interface RegisterSuggestions {
-  vendors: string[];
-  products: string[];
-  companies: string[];
+/** A store item's key: its product, or its name when it has none. */
+const ITEM_KEY = "COALESCE(m.product_id, LOWER(m.product_name))";
+
+export interface StoreSearchItem extends SearchItem { productId: string | null }
+
+/** Everything that was ever in a store (also what is finished), with its company, generic name and vendors. */
+export async function storeSearchItems(store: StoreId): Promise<StoreSearchItem[]> {
+  await needStore(store);
+  const T = requireCurrentTenantId();
+  const [items, vendors] = await Promise.all([
+    dbSelect<{ k: string; product_id: string | null; name: string; company: string | null; generic: string | null; qty: number }>(
+      `SELECT ${ITEM_KEY} AS k, m.product_id, MIN(m.product_name) AS name, MAX(NULLIF(TRIM(m.company_name), '')) AS company,
+              MAX(NULLIF(TRIM(p.description), '')) AS generic, ROUND(SUM(m.qty), 3) AS qty
+       FROM hospital_store_stock m LEFT JOIN products p ON p.id = m.product_id AND (p.tenant_id = m.tenant_id OR p.tenant_id IS NULL)
+       WHERE m.tenant_id = ? AND m.store = ? AND m.deleted_at IS NULL
+       GROUP BY k ORDER BY name COLLATE NOCASE`,
+      [T, store]
+    ),
+    dbSelect<{ k: string; name: string; vendor_no: string | null }>(
+      `SELECT ${ITEM_KEY} AS k, s.name, s.vendor_no
+       FROM hospital_store_stock m JOIN suppliers s ON s.id = m.vendor_id AND s.tenant_id = m.tenant_id
+       WHERE m.tenant_id = ? AND m.store = ? AND m.deleted_at IS NULL
+       GROUP BY k, s.id ORDER BY MAX(m.date), MAX(m.created_at)`,
+      [T, store]
+    ),
+  ]);
+  return items.map((i) => {
+    const mine = vendors.filter((v) => v.k === i.k);
+    return {
+      id: i.k, productId: i.product_id, name: i.name, company: i.company, generic: i.generic, stock: Number(i.qty) || 0,
+      codes: mine.map((v) => v.vendor_no), distributors: mine.map((v) => v.name),
+    };
+  });
 }
 
-/** Search suggestions from this store's movements, independent of the current date and filters. */
-export async function storeRegisterSuggestions(store: StoreId): Promise<RegisterSuggestions> {
-  await needStore(store);
-  const rows = await dbSelect<{ product_name: string; company_name: string | null; vendor_name: string | null; vendor_no: string | null }>(
-    `SELECT DISTINCT m.product_name, m.company_name, s.name AS vendor_name, s.vendor_no
-     FROM hospital_store_stock m
-     LEFT JOIN suppliers s ON s.id = m.vendor_id AND s.tenant_id = m.tenant_id AND s.deleted_at IS NULL
-     WHERE m.tenant_id = ? AND m.store = ? AND m.deleted_at IS NULL`,
-    [requireCurrentTenantId(), store]
-  );
-  const sorted = (values: (string | null)[]) =>
-    [...new Set(values.filter((value): value is string => Boolean(value?.trim())))].sort((a, b) => a.localeCompare(b));
+const STORE_MOVES: Record<StoreMove["kind"], { kind: MoveKind; label: string }> = {
+  receipt: { kind: "purchase", label: "Arrived" }, issue: { kind: "issue", label: "Issued" }, return_in: { kind: "return_in", label: "Returned in" },
+  return_out: { kind: "purchase_return", label: "Returned out" }, dead: { kind: "dead", label: "Dead stock" }, adjust: { kind: "adjust", label: "Adjusted" },
+};
+
+/** A store item's history: each arrival with its vendor, each issue with its indent and ward, and the stock left. */
+export async function storeItemLedger(store: StoreId, item: { productId: string | null; productName: string }): Promise<LedgerView> {
+  const rows = await storeItemHistory(store, item);
+  const generic = item.productId
+    ? (await dbSelect<{ d: string | null }>(`SELECT NULLIF(TRIM(description), '') AS d FROM products WHERE id = ? AND (tenant_id = ? OR tenant_id IS NULL)`, [item.productId, requireCurrentTenantId()]))[0]?.d ?? null
+    : null;
+  const moves: LedgerMove[] = rows.map((r) => {
+    const number = r.indent_no ?? r.entry_no;
+    return {
+      id: r.id, date: r.date, at: r.created_at, ...STORE_MOVES[r.kind], qty: Number(r.qty),
+      supplied: r.kind === "receipt",
+      ref: !number ? null : r.kind === "issue" ? `Indent ${number}` : `Entry ${r.entry_no ?? number}`,
+      party: r.kind === "issue" ? r.department ?? r.requested_by_name : r.vendor_name,
+      details: [
+        ...(r.kind === "receipt" ? [r.vendor_no ? `Vendor ${r.vendor_no}` : "", r.by_name ? `Received by ${r.by_name}` : ""] : []),
+        ...(r.kind === "issue" ? [
+          r.requested_by_name ? `Requested by ${r.requested_by_name}` : "",
+          r.received_at ? `Receipt confirmed ${dayMonthYear(r.received_at)}${r.received_by_name ? ` by ${r.received_by_name}` : ""}` : "Receipt not confirmed",
+        ] : []),
+        r.notes ?? "",
+        r.kind !== "receipt" && r.by_name ? `By ${r.by_name}` : "",
+      ].filter(Boolean),
+    };
+  });
   return {
-    vendors: sorted(rows.flatMap((row) => [row.vendor_name, row.vendor_no])),
-    products: sorted(rows.map((row) => row.product_name)),
-    companies: sorted(rows.map((row) => row.company_name)),
+    name: item.productName, company: rows.find((r) => r.company_name)?.company_name ?? null, generic, units: {},
+    available: Math.round(rows.reduce((s, r) => s + Number(r.qty), 0) * 1000) / 1000, moves,
   };
 }
 

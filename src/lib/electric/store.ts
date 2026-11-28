@@ -10,6 +10,7 @@
  * Relative imports only (runs under `node --test`).
  */
 
+import { latestLast, oneMovePerDocument, type LedgerView, type MoveKind, type SearchItem } from "../stockLedger.ts";
 import type { RestDb as EsDb, RestContext as EsContext } from "../restaurant/store.ts";
 import {
   type PaymentIn,
@@ -665,6 +666,45 @@ export function createElectricStore(db: EsDb, context: () => EsContext) {
       } else await move(p.id, delta, kind, null, null, p.avg_cost, note.trim());
       await audit(`stock.${kind}`, "product", p.id, { delta, note });
       return owned<EsProduct>("es_products", p.id, "Product");
+    },
+
+    /** The stock search: every product in stock or with a stock movement (also finished), with its company and suppliers. */
+    async stockSearchItems(): Promise<SearchItem[]> {
+      const [products, bought] = await Promise.all([
+        db.select<{ id: string; name: string; sku: string; barcode: string | null; model: string | null; unit: string; stock: number; company: string | null }>(
+          `SELECT id, name, sku, barcode, model, unit, stock, COALESCE(NULLIF(TRIM(manufacturer), ''), NULLIF(TRIM(brand), '')) AS company
+           FROM es_products WHERE tenant_id = ? AND deleted_at IS NULL AND (stock <> 0 OR id IN (SELECT product_id FROM es_stock_moves WHERE tenant_id = ?))
+           ORDER BY name`, [tenant(), tenant()]),
+        db.select<{ pid: string; name: string | null }>(
+          `SELECT i.product_id AS pid, d.party_name AS name FROM es_doc_items i JOIN es_docs d ON d.id = i.doc_id AND d.tenant_id = i.tenant_id
+           WHERE i.tenant_id = ? AND d.doc_type = 'purchase' AND d.deleted_at IS NULL AND i.deleted_at IS NULL ORDER BY d.date, d.created_at`, [tenant()]),
+      ]);
+      const suppliers = latestLast(bought);
+      return products.map((p) => ({ id: p.id, name: p.name, codes: [p.sku, p.barcode, p.model], company: p.company, distributors: suppliers.get(p.id) ?? [], stock: Number(p.stock) || 0, units: { unit: p.unit } }));
+    },
+
+    /** A product's history: each purchase with its supplier, each invoice, returns, adjustments, and the stock left. */
+    async productLedger(productId: string): Promise<LedgerView> {
+      const p = await owned<EsProduct>("es_products", productId, "Product");
+      const rows = await db.select<{ id: string; qty: number; reason: string; note: string | null; created_at: string; created_by: string | null; doc_id: string | null; doc_no: number | null; date: string | null; party: string | null; supplier_no: string | null }>(
+        `SELECT m.id, m.qty, m.reason, m.note, m.created_at, m.created_by, d.id AS doc_id, d.doc_no, d.date, d.party_name AS party, d.supplier_invoice_no AS supplier_no
+         FROM es_stock_moves m LEFT JOIN es_docs d ON d.id = m.doc_id AND d.tenant_id = m.tenant_id
+         WHERE m.tenant_id = ? AND m.product_id = ?`, [tenant(), productId]);
+      const KINDS: Record<string, { kind: MoveKind; label: string; number: string }> = {
+        opening: { kind: "opening", label: "Opening stock", number: "" }, purchase: { kind: "purchase", label: "Purchased", number: "Purchase" },
+        sale: { kind: "sale", label: "Sold", number: "Invoice" }, sale_return: { kind: "sale_return", label: "Sale return", number: "Return" },
+        purchase_return: { kind: "purchase_return", label: "Returned to supplier", number: "Purchase return" },
+        adjustment: { kind: "adjust", label: "Adjusted", number: "" }, count: { kind: "adjust", label: "Stock count", number: "" },
+      };
+      const moves = oneMovePerDocument(rows, (r) => (r.doc_id ? `${r.doc_id} ${r.reason}` : null), (r, qty) => {
+        const k = KINDS[r.reason] ?? { kind: "adjust" as const, label: r.reason.replace(/_/g, " "), number: "" };
+        return {
+          id: r.id, date: (r.date ?? r.created_at).slice(0, 10), at: r.created_at, kind: k.kind, label: k.label, qty, supplied: r.reason === "purchase",
+          ref: r.doc_no != null && k.number ? [`${k.number} #${r.doc_no}`, r.reason === "purchase" && r.supplier_no ? `Bill ${r.supplier_no}` : ""].filter(Boolean).join(" · ") : null,
+          party: r.party, details: [r.note ?? "", r.created_by ? `By ${r.created_by}` : ""].filter(Boolean),
+        };
+      });
+      return { name: p.name, company: p.manufacturer?.trim() || p.brand?.trim() || null, units: { unit: p.unit }, available: Number(p.stock) || 0, moves };
     },
 
     async stockMoves(productId?: string | null, limit = 500) {

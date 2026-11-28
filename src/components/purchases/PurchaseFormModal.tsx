@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { QuickAddDialog } from "@/components/ui/QuickAddDialog";
 import { UnitToggle } from "@/components/ui/UnitToggle";
 import { ProductPicker, type ProductPickerHandle } from "@/components/products/ProductPicker";
+import { DistributorChangeNote } from "@/components/purchases/DistributorChangeNote";
+import { inTurn } from "@/lib/saveQueue";
 import { FormError } from "@/components/ui/FormError";
 import { suppliersRepo } from "@/lib/repo/suppliers";
 import {
@@ -178,6 +180,8 @@ export function PurchaseFormModal({
   draftId,
   fromOrder,
   active = true,
+  onSaving,
+  onAttention,
 }: {
   onClose: () => void;
   onSaved: () => void;
@@ -194,6 +198,10 @@ export function PurchaseFormModal({
   fromOrder?: OrderForPurchase;
   /** False while another tab is in front: shortcuts are ignored. */
   active?: boolean;
+  /** The Windows app: the save runs while the next purchase is entered. Called when it starts... */
+  onSaving?: () => void;
+  /** ...and when it needs the person again (it failed, or asks about a retail price). */
+  onAttention?: () => void;
 }) {
   const isEdit = Boolean(purchase);
   // New purchases are drafted under this id (auto-save + Draft button).
@@ -545,135 +553,143 @@ export function PurchaseFormModal({
     }
     setSaving(true);
     setError(null);
+    const background = Boolean(onSaving) && !isEdit;
+    if (background) onSaving!();
     try {
-      const header = {
-        supplier_id: supplierId,
-        supplier_invoice_no: supplierInvoiceNo || null,
-        discount_rs: Number(discountRs) || 0,
-        tax,
-        payable,
-        paid_amount: Number(paidAmount) || 0,
-        balance,
-        description: description || null,
-        payment_method: paymentMethod,
-      };
-      let purchaseId: string;
-      if (isEdit && purchase) {
-        if (!can("purchase.edit")) throw new Error(NO_PERMISSION_MESSAGE);
-        if (originalLinesKey.current === linesKey(lines)) {
-          await purchasesRepo.update(purchase.id, header);
-          onSaved();
-          return;
-        }
-        // Take the original stock back out first; refuse if part of it has
-        // already been sold, so stock can't go negative.
-        const reversal = await planPurchaseReversal(purchase.id);
-        if (reversal.problems.length > 0) {
-          throw new Error(`This purchase can't be edited:\n${reversal.problems.join("\n")}`);
-        }
-        // Its handsets come out too (refused when one is sold already).
-        await removePurchaseImeis(purchase.id);
-        await applyPurchaseReversal(reversal);
-        for (const item of await listItemsForPurchase(purchase.id)) await purchaseItemsRepo.remove(item.id);
-        await purchasesRepo.update(purchase.id, header);
-        purchaseId = purchase.id;
-      } else {
-        const created = await purchasesRepo.create({
-          ...header,
-          purchase_no: await nextPurchaseNo(),
-          date: localDate(),
-          order_id: fromOrder?.orderId ?? null,
-          discount_pct: 0,
-          bank_id: null,
-          slip_no: null,
-          advance_payment: 0,
-          is_return: 0,
-          original_purchase_id: null,
-        });
-        purchaseId = created.id;
-      }
-
-      // Retail prices this purchase changed (or set for the first time), to ask about afterwards.
-      const repriced: { productId: string; price: number; previousPrice: number }[] = [];
-      for (const l of lines) {
-        // Everything the cashier typed (possibly in the secondary unit, e.g.
-        // Tab) gets normalized back to base units (Pack) here - that's what
-        // product_batches, purchase_items and price_list always store in,
-        // regardless of which unit was used to enter this line.
-        const isSecondary = l.unit === "secondary";
-        const packing = l.product.packing || 1;
-        const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
-        const finalBonus = toBaseUnitQty(l.bonusQty, isSecondary, packing);
-        const finalPurchasePrice = isSecondary ? l.purchasePrice * packing : l.purchasePrice;
-        // Cost of one unit in stock: bonus units came free (85 for 1 + 1 bonus = 42.50).
-        // After the line's extra discount.
-        const lineMath = purchaseLineMath(finalPurchasePrice, finalQty, finalBonus, 0, 0, l.discPct);
-        const netRate = lineMath.netRate;
-        const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
-        const lineTotalValue = lineTotal(l);
-
-        const batch = await receiveStock({
-          productId: l.product.id,
-          batchNo: l.batchNo || null,
-          qty: finalQty + finalBonus,
-          purchasePrice: netRate,
-          expiryDate: l.expiryDate || null,
-          location: null,
-        });
-        if (l.product.track_imei) await receiveImeis({ productId: l.product.id, imeis: parseImeis(l.imeis ?? ""), purchaseId, price: netRate });
-        const item = {
-          purchase_id: purchaseId,
-          product_id: l.product.id,
-          location: null,
-          batch_no: l.batchNo || batch.batch_no,
-          expiry_date: l.expiryDate || null,
-          uom_id: l.product.base_unit_id,
-          purchase_price: finalPurchasePrice,
-          booked_qty: finalQty,
-          received_qty: finalQty,
-          avail_qty: batch.qty,
-          amount: lineMath.amount,
-          st_pct: l.stPct,
-          wht_pct: l.whtPct,
-          disc_pct: Math.min(100, Math.max(0, Number(l.discPct) || 0)),
-          total: lineTotalValue,
+      await inTurn(async () => {
+        const header = {
+          supplier_id: supplierId,
+          supplier_invoice_no: supplierInvoiceNo || null,
+          discount_rs: Number(discountRs) || 0,
+          tax,
+          payable,
+          paid_amount: Number(paidAmount) || 0,
+          balance,
+          description: description || null,
+          payment_method: paymentMethod,
         };
-        if (finalBonus > 0) {
-          try {
-            await purchaseItemsRepo.create({ ...item, bonus_qty: finalBonus });
-          } catch (e) {
-            if (isMissingSchemaError(e)) throw new Error("Bonus on purchases needs the latest database update (v61). Ask the administrator to run it, or save without bonus.");
-            throw e;
+        let purchaseId: string;
+        if (isEdit && purchase) {
+          if (!can("purchase.edit")) throw new Error(NO_PERMISSION_MESSAGE);
+          if (originalLinesKey.current === linesKey(lines)) {
+            await purchasesRepo.update(purchase.id, header);
+            onSaved();
+            return;
           }
+          // Take the original stock back out first; refuse if part of it has
+          // already been sold, so stock can't go negative.
+          const reversal = await planPurchaseReversal(purchase.id);
+          if (reversal.problems.length > 0) {
+            throw new Error(`This purchase can't be edited:\n${reversal.problems.join("\n")}`);
+          }
+          // Its handsets come out too (refused when one is sold already).
+          await removePurchaseImeis(purchase.id);
+          await applyPurchaseReversal(reversal);
+          for (const item of await listItemsForPurchase(purchase.id)) await purchaseItemsRepo.remove(item.id);
+          await purchasesRepo.update(purchase.id, header);
+          purchaseId = purchase.id;
         } else {
-          await purchaseItemsRepo.create(item);
-        }
-        // Only write a new price-list entry when the retail price was
-        // actually changed on this purchase - avoids spamming price_list
-        // with an unchanged duplicate row on every routine purchase.
-        if (Math.abs(finalSalePrice - l.initialSalePrice) > 0.0001) {
-          await priceListRepo.create({
-            product_id: l.product.id,
-            batch_no: l.batchNo || batch.batch_no,
-            sale_price: finalSalePrice,
-            wholesale_price: 0,
-            mrp: l.initialSalePrice > 0 ? 0 : (l.catalogMrp ?? 0),
-            comment: "Updated via Purchase",
+          const created = await purchasesRepo.create({
+            ...header,
+            purchase_no: await nextPurchaseNo(),
+            date: localDate(),
+            order_id: fromOrder?.orderId ?? null,
+            discount_pct: 0,
+            bank_id: null,
+            slip_no: null,
+            advance_payment: 0,
+            is_return: 0,
+            original_purchase_id: null,
           });
-          repriced.push({ productId: l.product.id, price: finalSalePrice, previousPrice: l.initialSalePrice });
+          purchaseId = created.id;
         }
-        // Buying a product from this supplier is what "assigned" means -
-        // Assign To Supplier no longer requires manually re-adding every
-        // product a supplier has already sold you.
-        await assignProductToSupplier(l.product.id, supplierId);
-      }
-      // Saved for real: the in-progress draft is no longer needed.
-      if (!isEdit) await deleteDraft(draftIdRef.current).catch(() => undefined);
-      const questions = await priceQuestions(repriced);
-      if (questions.length) setPriceAsk(questions);
-      else onSaved();
+
+        // Retail prices this purchase changed (or set for the first time), to ask about afterwards.
+        const repriced: { productId: string; price: number; previousPrice: number }[] = [];
+        for (const l of lines) {
+          // Everything the cashier typed (possibly in the secondary unit, e.g.
+          // Tab) gets normalized back to base units (Pack) here - that's what
+          // product_batches, purchase_items and price_list always store in,
+          // regardless of which unit was used to enter this line.
+          const isSecondary = l.unit === "secondary";
+          const packing = l.product.packing || 1;
+          const finalQty = toBaseUnitQty(l.qty, isSecondary, packing);
+          const finalBonus = toBaseUnitQty(l.bonusQty, isSecondary, packing);
+          const finalPurchasePrice = isSecondary ? l.purchasePrice * packing : l.purchasePrice;
+          // Cost of one unit in stock: bonus units came free (85 for 1 + 1 bonus = 42.50).
+          // After the line's extra discount.
+          const lineMath = purchaseLineMath(finalPurchasePrice, finalQty, finalBonus, 0, 0, l.discPct);
+          const netRate = lineMath.netRate;
+          const finalSalePrice = isSecondary ? l.salePrice * packing : l.salePrice;
+          const lineTotalValue = lineTotal(l);
+
+          const batch = await receiveStock({
+            productId: l.product.id,
+            batchNo: l.batchNo || null,
+            qty: finalQty + finalBonus,
+            purchasePrice: netRate,
+            expiryDate: l.expiryDate || null,
+            location: null,
+          });
+          if (l.product.track_imei) await receiveImeis({ productId: l.product.id, imeis: parseImeis(l.imeis ?? ""), purchaseId, price: netRate });
+          const item = {
+            purchase_id: purchaseId,
+            product_id: l.product.id,
+            location: null,
+            batch_no: l.batchNo || batch.batch_no,
+            expiry_date: l.expiryDate || null,
+            uom_id: l.product.base_unit_id,
+            purchase_price: finalPurchasePrice,
+            booked_qty: finalQty,
+            received_qty: finalQty,
+            avail_qty: batch.qty,
+            amount: lineMath.amount,
+            st_pct: l.stPct,
+            wht_pct: l.whtPct,
+            disc_pct: Math.min(100, Math.max(0, Number(l.discPct) || 0)),
+            total: lineTotalValue,
+          };
+          if (finalBonus > 0) {
+            try {
+              await purchaseItemsRepo.create({ ...item, bonus_qty: finalBonus });
+            } catch (e) {
+              if (isMissingSchemaError(e)) throw new Error("Bonus on purchases needs the latest database update (v61). Ask the administrator to run it, or save without bonus.");
+              throw e;
+            }
+          } else {
+            await purchaseItemsRepo.create(item);
+          }
+          // Only write a new price-list entry when the retail price was
+          // actually changed on this purchase - avoids spamming price_list
+          // with an unchanged duplicate row on every routine purchase.
+          if (Math.abs(finalSalePrice - l.initialSalePrice) > 0.0001) {
+            await priceListRepo.create({
+              product_id: l.product.id,
+              batch_no: l.batchNo || batch.batch_no,
+              sale_price: finalSalePrice,
+              wholesale_price: 0,
+              mrp: l.initialSalePrice > 0 ? 0 : (l.catalogMrp ?? 0),
+              comment: "Updated via Purchase",
+            });
+            repriced.push({ productId: l.product.id, price: finalSalePrice, previousPrice: l.initialSalePrice });
+          }
+          // Buying a product from this supplier is what "assigned" means -
+          // Assign To Supplier no longer requires manually re-adding every
+          // product a supplier has already sold you.
+          await assignProductToSupplier(l.product.id, supplierId);
+        }
+        // Saved for real: the in-progress draft is no longer needed.
+        if (!isEdit) await deleteDraft(draftIdRef.current).catch(() => undefined);
+        const questions = await priceQuestions(repriced);
+        if (questions.length) { setPriceAsk(questions); if (background) onAttention?.(); }
+        else onSaved();
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      if (background) {
+        onAttention?.();
+        notify(`The purchase was not saved: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -721,6 +737,10 @@ export function PurchaseFormModal({
             <ProductPicker ref={pickerRef} onSelect={(p) => void addProduct(p)} />
           </div>
         </Field>
+
+        {!isEdit && (
+          <DistributorChangeNote products={lines.map((l) => l.product)} supplierId={supplierId} supplierName={suppliers.find((s) => s.id === supplierId)?.name ?? "another distributor"} />
+        )}
 
         {isPhone ? (
         <div ref={linesRef} onKeyDown={onLineKeyDown} className="flex flex-col gap-2">

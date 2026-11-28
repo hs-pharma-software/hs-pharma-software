@@ -47,6 +47,12 @@ interface FormTabsState {
   activeId: string | null;
   /** All forms hidden (tabs stay open in the floating bar). */
   minimized: boolean;
+  /** Forms saving in the background (the Windows app): hidden until saved. */
+  saving: string[];
+  /** The form's save started: it closes from view and the next one can be entered. */
+  saveStarted: (id: string) => void;
+  /** The save failed, or has a question: the form comes back as it was. */
+  needsAttention: (id: string) => void;
   /** Bumped when a form saves, so list screens know to reload. */
   savedTick: Record<TabKind, number>;
   openNew: (kind: TabKind) => void;
@@ -71,7 +77,13 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
   tabs: [],
   activeId: null,
   minimized: false,
+  saving: [],
   savedTick: { invoice: 0, purchase: 0 },
+
+  saveStarted: (id) =>
+    set((s) => ({ saving: [...s.saving.filter((x) => x !== id), id], activeId: s.activeId === id ? null : s.activeId })),
+
+  needsAttention: (id) => set((s) => ({ saving: s.saving.filter((x) => x !== id), activeId: id, minimized: false })),
 
   openNew: (kind) => {
     if (!canOpenKind(kind)) return;
@@ -86,7 +98,7 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
     if (!canOpenKind("invoice")) return;
     // Reuse an existing rx tab if already open for this prescription.
     const existing = get().tabs.find((t) => t.rxId === rxId);
-    if (existing) return set({ activeId: existing.id, minimized: false });
+    if (existing) return get().activate(existing.id);
     const used = new Set(get().tabs.filter((t) => t.kind === "invoice" && !t.invoice).map((t) => t.seq));
     let seq = 1;
     while (used.has(seq)) seq++;
@@ -97,7 +109,7 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
   openNewFromWebOrder: (webOrderId) => {
     if (!canOpenKind("invoice")) return;
     const existing = get().tabs.find((t) => t.webOrderId === webOrderId);
-    if (existing) return set({ activeId: existing.id, minimized: false });
+    if (existing) return get().activate(existing.id);
     const used = new Set(get().tabs.filter((t) => t.kind === "invoice" && !t.invoice).map((t) => t.seq));
     let seq = 1;
     while (used.has(seq)) seq++;
@@ -117,7 +129,7 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
 
   openEditInvoice: (invoice) => {
     const existing = get().tabs.find((t) => t.invoice?.id === invoice.id);
-    if (existing) return set({ activeId: existing.id, minimized: false });
+    if (existing) return get().activate(existing.id);
     const tab: FormTab = { id: newId(), kind: "invoice", seq: 0, invoice };
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
   },
@@ -133,7 +145,7 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
 
   openEditPurchase: (purchase) => {
     const existing = get().tabs.find((t) => t.purchase?.id === purchase.id);
-    if (existing) return set({ activeId: existing.id, minimized: false });
+    if (existing) return get().activate(existing.id);
     const tab: FormTab = { id: newId(), kind: "purchase", seq: 0, purchase };
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
   },
@@ -141,12 +153,12 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
   openPurchaseDraft: (draftId) => {
     if (!canOpenKind("purchase")) return;
     const existing = get().tabs.find((t) => t.draftId === draftId);
-    if (existing) return set({ activeId: existing.id, minimized: false });
+    if (existing) return get().activate(existing.id);
     const tab: FormTab = { id: newId(), kind: "purchase", seq: 0, draftId };
     set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id, minimized: false }));
   },
 
-  activate: (id) => set({ activeId: id, minimized: false }),
+  activate: (id) => { if (!get().saving.includes(id)) set({ activeId: id, minimized: false }); },
 
   close: (id) =>
     set((s) => {
@@ -154,14 +166,15 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
       const tabs = s.tabs.filter((t) => t.id !== id);
       let activeId = s.activeId;
       if (s.activeId === id) activeId = tabs[Math.min(idx, tabs.length - 1)]?.id ?? null;
-      return { tabs, activeId };
+      return { tabs, activeId, saving: s.saving.filter((x) => x !== id) };
     }),
 
   cycle: (dir) =>
     set((s) => {
-      if (s.tabs.length === 0) return {};
-      const idx = Math.max(0, s.tabs.findIndex((t) => t.id === s.activeId));
-      const next = s.tabs[(idx + dir + s.tabs.length) % s.tabs.length];
+      const open = s.tabs.filter((t) => !s.saving.includes(t.id));
+      if (open.length === 0) return {};
+      const idx = open.findIndex((t) => t.id === s.activeId);
+      const next = open[idx < 0 ? 0 : (idx + dir + open.length) % open.length];
       return { activeId: next.id, minimized: false };
     }),
 
@@ -174,5 +187,5 @@ export const useFormTabs = create<FormTabsState>()((set, get) => ({
 // parties: close them all whenever the signed-in tenant changes (switch,
 // logout), so nothing from one business is shown or saved under another.
 useAuthStore.subscribe((s, prev) => {
-  if (s.currentTenant?.id !== prev.currentTenant?.id) useFormTabs.setState({ tabs: [], activeId: null, minimized: false });
+  if (s.currentTenant?.id !== prev.currentTenant?.id) useFormTabs.setState({ tabs: [], activeId: null, minimized: false, saving: [] });
 });

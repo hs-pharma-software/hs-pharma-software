@@ -70,12 +70,16 @@ interface Bridge {
   moduleCall?(a: { module: string; fn: string; args: unknown[] }): Promise<Res<{ result: unknown; offlineRef: string; callId: string }>>;
   syncNow(): Promise<Res<DesktopStatus>>;
   printText(text: string): Promise<Res<boolean>>;
+  /** The page's print area on the default printer, without a dialog (desktop 0.3.10+). */
+  printPage?(a: { widthMm: number; heightMm: number; marginMm: number }): Promise<Res<boolean>>;
   /** The session of the login last signed in on this computer (opened without a password), or null (desktop 0.3.8+). */
   resumeSession?(userId?: string): Promise<Res<unknown>>;
   /** Signed out on purpose: the next opening asks for the password (desktop 0.3.8+). */
   signOut?(): Promise<Res<{ ok: boolean }>>;
   onStatus(cb: (s: DesktopStatus) => void): () => void;
 }
+
+export type DesktopBridge = Bridge;
 
 export function desktopBridge(): Bridge | null {
   if (typeof window === "undefined") return null;

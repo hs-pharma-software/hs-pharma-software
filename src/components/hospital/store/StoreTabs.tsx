@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Bell } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { localDate } from "@/lib/localDate";
 import type { StoreId } from "@/config/hospitalStores";
 import {
-  DEAD_REASONS, deadStockRegister, recordDeadStock, storeDashboard, storeRegister, storeRegisterSuggestions, storeStock,
-  type RegisterRow, type RegisterSuggestions, type StoreDashboard, type StoreMove, type StoreStockRow,
+  DEAD_REASONS, deadStockRegister, recordDeadStock, storeDashboard, storeItemLedger, storeRegister, storeSearchItems, storeStock,
+  type RegisterRow, type StoreDashboard, type StoreMove, type StoreSearchItem, type StoreStockRow,
 } from "@/lib/repo/hospitalStores";
 import { decideIndentReturn, issueIndent, issueIndentBook, listIndentBooks, storeIndents, type IndentBook, type IndentWithItems } from "@/lib/repo/storeIndents";
-import { StockHistoryModal } from "./StockHistoryModal";
+import { StockSearchBox, type StockPick } from "@/components/stock/StockSearchBox";
+import { ProductLedgerModal } from "@/components/stock/ProductLedger";
+import { matchingItems } from "@/lib/stockLedger";
 
 const card = "rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04]";
 const money = (n: number) => Number(n).toLocaleString("en-PK", { maximumFractionDigits: 2 });
@@ -132,35 +134,45 @@ export function StoreIndentsTab({ store }: { store: StoreId }) {
   );
 }
 
-/** Every movement of the store, searchable by vendor number / name, item, company and dates. */
+/** Every movement of the store, searched by item, company, vendor or generic name, between dates.
+ * An item opens its history with the stock available. */
 export function StoreRegisterTab({ store }: { store: StoreId }) {
-  const [f, setF] = useState({ from: `${localDate().slice(0, 7)}-01`, to: localDate(), vendor: "", product: "", company: "" });
-  const [rows, setRows] = useState<RegisterRow[]>([]);
+  const [f, setF] = useState({ from: `${localDate().slice(0, 7)}-01`, to: localDate() });
+  const [all, setAll] = useState<RegisterRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<RegisterSuggestions>({ vendors: [], products: [], companies: [] });
+  const [items, setItems] = useState<StoreSearchItem[]>([]);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [pick, setPick] = useState<StockPick | null>(null);
   const [history, setHistory] = useState<{ productId: string | null; productName: string } | null>(null);
-  const id = useId();
   useEffect(() => {
     let active = true;
-    setSuggestions({ vendors: [], products: [], companies: [] });
-    void storeRegisterSuggestions(store).then((result) => {
-      if (active) { setSuggestions(result); setSuggestionError(null); }
+    setItems([]);
+    setPick(null);
+    void storeSearchItems(store).then((result) => {
+      if (active) { setItems(result); setSuggestionError(null); }
     }).catch((e: unknown) => { if (active) setSuggestionError(msg(e)); });
     return () => { active = false; };
   }, [store]);
-  useEffect(() => { const t = setTimeout(() => void storeRegister(store, f).then((r) => { setRows(r); setError(null); }).catch((e) => setError(msg(e))), 250); return () => clearTimeout(t); }, [store, f]);
+  // A company or distributor is filtered by the database, so older entries of it are found too.
+  const filter = useMemo(() => ({ ...f, company: pick?.kind === "company" ? pick.value : "", vendor: pick?.kind === "distributor" ? pick.value : "" }), [f, pick]);
+  useEffect(() => { const t = setTimeout(() => void storeRegister(store, filter).then((r) => { setAll(r); setError(null); }).catch((e) => setError(msg(e))), 250); return () => clearTimeout(t); }, [store, filter]);
+  const rows = useMemo(() => {
+    if (!pick || pick.kind === "company" || pick.kind === "distributor") return all;
+    const keys = new Set(matchingItems(items, pick).map((i) => i.id));
+    return all.filter((r) => keys.has(r.product_id ?? r.product_name.toLowerCase()));
+  }, [all, items, pick]);
+  function choose(next: StockPick | null) {
+    setPick(next);
+    const item = next?.kind === "product" ? items.find((i) => i.id === next.value) : undefined;
+    if (item) setHistory({ productId: item.productId, productName: item.name });
+  }
+  const loadHistory = useCallback(() => storeItemLedger(store, history!), [store, history]);
   return (
     <div className={card}>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <StockSearchBox items={items} picked={pick} onPick={choose} placeholder="Item, company, distributor, vendor no. or generic name" />
         <Field label="From"><Input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></Field>
         <Field label="To"><Input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></Field>
-        <Field label="Vendor (name or no.)"><Input list={`${id}-vendors`} value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} placeholder="e.g. V-0003" /></Field>
-        <Field label="Item"><Input list={`${id}-products`} value={f.product} onChange={(e) => setF({ ...f, product: e.target.value })} /></Field>
-        <Field label="Company"><Input list={`${id}-companies`} value={f.company} onChange={(e) => setF({ ...f, company: e.target.value })} /></Field>
-        <datalist id={`${id}-vendors`}>{suggestions.vendors.map((value) => <option key={value} value={value} />)}</datalist>
-        <datalist id={`${id}-products`}>{suggestions.products.map((value) => <option key={value} value={value} />)}</datalist>
-        <datalist id={`${id}-companies`}>{suggestions.companies.map((value) => <option key={value} value={value} />)}</datalist>
       </div>
       {error && <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
       {suggestionError && <p role="alert" className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">Could not load suggestions: {suggestionError}</p>}
@@ -184,7 +196,7 @@ export function StoreRegisterTab({ store }: { store: StoreId }) {
           </table>
         </div>
       )}
-      {history && <StockHistoryModal store={store} item={history} onClose={() => setHistory(null)} />}
+      {history && <ProductLedgerModal title={history.productName} load={loadHistory} onClose={() => setHistory(null)} />}
     </div>
   );
 }

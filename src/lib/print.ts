@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { PAPERS, type PaperSize } from "./printTemplates";
 import { isTauri } from "./platform";
 import { localBridge } from "./edition";
+import { desktopBridge } from "./desktopBridge";
 
 const PX_PER_MM = 96 / 25.4;
 
@@ -25,6 +26,13 @@ export async function printDirect(paper: PaperSize, area?: HTMLElement | null): 
   }
   const heightMm =
     paper === "a4" ? 297 : paper === "a5" ? 210 : Math.ceil((area?.scrollHeight ?? 600) / PX_PER_MM) + p.marginMm * 2 + 5;
+  // The MAVIN Windows app: straight to Windows' default printer, without a dialog.
+  const desktop = desktopBridge();
+  if (desktop?.printPage) {
+    const r = await desktop.printPage({ widthMm: p.widthMm, heightMm, marginMm: p.marginMm });
+    if (!r.ok) throw new Error(`${r.error} Check the default printer in Windows.`);
+    return;
+  }
   // Mavin Pharmacy Offline: Windows printing through the desktop (default printer, no dialog).
   const local = localBridge();
   if (local) {
