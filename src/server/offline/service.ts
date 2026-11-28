@@ -17,6 +17,7 @@ import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 
 import { formatMr } from "@/lib/hospitalMr";
 import type { Sql } from "../subSupers";
 import { callerCan, type Caller } from "../sqlPolicy";
+import { toCurrentPacking } from "../catalogPacking";
 import { HttpError } from "../db";
 import { KEEP_DAYS, pruneOldest } from "../prune";
 import { deviceReenrolMail, type SendMail } from "../mailer";
@@ -650,12 +651,15 @@ function headerValues(s: SalePayload) {
  * the operation record, the invoice (server number + the device's receipt
  * number), its lines, the stock taken and any stock exceptions. */
 export async function applySale(sql: Sql, d: Device, op: Operation, decidedBy: string | null = null): Promise<PushResult> {
-  const s: SalePayload = op.payload;
+  let s: SalePayload = op.payload;
   const T = d.tenant_id, B = d.branch_id;
   if (!s.offlineRef?.startsWith(`${d.device_code}-`)) return reject(sql, d, op, "Receipt number does not belong to this device.");
   const refs = await checkSaleRefs(sql, d, op);
   if ("hold" in refs) return holdOp(sql, d, op, refs.hold);
   if ((await sql.execute(`SELECT 1 FROM invoices WHERE id = ?`, [s.saleId])).rows[0]) return reject(sql, d, op, "A sale with this id already exists.");
+  // Made with a pack size that has since changed: booked in the current one.
+  s = { ...s, lines: await toCurrentPacking(sql, s.lines) };
+  op = { ...op, payload: s };
   const { takes, shortfalls } = planTakes(s, refs.batches);
   const status: PushResult["status"] = shortfalls.length ? "conflict" : "applied";
   const now = iso();
@@ -767,7 +771,7 @@ async function userMayEdit(sql: Sql, tenantId: string, userId: string): Promise<
  * invoice changed elsewhere after this computer saw it, was submitted to FBR,
  * is not a sale of this branch, or the user may not edit invoices. */
 export async function applyEdit(sql: Sql, d: Device, op: Operation, decidedBy: string | null = null): Promise<PushResult> {
-  const s: SalePayload = op.payload;
+  let s: SalePayload = op.payload;
   const T = d.tenant_id, B = d.branch_id;
   const inv = (await sql.execute(`SELECT * FROM invoices WHERE id = ? AND tenant_id = ?`, [s.saleId, T])).rows[0];
   if (!inv || inv.deleted_at != null) return holdOp(sql, d, op, "The invoice of this edit is not on MAVIN.pk (deleted, or never received). Review it.");
@@ -802,6 +806,8 @@ export async function applyEdit(sql: Sql, d: Device, op: Operation, decidedBy: s
     back.set(String(b.id), (back.get(String(b.id)) ?? 0) + (Number(it.qty) || 0) + (Number(it.bonus_qty) || 0));
   }
   // Batches given stock back that the new lines do not use are read too (for the guard).
+  s = { ...s, lines: await toCurrentPacking(sql, s.lines) };
+  op = { ...op, payload: s };
   const { takes, shortfalls } = planTakes(s, refs.batches, back);
   const status: PushResult["status"] = shortfalls.length ? "conflict" : "applied";
   const now = iso();

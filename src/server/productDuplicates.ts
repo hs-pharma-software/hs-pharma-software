@@ -213,6 +213,10 @@ export async function mergeProducts(sql: Sql, caller: Caller, b: Record<string, 
         const clash = (await tx.execute(`SELECT COUNT(*) AS n FROM es_serials a JOIN es_serials b ON b.tenant_id = a.tenant_id AND b.serial = a.serial AND b.product_id = ? WHERE a.product_id = ?`, [survivorId, mid])).rows[0];
         if (num(clash?.n) > 0) throw new HttpError(409, `${M.name} and the kept product share serial numbers: they cannot be merged.`);
       }
+      // One usual catalogue price per product: the kept product's own wins.
+      if (tables.some((x) => x.table === "catalog_prices")) {
+        await tx.execute(`DELETE FROM catalog_prices WHERE product_id = ? AND EXISTS (SELECT 1 FROM catalog_prices WHERE product_id = ?)`, [mid, survivorId]);
+      }
       for (const { table, hasUpdated } of tables) {
         const r = await tx.execute(`UPDATE ${table} SET product_id = ?${hasUpdated ? ", updated_at = ?" : ""} WHERE product_id = ?`, hasUpdated ? [survivorId, t, mid] : [survivorId, mid]);
         if (r.rowsAffected) moved[table] = (moved[table] ?? 0) + r.rowsAffected;

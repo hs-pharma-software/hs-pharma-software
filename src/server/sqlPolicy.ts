@@ -111,7 +111,7 @@ const AUTH_ONLY_WRITES = new Set(["users"]);
 /** Device-only tables and internal tables are never reached from the browser.
  * vendor_portal_logins (which supplier a vendor login is) is kept by the
  * server's Vendor Logins route only (src/server/vendorPortal.ts). */
-const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log", "password_resets", "vendor_portal_logins", "product_merges", "product_duplicate_dismissals"]);
+const NEVER = new Set(["local_secrets", "local_assets", "sqlite_master", "sqlite_schema", "sqlite_sequence", "server_audit_log", "password_resets", "vendor_portal_logins", "product_merges", "product_duplicate_dismissals", "catalog_prices", "catalog_price_proposals", "catalog_price_responses", "catalog_change_requests"]);
 /** A vendor's quoted rates are written by the vendor, through the vendor portal only:
  * the hospital reads them but cannot change what a vendor quoted. */
 const VENDOR_ONLY_WRITES = new Set(["hospital_rfq_quotes"]);

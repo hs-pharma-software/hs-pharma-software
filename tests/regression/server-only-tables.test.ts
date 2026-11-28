@@ -12,7 +12,7 @@ const owner: Caller = { userId: "u1", role: "owner", tenantId: "t1", permissions
 const cashier: Caller = { userId: "s1", role: "staff", tenantId: "t1", permissions: ["invoices"] } as Caller;
 
 test("offline device, payment and FBR tables are refused to browser logins, reads and writes", () => {
-  const tables = ["offline_devices", "payment_merchants", "fbr_credentials", "fbr_submissions"];
+  const tables = ["offline_devices", "payment_merchants", "fbr_credentials", "fbr_submissions", "catalog_prices", "catalog_price_proposals", "catalog_price_responses", "catalog_change_requests"];
   for (const t of tables) assert.ok(known.has(t), `${t} exists in the schema`);
   for (const caller of [owner, cashier]) {
     for (const t of tables) {

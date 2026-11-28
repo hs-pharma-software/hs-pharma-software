@@ -79,6 +79,15 @@ export async function shareToCatalog(sql: Sql, caller: Caller, b: Record<string,
     return out;
   };
 
+  /** The business's own retail price and MRP become the catalogue's usual ones
+   * (schema v114), unless the product already has them. */
+  const usualPrice = (productId: string, fromId: string) => ({
+    sql: `INSERT OR IGNORE INTO catalog_prices (product_id, sale_price, mrp, source_tenant_id, updated_at)
+          SELECT ?, sale_price, COALESCE((SELECT m.mrp FROM price_list m WHERE m.product_id = ? AND m.tenant_id = ? AND m.deleted_at IS NULL AND m.mrp > 0 ORDER BY m.created_at DESC LIMIT 1), 0), tenant_id, ?
+          FROM price_list WHERE product_id = ? AND tenant_id = ? AND deleted_at IS NULL AND sale_price > 0 ORDER BY created_at DESC LIMIT 1`,
+    args: [productId, fromId, tenantId, now, fromId, tenantId],
+  });
+
   const res: ShareResult = { shared: 0, merged: 0, skipped: [], remaining: 0 };
   const flush = async () => { if (pending.length) { await sql.batch(pending.splice(0)); } };
   for (const p of batch) {
@@ -87,7 +96,12 @@ export async function shareToCatalog(sql: Sql, caller: Caller, b: Record<string,
     if (same) {
       // Already in the catalogue: one product, the pharmacy's records move onto it.
       await flush();
-      try { await mergeProducts(sql, caller, { survivorId: same, mergeIds: [String(p.id)], fillBlanks: true }); res.merged++; }
+      try {
+        const price = usualPrice(same, String(p.id));
+        await sql.execute(price.sql, price.args);
+        await mergeProducts(sql, caller, { survivorId: same, mergeIds: [String(p.id)], fillBlanks: true });
+        res.merged++;
+      }
       catch (e) { res.skipped.push({ name, reason: e instanceof Error ? e.message : String(e) }); }
       continue;
     }
@@ -98,6 +112,7 @@ export async function shareToCatalog(sql: Sql, caller: Caller, b: Record<string,
       args: [target, target, await sharedOf("uoms", p.base_unit_id), await sharedOf("uoms", p.secondary_unit_id), category,
         await sharedOf("sub_categories", p.sub_category_id, category), now, p.id, tenantId],
     });
+    pending.push(usualPrice(String(p.id), String(p.id)));
     sharedByName.set(normalizeName(name), String(p.id));
     res.shared++;
     if (pending.length >= 100) await flush();

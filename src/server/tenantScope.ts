@@ -290,6 +290,25 @@ function assertTablesScoped(mask: string, schema: Schema, scoped: Set<number>, c
   }
 }
 
+/** A shared catalogue product keeps its pack size once its units are set: the
+ * assignment keeps the old value there. A new pack size goes to the Super Admin
+ * (src/server/catalogChanges.ts), who converts every business's stock. */
+function keepSharedPacking(mask: string, start: number, end: number): Edit[] {
+  const edits: Edit[] = [];
+  for (const [a, b] of splitTop(mask, start, end)) {
+    const m = /^\s*packing\s*=\s*/i.exec(mask.slice(a, b));
+    if (m) {
+      const from = a + m[0].length;
+      const to = a + mask.slice(a, b).replace(/[\s;]+$/, "").length;
+      edits.push({ at: from, end: from, text: "CASE WHEN tenant_id IS NULL AND secondary_unit_id IS NOT NULL AND packing > 0 THEN packing ELSE (" });
+      edits.push({ at: to, end: to, text: ") END" });
+    } else if (/^\s*\([^)]*\bpacking\b[^)]*\)\s*=/i.test(mask.slice(a, b))) {
+      throw new ScopeError("Assign the pack size on its own.");
+    }
+  }
+  return edits;
+}
+
 /** The columns an UPDATE's SET assigns, including (a, b) = (...) forms. */
 function assignedColumns(mask: string, start: number, end: number): string[] {
   const out: string[] = [];
@@ -388,7 +407,9 @@ export function scopeStatement(sql: string, args: unknown[], s: Scope, schema: S
       if (!setAt) throw new ScopeError("Unrecognised statement.");
       const ends = [topLevel(mask, setAt.index, /^FROM\b/i), topLevel(mask, setAt.index, /^WHERE\b/i), topLevel(mask, setAt.index, /^(ORDER\s+BY|LIMIT|RETURNING)\b/i)]
         .filter((x): x is { index: number; length: number } => !!x).map((x) => x.index);
-      const changed = assignedColumns(mask, setAt.index + setAt.length, ends.length ? Math.min(...ends) : mask.replace(/[\s;]+$/, "").length);
+      const setEnd = ends.length ? Math.min(...ends) : mask.replace(/[\s;]+$/, "").length;
+      const changed = assignedColumns(mask, setAt.index + setAt.length, setEnd);
+      if (table === "products" && changed.includes("packing")) edits.push(...keepSharedPacking(mask, setAt.index + setAt.length, setEnd));
       if (changed.includes("tenant_id")) throw new ScopeError("Records cannot be moved to another business.");
       if (changed.includes("branch_id")) throw new ScopeError("Records cannot be moved to another branch here; use a stock transfer.");
       if (table === "users") {

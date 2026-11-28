@@ -15,6 +15,7 @@ export const REPLICA_EXCLUDED = new Set([
   "payment_merchants", "payment_attempts", "payment_audit", "payment_events", "payment_refunds", "payment_access_requests",
   "business_link_tokens", "backups", "server_audit_log", "catalog_ownership_log", "onboarding_requests",
   "dist_loc_points", "dist_loc_sessions",
+  "catalog_prices", "catalog_price_proposals", "catalog_price_responses", "catalog_change_requests",
   "web_audit", "web_requests", "web_revisions", "web_files", "web_media", "web_domains", "web_sites", "web_pages", "web_products",
 ]);
 

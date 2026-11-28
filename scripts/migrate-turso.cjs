@@ -407,6 +407,7 @@ const MIGRATIONS = [
   { version: 111, label: 'eProcurement: vendor sign-up and registration, Super Admin approval, business types', statements: rustSchemaStatementsWithTriggers(111) },
   { version: 112, label: 'Super Admin: duplicate products and merges', statements: rustSchemaStatementsWithTriggers(112) },
   { version: 113, label: 'MAVIN Offline: where each computer keeps its data (for the Super Admin)', statements: rustSchemaStatementsWithTriggers(113) },
+  { version: 114, label: 'Shared catalogue: usual prices and weekly price increases', statements: rustSchemaStatementsWithTriggers(114) },
 
   { version: 22, label: 'products.fbr_qty_factor + reclassify 4 non-medicines', statements: [
     `ALTER TABLE products ADD COLUMN fbr_qty_factor REAL DEFAULT 1`,

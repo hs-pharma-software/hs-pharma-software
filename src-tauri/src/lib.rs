@@ -1907,6 +1907,42 @@ fn schema_sql_v113() -> &'static str {
     "#
 }
 
+fn schema_sql_v114() -> &'static str {
+    r#"
+    -- Shared catalogue prices (pharmacy and general store). A shared product's
+    -- usual retail price and MRP (per base unit) prefill a business's first
+    -- purchase of it. A price increase a business confirms in a purchase is
+    -- proposed to the others for a week: once enough of them confirm it, it
+    -- becomes the usual price. A business's own price is only changed by that
+    -- business. Server-only (src/server/catalogPrices.ts).
+    CREATE TABLE IF NOT EXISTS catalog_prices (
+        product_id TEXT PRIMARY KEY, sale_price REAL NOT NULL, mrp REAL NOT NULL DEFAULT 0, source_tenant_id TEXT, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS catalog_price_proposals (
+        id TEXT PRIMARY KEY, product_id TEXT NOT NULL, catalog_group TEXT NOT NULL, proposed_by TEXT NOT NULL,
+        old_price REAL NOT NULL DEFAULT 0, new_price REAL NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL, expires_at TEXT NOT NULL, accepted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_catalog_price_proposals_open ON catalog_price_proposals (expires_at, status);
+    CREATE INDEX IF NOT EXISTS idx_catalog_price_proposals_product ON catalog_price_proposals (product_id);
+    CREATE TABLE IF NOT EXISTS catalog_price_responses (
+        id TEXT PRIMARY KEY, proposal_id TEXT NOT NULL, tenant_id TEXT NOT NULL, answer TEXT NOT NULL, user_id TEXT, created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_catalog_price_responses ON catalog_price_responses (proposal_id, tenant_id);
+    -- A lower retail price, or a new pack size, of a shared product: a business
+    -- reports it and the Super Admin decides. An approved pack size converts
+    -- every business's stock and records (src/server/catalogChanges.ts).
+    CREATE TABLE IF NOT EXISTS catalog_change_requests (
+        id TEXT PRIMARY KEY, product_id TEXT NOT NULL, catalog_group TEXT NOT NULL, kind TEXT NOT NULL, tenant_id TEXT NOT NULL, user_id TEXT,
+        old_price REAL NOT NULL DEFAULT 0, new_price REAL NOT NULL DEFAULT 0, old_packing REAL, new_packing REAL, note TEXT,
+        status TEXT NOT NULL DEFAULT 'pending', approved_price REAL, approved_mrp REAL, moved TEXT,
+        created_at TEXT NOT NULL, decided_at TEXT, decided_by TEXT, decision_note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_catalog_change_requests_status ON catalog_change_requests (status, decided_at);
+    CREATE INDEX IF NOT EXISTS idx_catalog_change_requests_product ON catalog_change_requests (product_id)
+    "#
+}
+
 fn schema_sql_v111() -> &'static str {
     r#"
     -- eProcurement vendor registration. A vendor signs up at ep.mavin.pk and
@@ -7349,6 +7385,12 @@ fn all_migrations() -> Vec<Migration> {
             version: 113,
             description: "offline_device_data_path",
             sql: schema_sql_v113(),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 114,
+            description: "shared_catalog_prices",
+            sql: schema_sql_v114(),
             kind: MigrationKind::Up,
         },
     ]

@@ -261,6 +261,8 @@ async function pageRequest(a: unknown) {
  * or database statements that only read. Saves are never repeated. */
 function safeToRepeat(method: string, path: string, body: string | undefined) {
   if (method === "GET" || path.startsWith("/api/auth/login")) return true;
+  // Reading shared catalogue prices changes nothing of the business's own.
+  if (path.startsWith("/api/catalog/prices") && /"action":"(defaults|notices)"/.test(body ?? "")) return true;
   if (!path.startsWith("/api/db") || !body) return false;
   try {
     const b = JSON.parse(body) as { statements?: { sql?: unknown }[] };

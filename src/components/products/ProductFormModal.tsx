@@ -26,6 +26,7 @@ import type { Category, SubCategory, Uom, Product } from "@/lib/types";
 import { imeiListProblem, parseImeis, receiveImeis } from "@/lib/repo/imei";
 import { CLOTH_SIZES, CLOTH_TYPES, MULTIPLE_SIZE, MULTI_SIZE_CHOICES, MULTI_SIZE_DEFAULT, loadClothTypes, sizedName } from "@/lib/cloth";
 import { notify } from "@/lib/notify";
+import { catalogPricesAvailable, requestPacking } from "@/lib/repo/catalogPrices";
 
 function UomCombobox({ value, onChange, uoms, required, placeholder }: {
   value: string;
@@ -348,6 +349,14 @@ export function ProductFormModal({
     }
     setSaving(true);
     try {
+      // A shared product's pack size is the same for every business: a new one goes
+      // to MAVIN.pk, which converts everyone's stock when it approves it.
+      if (product && product.tenant_id == null && product.secondary_unit_id && Number(product.packing) > 0 && packingNum !== Number(product.packing) && catalogPricesAvailable()) {
+        const r = await requestPacking(product.id, packingNum);
+        setPacking(String(product.packing));
+        notify(`${r.requested ? "The new pack size was sent to MAVIN.pk for approval" : "This pack size is already waiting for MAVIN.pk's approval"}. Nothing else was saved: check the form (the pack size is back to ${product.packing}) and save again.`, "info");
+        return;
+      }
       // Determine if this product should go into the shared catalog.
       // Pharmacy-family and general-store tenants use the shared catalog;
       // all others create tenant-private products.

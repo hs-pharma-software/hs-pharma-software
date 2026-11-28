@@ -25,6 +25,8 @@ import type { OrderForPurchase } from "@/lib/repo/orders";
 import { purchaseLineMath } from "@/lib/purchaseMath";
 import { isMissingSchemaError } from "@/lib/dbErrors";
 import { getLatestPrice, priceListRepo, productsRepo } from "@/lib/repo/products";
+import { catalogDefaultPrice, priceQuestions, type PriceQuestion } from "@/lib/repo/catalogPrices";
+import { RetailPriceQuestion } from "./RetailPriceQuestion";
 import {
   deleteDraft,
   parseDraft,
@@ -63,6 +65,8 @@ interface Line {
    * change on this purchase. */
   salePrice: number;
   initialSalePrice: number;
+  /** A shared product bought for the first time: the catalogue's usual MRP, saved with its price. */
+  catalogMrp?: number;
   /** Which unit qty/purchasePrice/salePrice above are currently expressed
    * in - everything is normalized back to base units (packs) on save, same
    * as product_batches/price_list always store. */
@@ -155,6 +159,15 @@ function makeLine(p: Product): Line {
     initialSalePrice: 0,
     unit: "base",
   };
+}
+
+/** A new line's retail price: the business's own; for a shared product it has
+ * never priced, the catalogue's usual price (saved as its own with the purchase). */
+async function startPrice(productId: string): Promise<Pick<Line, "salePrice" | "initialSalePrice" | "catalogMrp">> {
+  const own = await getLatestPrice(productId);
+  if (own) return { salePrice: own.salePrice, initialSalePrice: own.salePrice };
+  const usual = await catalogDefaultPrice(productId);
+  return { salePrice: usual?.salePrice ?? 0, initialSalePrice: 0, catalogMrp: usual?.mrp || undefined };
 }
 
 export function PurchaseFormModal({
@@ -270,8 +283,7 @@ export function PurchaseFormModal({
       for (const l of fromOrder.lines) {
         const product = await productsRepo.get(l.productId);
         if (!product) continue;
-        const salePrice = (await getLatestPrice(l.productId))?.salePrice ?? 0;
-        built.push({ ...makeLine(product), qty: l.qty, purchasePrice: l.purchasePrice, salePrice, initialSalePrice: salePrice });
+        built.push({ ...makeLine(product), qty: l.qty, purchasePrice: l.purchasePrice, ...(await startPrice(l.productId)) });
       }
       setLines(built);
       setLoadingExisting(false);
@@ -304,11 +316,10 @@ export function PurchaseFormModal({
   // initializer above can't await the price-list lookup itself).
   useEffect(() => {
     if (!initialProducts || initialProducts.length === 0) return;
-    void Promise.all(initialProducts.map((p) => getLatestPrice(p.id))).then((prices) => {
+    void Promise.all(initialProducts.map((p) => startPrice(p.id))).then((prices) => {
       setLines((prev) =>
         prev.map((l, i) => {
-          const price = prices[i]?.salePrice ?? 0;
-          return { ...l, salePrice: price, initialSalePrice: price };
+          return prices[i] ? { ...l, ...prices[i] } : l;
         })
       );
     });
@@ -412,6 +423,7 @@ export function PurchaseFormModal({
   const pickerRef = useRef<ProductPickerHandle>(null);
   const linesRef = useRef<HTMLDivElement>(null);
   const focusRow = useRef<number | null>(null);
+  const [priceAsk, setPriceAsk] = useState<PriceQuestion[] | null>(null);
   // Focus the row's first field when none is empty (a product picked again).
   const focusFirstIfNone = useRef(false);
   // Phones: the field to focus once its (just opened) row has rendered.
@@ -473,10 +485,9 @@ export function PurchaseFormModal({
       return;
     }
     if (!unitsSet(p)) notify(`${p.name}: ${missingUnitLabel(p)}. Set its base unit, secondary unit and packing before saving the purchase.`);
-    const price = await getLatestPrice(p.id);
-    const salePrice = price?.salePrice ?? 0;
+    const price = await startPrice(p.id);
     focusRow.current = lines.length;
-    setLines((prev) => [...prev, { ...makeLine(p), salePrice, initialSalePrice: salePrice }]);
+    setLines((prev) => [...prev, { ...makeLine(p), ...price }]);
     // Phones: the new product opens for entry and the previous one closes.
     setOpenRow(lines.length);
   }
@@ -582,6 +593,8 @@ export function PurchaseFormModal({
         purchaseId = created.id;
       }
 
+      // Retail prices this purchase changed (or set for the first time), to ask about afterwards.
+      const repriced: { productId: string; price: number; previousPrice: number }[] = [];
       for (const l of lines) {
         // Everything the cashier typed (possibly in the secondary unit, e.g.
         // Tab) gets normalized back to base units (Pack) here - that's what
@@ -644,9 +657,10 @@ export function PurchaseFormModal({
             batch_no: l.batchNo || batch.batch_no,
             sale_price: finalSalePrice,
             wholesale_price: 0,
-            mrp: 0,
+            mrp: l.initialSalePrice > 0 ? 0 : (l.catalogMrp ?? 0),
             comment: "Updated via Purchase",
           });
+          repriced.push({ productId: l.product.id, price: finalSalePrice, previousPrice: l.initialSalePrice });
         }
         // Buying a product from this supplier is what "assigned" means -
         // Assign To Supplier no longer requires manually re-adding every
@@ -655,13 +669,18 @@ export function PurchaseFormModal({
       }
       // Saved for real: the in-progress draft is no longer needed.
       if (!isEdit) await deleteDraft(draftIdRef.current).catch(() => undefined);
-      onSaved();
+      const questions = await priceQuestions(repriced);
+      if (questions.length) setPriceAsk(questions);
+      else onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
   }
+
+  // Saved; one question about changed retail prices before the form closes.
+  if (priceAsk) return <RetailPriceQuestion questions={priceAsk} onDone={onSaved} />;
 
   return (
     <Modal title={isEdit ? `Edit Purchase #${purchase?.purchase_no ?? ""}` : "Add Purchase"} onClose={onClose} width="max-w-6xl">

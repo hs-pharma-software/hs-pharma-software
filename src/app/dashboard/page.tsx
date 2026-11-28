@@ -38,7 +38,8 @@ import { useFormTabs, canOpenKind } from "@/store/formTabsStore";
 import { usePraContractor } from "@/lib/praClient";
 import { FileText, ShoppingCart } from "lucide-react";
 import { PharmacyDayPopup } from "@/components/dashboard/PharmacyDayPopup";
-import { isPharmacyFamilyType } from "@/lib/catalogAccess";
+import { hasSharedCatalogAccess, isPharmacyFamilyType } from "@/lib/catalogAccess";
+import { CatalogPricePopup } from "@/components/dashboard/CatalogPricePopup";
 import { BreakdownWheel, TrendBars } from "@/components/ui/charts";
 import { getSalesTrend, getTodaySalesSplit, type DayValue } from "@/lib/repo/dashboardCharts";
 
@@ -539,6 +540,7 @@ function GeneralDashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isPharmacyFamilyType(sessionTenant?.businessType) && <PharmacyDayPopup />}
+          {hasSharedCatalogAccess(sessionTenant?.businessType) && <CatalogPricePopup />}
           {!tauriReady && (
             <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-700">
               Browser preview {"\u2014"} no live data
