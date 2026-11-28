@@ -6,9 +6,9 @@ import { desktopOffline } from "../desktopBridge";
 import { hasSharedCatalogAccess } from "../catalogAccess";
 import { useAuthStore } from "@/store/authStore";
 import type { CatalogDefault, CatalogNotice, PriceItem, PriceQuestion } from "@/server/catalogPrices";
-import type { ReviewRow } from "@/server/catalogChanges";
+import type { ReviewRow, UnpricedRow } from "@/server/catalogChanges";
 
-export type { CatalogNotice, PriceQuestion, ReviewRow };
+export type { CatalogNotice, PriceQuestion, ReviewRow, UnpricedRow };
 
 export const catalogPricesAvailable = () =>
   SERVER_DB && !desktopOffline() && hasSharedCatalogAccess(useAuthStore.getState().currentTenant?.businessType);
@@ -41,5 +41,9 @@ export async function priceNotices(): Promise<CatalogNotice[]> {
 export const listReviews = (status: "pending" | "decided") => call<ReviewRow[]>({ action: "reviews", status });
 export const decideReview = (d: { id: string; approve: boolean; salePrice?: string; mrp?: string; note?: string }) =>
   call<{ ok: true; moved: Record<string, number> }>({ action: "decide", ...d });
+
+/** Super Admin: shared products without a usual price, and publishing one. */
+export const listUnpriced = () => call<{ rows: UnpricedRow[]; total: number }>({ action: "unpriced" });
+export const publishUsual = (items: { productId: string; tenantId: string }[]) => call<{ published: number }>({ action: "publish", items });
 
 export const answerPrice = (id: string, answer: "yes" | "no") => call<{ ok: true; accepted: boolean }>({ action: "answer", id, answer });

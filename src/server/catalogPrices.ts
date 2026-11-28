@@ -17,7 +17,7 @@ import type { Caller } from "./sqlPolicy";
 import type { Sql } from "./subSupers";
 import type { SharedCatalogGroup } from "../lib/catalogAccess";
 import { businessOf, latestPrice, mayPrice, requirePricing, type Business } from "./catalogBusiness";
-import { answerChange, changeNotices, decideReview, listReviews, requestDecrease, requestPacking, type ChangeNotice } from "./catalogChanges";
+import { answerChange, changeNotices, decideReview, listReviews, listUnpriced, publishUsual, requestDecrease, requestPacking, type ChangeNotice } from "./catalogChanges";
 
 if (typeof window !== "undefined") throw new Error("src/server is server-only code.");
 
@@ -250,6 +250,8 @@ export async function catalogPricesAction(sql: Sql, caller: Caller, body: Record
     case "packing": return requestPacking(sql, caller, body);
     case "reviews": return listReviews(sql, caller, body.status);
     case "decide": return decideReview(sql, caller, body);
+    case "unpriced": return listUnpriced(sql, caller);
+    case "publish": return publishUsual(sql, caller, body.items);
     default: throw new HttpError(400, "Unknown action.");
   }
 }

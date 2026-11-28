@@ -9,6 +9,7 @@ import { setTestDb } from "../shims/db.ts";
 import { sqliteSql } from "../server/sqliteSql.ts";
 import { answerPrice, catalogDefaults, priceNotices, priceQuestions, proposePrices } from "@/server/catalogPrices";
 import { shareToCatalog } from "@/server/catalogShare";
+import { listUnpriced, publishUsual } from "@/server/catalogChanges";
 import type { Caller } from "@/server/sqlPolicy";
 
 let db: DatabaseSync;
@@ -120,4 +121,19 @@ test("businesses of another catalogue and products a business does not use are n
   assert.equal((await priceNotices(sql(), shop, NOW)).length, 0);
   db.prepare(`INSERT INTO tenants (id, name, business_type, created_at, updated_at) VALUES ('e', 'Business e', 'retail_pharmacy', ?, ?)`).run(T, T);
   assert.equal((await priceNotices(sql(), owner("e"), NOW)).length, 0);
+});
+
+test("a product shared before usual prices existed: the first business to price it is suggested, and published only by the Super Admin", async () => {
+  price("c", "p1", 105, "2026-11-25T10:00:00.000Z");
+  price("a", "p1", 95, "2026-11-01T10:00:00.000Z");
+  await assert.rejects(listUnpriced(sql(), A), /platform owner/);
+  const { rows, total } = await listUnpriced(sql(), sa);
+  assert.equal(total, 1);
+  // A priced it first (1 Nov); its current price (the newest of its rows) is suggested.
+  assert.deepEqual([rows[0].tenantId, rows[0].salePrice, rows[0].businesses], ["a", 100, 4]);
+  assert.deepEqual(await publishUsual(sql(), sa, [{ productId: "p1", tenantId: "a" }]), { published: 1 });
+  assert.equal(await usual(), 100);
+  assert.equal((await listUnpriced(sql(), sa)).total, 0);
+  assert.deepEqual(await publishUsual(sql(), sa, [{ productId: "p1", tenantId: "c" }]), { published: 0 }, "an existing usual price is kept");
+  assert.equal(myPrice("c"), 105);
 });

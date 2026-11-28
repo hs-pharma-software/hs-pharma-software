@@ -4,6 +4,7 @@ import { branchScopeFor } from "@/server/branches";
 import { sqlForServer } from "@/server/subSupersApi";
 import { listProducts, productDetail } from "@/server/appReads";
 import type { Runner } from "@/server/appDocs";
+import { catalogDefaults } from "@/server/catalogPrices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,12 @@ export async function GET(req: Request): Promise<Response> {
     const body = id
       ? await productDetail(run, caller.tenantId, id)
       : await listProducts(run, caller.tenantId, { search: u.searchParams.get("q"), offset: Number(u.searchParams.get("offset") ?? 0) });
+    // A purchase's search: a shared product the business never priced starts at the catalogue's usual price.
+    if ("rows" in body && u.searchParams.get("for") === "purchase") {
+      const unpriced = body.rows.filter((p) => !p.salePrice);
+      const usual = unpriced.length ? await catalogDefaults(sqlForServer(), caller, unpriced.map((p) => p.id)).catch(() => null) : null;
+      if (usual) for (const p of unpriced) p.salePrice = usual[p.id]?.salePrice ?? 0;
+    }
     return Response.json(body, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     return jsonError(e);

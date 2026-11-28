@@ -7,6 +7,7 @@ import '../core/doc_id.dart';
 import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
+import 'catalog_prices.dart';
 import 'form_bits.dart';
 import 'invoice_screen.dart' show WebActionBar, money2;
 import 'pickers.dart';
@@ -257,8 +258,10 @@ class PurchaseScreenState extends State<PurchaseScreen> with BackGuard {
       }
       if (!mounted) return;
       final no = r['purchaseNo'];
+      final questions = PriceQuestion.list(r['priceQuestions']);
       _reset();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Purchase #$no saved · ${rs((r['payable'] as num?) ?? 0)}'), behavior: SnackBarBehavior.floating));
+      await askPriceQuestions(context, questions);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

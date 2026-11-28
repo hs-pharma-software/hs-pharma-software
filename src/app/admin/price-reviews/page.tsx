@@ -8,7 +8,7 @@ import { Field, Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { FormError } from "@/components/ui/FormError";
 import { notify } from "@/lib/notify";
-import { decideReview, listReviews, type ReviewRow } from "@/lib/repo/catalogPrices";
+import { decideReview, listReviews, listUnpriced, publishUsual, type ReviewRow, type UnpricedRow } from "@/lib/repo/catalogPrices";
 
 const card = "rounded-2xl bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.07)] ring-1 ring-black/[0.04] sm:p-5";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -21,7 +21,7 @@ const change = (r: ReviewRow) =>
 /** Super Admin > Price & Packing Reviews: lower retail prices and new pack sizes
  * that businesses reported for shared catalogue products. */
 export default function PriceReviewsPage() {
-  const [view, setView] = useState<"pending" | "decided">("pending");
+  const [view, setView] = useState<"pending" | "decided" | "usual">("pending");
   const [rows, setRows] = useState<ReviewRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deciding, setDeciding] = useState<{ row: ReviewRow; approve: boolean } | null>(null);
@@ -29,6 +29,7 @@ export default function PriceReviewsPage() {
   const load = useCallback(async () => {
     setError(null);
     setRows(null);
+    if (view === "usual") return;
     try {
       setRows(await listReviews(view));
     } catch (e) {
@@ -42,12 +43,12 @@ export default function PriceReviewsPage() {
     <div className="flex flex-col gap-4">
       <PageHeader title="Price & Packing Reviews" />
       <div className="flex gap-2">
-        {(["pending", "decided"] as const).map((v) => (
-          <Button key={v} type="button" variant={view === v ? "primary" : "secondary"} onClick={() => setView(v)}>{v === "pending" ? "Waiting" : "Decided"}</Button>
+        {(["pending", "decided", "usual"] as const).map((v) => (
+          <Button key={v} type="button" variant={view === v ? "primary" : "secondary"} onClick={() => setView(v)}>{{ pending: "Waiting", decided: "Decided", usual: "Usual prices" }[v]}</Button>
         ))}
       </div>
       <FormError message={error} />
-      {rows === null ? <p className="py-8 text-center text-sm text-neutral-400">Loading…</p>
+      {view === "usual" ? <UsualPrices /> : rows === null ? <p className="py-8 text-center text-sm text-neutral-400">Loading…</p>
         : rows.length === 0 ? <p className={`${card} text-center text-sm text-neutral-500`}>{view === "pending" ? "Nothing is waiting for your decision." : "Nothing decided yet."}</p>
           : rows.map((r) => (
             <div key={r.id} className={`${card} flex flex-wrap items-start gap-x-6 gap-y-3 text-sm`}>
@@ -81,6 +82,82 @@ export default function PriceReviewsPage() {
             </div>
           ))}
       {deciding && <DecideModal {...deciding} onClose={() => setDeciding(null)} onDone={() => { setDeciding(null); void load(); }} />}
+    </div>
+  );
+}
+
+/** Shared products with no usual price yet (shared before usual prices existed):
+ * the first business that priced each one is suggested; the ticked ones are published. */
+function UsualPrices() {
+  const [data, setData] = useState<{ rows: UnpricedRow[]; total: number } | null>(null);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const d = await listUnpriced();
+      setData(d);
+      setChosen(new Set());
+    } catch (e) {
+      setData({ rows: [], total: 0 });
+      setError(msg(e));
+    }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = (id: string) => setChosen((s) => {
+    const n = new Set(s);
+    if (!n.delete(id)) n.add(id);
+    return n;
+  });
+
+  async function publish() {
+    if (!data) return;
+    setBusy(true);
+    try {
+      const r = await publishUsual(data.rows.filter((x) => chosen.has(x.productId)).map((x) => ({ productId: x.productId, tenantId: x.tenantId })));
+      notify(`${r.published} usual price${r.published === 1 ? "" : "s"} published.`, "success");
+      await load();
+    } catch (e) {
+      notify(msg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!data) return <p className="py-8 text-center text-sm text-neutral-400">Loading…</p>;
+  const all = data.rows.length > 0 && chosen.size === data.rows.length;
+  return (
+    <div className={`${card} flex flex-col gap-3 text-sm`}>
+      <p className="text-neutral-600">
+        Shared products without a usual price. A usual price fills in a business&apos;s first purchase of the product; no business&apos;s own price changes. Check each suggested price before publishing it.
+      </p>
+      <FormError message={error} />
+      {data.rows.length === 0 ? <p className="py-4 text-center text-neutral-500">Every priced shared product has a usual price.</p> : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 font-medium">
+              <input type="checkbox" checked={all} onChange={() => setChosen(all ? new Set() : new Set(data.rows.map((r) => r.productId)))} />
+              Select all {data.rows.length}{data.total > data.rows.length ? ` of ${data.total} (the rest follow)` : ""}
+            </label>
+            <Button type="button" variant="primary" disabled={busy || chosen.size === 0} loading={busy} onClick={() => void publish()}>Publish {chosen.size || ""} as usual price</Button>
+          </div>
+          <ul className="divide-y divide-neutral-100">
+            {data.rows.map((r) => (
+              <li key={r.productId}>
+                <label className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                  <input type="checkbox" checked={chosen.has(r.productId)} onChange={() => toggle(r.productId)} />
+                  <span className="min-w-[12rem] flex-1 break-words font-medium text-neutral-900">{r.productName}</span>
+                  <span className="text-xs text-neutral-500">{r.businessName}{r.businesses > 1 ? ` (+${r.businesses - 1} more price it)` : ""}</span>
+                  <span className="whitespace-nowrap tabular-nums">Rs {rate(r.salePrice)}{r.mrp > 0 ? <span className="text-neutral-500"> · MRP {rate(r.mrp)}</span> : null}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   );
 }

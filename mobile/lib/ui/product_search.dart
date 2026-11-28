@@ -49,7 +49,8 @@ class ProductSearch extends ChangeNotifier {
     final gen = ++_gen;
     final q = query;
     try {
-      final page = ProductPage.fromJson(await api.get('/api/app/products/', {'q': q}));
+      // A purchase's search gets the catalogue's usual price for a product the business never priced.
+      final page = ProductPage.fromJson(await api.get('/api/app/products/', {'q': q, if (!sale) 'for': 'purchase'}));
       if (gen != _gen) return;
       results = page.rows;
       error = null;

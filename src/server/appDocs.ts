@@ -357,7 +357,11 @@ export interface PurchaseInput {
   description?: string | null;
   lines: PurchaseLineInput[];
 }
-export interface PurchaseResult { id: string; purchaseNo: number; payable: number; paid: number; balance: number; duplicate: boolean }
+export interface PurchaseResult {
+  id: string; purchaseNo: number; payable: number; paid: number; balance: number; duplicate: boolean;
+  /** Retail prices (per pack) this save changed: the app then asks whether they changed for everyone. */
+  repriced?: { productId: string; price: number; previousPrice: number }[];
+}
 
 async function existingPurchase(run: Runner, tenantId: string, id: string): Promise<PurchaseResult | null> {
   const [r] = await run([{ sql: `SELECT id, purchase_no, payable, paid_amount, balance FROM purchases WHERE id = ? AND tenant_id = ?`, args: [id, tenantId] }], false);
@@ -425,6 +429,7 @@ export async function createPurchase(run: Runner, tenantId: string, raw: unknown
   const lineStmts: Stmt[] = [];
   let subtotal = 0, tax = 0;
   const lineTotals: number[] = [];
+  const repriced: NonNullable<PurchaseResult["repriced"]> = [];
   for (const l of s.lines) {
     const p = products.get(l.productId);
     if (!p) throw new HttpError(400, "A product on this purchase was not found.");
@@ -474,6 +479,7 @@ export async function createPurchase(run: Runner, tenantId: string, raw: unknown
     if (l.salePrice != null) {
       const salePrice = loose ? num(l.salePrice) * packing : num(l.salePrice);
       if (Math.abs(salePrice - (prices.get(l.productId) ?? 0)) > 0.0001) {
+        repriced.push({ productId: l.productId, price: salePrice, previousPrice: prices.get(l.productId) ?? 0 });
         lineStmts.push({
           sql: `INSERT INTO price_list (id, product_id, tenant_id, batch_no, sale_price, wholesale_price, mrp, comment, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, 0, 0, 'Updated via Purchase', ?, ?, NULL)`,
           args: [newId(), l.productId, tenantId, batchNo, salePrice, now, now],
@@ -515,5 +521,5 @@ export async function createPurchase(run: Runner, tenantId: string, raw: unknown
     throw e;
   }
   const no = await settleNo(run, "purchases", tenantId, s.id, purchaseNo, now);
-  return { id: s.id, purchaseNo: no, payable, paid, balance, duplicate: false };
+  return { id: s.id, purchaseNo: no, payable, paid, balance, duplicate: false, ...(repriced.length ? { repriced } : {}) };
 }

@@ -156,6 +156,63 @@ export async function decideReview(sql: Sql, caller: Caller, body: Record<string
   return { ok: true, moved };
 }
 
+// ── Usual prices of products shared before they had one ──────────────────
+
+export interface UnpricedRow {
+  productId: string; productName: string; catalog: string;
+  /** The business that priced it first (most likely the one it was shared from). */
+  tenantId: string; businessName: string; salePrice: number; mrp: number;
+  /** Businesses with a price of their own for it. */
+  businesses: number;
+}
+const UNPRICED_PAGE = 200;
+
+/** Shared products without a usual price that some business has priced, with
+ * the first such business's current price as the suggestion. */
+export async function listUnpriced(sql: Sql, caller: Caller): Promise<{ rows: UnpricedRow[]; total: number }> {
+  requireOwnerOfPlatform(caller);
+  const base = `WITH priced AS (
+      SELECT l.product_id, l.tenant_id, MIN(l.created_at) AS first_at FROM price_list l
+      JOIN products p ON p.id = l.product_id AND p.tenant_id IS NULL AND p.deleted_at IS NULL
+      WHERE l.deleted_at IS NULL AND l.sale_price > 0 AND NOT EXISTS (SELECT 1 FROM catalog_prices c WHERE c.product_id = l.product_id)
+      GROUP BY l.product_id, l.tenant_id),
+    src AS (SELECT product_id, tenant_id, ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY first_at, tenant_id) AS rn, COUNT(*) OVER (PARTITION BY product_id) AS businesses FROM priced)`;
+  const total = num((await sql.execute(`${base} SELECT COUNT(*) AS n FROM src WHERE rn = 1`)).rows[0]?.n);
+  if (!total) return { rows: [], total: 0 };
+  const rows = (await sql.execute(
+    `${base} SELECT s.product_id, s.tenant_id, s.businesses, p.name AS product_name, COALESCE(p.catalog_group, 'pharma') AS g, t.name AS business_name,
+       (SELECT l.sale_price FROM price_list l WHERE l.product_id = s.product_id AND l.tenant_id = s.tenant_id AND l.deleted_at IS NULL AND l.sale_price > 0 ORDER BY l.created_at DESC LIMIT 1) AS sale_price,
+       (SELECT l.mrp FROM price_list l WHERE l.product_id = s.product_id AND l.tenant_id = s.tenant_id AND l.deleted_at IS NULL AND l.mrp > 0 ORDER BY l.created_at DESC LIMIT 1) AS mrp
+     FROM src s JOIN products p ON p.id = s.product_id LEFT JOIN tenants t ON t.id = s.tenant_id
+     WHERE s.rn = 1 ORDER BY p.name LIMIT ${UNPRICED_PAGE}`)).rows;
+  return {
+    total,
+    rows: rows.map((r) => ({
+      productId: String(r.product_id), productName: String(r.product_name), catalog: String(r.g), tenantId: String(r.tenant_id),
+      businessName: String(r.business_name ?? "(removed business)"), salePrice: num(r.sale_price), mrp: num(r.mrp), businesses: num(r.businesses),
+    })),
+  };
+}
+
+/** Publishes the chosen businesses' current prices as the products' usual ones
+ * (a product that has one keeps it). */
+export async function publishUsual(sql: Sql, caller: Caller, items: unknown, now = new Date()): Promise<{ published: number }> {
+  requireOwnerOfPlatform(caller);
+  const list = (Array.isArray(items) ? items : []).slice(0, UNPRICED_PAGE)
+    .map((x) => x as { productId?: unknown; tenantId?: unknown })
+    .filter((x) => typeof x?.productId === "string" && typeof x?.tenantId === "string") as { productId: string; tenantId: string }[];
+  if (!list.length) throw new HttpError(400, "Choose the products.");
+  const at = now.toISOString();
+  const done = await sql.batch(list.map((i) => ({
+    sql: `INSERT OR IGNORE INTO catalog_prices (product_id, sale_price, mrp, source_tenant_id, updated_at)
+      SELECT p.id, l.sale_price, COALESCE((SELECT m.mrp FROM price_list m WHERE m.product_id = p.id AND m.tenant_id = l.tenant_id AND m.deleted_at IS NULL AND m.mrp > 0 ORDER BY m.created_at DESC LIMIT 1), 0), l.tenant_id, ?
+      FROM price_list l JOIN products p ON p.id = l.product_id AND p.tenant_id IS NULL AND p.deleted_at IS NULL
+      WHERE l.product_id = ? AND l.tenant_id = ? AND l.deleted_at IS NULL AND l.sale_price > 0 ORDER BY l.created_at DESC LIMIT 1`,
+    args: [at, i.productId, i.tenantId],
+  })));
+  return { published: done.reduce((n, x) => n + x, 0) };
+}
+
 // ── Businesses: what was approved ─────────────────────────────────────────
 
 export interface ChangeNotice {

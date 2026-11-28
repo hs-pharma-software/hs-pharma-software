@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../core/format.dart';
 import '../core/models.dart';
 import '../main.dart';
+import 'catalog_prices.dart';
 import 'product_detail_screen.dart';
 import 'sales_screen.dart';
 import 'states.dart';
@@ -27,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Dashboard? _d;
   Object? _error;
+  int _reload = 0;
 
   @override
   void initState() {
@@ -61,7 +63,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final day = DateTime.tryParse(d.today) ?? DateTime.now();
     return RefreshIndicator(
-      onRefresh: () => _load(force: true),
+      onRefresh: () {
+        setState(() => _reload++);
+        return _load(force: true);
+      },
       child: ListView(padding: const EdgeInsets.fromLTRB(12, 14, 12, 24), children: [
         // Header: date, business name, New Invoice / New Purchase.
         Padding(
@@ -82,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(child: GradientButton(label: 'New Purchase', icon: Icons.shopping_cart_outlined, colors: const [purchaseBlue, Color(0xFF3B82F6)], onPressed: widget.onNewPurchase)),
           ]),
         ],
+        PriceChangesCard(reload: _reload),
         const SizedBox(height: 14),
         _KpiGrid([
           _Kpi('Today\'s Sales', rs0(d.sales), accent: const Color(0xFF10B981)),
